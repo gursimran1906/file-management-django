@@ -1,0 +1,17 @@
+<div id="accordion-color-heading-{{ id }}">
+    <button type="button" class="flex items-center justify-between text-left w-full p-4 rtl:text-right
+        bg-white text-gray-900 border border-gray-200
+        {% if first %}rounded-t-lg shadow {% endif %} {% if last %}rounded-b-lg shadow {% endif %}
+        dark:border-gray-700 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 gap-3"
+        data-accordion-target="#accordion-color-body-{{ id }}" aria-expanded="false" aria-controls="accordion-color-body-{{ id }}">
+        {{ heading }}
+        <svg data-accordion-icon class="w-3 h-3 rotate-180 shrink-0" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/>
+        </svg>
+    </button>
+</div>
+<div id="accordion-color-body-{{ id }}" class="hidden overflow-scroll bg-white dark:bg-gray-900" aria-labelledby="accordion-color-heading-{{ id }}">
+    <div class="text-wrap {% if last %} rounded-b-lg shadow{% endif %} p-4 border border-gray-200 dark:border-gray-700">
+        {{ body }}
+    </div>
+</div>

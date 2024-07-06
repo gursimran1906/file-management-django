@@ -1,0 +1,89 @@
+<div class="col-span-8">
+  <label class="form-label"
+    >Authorised Party {{ authorised_party_number }} Name</label
+  >
+  <input
+    type="text"
+    class="form-input"
+    name="APName{{ authorised_party_number }}"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Relationship to Client</label>
+  <input
+    type="text"
+    class="form-input"
+    name="AP{{ authorised_party_number }}RelationshipToC"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Address Line 1</label>
+  <input
+    type="text"
+    class="form-input"
+    name="AP{{ authorised_party_number }}AddressLine1"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Address Line 2</label>
+  <input
+    type="text"
+    class="form-input"
+    id="AP1AddressLine2"
+    name="AP{{ authorised_party_number }}AddressLine2"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">County</label>
+  <input
+    type="text"
+    class="form-input"
+    id="AP1County"
+    name="AP{{ authorised_party_number }}County"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Postcode</label>
+  <input
+    type="text"
+    class="form-input"
+    id="AP1Postcode"
+    name="AP{{ authorised_party_number }}Postcode"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Email</label>
+  <input
+    type="email"
+    class="form-input"
+    id="AP1Email"
+    name="AP{{ authorised_party_number }}Email"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Contact Number</label>
+  <input
+    type="tel"
+    class="form-input"
+    id="AP1ContactNumber"
+    name="AP{{ authorised_party_number }}ContactNumber"
+  />
+</div>
+<div class="mt-2 col-span-8">
+  <div class="form-check">
+    <label class="form-check-label"> ID check </label>
+    <input
+      class="form-check-input"
+      name="AP{{ authorised_party_number }}IDCheck"
+      type="checkbox"
+    />
+  </div>
+</div>
+<div id="inputNewAP1" class="col-span-8">
+  <label class="form-label">Date of ID check</label>
+  <input
+    type="date"
+    class="form-input"
+    name="AP{{ authorised_party_number }}IDCheckDate"
+  />
+</div>

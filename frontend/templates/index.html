@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+
+{% block title %}Search matters {% endblock %}
+
+{% block container %}
+
+<div class='flex mt-2 place-content-between'> 
+  <form method="POST" action="{% url 'display_data_index_page' %}">
+    {% csrf_token %}
+    <div class="md:flex grid md:w-fit div-container gap-2 md:gap-0">
+      
+        <div class="flex ">
+            <select id="searchBy" name="searchBy" 
+            class="py-2 px-1 text-sm font-medium text-center text-gray-900 bg-gray-100 
+            border md:border-e-0  border-gray-300 dark:border-gray-700 dark:text-white rounded md:rounded-s md:rounded-e-none
+            w-full hover:bg-gray-200 focus:ring-4 focus:outline-none  dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800">
+                <option value="FileNumber" {% if search_by == 'FileNumber' %}selected{% endif %}>Alpha Code</option>
+                <option value="ClientName" {% if search_by == 'ClientName' %}selected{% endif %}>Client Name</option>
+                <option value="FeeEarner" {% if search_by == 'FeeEarner' %}selected{% endif %}>FeeEarner</option>
+                <option value="ToBeClosed" {% if search_by == 'ToBeClosed' %}selected{% endif %}>
+                    Files to be Closed
+                </option>
+            </select>
+        </div>
+        <div class="md:me-2">
+            <input
+                id="valToSearch"
+                name="valToSearch"
+                class="border border-gray-300  text-gray-900 text-sm rounded md:rounded-none md:rounded-e focus:ring-blue-100 focus:border-blue-100 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500;"
+                placeholder="Search Value"
+                value="{{ val_to_search }}"
+            />
+        </div>
+        <div class="md:me-2 flex items-center gap-1">
+            
+            <input type="checkbox" name="showArchived" {% if show_archived %}checked{% endif %} />
+            <label>Show Archived Files</label>
+        </div>
+        <div class=" flex items-center">
+            <button type="submit" class="btn-primary w-full ">Search</button>
+        </div>
+    </div> 
+  </form>
+
+  <div class='div-container h-fit'>
+    <form method="POST" action="{% url 'download_search_report' %}">
+      {% csrf_token %}
+      
+        <select hidden id="searchBy" name="searchBy" 
+        class="py-2 px-1 text-sm font-medium text-center text-gray-900 bg-gray-100 
+        border md:border-e-0  border-gray-300 dark:border-gray-700 dark:text-white rounded md:rounded-s md:rounded-e-none
+        w-full hover:bg-gray-200 focus:ring-4 focus:outline-none  dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800">
+            <option value="FileNumber" {% if search_by == 'FileNumber' %}selected{% endif %}>Alpha Code</option>
+            <option value="ClientName" {% if search_by == 'ClientName' %}selected{% endif %}>Client Name</option>
+            <option value="FeeEarner" {% if search_by == 'FeeEarner' %}selected{% endif %}>FeeEarner</option>
+            <option value="ToBeClosed" {% if search_by == 'ToBeClosed' %}selected{% endif %}>
+                Files to be Closed
+            </option>
+        </select>
+
+        <input 
+            id="valToSearch"
+            name="valToSearch"
+            class="hidden border border-gray-300  text-gray-900 text-sm rounded md:rounded-none md:rounded-e focus:ring-blue-100 focus:border-blue-100 w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500;"
+            placeholder="Search Value"
+            value="{{ val_to_search }}"
+        />
+
+
+        <input hidden type="checkbox" name="showArchived" {% if show_archived %}checked{% endif %} />
+        <button class='btn-primary'>Download</button>
+    </form>
+  </div>
+</div>
+
+<div class='div-container mt-4 w-full '>
+  {% if data %}
+  <div class='rounded-lg relative overflow-x-auto w-full'>
+    <table
+      id="tblUser"
+      
+      class=" w-full"
+      >
+      <thead class='mt-2 thead'>
+        <tr>
+          <!-- Adjust the headers based on your model fields -->
+          <th class='td'>File Number</th>
+          <th class='td'>Fee Earner</th>
+          <th class='td'>Matter Description</th>
+          <th class='td'>Client 1 Name</th>
+          <th class='td'>Client 2 Name</th>
+          <th class='td'>Last Work Done By</th>
+          <th class='td'>Desc Of Last Work</th>
+          <th class='td'>Date Of Last Work</th>
+
+          <th class='td'>Comments</th>
+        </tr>
+      </thead>
+      <tbody class='text-sm'>
+        {% for row in data %}
+        <tr class='tbody-striped'>
+          <!-- Adjust the table cells based on your model fields -->
+          <td class='td'>
+            <a class='link' href="{% url 'home' row.file_number %}"
+              >{{ row.file_number }}</a
+            >
+          </td>
+          <td class='td'>{{ row.fee_earner__username|default:'-' }}</td>
+          <td class='td'>{{ row.matter_description|default:'-' }}</td>
+          <td class='td'>{{ row.client1__name|default:'-' }}</td>
+          <td class='td'>{{ row.client2__name|default:'-' }}</td>
+          <td class='td'>{{ row.latest_last_work_person|default:'-' }}</td>
+          <td class='td'>{{ row.latest_last_work_task|default:'-' }}</td>
+          <td class='td'>{{ row.latest_last_work_date|date:"d/m/Y"|default:'-' }}</td>
+          <td class='td'>{{ row.comments|default:'-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  
+
+  {% else %}
+  <p class='p-4 rounded-lg bg-red-50 text-red-800 border '>No Matters found. Check your search values above.</p>
+  {% endif %}
+</div>
+
+
+
+
+
+
+{% endblock %}

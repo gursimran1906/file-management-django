@@ -1,0 +1,222 @@
+<!--base.html-->
+{% load static %}
+{% load compress %} 
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}Your Page Title{% endblock %}</title>
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+    <script src="https://cdn.datatables.net/1.10.24/js/jquery.dataTables.min.js"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/popper.js@1.12.9/dist/umd/popper.min.js"
+      integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+      crossorigin="anonymous"
+    ></script>
+    <link rel="icon" type="image/png" href="{% static 'images/logo.png' %}">
+    <script src="{% static 'js/functions.js' %}"></script>
+    
+    {% compress css %}
+      <link rel="stylesheet" href="{% static 'src/output.css' %}">
+    {% endcompress %}
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/datepicker.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
+    <script>
+      function toggleNormalCollapse(id){
+        const element = document.getElementById(id);
+        if (element.classList.contains('hidden')) {
+            element.classList.remove('hidden');
+
+        } else {
+          element.classList.add('hidden'); 
+        }
+      }
+      function toggleCollapse(id) {
+        const element = document.getElementById(id);
+        if (element.classList.contains('h-0')) {
+          element.classList.remove('h-0');
+          element.classList.add('h-full');
+        element.parentNode.classList.add('mb-4');
+        element.parentNode.parentNode.classList.add('h-full');
+          
+
+      } else {
+        
+        element.classList.add('h-0');
+        element.classList.remove('h-full', 'div-container');
+        
+        element.parentNode.parentNode.classList.remove('h-full');
+        element.parentNode.classList.remove('mb-4');
+          
+        }
+      }
+    </script>
+    {% include 'django_quill/media.html' %}
+    <style>
+      
+      .dataTables_filter {
+        font-size:12px;
+        float: right;
+        display: inline;
+        margin-bottom: 8px;
+        position: sticky;
+      }
+      
+      .dataTables_length {
+        font-size:12px;
+        display: inline;
+        margin-bottom: 8px;
+        position: sticky;
+        left:0;
+      }
+      
+      .dataTables_filter label,
+      .dataTables_length label {
+        color: #4a5568; /* Gray-700 */
+      }
+      
+      .dataTables_filter input[type="search"],
+      .dataTables_length select {
+        border: 1px solid #a0aec0; /* Gray-300 */
+        border-radius: 0.375rem; /* Rounded-md */
+        padding: 0.25rem 0.5rem; /* Adjusted padding */
+        outline: none;
+      }
+      
+      .dataTables_filter input[type="search"]:focus,
+      .dataTables_length select:focus {
+        border-color: #4299e1; /* Blue-500 */
+      }
+      .dataTables_info,
+      .dataTables_paginate {
+        
+        font-size:12px;
+        
+        
+         /* Center align pagination */
+        margin-top: 10px; /* Adjust margin as needed */
+      }
+      
+      .dataTables_paginate a {
+        font-size:12px;
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        margin-right: 5px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background-color: #f5f5f5;
+        color: #333;
+        text-decoration: none;
+      }
+      
+      .dataTables_paginate a.current {
+        background-color: rgb(37, 99, 235); /* Current page background color */
+        color: #fff; /* Current page text color */
+      }
+      
+      .dataTables_paginate a.disabled {
+        color: #aaa; /* Disabled page text color */
+        pointer-events: none; /* Disable pointer events */
+      }
+      
+        #invoicesTable thead th.asc::after {
+            content: ' ▲';
+    
+            color: #000;
+            margin-left: 1px;
+        }
+    
+        #invoicesTable thead th.desc::after {
+            content: ' ▼';
+    
+            color: #000;
+            margin-left: 1px;
+        }
+    </style>
+    <!-- Add your custom styles here if needed -->
+    {% block styles %}{% endblock %}
+  </head>
+
+  <body class="container w-full bg-gray-50">
+    {% include 'navbar.html' %}
+    <div class="sm:ml-64 p-4 sm:p-0">
+      <div class="p-4 sm:w-vw-64 mt-11 pt-8">
+  
+
+        {% block messages %}
+        {% if messages %}
+          <div class="messages">
+            {% for message in messages %}
+              {% if message.tags == 'success' %}
+                <div class="bg-green-50 border text-sm font-medium text-green-800 p-4 mb-2 rounded-lg " role="alert">
+                  <div class='flex'>
+                    <svg
+                    class="flex-shrink-0 w-5 h-5"
+                    aria-hidden="true"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="currentColor"
+                    viewBox="0 0 23 23"
+                    > 
+                        <path fill-rule="evenodd" d="M2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10S2 17.523 2 12Zm13.707-1.293a1 1 0 0 0-1.414-1.414L11 12.586l-1.793-1.793a1 1 0 0 0-1.414 1.414l2.5 2.5a1 1 0 0 0 1.414 0l4-4Z" clip-rule="evenodd"/>
+                      </svg>
+                    
+                    <span class='ms-3'>{{ message }}</span>
+                  </div>
+              
+                </div>
+              {% elif message.tags == 'error' %}
+                <div class="bg-red-50 border text-sm font-medium  text-red-800 p-4 mb-2 rounded-lg " role="alert">
+                  <div class="flex">
+                    <svg
+                      class="flex-shrink-0 w-5 h-5"
+                      aria-hidden="true"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="currentColor"
+                      viewBox="0 0 23 23"
+                      > 
+                     <path fill-rule="evenodd" d="M2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10S2 17.523 2 12Zm11-4a1 1 0 1 0-2 0v5a1 1 0 1 0 2 0V8Zm-1 7a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H12Z" clip-rule="evenodd"/>
+                      
+                    </svg>
+                    <span class='ms-3'>{{ message }}</span>
+                  </div>
+                  
+                </div>
+              {% else %}
+                <!-- Handle other message levels if needed -->
+                <div class="bg-blue-50 border text-sm font-medium text-blue-800 p-4 mb-2 rounded-lg " role="alert">
+                  <div class="flex">
+                    <svg
+                      class="w-3 h-3"
+                      aria-hidden="true"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 14 14"
+                    >
+                      <path
+                        stroke="currentColor"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"
+                      />
+                    </svg>
+                    <span class='ms-3'>{{ message }}</span>
+                  </div>
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endblock %}
+
+        
+        {% block container %}{% endblock %}
+      </div>
+    </div>
+  </body>
+</html>

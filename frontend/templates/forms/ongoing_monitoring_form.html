@@ -1,0 +1,61 @@
+<div class='grid md:grid-cols-2 gap-4 mt-2'>
+    <h1 class='div-container md:w-fit h-fit text-3xl font-medium '>{{ file_number }} | Ongoing Monitoring | {{title}}</h1>
+</div>
+
+<form method="post"> 
+    {% csrf_token %}
+    <div class="grid grid-cols-1 gap-4 mt-4">
+        
+        <div class="div-container">
+            <table class="w-full text-black divide-y  ">
+                <tr class="">
+                    <td  colspan='2'>Please provide details below of how you have monitored identified risks since the risk assessment form was initially completed.</td>
+                </tr>
+                <tr>
+                    <td  colspan='2'>{{form.how_was_monitioring_of_risks_coducted}}</td>
+                </tr>
+                <tr class='grid grid-cols-12 gap-4'>
+                    <td class=' col-span-8'>Have you discovered any changes since the risk assessment form was initially completed?</td>
+                    <td class='col-span-4'>{{form.any_changes_discovered}}</td>
+                </tr>
+                <tr class="">
+                    <td  colspan='2'>Please provide details below of any changes discovered.</td>
+                </tr>
+                <tr>
+                    <td  colspan='2'>{{form.details_of_changes}}</td>
+                </tr>
+                <tr class='grid grid-cols-12 gap-4'>
+                    <td class=' col-span-8'>What is the updated risk level for this client?</td>
+                    <td class=' col-span-4'>{{form.updated_risk_level_client}}</td>
+                </tr>
+                <tr class='grid grid-cols-12 gap-4'>
+                    <td class='col-span-8'>What is the updated risk level for this matter?</td>
+                    <td class=' col-span-4'>{{form.updated_risk_level_matter}}</td>
+                </tr>
+                <tr class="">
+                    <td  colspan='2'>Please provide details below of how the client and matter will be monitored on ongoing basis?</td>
+                </tr>
+                <tr>
+                    <td colspan='2'>{{form.how_it_will_be_monitored}}</td>
+                </tr>
+            </table>
+        </div>
+        <div class="div-container grid grid-cols-1 md:grid-cols-8 gap-2">
+
+            <div class="md:col-span-4">
+                {{ form.date_due_diligence_conducted.label }}
+                {{ form.date_due_diligence_conducted }}
+            </div>
+            
+            <div class="md:col-span-4">
+                {{ form.signed_by.label }}
+                {{ form.signed_by }}
+            </div>
+           
+        </div>
+        <div>
+            <button class="btn-primary">Submit</button>
+        </div>
+    </div>
+    
+</form>

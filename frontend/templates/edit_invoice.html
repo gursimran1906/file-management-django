@@ -1,0 +1,99 @@
+
+{% extends 'base.html' %}
+{% load humanize %}
+{% block title %}Edit Invoice{% endblock %} 
+{% load utils %}
+{% block container_class %}container{% endblock %} 
+{% block container %}
+<form method='post' action="{% url 'edit_invoice' invoice_id %}">
+{% csrf_token %}
+  <div class='row'>
+      <div class="col-md-6">
+        <label class="form-label">Date</label>
+        <input required type="Date" class="form-control" name="date" value={{date}}>
+      </div>
+    
+
+      <div class="col-md-6 {% if state == 'F'%}invisible{% endif %}">
+        <label class="form-label" for="">Draft/Final</label>
+        <select name="state" class="form-select">
+          <option value='D' {% if state == 'D'%}selected{% endif %}>Draft</option>
+          <option value='F' >Final</option>
+        </select>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Payable by</label>
+        <input required type="text" class="form-control" name="payable_by" placeholder="eg. Client" value="{{ payable_by }}">
+      </div>
+      <div class='col-md-3'>
+        <label class="mt-4 form-label">By email</label>
+        <input class="mt-4 form-check-input" type="checkbox" name="by_email" {% if by_email == True %}checked{% endif %}>
+      </div>
+      <div class='col-md-3'>
+        <label class="mt-4 form-label">By post</label>
+        <input class="mt-4 form-check-input" type="checkbox" name="by_post"{% if by_post == True %}checked{% endif %}>
+      </div>
+      <div class="col-md-12">
+        <label class="form-label">Description</label>
+        <textarea required type="text" class="form-control" name="description">{{description}}</textarea>
+      </div>
+
+      <div class="col-md-12" id="our_costs_row">
+        <div class="row">
+          <div class="col-md-5">
+            <label class="form-label">Our Costs </label>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label">Amount excl. VAT</label>
+          </div>
+        </div>
+        {% for row in our_costs_rows %}
+          {{row}}
+        {% endfor %}
+        <div class="row mt-2">
+          <div class="col-md-5">
+            <input type="text" class="form-control" id="our_costs_description" placeholder="Costs Description" name="our_costs_desc[]" >
+          </div>
+          <div class="col-md-5">
+            <input type="number" step="0.01" class="form-control" name="our_costs[]" id="our_costs" placeholder="£0.00">
+          </div>
+          <div class="col-md-2">
+            <span type='button' class='btn btn-primary' onclick="addFieldsInvoice('our_costs_row');" id="add_more_fields_inv">+</span>
+          </div>
+        </div>
+      </div>
+
+
+
+      <div class="col-md-12 mt-2"> 
+        <legend>Pink slips to be attached</legend>
+        {% for slip in pink_slips %}
+          {{slip}}
+          {% empty %} No Pink Slips available
+        {% endfor %}
+      </div>
+
+      <div class="col-md-12 mt-2"> 
+        <legend>Blue slips to be attached</legend>
+        {% for slip in blue_slips %}
+          {{slip}}
+          {% empty %} No Blue Slips available
+        {% endfor %}
+      </div>
+
+      <div class="col-md-12 mt-2"> 
+        <legend>Green slips to be attached</legend>
+        {% for slip in green_slips %}
+          {{slip}}
+          {% empty %}No Green Slips available
+        {% endfor %}
+      </div>
+      
+      <div class='col-auto mt-2'>
+        <button class='btn btn-primary ' type='submit'>Submit</button>
+      </div>
+      
+  </div>
+</form>
+{% endblock %} 

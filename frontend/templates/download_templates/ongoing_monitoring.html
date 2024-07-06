@@ -1,0 +1,66 @@
+{% load static %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risk Assessment</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+       h1, h2, h3 {font-weight: bold;}
+       
+    </style>
+</head>
+<body style="font-family: Times New Roman, Times, serif;">
+   
+    <h1 class='text-center'>ANP Solicitors Ongoing Monitoring</h1>
+    <h2 class='text-center'>ANP Reference: {{obj.file_number.file_number}}</h2>
+   
+  
+
+        
+    <table class="table mt-5">
+        <tr class="">
+            <td  colspan='2'><strong>Please provide details below of how you have monitored identified risks since the risk assessment form was initially completed.</strong></td>
+        </tr>
+        <tr>
+            <td  colspan='2'>{{obj.how_was_monitioring_of_risks_coducted}}</td>
+        </tr>
+        <tr class='grid grid-cols-12 gap-4'>
+            <td class=' col-span-8'><strong>Have you discovered any changes since the risk assessment form was initially completed?</strong></td>
+            <td class='col-span-4'>{{obj.any_changes_discovered}}</td>
+        </tr>
+        <tr class="">
+            <td  colspan='2'><strong>Please provide details below of any changes discovered.</strong></td>
+        </tr>
+        <tr>
+            <td  colspan='2'>{{obj.details_of_changes}}</td>
+        </tr>
+        <tr class='grid grid-cols-12 gap-4'>
+            <td class=' col-span-8'><strong>What is the updated risk level for this client?</strong></td>
+            <td class=' col-span-4'>{{obj.updated_risk_level_client}}</td>
+        </tr>
+        <tr class='grid grid-cols-12 gap-4'>
+            <td class='col-span-8'><strong>What is the updated risk level for this matter?</strong></td>
+            <td class=' col-span-4'>{{obj.updated_risk_level_matter}}</td>
+        </tr>
+        <tr class="">
+            <td  colspan='2'><strong>Please provide details below of how the client and matter will be monitored on ongoing basis?</strong></td>
+        </tr>
+        <tr>
+            <td colspan='2'>{{obj.how_it_will_be_monitored}}</td>
+        </tr>
+        <tr>
+            <td><strong>Date of due diligence conducted</strong></td>
+            <td>{{ obj.date_due_diligence_conducted|date:'d/m/Y' }}</td>
+        </tr>
+        <tr>
+            <td><strong>Signed by</strong></td>
+            <td>{{ obj.signed_by }}</td>
+        </tr>
+    </table>
+            
+     
+    
+</body>
+</html>

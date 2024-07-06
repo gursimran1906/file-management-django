@@ -1,0 +1,388 @@
+<div class='grid md:grid-cols-2 gap-4 mt-2'>
+    <h1 class='div-container md:w-fit h-fit text-3xl font-medium '>{{ file_number }} | Risk Assessment | {{title}}</h1>
+</div>
+<form method="post">
+    {% csrf_token %}
+    <div class=' space-y-4 text-sm mt-4 '>
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl '>1. Client details</h2>
+        </div>
+        <div class="div-container grid grid-cols-1 md:grid-cols-12 gap-2">
+            <div class="md:col-span-6">
+                {{ form.matter.label }}
+                {{ form.matter }}
+            </div>
+            <div class="md:col-span-6">
+                {{ form.client_source_of_funds.label }}
+                {{ form.client_source_of_funds }}
+            </div>
+        </div>
+        <!-- client risk -->
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl '>2. Initial risk assessment</h2>
+        </div>
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl'>2a. Client Risk</h2>
+        </div>
+        <div class="div-container grid grid-cols-1 md:grid-cols-12 gap-2">  
+            
+            <div class="md:col-span-6">
+                <table class='table text-black text'>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Is it unusual for this type of client to instruct us?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.unusual_client }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Do you have any concerns about the client?<br>
+                            e.g. capacity, undue influence, vulnerability
+                        </td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.client_concerns }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12' >
+                        <td class='py-2 col-span-8 md:col-span-10'>If a third party is instructing, do we have evidence of their authority to act?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.third_party_authority }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Do you have any concerns about this client, agent or third parties?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.concerns_about_parties }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Is the client a designated person/entity?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.designated_person_entity }}</td>
+                    </tr>
+        
+                </table>
+                
+            </div>
+            
+            <div class='md:col-span-6 '>
+                <label class='mb-2'>Please provide details of any issues identified in this section</label>
+                {{form.issues_identified_client_risks_sec}}
+            </div>
+        </div>
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl '>2b. Jurisdiction Risk</h2>
+        </div>
+        <!-- Jurisdiction Details -->
+        <div class="div-container grid grid-cols-1 md:grid-cols-12 gap-2">
+            
+            <div class="md:col-span-12">
+                {{ form.client_location.label }}
+                {{ form.client_location }}
+            </div>
+
+            <div class="md:col-span-6">
+                <table class="table text-black">
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Do you have any concerns about the client’s location?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'> {{ form.location_of_instruction_concerns }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Does it make sense for the client to instruct us from this location?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'> {{ form.make_sense_location_of_instructions }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Are there overseas elements? If yes, provide details below<br>
+                            e.g. overseas beneficiary, contracts for overseas entities</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'> {{ form.overseas_elements }}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class='md:col-span-6 '>
+                <label class='mb-2'>Please provide details of any issues identified in this section</label>
+                {{form.issues_identified_jurisdiction_risks_sec}}
+            </div>  
+        </div>
+
+            <!--  Delivery channel risk -->
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl'>2c. Delivery channel risk</h2>
+        </div>
+        <div class="div-container grid grid-cols-1 md:grid-cols-12 gap-2"> 
+            
+            <div class="md:col-span-6">
+                <table class='table text-black text'>
+                    <tr>
+                        <td class='py-2'>Will we meet the client in person?</td>
+                        <td class='py-2 ps-4'>{{ form.meeting_in_person }}</td>
+                    </tr>
+                </table>
+            </div>
+        
+            <div class="md:col-span-6">
+                <label>If no, how are we satisfied that the client is who they say they are?</label>
+                {{ form.who_they_are }}
+            </div>
+        </div>
+        <!-- Due Diligence Risk -->
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl'>2d. Due Diligence review</h2>
+        </div>
+        <div class="div-container grid grid-cols-1 md:grid-cols-12 gap-2">
+            <div class="md:col-span-6">
+                <table>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Is there any adverse media about the client or beneficial owners?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'> {{ form.adverse_media }}</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div class="md:col-span-6">
+                <label>What steps have you taken to verify the client or any instructing third party’s identity?</label>
+                {{ form.due_diligence_review }}
+            </div>
+        </div>
+        
+        <!-- For entities -->
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl'>2e. For entities</h2>
+        </div>
+        <div class="div-container grid grid-cols-1 md:grid-cols-12 gap-2">
+            
+            <div class="md:col-span-12">
+                <label>Please provide details of beneficial owners, shareholders/ controllers including percentages of shareholdings</label>
+                {{ form.beneficial_owners_details }}
+            </div>
+    
+            <div class="md:col-span-12">
+                <label>Please provide details of steps taken to identify and verify ultimate beneficial owners</label>
+                {{ form.ultimate_beneficial_owners }}
+            </div>
+            
+            <div class="md:col-span-12 flex gap-2">
+                <label>Have you identified any reportable discrepancies?</label>
+                {{ form.reportable_discrepancies }}
+            </div>
+        </div>
+        
+        <!-- Matter Risks -->
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl'>3. Matter Risks</h2>
+        </div>
+        <div class="div-container grid grid-cols-1 md:grid-cols-12 gap-2">
+            <div class="md:col-span-6">
+                {{ form.matter_description.label }}
+                {{ form.matter_description }}
+            </div>
+            
+            <div class="md:col-span-6">
+                {{ form.matter_transaction_value.label }}
+                {{ form.matter_transaction_value }}
+            </div>
+            
+            <div class="md:col-span-12">
+                <table class='table text-black text'>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-11'>Do we usually carry out this type of work?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-1'>{{ form.usual_work }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-11'>Does the matter involve creating a complex structure?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-1'>{{ form.complex_structure }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-11'>Does it involve a cash-intensive industry?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-1'>{{ form.cash_intensive_industry }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-11'>Does it involve a high-risk industry?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-1'>{{ form.high_risk_industry }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-11'>Does the matter involve a risk of proliferation financing?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-1'>{{ form.proliferation_financing }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-11'>Are there any there any other AML or Counter Terrorist Financing risks?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-1'>{{ form.other_risks }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-11'>Is the matter transactional?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-1'>{{ form.transactional_matter }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-11'>If no, does the transaction arrange for the movement of funds or assets?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-1'>{{ form.movement_of_funds_assets }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-11'>Are we receiving funds from overseas?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-1'>{{ form.receiving_funds_from_overseas }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-11'>Are we receiving funds from third parties?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-1'>{{ form.receiving_funds_from_third_parties }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-11'>Is this transaction consistent with your understanding of the client’s profile and financial position?<br>
+                            e.g. it makes sense for the client to instruct us on this transaction?
+                        </td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-1'>{{ form.consistent_with_client_profile }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-11'>Is this transaction consistent with your understanding of the client’s profile and financial position?<br>
+                            e.g. it makes sense for the client to instruct us on this transaction?
+                        </td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-1'>{{ form.consistent_with_client_profile }}</td>
+                    </tr>
+                </table>
+                
+                
+            </div>
+    
+            <div class="md:col-span-12">
+                Please provide details of any issues identified in this section
+                {{ form.issues_identified_matter_risks_sec }}
+            </div>
+        </div>
+        
+        <!-- Product/ Service Risk -->
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl'>3a. Product/Service risk</h2>
+        </div>
+        <div class="div-container grid grid-cols-1 md:grid-cols-12 gap-2">
+            <div class="md:col-span-6">
+                <label>Based on the client’s profile, does it make sense for the client to instruct us on this transaction?</label>
+                {{ form.makes_sense_for_client }}
+            </div>
+            
+            <div class="md:col-span-6">
+                <label>If no, please provide details</label>
+                {{ form.product_service_risk_details }}
+            </div>
+        </div>
+        
+        <!-- Enhanced Due Diligence -->
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl'>3b. Enhanced Due Diligence</h2>
+        </div>
+        <div class="div-container grid grid-cols-1 md:grid-cols-12 gap-2">
+            <div class="md:col-span-12 border-b pb-4">
+                <table class='table text-black text'>
+                    <tr class='grid grid-cols-12' >
+                        <td class='py-2 col-span-8 md:col-span-10'>Have you/Client completed and signed our PEP questionnaire?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.complex_structure_or_unusual }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12' >
+                        <td class='py-2 col-span-8 md:col-span-10'>Have you/Client completed and signed our source of funds of questionnaire?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.complex_structure_or_unusual }}</td>
+                    </tr>
+                </table>
+            </div>
+            <div class='md:col-span-12 mt-4'>If ‘Yes’ applies to any of the following, contact the nominated person before proceeding.</div>
+            <div class="md:col-span-6">
+                <table class='table text-black text'>
+                    <tr class='grid grid-cols-12' >
+                        <td class='py-2 col-span-8 md:col-span-10'>If the client is not an individual, is the structure complex or unusual?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.complex_structure_or_unusual }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Does the client own, manage or direct a business or activity that falls within a higher risk sector?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.higher_risk_sector }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Does the matter involve a client, a beneficial owner or other party linked to the Transaction, manage or direct a business or activity that is cash intensive?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.cash_intensive_business_activity }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Does the matter involve a client, a beneficial owner or any party established in a <span class='underline'>high-risk third country</span> or high-risk or jurisdiction?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.high_risk_third_country_or_jurisdiction }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Is the client, a beneficial owner or any party linked to the transaction a politically exposed person (PEP), family member or a close associate of a PEP?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.politically_exposed_person }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Do you have any concerns that the client, a beneficial owner or any parties linked to the transaction is subject to financial sanctions or has links to a country subject to sanctions?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.financial_sanctions }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Will this matter involve a country subject to sanctions?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.country_subject_to_sanctions }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Is the transaction unusually complex or large?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.unusual_complex_transaction }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Does this transaction form part of an unusual pattern of transactions?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.unusual_pattern_of_transactions }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Does the transaction lack an apparent economic or legal purpose?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.lack_of_economic_or_legal_purpose }}</td>
+                    </tr>
+                    <tr class='grid grid-cols-12'>
+                        <td class='py-2 col-span-8 md:col-span-10'>Are there any other factors that could indicate a higher risk of money laundering or terrorist financing?</td>
+                        <td class='py-2 ps-4 col-span-4 md:col-span-2'>{{ form.other_high_risk_factors }}</td>
+                    </tr>
+                </table>
+            </div>
+        
+        
+            <div class="md:col-span-6">
+                <label>If risks identified, date escalated to nominated person</label>
+                {{ form.escalated_date }}
+        
+                <label>Please provide details of any issues identified in this section</label>
+                {{ form.issues_identified_enhanced_due_dilligence }}
+            </div>
+        </div>
+        
+        <!-- Risk Level and Jurisdiction -->
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl'>3c. Risk Level and Jurisdiction</h2>
+        </div>
+        <div class="div-container grid grid-cols-1 md:grid-cols-12 gap-2">
+            
+            <div class="md:col-span-6">
+                {{ form.client_risk_level.label }}
+                {{ form.client_risk_level }}
+            </div>
+        
+            <div class="md:col-span-6">
+                {{ form.matter_risk_level.label }}
+                {{ form.matter_risk_level }}
+            </div>
+            <div class='md:col-span-12'>
+                <h3 class='text-lg'>For high-risk matters:</h3>
+            </div>
+            <div class="md:col-span-6 flex gap-4">
+                {{ form.evidence_of_source_of_wealth.label }}
+                {{ form.evidence_of_source_of_wealth }}
+            </div>
+            
+            <div class="md:col-span-6 flex gap-4">
+                {{ form.source_of_wealth_correspondence.label }}
+                {{ form.source_of_wealth_correspondence }}
+            </div>
+        </div>
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl'>4. Due Diligence</h2>
+        </div>
+        <!-- Due Diligence -->
+        <div class="div-container grid grid-cols-1 md:grid-cols-12 gap-2">
+            
+            <div class="md:col-span-4">
+                <label>What level of customer due diligence will you apply?</label>
+                {{ form.customer_due_diligence_level }}
+            </div>
+            
+            <div class="md:col-span-4">
+                {{ form.due_diligence_date.label }}
+                {{ form.due_diligence_date }}
+            </div>
+            
+            <div class="md:col-span-4">
+                {{ form.due_diligence_signed_by.label }}
+                {{ form.due_diligence_signed_by }}
+            </div>
+        </div>
+        
+        <button type="submit" class="btn-primary ">
+            Submit
+        </button>
+    
+    </div>
+</form>

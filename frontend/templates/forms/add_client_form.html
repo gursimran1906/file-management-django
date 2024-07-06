@@ -1,0 +1,108 @@
+<div class="col-span-8">
+  <label class="form-label">Client {{ client_number }} Name</label>
+  <input
+    type="text"
+    class="form-input"
+    id="name"
+    name="ClientName{{ client_number }}"
+    value="{{client.name}}"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Date of Birth</label>
+  <input
+    type="date"
+    class="form-input"
+    id="Client1DOB"
+    name="Client{{ client_number }}DOB"
+    value="{{client.dob|date:'Y-m-d'}}"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Occupation</label>
+  <input
+    type="text"
+    class="form-input"
+    id="Client1Occupation"
+    name="Client{{ client_number }}Occupation"
+    
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Address Line 1</label>
+  <input
+    type="text"
+    class="form-input"
+    id="ClientAddressLine1"
+    name="Client{{ client_number }}AddressLine1"
+    value="{{client.address_line1}}"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Address Line 2</label>
+  <input
+    type="text"
+    class="form-input"
+    id="ClientAddressLine2"
+    name="Client{{ client_number }}AddressLine2"
+    value="{{client.address_line2}}"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">County</label>
+  <input
+    type="text"
+    class="form-input"
+    id="ClientCounty"
+    name="Client{{ client_number }}County"
+    value="{{client.county}}"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Postcode</label>
+  <input
+    type="text"
+    class="form-input"
+    id="ClientPostcode"
+    name="Client{{ client_number }}Postcode"
+    value="{{client.postcode}}"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Email</label>
+  <input
+    type="email"
+    class="form-input"
+    id="ClientEmail"
+    name="Client{{ client_number }}Email"
+    value="{{client.email}}"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Contact Number</label>
+  <input
+    type="tel"
+    class="form-input"
+    id="ClientContactNumber"
+    name="Client{{ client_number }}ContactNumber"
+    value="{{client.contact_number}}"
+  />
+</div>
+<div class="col-span-8">
+  <label class="form-label">Date of Last AML Check</label>
+  <input
+    type="date"
+    class="form-input"
+    id="AMLCheck"
+    name="Client{{ client_number }}AMLCheckDate"
+    value="{{client.date_of_last_aml|date:'Y-m-d'}}"
+  />
+</div>
+<div class="col-span-8 mt-2">
+  <div class="form-check">
+    <input class="form-check-input" type="checkbox" name="IDVer{{ client_number}}" {% if client.id_verified %} checked {% endif %}/>
+    <label class="form-check-label">
+      ID Verified Client {{ client_number }}</label
+    >
+  </div>
+</div>

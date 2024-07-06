@@ -1,0 +1,326 @@
+
+{% extends 'base.html' %} {% block title %} Open New File {% endblock %} 
+{% block container_class %}container{% endblock %} 
+{% block container %}
+{% load utils %}
+
+<form class="grid md:grid-cols-12 gap-2 div-container mt-2" method="post" action="{% url 'new_file' %}">
+  {% csrf_token %}
+
+  <div class=" md:col-span-2">
+    <label class="form-label">File Number</label>
+    <input
+      type="text"
+      class="form-input"
+      name="file_number"
+      pattern="[A-Z]{3}[0-9]{7}"
+      title="Please, try to match ANP0010001"
+      value="{{form.file_number.value}}"
+    />
+  </div>
+  
+  <div class=" md:col-span-1">
+    <label class="form-label">Fee Earner</label>
+    <select class="form-input" name="fee_earner">
+      {% comment %} {% for fee_earner in form_data.fee_earners %}
+        <option value="{{fee_earner.id}}" {% if fee_earner.id == form.fee_earner.value|add:"0" %} selected {% endif %}>{{ fee_earner }}</option>
+      {% endfor %} {% endcomment %}
+      {% if form_data.fee_earners %}
+            {% for fee_earner in form_data.fee_earners %}
+                <option value="{{fee_earner.id}}" {% if fee_earner.id == form.fee_earner.value|add:"0" %} selected {% endif %}>{{ fee_earner }}</option>
+            {% endfor %}
+        {% else %}
+            <option value="" disabled>No fee earners available</option>
+        {% endif %}
+    </select>
+  </div>
+
+  <div class=" md:col-span-1">
+    <label class="form-label">File Status</label>
+    <select name="file_status" class="form-input">
+      {% for status in form_data.file_status %}
+      
+      <option value={{status.id}} {% if status.id == form.file_status.value|add:"0" %} selected {% endif %} >{{ status }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class=" md:col-span-2">
+    <label class="form-label">Matter Descriptions</label>
+    <input type="text" class="form-input" name="matter_description" value="{{form.matter_description.value}}"/>
+  </div>
+  <div class=" md:col-span-2">
+    <label class="form-label">File Location</label>
+    <select name="file_location" class="form-input">
+      {% for location in form_data.file_locations %}
+      <option value="{{location.id}}" {% if location.id == form.file_location.value|add:"0" %}selected{% endif %} >{{location}}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class=" md:col-span-2">
+    <label class="form-label">Funding</label>
+    <select name="funding" class="form-input">
+      <option {% if form.funding.value == 'PF' %}selected{% endif %} value="PF">Private Funding</option>
+      <option {% if form.funding.value == 'CFA' %}selected{% endif %} value="CFA">Conditional Fee Agreement</option>
+    </select>
+  </div>
+
+  <div class=" md:col-span-2">
+    <label class="form-label">Matter Type</label>
+    <select name="matter_type" class="form-input">
+      {% for matter_type in form_data.matter_types %}
+      <option {% if matter_type.id == form.matter_type.value|add:"0" %}selected{% endif %} value="{{matter_type.id}}">{{matter_type}}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class=" md:col-span-12 grid md:grid-cols-12 gap-2 ">
+    <div class=" md:col-span-6">
+      <legend>Client 1</legend>
+      <select
+        id="Client1List"
+        onchange="toggleForm('Client1');"
+        class="form-input"
+        name="client1"
+      >
+        <option {% if client1 == '0' %}selected{% endif %}  value="0">
+          <button class="dropdown-item" type="button" >
+            Select Client 1 (If new client choose New Client)
+          </button>
+        </option>
+        <option value="-1">New Client</option>
+        {% for client in form_data.clients %}
+        <option {% if client1|add:"0" == client.id %}selected{% endif %} value="{{client.id}}">{{client.name}}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class=" md:col-span-6">
+      <legend>Client 2</legend>
+      <select
+        id="Client2List"
+        onchange="toggleForm('Client2');"
+        class="form-input"
+        name="client2"
+      >
+        <option selected value="0">
+          <button class="dropdown-item" type="button">
+            Select Client 2 (If new client choose New Client)
+          </button>
+        </option>
+        <option value="-1">New Client</option>
+        {% for client in form_data.clients %}
+        <option value="{{client.id}}">{{client.name}}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class=" md:col-span-12 grid md:grid-cols-12 gap-2">
+    <div id="inputNewClient1" style="display: none" class=" md:col-span-6 ">
+      {% include 'forms/add_client_form.html' with client_number='1' %}
+    </div>
+
+    <div id="inputNewClient2" style="display: none" class=" md:col-span-6 ">
+      {% include 'forms/add_client_form.html' with client_number='2' %}
+    </div>
+  </div>
+
+  <div class=" md:col-span-12 grid md:grid-cols-12 gap-2 ">
+    <div class=" md:col-span-6">
+      <legend>Authorised Party 1</legend>
+      <select
+        id="AP1List"
+        onchange="toggleForm('AP1');"
+        class="form-input"
+        name="authorised_party1"
+      >
+        <option selected value="0">
+          <button class="dropdown-item" type="button">
+            Select Authorised Party 1 (If same as client, choose nothing and if
+            not on list choose New)
+          </button>
+        </option>
+        <option value="-1">New</option>
+        {% for authorised_party in form_data.authorised_parties %}
+        <option value="{{ authorised_party.id}}">
+          <b>Name:</b>{{ authorised_party.name}},
+          <b>Relationship to Client:</b> {{
+          authorised_party.relationship_to_client}}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class=" md:col-span-6">
+      <legend>Authorised Party 2</legend>
+      <select
+        id="AP2List"
+        onchange="toggleForm('AP2');"
+        class="form-input"
+        name="authorised_party2"
+      >
+        <option selected value="0">
+          <button class="dropdown-item" type="button">
+            Select Authorised Party 2 (If same as client, choose nothing and if
+            not on list choose New)
+          </button>
+        </option>
+        <option value="-1">New</option>
+        {% for authorised_party in form_data.authorised_parties %}
+        <option value="{{ authorised_party.id}}">
+          <b>Name:</b>{{ authorised_party.name}},
+          <b>Relationship to Client:</b> {{
+          authorised_party.relationship_to_client }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class=" md:col-span-12 grid md:grid-cols-12 gap-2">
+    <div id="inputNewAP1" style="display: none" class=" md:col-span-6 ">
+      {% include 'forms/add_authorised_party_form.html' with authorised_party_number='1' %}
+    </div>
+
+    <div id="inputNewAP2" style="display: none" class=" md:col-span-6 ">
+      {% include 'forms/add_authorised_party_form.html' with authorised_party_number='2' %}
+    </div>
+  </div>
+  
+  <div class=" md:col-span-6">
+    <legend class="">Other Side's Details</legend>
+    <select
+      id="OSList"
+      onchange="toggleForm('OS');"
+      class="form-input"
+      name="other_side"
+    >
+      <option selected value="0">
+        <button class="dropdown-item" type="button">
+          Select Other side(If not on the list choose New)
+        </button>
+      </option>
+      <option value="-1">New</option>
+      {% for os in form_data.othersides %}
+      <option value="{{os.id}}">
+        Name:{{os.name}}, Address: {{os.address_line1}}, {{os.address_line2}},
+        {{os.postcode}}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class=" md:col-span-7 grid md:grid-cols-12 gap-2" id="inputNewOS" style="display: none">
+    {% include 'forms/add_otherside_details_form.html' %}
+  </div>
+
+  <legend class=' md:col-span-12'>Compliance</legend>
+
+  <div class=" md:col-span-2">
+    <label class="form-label">Date Client Care Sent</label>
+    <input type="date" class="form-input" name="date_of_client_care_sent" />
+  </div>
+
+  <div class=" md:col-span-3">
+    <div class="form-check">
+      <input
+        class="form-check-input"
+        name="terms_of_engagement_client1"
+        type="checkbox"
+      />
+      <label class="form-check-label">
+        Signed T o E Client 1
+      </label>
+    </div>
+  </div>
+  <div class=" md:col-span-3">
+    <div class="form-check">
+      <input
+        class="form-check-input"
+        type="checkbox"
+        name="terms_of_engagement_client2"
+      />
+      <label class="form-check-label">
+        Signed T o E Client 2
+      </label>
+    </div>
+  </div>
+  <div class=" md:col-span-2">
+    <label class="form-label">Date T o E sent</label>
+    <input type="date" class="form-input" name="date_of_toe_sent" />
+  </div>
+  <div class=" md:col-span-2">
+    <label class="form-label">Date T o E received</label>
+    <input type="date" class="form-input" name="date_of_toe_rcvd" />
+  </div>
+  <div class=" md:col-span-3">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="ncba_client1" />
+      <label class="form-check-label"> Signed NCBA Client 1 </label>
+    </div>
+  </div>
+  <div class=" md:col-span-3">
+    
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="ncba_client2" />
+      <label class="form-check-label"> Signed NCBA Client 2 </label>
+    </div>
+  </div>
+  <div class=" md:col-span-3">
+    <label class="form-label">Date NCBA sent</label>
+    <input type="date" class="form-input" name="date_of_ncba_sent" />
+  </div>
+  <div class=" md:col-span-3">
+    <label class="form-label">Date NCBA received</label>
+    <input type="date" class="form-input" name="date_of_ncba_rcvd" />
+  </div>
+  <div class=" md:col-span-6" id="KeyInfoDiv">
+    
+
+    <div class="grid md:grid-cols-12 gap-2">
+      
+      <div class=" md:col-span-12">
+        <legend>Key Information</legend>
+        <textarea
+          type="text"
+          class="form-input"
+          name="key_information"
+        ></textarea>
+      </div>
+    </div>
+  </div>
+  <div class=" md:col-span-6" id="UndertakingDiv">
+    
+
+    <div class="grid md:grid-cols-12 gap-2">
+      
+      <div class=" md:col-span-10">
+        <legend>Undertakings</legend>
+        <textarea
+          type="text"
+          class="form-input"
+          name="undertakings[]"
+        ></textarea>
+      </div>
+
+      <div class=" md:col-span-2 flex ">
+        <span
+          type="button"
+          class="btn-primary self-center"
+          onclick="addFieldsUndertaking('UndertakingDiv');"
+          id="add_more_fields"
+          >+</span
+        >
+      </div>
+    </div>
+  </div>
+  <div class=" md:col-span-12">
+    <label class="form-label">Comments</label>
+    <textarea type="text" class="form-input" name="comments"></textarea>
+  </div>
+
+  <div class=" md:col-span-12 mb-3">
+    <button type="submit" class="btn-primary">Make New Record</button>
+  </div>
+</form>
+
+{% endblock %}

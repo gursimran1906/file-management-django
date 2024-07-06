@@ -1,0 +1,356 @@
+
+{% extends 'base.html' %}
+{% load humanize %}
+{% block title %}Finance{% endblock %} 
+{% load utils %}
+{% block container_class %}container{% endblock %} 
+{% block container %}
+<div class='grid grid-cols-1 md:grid-cols-2 mt-2 gap-4'>
+    <h1 class='div-container md:w-fit h-fit text-3xl font-medium'>{{ file_number }} | Finances</h1>
+    <div class="div-container flex flex-col gap-2 md:justify-self-end ">
+        <h3 class='text-2xl text-center'>Actions</h3>
+        
+        <div>
+            <a class='btn btn-primary ' href="{% url 'download_ledger_account' file_number %}">Download Ledger</a>
+            <a class='btn btn-primary ' href="{% url 'download_statement_account' file_number %}">Statment of Account</a>
+        </div>
+    </div>
+</div>
+<div class='mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 '>
+    
+    <div class='div-container h-fit' id="accordion-color" data-accordion="collapse" data-active-classes="bg-blue-100 dark:bg-gray-800 text-blue-600 dark:text-white rounded-b-none">
+        {% for invoice in invoices %}
+        
+            <h2 id="accordion-color-heading-invoice-{{ invoice.id }}">
+                <button style="background-color:{% if invoice.state == 'D' %}{{colors.draft_invoice}}{% else %}{{colors.invoice}}{% endif %} !important;"
+                type="button" class="flex items-center justify-between text-left w-full p-4  rtl:text-right
+                bg-white text-gray-900 border border-gray-200 
+                {% if forloop.first %}rounded-t-lg shadow {% endif %} {% if forloop.last %} rounded-b-lg shadow {% endif %}
+                dark:border-gray-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-800 gap-3" 
+                data-accordion-target="#accordion-color-body-invoice-{{ invoice.id }}" aria-expanded="false" aria-controls="accordion-color-body-invoice-{{ invoice.id }}">
+                {% if invoice.state == 'D' %}Draft{% endif %}
+                Invoice {{invoice.invoice_number}}of amount £{{invoice.total_cost_and_vat}} incl. VAT on {{invoice.date}}
+                    <svg data-accordion-icon class="w-3 h-3 rotate-180 shrink-0" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/>
+                    </svg>
+                </button>
+            </h2>
+            <div id="accordion-color-body-invoice-{{ invoice.id }}" style="background-color:{% if invoice.state == 'D' %}{{colors.draft_invoice}}{% else %}{{colors.invoice}}{% endif %} !important;" class="hidden overflow-scroll bg-white dark:bg-gray-900" aria-labelledby="accordion-color-heading-invoice-{{invoice.id}}">
+                <div class="text-sm {% if forloop.last %} rounded-b-lg shadow{% endif %} p-4 border border-gray-200 dark:border-gray-700">
+                    <b>Date:</b>{{invoice.date}}<br>
+                    <b>Invoice No:</b>{{invoice.number}}
+                    <br>
+                    <br>{{invoice.desc}}
+                    <br>
+                    <br>
+                    {{invoice.costs}}
+                    <br>
+                    {{invoice.pink_slips}}
+                    <br>
+                    {{invoice.blue_slips}}
+                    <br>
+                    {{invoice.green_slips}}
+                    <br>
+                    {{invoice.cash_allocated_slips}}
+                    <br>
+                    {{invoice.total_due}}
+                    <br>
+                    <div class='mt-2 '>
+                        <a class='link' href="{% url 'download_invoice' invoice.id %}">Download Invoice</a>
+                        &nbsp;&nbsp;&nbsp;
+                        <a class='link' href="{% url 'edit_invoice' invoice.id %}">Edit Invoice</a>
+                    </div>
+                </div>
+            </div>
+        
+        {% endfor %}
+        
+        {% for slip in pmts_slips %}
+    
+                <h2 id="accordion-color-heading-pmt-slip-{{ slip.id }}">
+                    <button
+                        style="background-color:{% if slip.is_money_out %}pink {% else %}lightblue {% endif %}!important;"
+                        type="button" class="flex items-center justify-between text-left w-full p-4  rtl:text-right
+                        bg-white text-gray-900 border border-gray-200 
+                        {% if forloop.first %}rounded-t-lg shadow mt-4{% endif %} {% if forloop.last %} rounded-b-lg shadow {% endif %}
+                        dark:border-gray-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-800 gap-3" 
+                        data-accordion-target="#accordion-color-body-pmt-slip-{{ slip.id }}" aria-expanded="false" aria-controls="accordion-color-body-pmt-slip-{{ slip.id }}">
+                        {{ slip.date|date:'d/m/Y' }} - 
+                        Payment {% if slip.is_money_out %}to {% else %}from {% endif %}{{slip.pmt_person}} of £{{slip.amount|intcomma}}
+                        <svg data-accordion-icon class="w-3 h-3 rotate-180 shrink-0" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/>
+                        </svg>
+                    </button>
+                </h2>
+                <div id="accordion-color-body-pmt-slip-{{ slip.id }}" style="background-color:{% if slip.is_money_out %}pink {% else %}lightblue {% endif %}!important;" class="hidden overflow-scroll bg-white dark:bg-gray-900" aria-labelledby="accordion-color-heading-pmt-slip-{{ slip.id }}">
+                    <div class="{% if forloop.last %} rounded-b-lg shadow{% endif %} p-4 border border-gray-200 dark:border-gray-700">
+                        <table class='table text-black' >
+                            <tr>
+                                <td>
+                                    <b>Payment Person:</b>
+                                </td>
+                                <td>
+                                    {{slip.pmt_person}}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <b>Via:</b>
+                                </td>
+                                <td>
+                                {{slip.get_mode_of_pmt_display}}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <b>Ledger:</b>
+                                </td>
+                                <td>
+                                    {{slip.get_ledger_account_display}}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <b>Amount:</b>
+                                </td>
+                                <td>
+                                    £{{slip.amount|intcomma}}
+                                </td>
+                            </tr>
+                        </table>
+                        
+                        <div class='flex gap-4 mt-4'>
+                            <a class="link" href="{% url 'download_pmts_slip' slip.id %}">Print Slip</a>
+                            <a class="link" href="{% url 'edit_pmts_slip' slip.id %}">Edit Slip</a>
+                        </div>
+                    </div>
+                </div>
+            
+        {% endfor %}
+        
+        {% for slip in green_slips %}
+            
+                <h2 id="accordion-color-heading-green-slip-{{ slip.id }}">
+                    <button
+                    style="background-color:{{colors.green}}!important;"
+                    type="button" class="flex items-center justify-between text-left w-full p-4  rtl:text-right
+                    bg-white text-gray-900 border border-gray-200 
+                    {% if forloop.first %}rounded-t-lg shadow mt-4{% endif %} {% if forloop.last %} rounded-b-lg shadow {% endif %}
+                    dark:border-gray-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-800 gap-3" 
+                    data-accordion-target="#accordion-color-body-green-slip-{{ slip.id }}" aria-expanded="false" aria-controls="accordion-color-body-green-slip-{{ slip.id }}">
+                    {{ slip.date|date:'d/m/Y' }} - 
+                    Transfer from {{slip.file_number_from}} to {{slip.file_number_to}} of £{{slip.amount|intcomma}}
+                        <svg data-accordion-icon class="w-3 h-3 rotate-180 shrink-0" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/>
+                        </svg>
+                    </button>
+                </h2>
+                <div id="accordion-color-body-green-slip-{{ slip.id }}"
+                    style="background-color:{{colors.green}}!important;"
+                    class="hidden overflow-scroll bg-white dark:bg-gray-900" aria-labelledby="accordion-color-heading-green-slip-{{ slip.id }}">
+                    <div class="{% if forloop.last %} rounded-b-lg shadow{% endif %} p-4 border border-gray-200 dark:border-gray-700">
+                        <table class='table table-striped' >
+                            <tr>
+                                <td>
+                                    <b>File Number From:</b>
+                                </td>
+                                <td>
+                                    {{slip.file_number_from}}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <b>File Number To:</b>
+                                </td>
+                                <td>
+                                {{slip.file_number_to}}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <b>From Ledger:</b>
+                                </td>
+                                <td>
+                                    {{slip.get_from_ledger_account_display}}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <b>To Ledger:</b>
+                                </td>
+                                <td>
+                                    {{slip.get_to_ledger_account_display}}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <b>Amount:</b>
+                                </td>
+                                <td>
+                                    £{{slip.amount|intcomma}}
+                                </td>
+                            </tr>
+
+                            
+                            
+                        </table>
+                        <div class='p-4 pt-0'>
+                            <a href="{% url 'download_green_slip' slip.id %}">Print Slip</a>
+                            &nbsp;&nbsp;&nbsp;
+                            <a href="{% url 'edit_green_slip' slip.id %}">Edit Slip</a>
+                        </div>
+                    </div>
+                </div>
+            
+        {% endfor %}
+    </div>
+
+    <div class='h-fit grid grid-cols-1 gap-4'>
+        <div class='grid grid-cols-1 '>
+            <div class="relative border overflow-x-auto shadow-sm sm:rounded-lg">
+                <table class="bg-white w-full text-sm text-center rtl:text-right text-gray-500">
+                <thead>
+                    <tr class='border-b bg-gray-50 text-gray-700 uppercase'>
+                    <th class='td border-e'>
+                        Monies In
+                    </th>
+                    <th class='td border-e'>
+                        Monies Out
+                    </th>
+                    <th class='td'>
+                        Net Balance
+                    </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class='text-center' >
+                    <td class="td border-e">
+                        £{{total_monies_in|intcomma}}
+                    </td>
+                    <td class='td border-e'>
+                        £{{total_monies_out|intcomma}}
+                    </td>
+    
+                    <td class="td {% if total_monies_balance < 0%}text-red-500 {% else %} text-green-700 {% endif %}">
+                        £{{total_monies_balance|intcomma}}
+                    </td>
+                    </tr>
+                </tbody>
+                </table>
+            </div>
+            
+        </div>
+        <div class="div-container flex justify-between">
+            <button class="btn-primary border shadow-sm  text-black me-1" style="background-color: {{colors.invoice}} !important;" type="button" onclick="toggleCollapse('invoiceForm');" aria-expanded="true" >
+              Add Invoice
+            </button>
+            <button class="btn-primary border shadow-sm text-black me-1" style="background-color: pink !important;" type="button" onclick="toggleCollapse('pinkSlipForm');"  aria-expanded="true" >
+              Add Pink Slip
+            </button>
+            <button class="btn-primary border shadow-sm  text-black me-1" style="background-color: lightblue !important;" type="button" onclick="toggleCollapse('blueSlipForm');"  aria-expanded="true" >
+              Add Blue Slip
+            </button>
+            <button class="btn-primary border shadow-sm  text-black me-1" style="background-color: {{colors.green}} !important;" type="button" onclick="toggleCollapse('greenSlipForm');"  aria-expanded="true">
+              Add Green Slip
+            </button>
+            {% comment %} <button class="col btn m-1" style="background-color: {{colors.temp}} !important;" type="button" data-bs-toggle="collapse" data-bs-target="#TempSlipForm" aria-expanded="true" aria-controls="FileSummary">
+              Add Temp Slip
+            </button> {% endcomment %}
+        </div>
+    
+        <div class='h-0'>
+            <div>
+                <div class="h-0 overflow-hidden" id="invoiceForm" aria-expanded="true">
+                    <div class="rounded-lg border p-4 bg-white" >
+                        <h4 class='text-2xl mb-2'>Add Invoice</h4>
+                        <form class='w-100 grid grid-cols-12 gap-2' method='post' action="{% url 'add_invoice' file_number %}">
+                            {% csrf_token %}
+                            {% include 'forms/add_invoice.html' with slips=pmts_slips green_slips=green_slips file_number_id=file_number_id %}
+                            <button class='col-span-2 btn btn-primary '>Submit</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <div class="h-0 overflow-hidden" id="pinkSlipForm" aria-expanded="true">
+                    <div class="rounded-lg border p-4 bg-white" >
+                        <h4 class='text-2xl mb-2'>Add Pink Slip</h4>
+                        <form class='' method='post' action="{% url 'add_pink_slip' file_number %}">
+                            {% csrf_token %}
+                            {{pmts_form.as_p}}
+                            <button class='mt-2 btn btn-primary'>Submit</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <div class="h-0 overflow-hidden" id="blueSlipForm" aria-expanded="true">
+                    <div class="rounded-lg border p-4 bg-white" >
+                        <h4 class='text-2xl mb-2'>Add Blue Slip</h4>
+                        <form class='' method='post' action="{% url 'add_blue_slip' file_number %}">
+                            {% csrf_token %}
+                            {{pmts_form.as_p}}
+                            <button class='mt-2 btn btn-primary'>Submit</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <div class="h-0 overflow-hidden" id="greenSlipForm" aria-expanded="true">
+                    <div class="rounded-lg border p-4 bg-white" >
+                        <h4 class='text-2xl mb-2'>Add Green Slip</h4>
+                        <form class='' method='post' action="{% url 'add_green_slip' file_number %}">
+                            {% csrf_token %}
+                            {{green_slip_form.as_p}}
+                            <button class='btn btn-primary'>Submit</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class='-mt-4 '>
+            {% comment %} <legend class='text-2xl mb-2'>Cash Allocation</legend> {% endcomment %}
+            <div class='relative overflow-x-auto border shadow-sm sm:rounded-lg'>
+                <table class="bg-white w-full text-sm text-left rtl:text-right text-gray-500">
+                <thead>
+                    <tr class='text-gray-700 uppercase border-b bg-gray-50'>
+                    <th class='td border-e'>Invoice No.</th>
+                    <th class='td border-e'>Amount to allocate</th>
+                    <th class='td '>Click to Allocate</th>
+                    </tr>
+                </thead>
+                <tbody>
+    
+                    {% for slip in pmts_slips %}
+                        {% if slip.is_money_out != True and slip.balance_left > 0%}
+                            <tr class=" border-b hover:bg-gray-50 ">
+                            <form action="{% url 'allocate_monies' %}" method="POST">
+                                {% csrf_token %}
+                                <td class='td border-e'>
+                                    
+                                    <select class='border border-gray-300 rounded-lg px-2 py-2' name='invoice_num'  required>
+                                    
+                                    {% for invoice in invoices %}
+                                        {% if invoice.state == 'F' and invoice.total_due_left > 0 %}
+                                        <option >{{invoice.number}}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                
+                                </select></td>
+                                <td class='td border-e'>Balance of £<input name='amt_to_allocate' class='w-1/4 border border-gray-300 rounded-lg  px-2 py-2' value="{{slip.balance_left}}"></input> 
+                                    from Payment from <b>{{slip.pmt_person}}</b>&nbsp;of £{{ slip.amount|intcomma }} to {{slip.get_ledger_account_display}} Ledger on {{slip.date|date:'d/m/Y'}}
+                                </td>
+                                <td class='td '><button class="btn-primary" name="slip_id" value="{{slip.id}}" type="submit">Allocate</button></td>
+                            </form>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+                </table>
+            </div>
+        </div>
+        
+    </div>
+</div>
+{% endblock %} 

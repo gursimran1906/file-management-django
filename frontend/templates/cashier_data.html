@@ -1,0 +1,82 @@
+{% extends 'base.html' %} 
+{% load humanize %} 
+{% block title %}Cashier's Data{% endblock %} 
+{% load utils %} 
+{% block container_class %}container {% endblock %}
+{% block container %}
+
+<div class="grid grid-cols-1 md:grid-cols-12 gap-4 mt-2">
+  <div class="md:col-span-6 div-container">
+    <form
+      class=""
+      action="{% url 'download_cashier_data' %}"
+      method="post"
+    >
+      <legend class="text-center text-xl">Pending Slips</legend>
+      {% csrf_token %}
+      <label class=" ">Date of Cashier's last visit</label>
+      <div class="mt-2 d-flex justify-content-center w-100">
+        <input
+          class="form-input"
+          type="date"
+          name="start_date"
+          title="Enter the Date for the last slips done"
+          required
+        />
+      </div>
+      <input
+        type="submit"
+        class="mt-1 btn-primary"
+        name="type_of_report"
+        value="Pending Slips"
+      />
+    </form>
+  </div>
+  <div class="md:col-span-6 div-container">
+    <form
+      class=""
+      action="{% url 'download_cashier_data' %}"
+        method="post"
+      >
+      <legend class="text-center text-xl">Audit Monthly Slips</legend>
+      {% csrf_token %}
+    <div class='grid grid-cols-12 gap-4 mt-4'>
+        <div class='col-span-6'>
+            <label class="mt-2  form-label">Start Date</label>
+            <div class="mt-2 d-flex justify-content-center w-100">
+                <input
+                class="form-input"
+                type="date"
+                name="start_date"
+                title="Start Date"
+                required
+                />
+            </div>
+            
+        </div>
+        <div class='col-span-6'>
+            <label class="mt-2  form-label">End Date</label>
+            <div class="mt-2 d-flex justify-content-center w-100">
+                <input
+                class="form-input w-50"
+                type="date"
+                name="end_date"
+                title="End Date"
+                required
+                />
+            </div>
+            
+        </div>
+       
+    </div>
+        <input
+        type="submit"
+        class="mt-2 btn-primary"
+        name="type_of_report"
+        value="Audit Slips"
+        />
+    </form>
+  </div>
+</div>
+
+{% endblock %}

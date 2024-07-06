@@ -1,0 +1,103 @@
+
+{% load utils %}
+    
+    <div class="col-span-6">
+      <label class="form-label">Date</label>
+      <input required type="Date" 
+      class="form-input" name="date" 
+      value={% now "Y-m-d" %}>
+    </div>
+
+    <div class="col-span-6">
+      <label class="form-label" for="">Draft/Final</label>
+      <select name="state" class="form-input py-2.5">
+        <option value='D' selected>Draft</option>
+        <option value='F'>Final</option>
+      </select>
+    </div>
+
+    <div class="col-span-6">
+      <label class="form-label">Payable by</label>
+      <input required type="text" 
+      class="form-input" name="payable_by" placeholder="eg. Client" value="Client">
+    </div>
+    <div class='col-span-3'>
+      <label class="mt-4 form-label">By email</label>
+      <input class="mt-4 form-check-input" type="checkbox" name="by_email">
+    </div>
+    <div class='col-span-3'>
+      <label class="mt-4 form-label">By post</label>
+      <input class="mt-4 form-check-input" type="checkbox" name="by_post">
+    </div>
+    <div class="col-span-12">
+      <label class="form-label">Description</label>
+      <textarea required type="text" class="form-input" name="description">Our professional charges in relation to work undertaken on your behalf as per attached schedule of work and costs.</textarea>
+    </div>
+
+    <div class="col-span-12" id="our_costs_row">
+      <div class="grid grid-cols-12 gap-4">
+        <div class="col-span-5">
+          <label class="form-label">Our Costs </label>
+        </div>
+        <div class="col-span-5">
+          <label class="form-label">Amount excl. VAT</label>
+        </div>
+      </div>
+      <div class="grid grid-cols-12 gap-4">
+        <div class="col-span-5">
+          <input type="text" class="form-input" id="our_costs_description" placeholder="Costs Description" name="our_costs_desc[]" value="Our Costs">
+        </div>
+        <div class="col-span-5">
+          <input required type="number" step="0.01" 
+          class="form-input" name="our_costs[]" id="our_costs" placeholder="£0.00">
+        </div>
+        <div class="col-span-2 flex mt-1 mb-2">
+          <span type='button' class=' btn-primary px-4' onclick="addFieldsInvoice('our_costs_row');" id="add_more_fields_inv">+</span>
+        </div>
+      </div>
+    </div>
+
+
+
+    <div class="col-span-12 mt-4"> 
+      <legend class='text-xl mb-2' >Pink slips to be attached</legend>
+      {% for slip in slips %}
+        {% if slip.is_money_out and slip.balance_left > 0 %}
+        <div class="form-check">
+            <input class="form-check-input" name="pink_slips[]" type="checkbox" value="{{slip.id}}">
+            <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{{slip.description}}">Payment to&nbsp;<b >'{{slip.pmt_person}}'</b>&nbsp;of £{{slip.balance_left}} from  {{slip.get_ledger_account_display}} Ledger on {{slip.date|date:'d/m/Y'}}</label>
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="col-span-12 mt-4"> 
+      <legend class='text-xl mb-2' >Blue slips to be attached</legend>
+      {% for slip in slips %}
+        {% if slip.is_money_out != True and slip.balance_left > 0 %}
+        <div class="form-check">
+            <input class="form-check-input" name="blue_slips[]" type="checkbox" value="{{slip.id}}">
+            <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{{slip.description}}">Payment from&nbsp;<b >'{{slip.pmt_person}}'</b>&nbsp;of £{{slip.balance_left}}(from £{{slip.amount}}) to  {{slip.get_ledger_account_display}} Ledger on {{slip.date|date:'d/m/Y'}}</label>
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="col-span-12 mt-4"> 
+      <legend class='text-xl mb-2' >Green slips to be attached</legend>
+      {% for slip in green_slips %}
+        {% if slip.file_number_from.file_number == file_number and slip.balance_left_from > 0 %}
+        <div class="form-check">
+            <input class="form-check-input" name="green_slips[]" type="checkbox" value="{{slip.id}}">
+            <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{{slip.description}}">Transfer to&nbsp;<b >{{slip.file_number_to}}</b> of £{{slip.balance_left_from}} (from £{{slip.amount}}) {{slip.date|date:'d/m/Y'}}</label>
+        </div>
+        {% elif slip.file_number_to.file_number == file_number and slip.balance_left_to > 0 %}
+        <div class="form-check">
+          <input class="form-check-input" name="green_slips[]" type="checkbox" value="{{slip.id}}">
+          <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{{slip.description}}">Transfer from&nbsp;<b >{{slip.file_number_from}}</b> of £{{slip.balance_left_to}} (from £{{slip.amount}}) {{slip.date|date:'d/m/Y'}}</label>
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    
+

@@ -1,0 +1,13 @@
+
+{% extends 'base.html' %}
+{% block title %}Edit {{title}}{% endblock %} 
+{% block container %}
+<div class='grid grid-cols-1 mt-2'>
+  <h1 class='div-container md:w-fit h-fit text-3xl font-medium '>Edit {{title}}</h1>
+</div>
+<form class="div-container mt-4" method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button class='mt-2 btn-primary' type="submit">Save Changes</button>
+</form>
+{% endblock %}

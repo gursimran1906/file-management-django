@@ -1,0 +1,145 @@
+
+{% extends 'base.html' %}
+{% load utils %}
+{% block title %}Attendance Note{% endblock %} 
+{% block container %}
+<script>
+    $(document).ready(function() {
+        var startTime;
+        var elapsedTime = 0; // Track total elapsed time
+        var startHour;
+        var startMinutes;
+        var finishHour;
+        var finishMinutes;
+        var timerInterval;
+        var timerPaused = false; // Variable to track if timer is paused
+
+        $('#startTimer').on('click', function() {
+            startHour = new Date().getHours();
+            startMinutes = new Date().getMinutes();
+            $('#startTimer').prop("disabled", false);
+            selector_start_time = document.getElementsByName('start_time');
+            if (startMinutes<10){
+                startMinutes = "0"+ startMinutes
+            }
+            time_input = startHour +":"+startMinutes
+            $(selector_start_time).val(time_input)
+
+            startTime = new Date().getTime();
+            timerInterval = setInterval(updateTimer, 1000);
+            $(this).prop("disabled", true);
+            $('#stopTimer').prop("disabled", false);
+            $('#pauseTimer').prop("disabled", false); 
+            
+            $('#startTimer').removeClass('btn-primary').addClass('btn-disabled');
+            $('#stopTimer').removeClass('btn-disabled').addClass('btn-primary');
+            $('#pauseTimer').removeClass('btn-disabled').addClass('btn-primary');
+        });
+
+        $('#stopTimer').on('click', function() {
+            
+            clearInterval(timerInterval);
+            finishTime = new Date().getTime();
+            $(this).prop("disabled", true);
+            $('#startTimer').prop("disabled", false);
+            $('#pauseTimer').prop("disabled", true);
+
+            // Adjust finish time based on total elapsed time
+            finishTime -= elapsedTime;
+            var finishDate = new Date(finishTime);
+            finishHour = finishDate.getHours();
+            finishMinutes = finishDate.getMinutes();
+            if (finishMinutes<10){
+                finishMinutes = "0"+ finishMinutes
+            }
+            time_input = finishHour +":"+finishMinutes
+            selector_finish_time = document.getElementsByName('finish_time');
+            $(selector_finish_time).val(time_input);
+            $('#startTimer').removeClass('btn-disabled').addClass('btn-primary');
+            $('#stopTimer').removeClass('btn-primary').addClass('btn-disabled');
+            $('#pauseTimer').removeClass('btn-primary').addClass('btn-disabled');
+        });
+
+        $('#pauseTimer').on('click', function() {
+            if (!timerPaused) {
+                clearInterval(timerInterval);
+                $(this).text('Resume');
+            } else {
+                startTime = new Date().getTime(); // Update start time when resuming
+                timerInterval = setInterval(updateTimer, 1000);
+                $(this).text('Pause');
+            }
+            timerPaused = !timerPaused; // Toggle pause state
+        });
+
+        function updateTimer() {
+            var currentTime = new Date().getTime();
+            var elapsedTimeTemp = currentTime - startTime; // Calculate elapsed time since last start
+
+            if (!timerPaused) {
+                elapsedTime += elapsedTimeTemp; // Add to total elapsed time if not paused
+            }
+
+            var hours = Math.floor(elapsedTime / (1000 * 60 * 60));
+            var minutes = Math.floor((elapsedTime % (1000 * 60 * 60)) / (1000 * 60));
+            var seconds = Math.floor((elapsedTime % (1000 * 60)) / 1000);
+
+            $('#timer').html(hours + 'h ' + minutes + 'm ' + seconds + 's');
+
+            startTime = currentTime; // Update start time for next interval
+        }
+    });
+</script>
+
+<div class='grid grid-cols-1 mt-2 '>
+    <h1 class='div-container w-fit text-3xl '>{{ file_number }} | Attendance Notes</h1>
+</div>
+<div class='grid grid-cols-1 md:grid-cols-2 md:gap-4 mt-4 '>
+    
+    <div  id="accordion-color" data-accordion="collapse" data-active-classes="bg-blue-100 dark:bg-gray-800 text-blue-600 dark:text-white rounded-b-none">
+        {% for attendance_note in attendance_notes %}
+        <h2 id="accordion-color-heading-{{ attendance_note.id }}">
+            <button type="button" class="flex justify-between w-full p-4  rtl:text-right
+            bg-white text-gray-900 border  border-gray-200 
+            {% if forloop.first %}rounded-t-lg shadow {% endif %} {% if forloop.last %} rounded-b-lg shadow {% endif %}
+            dark:border-gray-700 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 gap-3" 
+            data-accordion-target="#accordion-color-body-{{ attendance_note.id }}" aria-expanded="false" aria-controls="accordion-color-body-{{ attendance_note.id }}">
+            <span class='text-left'>{{ attendance_note.date|date:'d/m/Y' }} - {{ attendance_note.subject_line }}</span>
+            <svg data-accordion-icon class="w-3 h-3 rotate-180 shrink-0" aria-hidden="false" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/>
+            </svg>
+            </button>
+        </h2>
+        <div id="accordion-color-body-{{ attendance_note.id }}" class="hidden bg-white" aria-labelledby="accordion-color-heading-{{ attendance_note.id }}">
+            <div class="{% if forloop.last %} rounded-b-lg shadow{% endif %} p-4 border  border-gray-200 dark:border-gray-700 dark:bg-gray-900">
+            <b>Date:</b> {{ attendance_note.date|date:'d/m/Y' }}<br>
+                    <b>Start Time:</b> {{ attendance_note.start_time }}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                    <b>Finish Time:</b> {{ attendance_note.finish_time }}<br><br>
+                    <div>{{ attendance_note.content.html|add_list_class|safe }}</div><br><br>
+                    <b>Unit(s): </b>{{ attendance_note.unit }} - <b>{{ attendance_note.person_attended }}</b>&emsp;
+                    <a class='link' href="{% url 'download_attendance_note' attendance_note.id %}" target="_blank" rel="noopener noreferrer">Print Attendance Note</a>
+                    &nbsp; &nbsp;
+            <a class='link' href="{% url 'edit_attendance_note' attendance_note.id %}" rel="noopener noreferrer">Edit Attendance Note</a>
+            </div>
+        </div>
+        {% endfor%}
+    </div>
+    
+    
+    <div class='div-container h-fit mt-4 md:mt-0'>
+        <div>
+            <button class='btn-primary' id='startTimer'>Start Timer</button>
+            <button class='btn-disabled' id='stopTimer' disabled>Stop Timer</button>
+            <button class='btn-disabled' id='pauseTimer' disabled>Pause Timer</button>
+        </div>
+        <div>
+            <h3 class='mt-2' id='timer'></h3>
+        </div>
+        <form class='mt-2' method='post' action="{% url 'add_attendance_note' file_number %}">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button class='btn btn-primary mb-2' type='submit'>Add Attendance Note</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

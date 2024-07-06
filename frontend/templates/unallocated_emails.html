@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% load humanize %}
+{% block title %}Unallocated Emails{% endblock %} 
+{% load utils %}
+{% block container_class %}container-fluid{% endblock %} 
+{% block container %}
+
+<form action="{% url 'allocate_emails' %}" method="POST">
+    <div class="div-container shadow flex flex-col md:flex-row justify-between sticky top-20 gap-y-4 bg-white"> 
+        <div class=' '>
+            <label class=" form-label ">Choose email to filter</label>
+            <select id="emailFilter" class="form-input" onchange="filterRows()">
+                <option value="All" >Show all</option>
+                <option >mail@anpsolicitors.com</option>
+                <option >family@anpsolicitors.com</option>
+                <option >conveyancing@anpsolicitors.com</option>
+                <option >privateclient@anpsolicitors.com</option>
+                <option >disputeresolution@anpsolicitors.com</option>
+                <option >riskmanagment@anpsolicitors.com</option>
+            </select> 
+        </div>
+        <div class=' grid-cols-1 justify-items-center'>
+            <h2 class='text-2xl mb-2 justify-self-center text-center'>Action</h2>
+            <div class='justify-self-items'>
+                <button class="btn-primary text-sm sticky top-0 h-fit " type="submit">Allocate Emails</button>
+            </div>
+        </div>
+    </div>
+    <div class='overflow-auto div-container mt-4'>
+        <table  class="table ">
+        <tr class='thead rounded-t-lg'>
+            <th class='td'>Index</th>
+            <th class='td'>Date Time</th>
+            <th class='td'>Email</th>
+            <th class='td'>Subject</th>
+            <th class='td'>Link</th>
+            <th class='td'>FileNumber</th>
+        </tr>
+       
+            {% csrf_token %}
+            {% for email in emails %}
+                {{email}}
+            {% endfor %}
+
+            </form>
+        </table>
+    </div>
+
+    <script>
+    function filterRows() {
+        var selectedEmail = document.getElementById("emailFilter").value;
+        var rows = document.querySelectorAll(".email-row");
+        console.log("hello");
+                rows.forEach(function(row) {
+                    var emailContent = row.getAttribute("data-email");
+                    console.log(emailContent);
+                    if (emailContent.includes(selectedEmail)) {
+                        row.style.display = "";
+                    } else if (selectedEmail == "All") {
+                        row.style.display = "";
+                    }
+                    else{
+                        row.style.display = "none";
+                    }
+                });
+    }
+  </script>
+
+
+{% endblock %}

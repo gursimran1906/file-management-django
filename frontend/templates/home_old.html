@@ -1,0 +1,429 @@
+{% extends 'base.html' %} 
+{% block title %}Home - {{matter.file_number}} {% endblock %} 
+{% block container_class %}container{% endblock %} 
+{% block container %}
+{% load utils %}
+
+<div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+
+  
+    <div class="" >
+      
+      <div class="grid grid-cols-1 h-fit self-top mb-4">
+          <div  id="accordion-color" data-accordion="collapse" data-active-classes="bg-blue-100 dark:bg-gray-800 text-blue-600 dark:text-white rounded-b-none">
+            <h2 id="accordion-color-heading-1">
+                <button type="button" class="flex items-center justify-between w-full p-4 font-medium rtl:text-right
+                bg-white text-gray-900 border  border-gray-200 
+                rounded-t-lg dark:border-gray-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-800 gap-3" 
+                data-accordion-target="#accordion-color-body-1" aria-expanded="true" aria-controls="accordion-color-body-1">
+                File Summary
+                <svg data-accordion-icon class="w-3 h-3 rotate-180 shrink-0" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/>
+                </svg>
+                </button>
+            </h2>
+            <div id="accordion-color-body-1" class="hidden bg-white" aria-labelledby="accordion-color-heading-1">
+                <div class="p-4 border  border-gray-200 dark:border-gray-700 dark:bg-gray-900">
+                  <div class=''>
+                    <div class="" id="FileSummary" aria-expanded="true">
+                        
+                      <p>
+                        <ul class="list">
+                            <li class="list-item">File Number: {{matter.file_number}}</li>
+                            <li class="list-item">FeeEarner: {{matter.fee_earner}}</li>
+                            <li class="list-item">Matter Description: {{matter.matter_description}}</li>
+                            <li class="list-item">Funding: {% if matter.funding == 'PF'%}
+                              Private Funding
+                              {% else %}
+                              Conditional Fee Agreement
+                              {% endif %}
+                            </li>
+                            <li class='flex flex-col gap-1 py-3'>
+                              <div class='grid grid-cols-2'>
+                                <h1 class='text-2xl px-2 '>Client 1</h1>
+                                <div class="grid grid-cols-1 justify-items-end h-fit self-top">
+                                  <a class='btn-primary ' href="{% url 'edit_client' matter.client1.id %}">Edit</a>
+                                </div>
+                              </div>
+                              <p class=' px-2 '>Name: {{matter.client1.name}}</p>
+          
+                              <p class=' px-2 '>DOB: {{matter.client1.dob|date:'d/m/Y'}}</p>
+                              <p class='px-2 '>Address: {{matter.client1.address_line1}}, {{matter.client1.address_line2}}, {{matter.client1.county}}, {{matter.client1.postcode}}</p>
+                              <p class='px-2 '>Email: {{matter.client1.email}}</p>
+                              <p class='px-2 '>Contact Number: {{matter.client1.contact_number}}</p>
+                              <p class='px-2 '>Date of Last AML Check: {{matter.client1.date_of_last_aml|date:"d/m/Y"}}</p>
+                              <p class='px-2 '>ID Verified: {{matter.client1.id_verified}}</p>
+                              
+                            </li>
+                            {% if matter.client2 %}
+                            <li class='flex flex-col gap-1 mt-2 py-3'>
+                              <div class='grid grid-cols-2'>
+                                <h1 class='text-2xl px-2 '>Client 2</h1>
+                                <div class="grid grid-cols-1 justify-items-end h-fit self-top">
+      
+                                  <a class='btn-primary' href="{% url 'edit_client' matter.client2.id %}">Edit</a>
+                                </div>
+                              </div>
+                              <p class=' px-2 '>Name: {{matter.client2.name}}</p>
+          
+                              <p class=' px-2 '>DOB: {{matter.client2.dob|date:'d/m/Y'}}</p>
+                              <p class='px-2 '>Address: {{matter.client2.address_line1}}, {{matter.client2.address_line2}}, {{matter.client2.county}}, {{matter.client2.postcode}}</p>
+                              <p class='px-2 '>Email: {{matter.client2.email}}</p>
+                              <p class='px-2 '>Contact Number: {{matter.client2.contact_number}}</p>
+                              <p class='px-2 '>Date of Last AML Check: {{matter.client2.date_of_last_aml|date:"d/m/Y"}}</p>
+                              <p class='px-2 '>ID Verified: {{matter.client2.id_verified}}</p>
+                              
+                            </li>
+                            </li>
+                            {% endif %}
+                            {% if matter.authorised_party1 %}
+                            <li class='flex flex-col gap-1 mt-2 py-3'>
+                              <div class='grid grid-cols-2'>
+                                <h5 class='text-2xl px-2'>Authroised Party 1</h5>
+                                <div class="grid grid-cols-1 justify-items-end h-fit self-top">
+                                  <a class='btn-primary' href="{% url 'edit_authorised_party' matter.authorised_party1.id %}">Edit</a>
+                                </div>
+                                  
+                              </div>
+                              <p class=' px-2 '>Name: {{matter.authorised_party1.name}}
+                              </p>
+          
+                              <p class=' px-2 '>Relationship with Client: {{matter.authorised_party1.relationship_to_client}}</p>
+                              <p class='px-2 '>Address: {{matter.authorised_party1.address_line1}}, {{matter.authorised_party1.address_line2}}, {{matter.authorised_party1.county}}, {{matter.authorised_party1.postcode}}</p>
+                              <p class='px-2 '>Email: {{matter.authorised_party1.email}}</p>
+                              <p class='px-2 '>Contact Number: {{matter.authorised_party1.contact_number}}</p>
+                              <p class='px-2 '>ID Check: {{matter.authorised_party1.id_check}}</p>
+                              <p class='px-2 '>Date of ID Check: {{matter.authorised_party1.date_of_id_check|date:"d/m/Y"}}
+                              
+                            </li>
+                            
+                            {% endif %}
+                            {% if matter.authorised_party2 %}
+                            <li class='flex flex-col gap-1 mt-2 py-3'>
+                              <div class='grid grid-cols-2'>
+                                <h5 class='text-2xl px-2'>Authroised Party 2</h5>
+                                <div class="grid grid-cols-1 justify-items-end h-fit self-top">
+                                  <a class='btn-primary' href="{% url 'edit_authorised_party' matter.authorised_party2.id %}">Edit</a>
+                                </div>
+                                  
+                              </div>
+                              <p class=' px-2 '>Name: {{matter.authorised_party1.name}}
+                              </p>
+          
+                              <p class=' px-2 '>Relationship with Client: {{matter.authorised_party2.relationship_to_client}}</p>
+                              <p class='px-2 '>Address: {{matter.authorised_party2.address_line1}}, {{matter.authorised_party2.address_line2}}, {{matter.authorised_party2.county}}, {{matter.authorised_party2.postcode}}</p>
+                              <p class='px-2 '>Email: {{matter.authorised_party2.email}}</p>
+                              <p class='px-2 '>Contact Number: {{matter.authorised_party2.contact_number}}</p>
+                              <p class='px-2 '>ID Check: {{matter.authorised_party2.id_check}}</p>
+                              <p class='px-2 '>Date of ID Check: {{matter.authorised_party2.date_of_id_check|date:"d/m/Y"}}
+                              
+                            </li>
+                            {% endif %}
+                            {% if matter.other_side %}
+                            <li class='list-item'> <h5>Other Side</h5>Name: {{matter.other_side.name}}
+                              Address: {{matter.other_side.address_line1}}, {{matter.other_side.address_line2}}, {{matter.other_side.county}}, {{matter.other_side.postcode}}
+                              Email: {{matter.other_side.email}}
+                              Contact Number: {{matter.other_side.contact_number}}
+                              Solicitors: {{matter.other_side.solicitors}}
+                              Solicitors Email: {{matter.other_side.solicitors_email}}
+                            </li>
+                            {% endif %}
+                            <li class="list-item">Matter Type: {{matter.matter_type}}</li>
+                            <li class="list-item">File Status: {{matter.file_status}}</li>
+                            <li class="list-item">File Location: {{matter.file_location}}</li>
+                        </ul>
+                      </p>
+                        
+                    </div>
+                  </div>
+                </div>
+            </div>
+
+            <h2 id="accordion-color-heading-2">
+              <button type="button" class="flex items-center justify-between w-full p-4 font-medium rtl:text-right
+              bg-white text-gray-900 border  border-gray-200 
+              rounded-b-lg dark:border-gray-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-800 gap-3" 
+              data-accordion-target="#accordion-color-body-2" aria-expanded="true" aria-controls="accordion-color-body-2">
+              Compliance
+              <svg data-accordion-icon class="w-3 h-3 rotate-180 shrink-0" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                  <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/>
+              </svg>
+              </button>
+          </h2>
+          <div id="accordion-color-body-2" class="hidden bg-white" aria-labelledby="accordion-color-heading-2">
+              <div class="rounded-b-lg p-4 border  border-gray-200 dark:border-gray-700 dark:bg-gray-900">
+                <div class=''>
+                  <div class="" id="Compliance">
+                      <div class="px-4" >
+                          <h4 class='text-2xl mb-4 mt-2'>Compliance</h4>
+                          <p>
+                            <ul class="list">
+                                <li class="list-item">Client Care Letter Sent on: {{matter.date_of_client_care_sent|date:"d/m/Y"}}</li>
+                                <li class="list-item">Date Terms Of Engagement Sent: {{matter.date_of_toe_sent|date:"d/m/Y"}}</li>
+                                <li class="list-item">Date Terms Of Engagement Received: {{matter.date_of_toe_rcvd|date:"d/m/Y"}}</li>
+                                <li class="list-item">Terms of Engagement Client 1: {{matter.terms_of_engagement_client1}}</li>
+                                <li class="list-item">Terms of Engagement Client 2: {{matter.terms_of_engagement_client2}}</li>
+                                <li class="list-item">Date NCBA Sent: {{matter.date_of_ncba_sent|date:"d/m/Y"}}</li>
+                                <li class="list-item">Date NCBA Received: {{matter.date_of_ncba_rcvd|date:"d/m/Y"}}</li>
+                                <li class="list-item">NCBA Client 1: {{matter.ncba_client1}}</li>
+                                <li class="list-item">NCBA Client 2: {{matter.ncba_client2}}</li>
+                            </ul>
+                          </p>
+                      </div>
+                  </div>
+                </div>
+              </div>
+          </div>
+          
+          </div>
+      </div>
+       
+          
+            
+        {% comment %} <a class="btn btn-primary m-1" type="submit" href="{% url 'attendance_note_view' matter.file_number %}">Attendance Notes</a>
+      
+        <a class="btn btn-primary m-1" type="submit" href="{% url 'correspondence_view' matter.file_number %}">Correspondence</a>
+      
+        <a class="btn btn-primary m-1" type="submit" href="{% url 'dowload_sowc' matter.file_number %}">S of W & C</a>
+    
+        
+      {% if matter.file_status != 'Archived' %}
+    
+        <a class="m-1 btn btn-primary" type="submit" href="{% url 'finance_view' matter.file_number %}">Finances</a>
+      
+      {% endif %} {% endcomment %}
+  
+          
+      
+
+    </div>
+    
+    <div class="grid grid-cols-1">
+      <div class="div-container w-full  h-fit justify-self-center mb-4">
+        <h3 class='text-2xl mb-4 text-center'>Actions</h3>
+       <div>
+          <a id="editButton" class="btn-primary" type="submit" href="{% url 'edit_file' matter.file_number %}">Edit Matter</a>
+          <a class="btn-primary " href="{% url 'download_frontsheet' matter.file_number %}">Frontsheet</a>
+        </div>
+      </div>
+      
+      <div class=''>
+        <div class="h-0 transition-height ease-in-out duration-1000 overflow-hidden " id="LastWorkDone">
+          <div class="px-4" >
+            
+              <div class='grid grid-cols-2 mb-4 mt-2'>
+                <h4 class='text-2xl '>Last Work</h4>
+                <div class='grid grid-cols-1 justify-items-end'>
+                  <button class='btn-primary ' type="button" onclick="toggleNormalCollapse('lastWorkFormContainer');" aria-expanded="false" aria-controls="lastWorkFormContainer">Add Last Work</button>
+                </div>
+              </div>
+              
+              <div id="lastWorkFormContainer" class='hidden bg-yellow-100 p-4 border rounded-lg'>
+                <form method="post" action="{% url 'add_last_work_file' matter.file_number %}">
+                  {% csrf_token %}
+                  {{last_work_form.as_p}}
+                  <button class='btn-primary'>Add</button>
+                </form>
+              </div>
+              
+              {% for work in last_work %}
+                <p>
+                  <ul class="list mt-4">
+                      <li class="list-item">Person Completed By: {{work.person}}</li>
+                      <li class="list-item">Task(s) Completed: {{work.task}}</li>
+                      <li class="list-item">Date Assigned for: {{work.date|date:"d/m/Y"}}</li>
+                      <li class="list-item">Completed/Added on: {{work.timestamp|date:"d/m/Y @ h:iA"}}</li>
+                      <li class='list-item '><a class='btn btn-primary' href="{% url 'edit_last_work' work.id %}">Edit</a></li>
+                  </ul>
+                </p>
+              {% endfor %}
+            </div>
+        </div>
+      </div>
+      <div class=''>
+        <div class="h-0 transition-height ease-in-out duration-1000 overflow-hidden " id="NextWork">
+            <div class="px-4" >
+              <div class='grid grid-cols-2 mb-4 mt-2'>
+                <h4 id="NextWork" class='text-2xl'>Next Work</h4>
+                <div class='grid grid-cols-1 justify-items-end'>
+                  <button class='btn btn-primary inline float-right' type="button" onclick="toggleNormalCollapse('nextWorkFormContainer');" >Add Next Work</button>
+                </div>
+              </div>
+                <div id="nextWorkFormContainer" class='hidden bg-yellow-100 p-4 border rounded-lg'>
+                  <form method="post" action="{% url 'add_next_work_file' matter.file_number %}">
+                    {% csrf_token %}
+                    {{next_work_form.as_p}}
+                    <button class='btn btn-primary'>Add</button>
+                  </form>
+                </div>
+                {% for work in next_work %}
+                  <p>
+                  <ul class="list mt-4">
+                      <li class="list-item">Person For Next Task: {{work.person}}</li>
+                      <li class="list-item">Tasks Required: {{work.task}}</li>
+                      <li class="list-item">Date: {{work.date|date:"d/m/Y"}}</li>
+                      <li class="list-item">Assigned on: {{work.timestamp|date:"d/m/Y @ h:iA"}}</li>
+
+                      <li class='list-item '><a class='btn btn-primary' href="{% url 'edit_next_work' work.id %}">Edit</a></li>
+                  </ul>
+                  </p>
+                {% endfor %}
+            </div>
+        </div>
+      </div>
+      
+    </div>
+       
+  </div>
+
+  <div class='div-container mt-4 overflow-scroll  '>
+    
+    <div class='grid grid-cols-2'>
+      <h3 class='text-2xl mb-2'>LOGS</h3>
+      
+      <a class="justify-self-end btn-primary " href="{% url 'download_file_logs' matter.file_number %}">Download</a>
+      
+      <div class='flex gap-4'>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input filter-checkbox" type="checkbox" id="filterFinance">
+          <label class="form-check-label" for="filterFinance">Finance</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input filter-checkbox" type="checkbox" id="filterCorrespondence">
+          <label class="form-check-label" for="filterCorrespondence">Correspondence</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input filter-checkbox" type="checkbox" id="filterAttendanceNote" >
+          <label class="form-check-label" for="filterAttendanceNote">Attendance Notes</label>
+        </div>
+      </div>
+      
+    </div>
+    <div class='overflow-scroll mt-2'>
+      <table class='table' id="logTable">
+        <thead class='thead'>
+          <tr>
+            <th class='td'>
+              Type
+            </th>
+            
+            <th class='td'>
+              Description
+            </th>
+            <th class='td'>
+              User
+            </th>
+            <th class='td'>
+              Datetime
+            </th>
+          <tr>
+        </thead>
+        <tbody>
+          {% for log in logs %}
+          <tr class="log-row hover:bg-gray-100 text-black border" data-type="{{ log.type }}">
+            <td class='td border-e'>
+            {{log.type|capfirst}}
+            </td>
+            
+            <td class='td border-e'>
+              {% if log.desc|length > 50 %}
+              <div class="description-content">
+                  {{ log.desc|slice:"0:50" }}{% if log.desc|length > 50 %}...{% endif %}
+              </div>
+              <button class='more-button link float-end'>More</button>
+              <div class="full-description" style="display: none;">
+                  {{ log.desc }}
+              </div>
+              {% else %}
+              {{ log.desc }}
+              {% endif %}
+            </td>
+            <td class='td border-e'>
+              {{log.user}}
+            </td>
+            <td class='td'>
+              {{log.timestamp}}
+            </td>
+          <tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    
+  </div>
+
+ 
+</div>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    
+    var logTable = document.getElementById("logTable");
+    var rows = logTable.getElementsByClassName("log-row");
+    var checkboxes = document.querySelectorAll(".filter-checkbox");
+   
+    function applyFilters() {
+        
+        var showCorrespondence = document.getElementById("filterCorrespondence").checked;
+        console.log(document.getElementById("filterCorrespondence").checked,document.getElementById("filterCorrespondence"))
+        var showFinance = document.getElementById("filterFinance").checked;
+        var showAttendanceNote = document.getElementById("filterAttendanceNote").checked;
+        for (var i = 0; i < rows.length; i++) {
+            var type = rows[i].getAttribute("data-type").toLowerCase();
+            var cells = rows[i].getElementsByTagName("td");
+            var found = false;
+            
+              if ((showCorrespondence && (type === "email" || type === "letter")) ||
+                  (showFinance && (type === "invoice" || type === "pmts_slip" || type === "green_slip")) ||
+                  (showAttendanceNote && type==="attendance_note")|| 
+                  (type==="next_work" || type==="last_work" || type==="file_info" 
+                  || type==="client_info"
+                  || type==="authorised_party_info"
+                  || type==="other_side_info")) {
+                  found = true;
+              }
+            
+            
+            if (found) {
+                rows[i].style.display = "";
+            } else {
+                rows[i].style.display = "none";
+            }
+        }
+    }
+
+    checkboxes.forEach(function(checkbox) {
+        checkbox.addEventListener("change", applyFilters);
+    });
+
+    applyFilters();
+
+    
+  });
+  document.addEventListener("DOMContentLoaded", function () {
+      var moreButtons = document.querySelectorAll(".more-button");
+
+      moreButtons.forEach(function (button) {
+          button.addEventListener("click", function () {
+              var content = this.previousElementSibling;
+              var fullContent = this.nextElementSibling;
+              
+              if (content.style.display === "none") {
+                  content.style.display = "inline";
+                  this.textContent = "More";
+                  this.className = "link"
+              } else {
+                  content.style.display = "none";
+                  this.textContent = "Less";
+                  this.className = "link float-end"
+              }
+
+              if (fullContent.style.display === "none") {
+                  fullContent.style.display = "block";
+              } else {
+                  fullContent.style.display = "none";
+              }
+          });
+      });
+  });
+</script>
+{% endblock %}

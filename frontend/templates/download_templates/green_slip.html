@@ -1,0 +1,82 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Green Slip {{slip.date|date:'d/m/Y'}}</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+       
+    </style>
+</head>
+<body style="font-family: Times New Roman, Times, serif;">
+    <div class="container">
+        <div class="text-center">
+            <h1 class="mt-2 mb-4">Green Slip</h1>
+        </div>
+        <div>
+            <table class='table'>
+                <tr>
+                    <td>
+                        <b>From File Number</b>
+                    </td>
+                    <td>
+                        {{slip.file_number_from}}
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <b>To File Number</b>
+                    </td>
+                    <td>
+                        {{slip.file_number_to}}
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <b>From Ledger Account</b>
+                    </td>
+                    <td>
+                        {{slip.get_from_ledger_account_display}}
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <b>To Ledger Account</b>
+                    </td>
+                    <td>
+                        {{slip.get_to_ledger_account_display}}
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <b>Date</b>
+                    </td>
+                    <td>
+                        {{slip.date|date:'d/m/Y'}}
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <b>Description</b>
+                    </td>
+                    <td>
+                        {{slip.description}}
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <b>Amount</b>
+                    </td>
+                    <td>
+                        £{{slip.amount|intcomma}}
+                    </td>
+                </tr>
+            </table>
+        </div>
+        
+    </div>
+</body>
+</html>
