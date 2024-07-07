@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}Questionnaires{% endblock %}
+{% block container %}
+<div class='grid md:grid-cols-2 gap-4 mt-2'>
+<h1 class='div-container md:w-fit h-fit text-3xl font-medium '>Questionnaires</h1>
+    {% comment %} <div class='div-container'>
+        <p class='text-justify' style='font-family:"arial";'>
+            All ANP Staff must understand and implement these policies accordingly. If you do not understand anything please speak to a director.
+            
+        </p>
+    </div> {% endcomment %}
+</div>
+<div class="bg-white rounded-lg mt-4">
+    <div id="accordion-open" data-accordion="open">
+        {% include 'elements/accordion_with_download_btn.html' with number=1 heading='PEP Questionnaire' body='questionnaires/pep.html' first=True %}
+        {% include 'elements/accordion_with_download_btn.html' with number=2 heading='Source of Funds - Questionnaire' body='questionnaires/source_of_funds.html' last=True %}
+
+    </div>
+
+</div>
+{% endblock %}
