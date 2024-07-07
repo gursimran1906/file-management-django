@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  web:
+    build: .
+    restart: always
+    command: gunicorn filemanagementDjango.wsgi:application --bind 0.0.0.0:8000 --worker 3
+    env_file:
+      - /etc/environment
+    expose:
+      - 8000
