@@ -397,6 +397,13 @@ class RiskAssessment(models.Model):
     consistent_with_client_profile = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
     issues_identified_matter_risks_sec = models.TextField()
 
+
+    """Questionnaires
+    Have you/Client completed and signed our PEP questionnaire?
+    Have you/Client completed and signed our source of funds of questionnaire?
+    """
+    is_pep_questionnaire_completed = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    is_source_of_funds_questionnaire_completed = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
     """
     Product/ service risk 
     Based on the client’s profile, does it make sense for the client to instruct us             

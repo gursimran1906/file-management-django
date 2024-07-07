@@ -228,8 +228,18 @@
             <td class=''>{{ obj.issues_identified_matter_risks_sec }}</td>
         </tr>
     </table>
-
-    <h3 class='text-2xl'>3a. Product/Service risk</h3>
+    <h3 class='text-2xl'>3a. Questionnaires</h3>
+    <table class='table text-black text'>
+        <tr class='' >
+            <td class=''>Have you/Client completed and signed our PEP questionnaire?</td>
+            <td class=''>{{ obj.is_pep_questionnaire_completed }}</td>
+        </tr>
+        <tr class='' >
+            <td class=''>Have you/Client completed and signed our source of funds of questionnaire?</td>
+            <td class=''>{{ obj.is_source_of_funds_questionnaire_completed }}</td>
+        </tr>
+    </table>
+    <h3 class='text-2xl'>3b. Product/Service risk</h3>
     <table class='table text-black text'>
 
         <tr class=''>
@@ -242,8 +252,8 @@
             <td>{{ obj.product_service_risk_details }}</td>
         </tr>
     </table>
-
-    <h3 class='text-2xl'>3b. Enhanced Due Diligence</h3>
+    
+    <h3 class='text-2xl'>3c. Enhanced Due Diligence</h3>
     <table class='table text-black text'>
         <tr class='' >
             <td colspan='2'>If ‘Yes’ applies to any of the following, contact the nominated person before proceeding.</td>
@@ -302,7 +312,7 @@
         </tr>
     </table>
 
-    <h3 class='text-2xl'>3c. Risk Level and Jurisdiction</h3>
+    <h3 class='text-2xl'>3d. Risk Level and Jurisdiction</h3>
     <table class='table'>
         <tr>
             <td>Client Risk Level</td>

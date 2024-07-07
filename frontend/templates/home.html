@@ -370,7 +370,7 @@
                     </li>
                 {% empty %}
                 <li class="list-item   rounded-b-lg  ">
-                <span class='text-red-800'>No data found</span>
+                <span class="{% if eleven_months_since_last_risk_assessment  %}text-red-700 {% else %} text-green-700{% endif %}">No data found</span>
                 </li>
                 {% endfor %}
                 </ul>
@@ -399,6 +399,24 @@
                     <tr class="even:bg-white odd:bg-gray-50 ">
                         <td class='py-2 px-2 font-medium border-e'>{{ risk_assessment.client_source_of_funds }}</td>
                         <td class='py-2 px-2 '>Source of Funds</td>
+                    </tr>
+                    
+                </table>
+            </div>
+
+            <div class="rounded-lg border overflow-x-auto" >
+                <table class='w-full'>
+                    <tr class='even:bg-white odd:bg-gray-50 border-b'>
+                        <td class='py-2 px-2 font-medium ' colspan='2'>Questionnaires</td>
+                        
+                    </tr>
+                    <tr class='even:bg-white odd:bg-gray-50 border-b' >
+                        <td class="py-2 px-2 font-medium border-e {% if risk_assessment.is_pep_questionnaire_completed != 'Yes' %} text-red-700 {% endif %}">{{risk_assessment.is_pep_questionnaire_completed}}</td>
+                        <td class="py-2 px-2 ">Is PEP Questionnaire completed?</td>
+                    </tr>
+                    <tr class="even:bg-white odd:bg-gray-50 ">
+                        <td class="py-2 px-2 font-medium border-e {% if risk_assessment.is_source_of_funds_questionnaire_completed != 'Yes' %} text-red-700 {% endif %}">{{ risk_assessment.is_source_of_funds_questionnaire_completed }}</td>
+                        <td class="py-2 px-2 ">Is Source of Funds questionnaire completed?</td>
                     </tr>
                     
                 </table>
@@ -758,27 +776,26 @@
     var checkboxes = document.querySelectorAll(".filter-checkbox");
    
     function applyFilters() {
-        
         var showCorrespondence = document.getElementById("filterCorrespondence").checked;
-        console.log(document.getElementById("filterCorrespondence").checked,document.getElementById("filterCorrespondence"))
+        console.log(document.getElementById("filterCorrespondence").checked, document.getElementById("filterCorrespondence"));
         var showFinance = document.getElementById("filterFinance").checked;
         var showAttendanceNote = document.getElementById("filterAttendanceNote").checked;
+    
         for (var i = 0; i < rows.length; i++) {
             var type = rows[i].getAttribute("data-type").toLowerCase();
             var cells = rows[i].getElementsByTagName("td");
             var found = false;
-            
-              if ((showCorrespondence && (type === "email" || type === "letter")) ||
-                  (showFinance && (type === "invoice" || type === "pmts_slip" || type === "green_slip")) ||
-                  (showAttendanceNote && type==="attendance_note")|| 
-                  (type==="next_work" || type==="last_work" || type==="file_info" 
-                  || type==="client_info"
-                  || type==="risk_assessment"
-                  || type==="ongoing_monitoring",
-                  || type==="authorised_party_info"
-                  || type==="other_side_info")) {
-                  found = true;
-              }
+    
+            if ((showCorrespondence && (type === "email" || type === "letter")) ||
+                (showFinance && (type === "invoice" || type === "pmts_slip" || type === "green_slip")) ||
+                (showAttendanceNote && type === "attendance_note") ||
+                type === "next_work" || type === "last_work" || type === "file_info" ||
+                type === "client_info" || type === "risk_assessment" ||
+                type === "ongoing_monitoring" || type === "authorised_party_info" ||
+                type === "other_side_info") {
+                found = true;
+            }
+    
             if (found) {
                 rows[i].style.display = "";
             } else {
@@ -786,6 +803,7 @@
             }
         }
     }
+    
 
     checkboxes.forEach(function(checkbox) {
         checkbox.addEventListener("change", applyFilters);
