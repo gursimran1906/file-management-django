@@ -3756,6 +3756,20 @@ def download_ongoing_monitoring(request,id):
     return response
 
 @login_required
+def questionnaires_display(request):
+    if request.method == "POST":
+        file = request.POST['file']
+        html_string = render_to_string(file)
+
+        pdf_file = HTML(string=html_string).write_pdf()
+
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="questionnaire.pdf"'
+        return response
+    else:
+        return render(request,'questionnaires.html')
+
+@login_required
 def download_document(request):
     
     file_name = 'pep_questionnaire.doc'
