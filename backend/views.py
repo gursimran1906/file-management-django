@@ -1354,8 +1354,8 @@ def download_sowc(request, file_number):
 
     for fee_earner in distinct_fee_earners:
         user = CustomUser.objects.filter(username=fee_earner).first()
-        writer.writerow(['', '', f'({user.first_name} {user.last_name}) {user.username} rate GBP{
-                        user.hourly_rate.hourly_amount} + VAT per hour, 6 minutes = 1 unit '])
+        if user != None:
+            writer.writerow(['', '', f'({user.first_name} {user.last_name}) {user.username} rate GBP{user.hourly_rate.hourly_amount} + VAT per hour, 6 minutes = 1 unit '])
     writer.writerow([])
     writer.writerow(['Date', 'Fee Earner', 'Description', 'Unit(s)', 'Amount'])
     for row in sorted_rows:
