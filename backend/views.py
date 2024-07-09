@@ -2928,7 +2928,7 @@ def unallocated_emails(request):
     rows = []
 
     def file_number_options():
-        files = WIP.objects.all()
+        files = WIP.objects.all().order_by('fileNumber')
         select = f"""<select name="FileNumber[]" class="form-input">
                     <option value=''></option>
                     <option value="XXXXXXXXXX">To be deleted</option>
@@ -2981,7 +2981,7 @@ def allocate_emails(request):
             email = MatterEmails.objects.filter(id=email_id).first()
             file = WIP.objects.filter(file_number=file_number).first()
             email.file_number = file
-            email.fee_earner = file.fee_earner
+            email.fee_earner = file.fee_earner if file.fee_earner != None else None
             email.save()
             i = i+1
     messages.success(request, f'Successfully allocated {i} emails')

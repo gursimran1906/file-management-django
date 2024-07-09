@@ -244,6 +244,7 @@
           <span class="ms-3">Allocate Emails</span>
         </a>
       </li>
+      {% if request.user.is_manager %}
       <li>
         <a
           href="{% url 'invoices_list'%}"
@@ -274,6 +275,7 @@
           <span class="ms-3">Cashier's Data</span>
         </a>
       </li>
+      {% endif %}
       
     </ul>
     <div class="self-end w-full pt-3 border-t grid grid-cols-1">
