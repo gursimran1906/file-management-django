@@ -10,9 +10,30 @@
     <div class="div-container flex flex-col gap-2 md:justify-self-end ">
         <h3 class='text-2xl text-center'>Actions</h3>
         
-        <div>
-            <a class='btn btn-primary ' href="{% url 'download_ledger_account' file_number %}">Download Ledger</a>
+        <div class="flex gap-2">
+           
+            
+                
             <a class='btn btn-primary ' href="{% url 'download_statement_account' file_number %}">Statment of Account</a>
+            <a class='btn btn-primary relative' href="{% url 'download_ledger_account' file_number %}">Download Ledger
+               
+                <span data-popover-target="beta-description-download-ledger" data-popover-placement="bottom-end" type="button" class="absolute top-0 right-0 bg-red-500 text-white text-xs px-2 py-1 rounded-full transform translate-x-1/2 -translate-y-1/2">
+                  *
+                </span>
+            </a>
+
+          
+            <div data-popover id="beta-description-download-ledger" role="tooltip" class="absolute z-10 invisible inline-block text-sm text-gray-500 transition-opacity duration-300 bg-white border border-gray-200 rounded-lg shadow-sm opacity-0 w-72 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400">
+                <div class="p-3 space-y-2 ">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Beta Feature</h3>
+                    <p>
+                        This feature is still in Beta. Please do not <span class="underline">rely</span> upon it.
+                    </p>
+                </div>
+                
+            </div>
+
+         
         </div>
     </div>
 </div>

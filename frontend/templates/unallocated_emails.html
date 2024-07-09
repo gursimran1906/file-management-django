@@ -50,7 +50,6 @@
     function filterRows() {
         var selectedEmail = document.getElementById("emailFilter").value;
         var rows = document.querySelectorAll(".email-row");
-        console.log("hello");
                 rows.forEach(function(row) {
                     var emailContent = row.getAttribute("data-email");
                     console.log(emailContent);
