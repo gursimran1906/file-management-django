@@ -1995,7 +1995,7 @@ def download_invoice(request, id):
             else:
                 pink_slips_display = pink_slips_display + "'"
 
-            total_pink_slips = + slip.amount
+            total_pink_slips = total_pink_slips + slip.amount
             pink_slips_display = pink_slips_display + \
                 f">£{slip.amount}</td></tr>"
         pink_slips_display = pink_slips_display + \
@@ -2022,7 +2022,7 @@ def download_invoice(request, id):
                     f"border-top: solid; border-top-width: thin;'"
             else:
                 blue_slips_display = blue_slips_display + f"'"
-            total_blue_slips = + Decimal(amt)
+            total_blue_slips = total_blue_slips + Decimal(amt)
             blue_slips_display = blue_slips_display + f" >£{amt}</td></tr>"
         blue_slips_display = blue_slips_display + \
             f"<tr><td><b>Total Monies Received:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{
@@ -2046,7 +2046,7 @@ def download_invoice(request, id):
                         "border-top: solid; border-top-width: thin;'"
                 else:
                     green_slips_display = green_slips_display + "'"
-                total_green_slips = - slip.amount
+                total_green_slips = total_green_slips - slip.amount
                 green_slips_display = green_slips_display + \
                     f">£{slip.amount}</td></tr>"
             else:
@@ -2054,7 +2054,7 @@ def download_invoice(request, id):
 
                 date = slip.date.strftime('%d/%m/%Y')
                 amt = amount_invoiced[f'{invoice.id}']['amt_invoiced']
-                total_green_slips = + Decimal(amt)
+                total_green_slips = total_green_slips + Decimal(amt)
                 green_slips_display = green_slips_display + f"<tr><td>Transfer from {
                     slip.file_number_from} - {date}</td><td style='text-align: center;"
                 if total_green_slips == 0:
@@ -2928,7 +2928,7 @@ def unallocated_emails(request):
     rows = []
 
     def file_number_options():
-        files = WIP.objects.all().order_by('fileNumber')
+        files = WIP.objects.all().order_by('file_number')
         select = f"""<select name="FileNumber[]" class="form-input">
                     <option value=''></option>
                     <option value="XXXXXXXXXX">To be deleted</option>
