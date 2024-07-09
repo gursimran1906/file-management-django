@@ -1473,7 +1473,7 @@ def finance_view(request, file_number):
                     amount_invoiced = json.loads(slip.amount_invoiced_to)
 
                     date = slip.date.strftime('%d/%m/%Y')
-                    amt = amount_invoiced[invoice.id]['amt_invoiced']
+                    amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
 
                     total_green_slips = total_green_slips + Decimal(amt)
                     green_slips_display = green_slips_display + \
@@ -2040,7 +2040,7 @@ def download_invoice(request, id):
             else:
                 raise ValueError("Unsupported type for slip.amount_invoiced")
             date = slip.date.strftime('%d/%m/%Y')
-            amt = amount_invoiced[invoice.id]['amt_invoiced']
+            amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
 
             blue_slips_display = blue_slips_display + f"<tr><td>Remittance {
                 date} - balance of monies remaining on account</td><td style='text-align: center;"
@@ -2080,7 +2080,7 @@ def download_invoice(request, id):
                 amount_invoiced = json.loads(slip.amount_invoiced_to)
 
                 date = slip.date.strftime('%d/%m/%Y')
-                amt = amount_invoiced[invoice.id]['amt_invoiced']
+                amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
                 total_green_slips = total_green_slips + Decimal(amt)
                 green_slips_display = green_slips_display + f"<tr><td>Transfer from {
                     slip.file_number_from} - {date}</td><td style='text-align: center;"
@@ -2649,7 +2649,7 @@ def edit_invoice(request, id):
             elif slip.id in moa_ids or slip.balance_left > 0:
                 amount_invoiced = json.loads(slip.amount_invoiced) if slip.amount_invoiced != {} else slip.amount_invoiced
                 if slip.id in moa_ids:
-                    amt = amount_invoiced[invoice.id]['amt_invoiced']
+                    amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
                 else:
                     amt = slip.balance_left
                 slip_display = f"""
@@ -2686,7 +2686,7 @@ def edit_invoice(request, id):
                     amount_invoiced = json.loads(slip.amount_invoiced_to) if slip.amount_invoiced_to != {
                     } else slip.amount_invoiced_to
                     if slip.id in green_slip_ids:
-                        amt = amount_invoiced[invoice.id]['amt_invoiced']
+                        amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
                     else:
                         amt = slip.balance_left_to
                     slip_display = f"""
