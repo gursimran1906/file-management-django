@@ -5,10 +5,10 @@ import pytz
 
 
 
-conn = psycopg2.connect(database="wip",
-                        user="gb",
+conn = psycopg2.connect(database="filemanagement",
+                        user="anp",
                         password="Mango@ANP290!",
-                        host="localhost",
+                        host="192.168.5.251",
                         port="5432")
 cur = conn.cursor()
 
@@ -891,20 +891,20 @@ def insert_letters(file_path):
 
 data_path = 'old_db_data/all_data.json'
 
-add_hourly_rates()
-add_users()
-insert_client_contact_details(data_path)
-insert_authorised_parties(data_path)
-add_file_locations()
-add_matter_types()
-add_file_status()
-insert_wip(data_path)
-insert_emails(data_path)
-insert_attendance_notes(data_path)
-insert_pmt_slips(data_path)
-insert_green_slips(data_path)
+# add_hourly_rates()
+# add_users()
+# insert_client_contact_details(data_path)
+# insert_authorised_parties(data_path)
+# add_file_locations()
+# add_matter_types()
+# add_file_status()
+# insert_wip(data_path)
+# insert_emails(data_path)
+# insert_attendance_notes(data_path)
+# insert_pmt_slips(data_path)
+# insert_green_slips(data_path)
 insert_invoices(data_path)
-insert_letters(data_path)
+# insert_letters(data_path)
 # Close the connection
 cur.close()
 conn.close()
