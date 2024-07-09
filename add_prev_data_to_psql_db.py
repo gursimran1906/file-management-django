@@ -3,12 +3,21 @@ import json
 from datetime import datetime
 import pytz
 
+
+
+conn = psycopg2.connect(database="filemanagement",
+                        user="anp",
+                        password="Mango@ANP290!",
+                        host="192.168.5.251",
+                        port="5432")
+cur = conn.cursor()
+
 def strip_time(time_str):
     return time_str[:8]
 
 def convert_text_to_quill_format(text):
     # Wrap the text in a basic HTML paragraph tag
-    html_content = f"<p>{text.strip().replace('\n', '<br>')}</p>"
+    html_content = f"<p>{text.strip().replace('\\n', '<br>')}</p>"
     
     # Create Quill Delta format
     quill_data = {
@@ -38,7 +47,7 @@ def validate_date(date_str):
         return None
 
 def validate_boolean(boolean_number):
-    return boolean_number == 1
+    return boolean_number == '1'
 
 def validate_timestamp(date_str, timezone_str='UTC+1'):
     timezone = pytz.timezone('Europe/Berlin') if timezone_str == 'UTC+1' else pytz.timezone(timezone_str)
@@ -93,7 +102,7 @@ def amount_allocated(json_data):
         nested_data = json.loads(data[key])
        
         data[key] = nested_data["Amount"]
-    print(json.dumps(data))
+    
     # Convert back to JSON string
     return json.dumps(data)
 
@@ -156,9 +165,9 @@ def get_location_id(location):
         print(f"Error retrieving ID: {e}")
         return None
    
+
 def get_fee_earner_id(fee_earner):
     try:
-        
         query = "SELECT id FROM users_customuser WHERE username = %s"
         cur.execute(query, (fee_earner,))
         
@@ -169,30 +178,142 @@ def get_fee_earner_id(fee_earner):
             wip_id = row[0]
             return wip_id
         else:
-            return 1
+            return None
         
     except psycopg2.Error as e:
         print(f"Error retrieving ID: {e}")
         return None
+  
 
 def get_fee_earner_initials_based_upon_id(fee_earner_id):
     fee_earners = {
-        "01": "SD",
-        "02": "ND",
-        "03": "GM",
-        "04": "JP",
-        "05": "CP",
-        "06": "TR",
-        "07": "GB",
-        "08": "AF",
-        "09": "RY",
+        "1": "SD",
+        "2": "ND",
+        "3": "GM",
+        "4": "JP",
+        "5": "CP",
+        "6": "TR",
+        "7": "GB",
+        "8": "AF",
+        "9": "RY",
         "10": "KS",
         "11": "TRN",
         "12": "JPN"
     }
-    
-    return fee_earners.get(fee_earner_id, "ID not found")
-   
+    return fee_earners.get(str(fee_earner_id), "ID not found")
+
+def add_hourly_rates():
+    data = [
+        (1, 'Paralegal', '195.00', True),
+        (2, 'Senior Fee Earner', '295.00', True),
+        (3, 'Associate', '275.00', True),
+        (4, 'Solicitors up to 4yr PQE', '250.00', True),
+        (5, 'Trainee', '225.00', True),
+        ]
+    insert_query = """
+        INSERT INTO users_rate (
+           id, "desc", hourly_amount, is_active, timestamp
+        ) VALUES (%s, %s,%s,%s,%s )
+    """
+    for item in data:
+        try:
+            cur.execute(insert_query, (
+                item[0],
+                item[1],
+                item[2],
+                item[3],
+                validate_timestamp('0000-00-00 00:00:00')
+            ))
+            conn.commit()
+        except psycopg2.Error as e:
+            print("Error inserting row:", e)
+            conn.rollback()
+            continue
+        except ValueError as ve:
+            print("Value error:", ve)
+            continue
+    print('RATES ADDED')
+
+def add_users():
+    data = [
+        (1, "pbkdf2_sha256$720000$aixlVBV0VfPbqk0aWfmLRp$LYYp8Cq3GDoKQ0bx4WlJ+8PQvlTIWzkYDpUkrKbYg+g=", 
+         "2024-07-07 22:04:29+01", False, False, True, "2024-07-07 22:04:29+01", "SD", "s.dhillon@anpsolicitors.com", 
+         "Surinder", "Dhillon", True, True, 2),
+        (2, "pbkdf2_sha256$720000$Q4EZ8K4lQnGG2kZZ2tOUae$0mFiZZ4/K5Ewc36FAnAPhRqTBMm1vqT9wfVS8QzGfsk=", 
+         "2024-07-07 22:05:45+01", False, False, True, "2024-07-07 22:05:44+01", "ND", "n.dhillon@anpsolicitors.com", 
+         "Navjot", "Dhillon", True, True, 2),
+        (3, "pbkdf2_sha256$720000$zJyJarbnpELLjZTb8VfKv2$Ef0w813AqAHOSKyRPMKggDq710CG9iPZONqEGE0DLa8=", 
+         "2024-07-07 22:06:35+01", False, False, True, "2024-07-07 22:06:34+01", "GM", "privateclient@anpsolicitors.com", 
+         "Gabbi", "Marshall", True, False, 3),
+        (4, "pbkdf2_sha256$720000$lex9al6pGc6Lt6ut1qorjZ$V8EsYp3A8fdIO8LRwImWCuPMZYLCFtRIhgA8EuZnyMg=", 
+         "2024-07-07 22:07:42+01", False, False, True, "2024-07-07 22:07:42+01", "JP", "j.phillips@anpsolicitors.com", 
+         "John", "Phillips", True, True, 5),
+        (5, "pbkdf2_sha256$720000$mIYOMwRPzCLSGu0wwUj22u$nemdQfKS5TyYlPxcOk4mVMNBeaEc1WSt3GFlzJuTlqs=", 
+         "2024-07-07 22:08:51+01", False, False, True, "2024-07-07 22:08:51+01", "CP", "mail@anpsolicitors.com", 
+         "Chris", "Pinnion", True, False, 2),
+        (6, "pbkdf2_sha256$720000$8jLz8Jbuf4I88hmRXauhet$yVXx1VHnyl0lIVAqAZgJn6S3diz1cnQWrUmtxMiDaUY=", 
+         "2024-07-07 22:10:06+01", False, False, True, "2024-07-07 22:10:06+01", "TR", "family@anpsolicitors.com", 
+         "Tracey", "Rowley", True, False, 2),
+        (7, "pbkdf2_sha256$720000$BBMOO71BeXky0ehLcnW8ra$jHRS8F59hey36sE/GGmwJ9XLJ3DRWpxVaVMuXbxhayo=", 
+         "2024-07-07 22:24:25+01", True, True, True, "2024-07-07 22:10:46+01", "GB", "mail@anpsolicitors.com", 
+         "Gursimran", "Bassi", False, True, 1),
+        (8, "pbkdf2_sha256$720000$ARonTcixcWUpTbvJARP4Ee$ijOqqFo50Bf5E9+i/pOEenRsqy6OmpkWvGEDmaVmX0o=", 
+         "2024-07-07 22:12:26.058965+01", False, False, True, "2024-07-07 22:12:25.8463+01", "AF", 
+         "a.fraser@anpsolicitors.com", "Abbie", "Fraser", False, False, 1),
+        (9, "pbkdf2_sha256$720000$04JNSBCQtiKG51H8fqrlkK$eEFKFksbPi5Q+UELoPmhISz8jU+COgcTOjs8r0eKfcE=", 
+         "2024-07-07 22:13:20.480679+01", False, False, True, "2024-07-07 22:13:20.263684+01", "RY", 
+         "mail@anpsolicitors.com", "Robbie", "Yates", False, False, 1),
+        (10, "pbkdf2_sha256$720000$U4pFZq54U5V1tDkO2mqsnq$BBR+Vv6/9f3zwoVLxKRgsZUngsNpdqE739cRWQR25uk=", 
+         "2024-07-07 22:13:53.812347+01", False, False, True, "2024-07-07 22:13:53.580991+01", "KS", "mail@anpsolicitors.com", 
+         "Katie", "Spears", False, False, 1),
+        (11, "pbkdf2_sha256$720000$LifJftyPvl1eghUTQD3e6o$V9AC2aYWKI0eF/da1N3+UwJMUKSSgdHE7+f2x9AVbX8=", 
+         "2024-07-07 22:16:10.700877+01", False, False, True, "2024-07-07 22:16:10.472382+01", "TRN", 
+         "family@anpsolicitors.com", "Tracey", "Rowley", False, False, 2),
+        (12, "pbkdf2_sha256$720000$cfQe0zSBBmodQKKRhhl53z$P8PUtRt+iy6iajSvQo9L3E0SqVSx/ohem26Pm3Te4dg=", 
+         "2024-07-07 22:17:11.481575+01", False, False, True, "2024-07-07 22:17:11.264042+01", "JPN",
+           "j.phillips@anpsolicitors.com", "John", "Phillips", False, False, 4)
+    ]
+
+
+    insert_query = """
+        INSERT INTO users_customuser (
+            id, password, last_login, is_superuser,
+             is_staff, is_active, date_joined, username,
+               email, first_name, last_name, is_matter_fee_earner, 
+               is_manager, hourly_rate_id
+        ) VALUES (%s, %s,%s,%s, %s, %s,%s,%s, %s, %s,%s,%s,%s,%s)
+    """
+    for item in data:
+        try:
+            cur.execute(
+                insert_query,
+                (
+                    item[0],
+                    item[1],
+                    item[2],
+                    item[3],
+                    item[4],
+                    item[5],
+                    item[6],
+                    item[7],
+                    item[8],
+                    item[9],
+                    item[10],
+                    item[11],
+                    item[12],
+                    item[13],
+
+                ))
+            conn.commit()
+        except psycopg2.Error as e:
+            print("Error inserting row:", e)
+            conn.rollback()
+            continue
+        except ValueError as ve:
+            print("Value error:", ve)
+            continue
+    print('USERS ADDED')
+
 def get_file_status_id(status):
     if status == 'Open':
         return 1
@@ -201,13 +322,6 @@ def get_file_status_id(status):
     if status == 'To Be Closed':
         return 3
 
-
-conn = psycopg2.connect(database="wip",
-                        user="gb",
-                        password="Mango@ANP290!",
-                        host="127.0.0.1",
-                        port="5432")
-cur = conn.cursor()
 
 def insert_client_contact_details(file_path):
     with open(file_path, 'r') as file:
@@ -226,7 +340,6 @@ def insert_client_contact_details(file_path):
     
     for item in data:
         try:
-            print(item['ID'])
             cur.execute(
             insert_query,
             (
@@ -387,7 +500,7 @@ def insert_wip(file_path):
             
         
             file_numbers_done.append(item['FileNumber'])
-            print(item['FileNumber'], item['Client1Contact_ID'], item['Client1Contact_ID'])
+            
             
             values = (
                 item['FileNumber'],
@@ -419,7 +532,7 @@ def insert_wip(file_path):
 
             cur.execute(insert_query, values)
             conn.commit()
-    print(len(file_numbers_done))
+    print('Total files added',len(file_numbers_done))
      
 def insert_emails(file_path):
     try:
@@ -437,7 +550,6 @@ def insert_emails(file_path):
 
         for item in data:
             if item['FileNumber'] != 'XXXXXXXXXX':
-               
                 try:
                     cur.execute(insert_query, (
                         get_wip_id_by_file_number(item['FileNumber']),
@@ -447,17 +559,19 @@ def insert_emails(file_path):
                         item['Body'],
                         item['ReceivedTime'],
                         item['Units'],
-                        get_fee_earner_id(get_fee_earner_initials_based_upon_id('07')),
+                        item['FeeEarner'] if item['FeeEarner'] != '0' else None,
                         True if item['isSent'] == '1' else False,
                         item['Link'],
                         validate_timestamp(item['Timestamp'])
                     ))
+                    conn.commit()
+
                 except psycopg2.Error as e:
                     print("Error inserting row:", e)
                     conn.rollback()
                     continue
 
-        conn.commit()
+        
 
     except IOError as e:
         print("Error reading file:", e)
@@ -483,7 +597,7 @@ def insert_attendance_notes(file_path):
             item['SubjectLine'],
             convert_text_to_quill_format(item['Content']),
             validate_boolean(item['isCharged']),
-            get_fee_earner_id('PersonAttended'),
+            get_fee_earner_id(item['PersonAttended']),
             validate_date(item['Date']),
             item['Unit'],
             validate_timestamp(item['Timestamp'])
@@ -606,7 +720,12 @@ def insert_invoices(file_path):
         return total_sum
 
     def record_exists(table, invoices_id, pmtsslips_id):
-        query = f"SELECT 1 FROM {table} WHERE invoices_id = %s AND pmtsslips_id = %s"
+        pmts_table = True if table != 'backend_invoices_green_slip_ids' else False
+        if pmts_table:
+            col = 'pmtsslips_id'
+        else:
+            col = 'ledgeraccounttransfers_id'
+        query = f"SELECT 1 FROM {table} WHERE invoices_id = %s AND {col} = %s"
         cur.execute(query, (invoices_id, pmtsslips_id))
         return cur.fetchone() is not None
 
@@ -712,20 +831,67 @@ def insert_invoices(file_path):
     
     try:
         for invoice_id, cash_allocated_slips in invoice_id_to_cash_allocated_slips.items():
-            for id in cash_allocated_slips:
-                if not record_exists('backend_invoices_cash_allocated_slips', invoice_id, id):
-                    insert_query = """INSERT INTO backend_invoices_cash_allocated_slips
-                                    (invoices_id, pmtsslips_id)
-                                    VALUES (%s,%s)"""
-                    cur.execute(insert_query, (invoice_id, id))
+            if cash_allocated_slips != None:
+                for id in cash_allocated_slips:
+                    if not record_exists('backend_invoices_cash_allocated_slips', invoice_id, id):
+                        insert_query = """INSERT INTO backend_invoices_cash_allocated_slips
+                                        (invoices_id, pmtsslips_id)
+                                        VALUES (%s,%s)"""
+                        cur.execute(insert_query, (invoice_id, id))
         conn.commit()
     except psycopg2.Error as e:
         print("Error inserting row:", e)
         conn.rollback()
     conn.commit()
+
+def insert_letters(file_path):
+    with open(file_path, 'r') as file:
+        raw_data = json.load(file)
+
+    data = None
+    for table in raw_data:
+        if 'name' in table and table['name'] == 'matter_letters':
+            data = table['data']
+            break
+   
+    '''
+    "ID":"1","FileNumber":"TUR0050001","Date":"2022-08-16","ToOrFrom":"Alan Strachan ",
+    "Sent":"0","Received":"1","SubjectLine":"Warning re Caveat ","PersonAttended":"SD",
+    "IsCharged":"1","Timestamp":"0000-00-00 00:00:00"}
+    '''
+    insert_query = """INSERT INTO backend_matterletters
+    (file_number_id, date, to_or_from, sent,
+    subject_line, is_charged, timestamp, person_attended_id) 
+    VALUES (%s,%s, %s, %s, %s, %s, %s, %s)"""
+
+    for item in data:
+        try: 
+           
+            cur.execute(insert_query, (
+                get_wip_id_by_file_number(item['FileNumber']),
+                validate_date(item['Date']),
+                item['ToOrFrom'],
+                validate_boolean(item['Sent']),
+
+                item['SubjectLine'],
+                validate_boolean(item['IsCharged']),
+                validate_timestamp(item['Timestamp']),
+                get_fee_earner_id(item['PersonAttended'])
+            ))
+            conn.commit()
+        except psycopg2.Error as e:
+            print("Error inserting row:", e)
+            conn.rollback()
+            continue
+        except ValueError as ve:
+            print("Value error:", ve)
+            continue
     
 
 data_path = 'old_db_data/all_data.json'
+
+# add_hourly_rates()
+# add_users()
 # insert_client_contact_details(data_path)
 # insert_authorised_parties(data_path)
 # add_file_locations()
@@ -737,7 +903,7 @@ data_path = 'old_db_data/all_data.json'
 # insert_pmt_slips(data_path)
 # insert_green_slips(data_path)
 # insert_invoices(data_path)
-
+insert_letters(data_path)
 # Close the connection
 cur.close()
 conn.close()

@@ -55,254 +55,6 @@ def calc_units_email(email_body):
 
     return math.ceil(word_sections/6)
 
-
-class Setup:
-
-    def __init__(self):
-        
-        load_dotenv()
-       
-        azure_client_id = os.getenv('AZURE_CLIENT_ID')
-        azure_client_secret = os.getenv('AZURE_CLIENT_SECRET')
-        azure_tenant_id = os.getenv('AZURE_TENANT_ID')
-        azure_settings = {'clientId':azure_client_id,'clientSecret': azure_client_secret,'tenantId':azure_tenant_id}
-        
-        # Use self.graph consistently
-        self.graph = Graph(azure_settings)
-
-    async def display_access_token(self):
-        # Use self.graph consistently
-        token = await self.graph.get_app_only_token()
-        print('App-only token:', token, '\n')
-
-    async def list_users(self):
-        # Use self.graph consistently
-        users_page = await self.graph.get_users()
-        
-        # Output each user's details
-        if users_page and users_page.value:
-            for user in users_page.value:
-                print('User:', user.display_name)
-                print('  ID:', user.id)
-                print('  Email:', user.mail)
-
-            # If @odata.nextLink is present
-            more_available = users_page.odata_next_link is not None
-            print('\nMore users available?', more_available, '\n')
-
-    async def make_graph_call(self):
-        # Use self.graph consistently
-        messages = await self.graph.get_shared_mailbox_messages('mail@anpsolicitors.com')
-        return messages
-       
-    async def make_graph_call_get_previous_emails(self,start_date):
-        messages = await self.graph.get_shared_mailbox_messages_from_date('mail@anpsolicitors.com',start_date)
-        return messages
-
-    async def get_shared_mailbox_folder(self):
-        folders = await self.graph.get_mail_folders_shared_mailbox('mail@anpsolicitors.com')
-        return folders
-    
-    async def get_message_for_all_mailboxes(self):
-        messages = await self.graph.get_messages_for_all_mailboxes()
-        return messages
-    
-    async def send_error_email(self,body):
-        await self.graph.send_email(body)
-
-
-class Sorting:
-    def __init__(self):
-        self.name = ''
-
-    def extract_key_and_feeearner(self,subject):
-        key_match = re.search(r'[A-Z]{3}\d{7}', subject)
-        feeearner_match = re.search(r'\b(\w{10})/(\d{2})\b', subject)
-
-        key = key_match.group() if key_match else ''
-        feeearner_code = feeearner_match.group(2) if feeearner_match else '0'
-
-        return key, feeearner_code
-
-    def convert_datetime_to_db_str(self,rcvd_time_str):
-    
-
-        # Convert the string to a datetime object
-        rcvd_time = datetime.strptime(rcvd_time_str, '%Y-%m-%dT%H:%M:%SZ')
-
-        # Get the UTC timezone
-        utc_timezone = timezone.utc
-
-        # Convert UTC time to local time
-        local_time = rcvd_time.replace(tzinfo=utc_timezone).astimezone(tz=None)
-
-        # Format local time as a string
-        local_rcvd_time_str = local_time.strftime('%Y-%m-%d %H:%M:%S')
-
-        return local_rcvd_time_str
-
-    def process_email(self,email):
-        try:
-            subject = email['subject']
-            file_num, fee_earner = self.extract_key_and_feeearner(subject)
-
-            from_address = email['from']
-            to_recipients = email['toRecipients']
-            to_1_email_address = to_recipients[0]['emailAddress']['address']
-
-            body = email['body']['content']
-
-            desc = ''
-
-            rcvd_time_str = email['receivedDateTime']
-            local_rcvd_time_str = rcvd_time_str
-
-            web_link = email['webLink']
-
-            from_address_json = json.dumps(from_address)
-            to_recipients_json = json.dumps(to_recipients)
-
-            from_email_address = from_address['emailAddress']['address']
-
-            if 'anpsolicitors.com' in from_email_address:
-                isSent = 1
-            else:
-                isSent = 0
-
-            from_emails_to_avoid = ['no-reply@access.service.gov.uk', 'no-reply@royalmail.com', 'news-q2@law360.com', 'info@lexisnexis.co.uk', 'MicrosoftExchange329e71ec88ae4615bbc36ab6ce41109e@anpsolicitors.com']
-            if 'postmaster' in from_email_address or from_email_address in from_emails_to_avoid:
-                return False
-
-            if subject == 'Login verification code':
-                return False
-            
-            if 'anpsolicitors.com' in from_email_address and 'anpsolicitors.com' in to_1_email_address:
-                return False
-            
-            print(to_recipients_json)
-            insert_data(file_num, from_address_json, to_recipients_json, desc, subject, body, web_link, isSent, local_rcvd_time_str, calc_units_email(body), fee_earner) 
-            return True
-
-        except KeyError as e:
-            print(f"Error processing email in process method: {str(e)}")
-            return False
-        
-    async def get_emails(self):
-        setup_instance = Setup()
-
-        try:
-            emails = await setup_instance.make_graph_call()
-            num_of_emails_processed = 0
-            num_of_email_added_to_db = 0
-            time_now = datetime.utcnow()
-            print(f'*********************************Email sorting at {time_now} *********************************************')
-            for email in emails:
-                try:
-                    result = await self.process_email(email)
-                    if result:
-                        num_of_email_added_to_db  += 1
-                    num_of_emails_processed += 1
-                except re.error as regex_error:
-                    print(f"Error processing email: {str(regex_error)}")
-            print(f"{num_of_email_added_to_db} emails added to db")
-            print(f"Processed {num_of_emails_processed} emails")
-            
-
-        except Exception as e:
-            print(f"Error fetching emails: {str(e)}")
-
-    async def get_emails_from_all_mailboxes(self):
-        setup_instance = Setup()
-
-        try:
-            emails = await setup_instance.get_message_for_all_mailboxes()
-        
-            num_of_emails_processed = 0
-            num_of_email_added_to_db = 0
-            time_now = datetime.utcnow()
-
-            print(f'*********************************Email sorting at {time_now} *********************************************')
-        
-            for user_emails in emails:
-                for email in user_emails:
-                    try:
-                        result = await sync_to_async(self.process_email)(email)
-                        if result:
-                            num_of_email_added_to_db += 1
-                        num_of_emails_processed += 1
-                    except re.error as regex_error:
-                        print(f"Error processing email: {regex_error}")
-                        # await setup_instance.send_error_email(f"Dear ND, \n Error processing email: {regex_error} . \n Kind regards\nGB")
-            print(f"{num_of_email_added_to_db} emails added to db")
-            print(f"Processed {num_of_emails_processed} emails")
-            
-
-        except Exception as e:
-            print(f"Error fetching emails: {str(e)}")
-            # await setup_instance.send_error_email(f"Dear ND, \n Error fetching emails: {e}\n Kind regards\nGB")
-            
-    async def diplay_access_token(self):
-        setup_instance = Setup()
-        token = await setup_instance.display_access_token()
-        print(token)
-
-    async def get_all_emails_from_date(self):
-        setup_instance = Setup()
-        start_date = datetime(2024, 2, 2)
-
-        try:
-            emails = await setup_instance.make_graph_call_get_previous_emails(start_date)
-            num_of_emails_processed = 0
-            
-
-            for email in emails:
-                result = await self.process_email(email)
-                if result:
-                    num_of_emails_processed += 1
-
-            
-            print(f"Processed {num_of_emails_processed} emails")
-
-        except Exception as e:
-            print(f"Error fetching emails: {str(e)}")
-
-    async def get_shared_mailbox_folders(self):
-        setup_instance = Setup()
-
-        try:
-            folders = await setup_instance.get_shared_mailbox_folder()
-
-            pprint(folders)
-        except Exception as e:
-            print(e)
-
-    def convert_datetime_to_db_str(self,rcvd_time_str):
-    
-
-        # Convert the string to a datetime object
-        rcvd_time = datetime.strptime(rcvd_time_str, '%Y-%m-%dT%H:%M:%SZ')
-
-        # Get the UTC timezone
-        utc_timezone = timezone.utc
-
-        # Convert UTC time to local time
-        local_time = rcvd_time.replace(tzinfo=utc_timezone).astimezone(tz=None)
-
-        # Format local time as a string
-        local_rcvd_time_str = local_time.strftime('%Y-%m-%d %H:%M:%S')
-
-        return local_rcvd_time_str
-    # Run the event loop to execute the async function
-    async def send_email(self):
-        setup_instance = Setup()
-
-        try:
-            await setup_instance.send_error_email(body='Test')
-
-        except Exception as e:
-            print(e)
-
-    
 class Graph:
     settings: SectionProxy
     client_credential: ClientSecretCredential
@@ -563,6 +315,7 @@ class Graph:
                         all_messages.append(messages)
                     else:
                         # Handle the error or raise an exception
+                        self.send_email(f"---+ Error ({user_email} - {folder_name}): {response.status_code}, {response.text}")
                         print(f"---+ Error ({user_email} - {folder_name}): {response.status_code}, {response.text}")
                         
         return all_messages
@@ -591,6 +344,7 @@ class Graph:
                 ],
                 "from": {
                 "emailAddress": {
+                    "name": "File Management Errors",
                     "address": "info@anpsolicitors.com"
                 }
             }
@@ -615,6 +369,252 @@ class Graph:
                 # Handle the error or raise an exception
                 print(f"Error sending email to {to_email}: {response.status_code}, {response.text}")
 
+
+class Setup:
+
+    def __init__(self):
+        
+        load_dotenv()
+       
+        azure_client_id = os.getenv('AZURE_CLIENT_ID')
+        azure_client_secret = os.getenv('AZURE_CLIENT_SECRET')
+        azure_tenant_id = os.getenv('AZURE_TENANT_ID')
+        azure_settings = {'clientId':azure_client_id,'clientSecret': azure_client_secret,'tenantId':azure_tenant_id}
+        
+        # Use self.graph consistently
+        self.graph = Graph(azure_settings)
+
+    async def display_access_token(self):
+        # Use self.graph consistently
+        token = await self.graph.get_app_only_token()
+        print('App-only token:', token, '\n')
+
+    async def list_users(self):
+        # Use self.graph consistently
+        users_page = await self.graph.get_users()
+        
+        # Output each user's details
+        if users_page and users_page.value:
+            for user in users_page.value:
+                print('User:', user.display_name)
+                print('  ID:', user.id)
+                print('  Email:', user.mail)
+
+            # If @odata.nextLink is present
+            more_available = users_page.odata_next_link is not None
+            print('\nMore users available?', more_available, '\n')
+
+    async def make_graph_call(self):
+        # Use self.graph consistently
+        messages = await self.graph.get_shared_mailbox_messages('mail@anpsolicitors.com')
+        return messages
+       
+    async def make_graph_call_get_previous_emails(self,start_date):
+        messages = await self.graph.get_shared_mailbox_messages_from_date('mail@anpsolicitors.com',start_date)
+        return messages
+
+    async def get_shared_mailbox_folder(self):
+        folders = await self.graph.get_mail_folders_shared_mailbox('mail@anpsolicitors.com')
+        return folders
+    
+    async def get_message_for_all_mailboxes(self):
+        messages = await self.graph.get_messages_for_all_mailboxes()
+        return messages
+    
+    async def send_error_email(self,body):
+        await self.graph.send_email(body)
+
+
+class Sorting:
+    def __init__(self):
+        self.name = ''
+
+    def extract_key_and_feeearner(self,subject):
+        key_match = re.search(r'[A-Z]{3}\d{7}', subject)
+        feeearner_match = re.search(r'\b(\w{10})/(\d{2})\b', subject)
+
+        key = key_match.group() if key_match else ''
+        feeearner_code = feeearner_match.group(2) if feeearner_match else '0'
+
+        return key, feeearner_code
+
+    def convert_datetime_to_db_str(self,rcvd_time_str):
+    
+
+        # Convert the string to a datetime object
+        rcvd_time = datetime.strptime(rcvd_time_str, '%Y-%m-%dT%H:%M:%SZ')
+
+        # Get the UTC timezone
+        utc_timezone = timezone.utc
+
+        # Convert UTC time to local time
+        local_time = rcvd_time.replace(tzinfo=utc_timezone).astimezone(tz=None)
+
+        # Format local time as a string
+        local_rcvd_time_str = local_time.strftime('%Y-%m-%d %H:%M:%S')
+
+        return local_rcvd_time_str
+
+    def process_email(self,email):
+        try:
+            subject = email['subject']
+            file_num, fee_earner = self.extract_key_and_feeearner(subject)
+
+            from_address = email['from']
+            to_recipients = email['toRecipients']
+            to_1_email_address = to_recipients[0]['emailAddress']['address']
+
+            body = email['body']['content']
+
+            desc = ''
+
+            rcvd_time_str = email['receivedDateTime']
+            local_rcvd_time_str = rcvd_time_str
+
+            web_link = email['webLink']
+
+            from_address_json = json.dumps(from_address)
+            to_recipients_json = json.dumps(to_recipients)
+
+            from_email_address = from_address['emailAddress']['address']
+
+            if 'anpsolicitors.com' in from_email_address:
+                isSent = 1
+            else:
+                isSent = 0
+
+            from_emails_to_avoid = ['no-reply@access.service.gov.uk', 'no-reply@royalmail.com', 'news-q2@law360.com', 
+                                    'info@lexisnexis.co.uk', 'MicrosoftExchange329e71ec88ae4615bbc36ab6ce41109e@anpsolicitors.com']
+            if 'postmaster' in from_email_address or from_email_address in from_emails_to_avoid:
+                return False
+
+            if subject == 'Login verification code':
+                return False
+            
+            if 'anpsolicitors.com' in from_email_address and 'anpsolicitors.com' in to_1_email_address:
+                return False
+            
+            insert_data(file_num, from_address_json, to_recipients_json, desc, subject, body, web_link, isSent, local_rcvd_time_str, calc_units_email(body), fee_earner) 
+            return True
+
+        except KeyError as e:
+            print(f"Error processing email in process method: {str(e)}")
+            return False
+        
+    async def get_emails(self):
+        setup_instance = Setup()
+
+        try:
+            emails = await setup_instance.make_graph_call()
+            num_of_emails_processed = 0
+            num_of_email_added_to_db = 0
+            time_now = datetime.utcnow()
+            print(f'*********************************Email sorting at {time_now} *********************************************')
+            for email in emails:
+                try:
+                    result = await self.process_email(email)
+                    if result:
+                        num_of_email_added_to_db  += 1
+                    num_of_emails_processed += 1
+                except re.error as regex_error:
+                    print(f"Error processing email: {str(regex_error)}")
+            print(f"{num_of_email_added_to_db} emails added to db")
+            print(f"Processed {num_of_emails_processed} emails")
+            
+
+        except Exception as e:
+            print(f"Error fetching emails: {str(e)}")
+
+    async def get_emails_from_all_mailboxes(self):
+        setup_instance = Setup()
+
+        try:
+            emails = await setup_instance.get_message_for_all_mailboxes()
+        
+            num_of_emails_processed = 0
+            num_of_email_added_to_db = 0
+            time_now = datetime.utcnow()
+
+            print(f'*********************************Email sorting at {time_now} *********************************************')
+        
+            for user_emails in emails:
+                for email in user_emails:
+                    try:
+                        result = await sync_to_async(self.process_email)(email)
+                        if result:
+                            num_of_email_added_to_db += 1
+                        num_of_emails_processed += 1
+                    except re.error as regex_error:
+                        print(f"Error processing email: {regex_error}")
+                        await setup_instance.send_error_email(f"Dear ND, \n Error processing email: {regex_error} . \n Kind regards\nGB")
+            print(f"{num_of_email_added_to_db} emails added to db")
+            print(f"Processed {num_of_emails_processed} emails")
+            
+
+        except Exception as e:
+            print(f"Error fetching emails: {str(e)}")
+            await setup_instance.send_error_email(f"Dear ND, \n Error fetching emails: {e}\n Kind regards\nGB")
+            
+    async def diplay_access_token(self):
+        setup_instance = Setup()
+        token = await setup_instance.display_access_token()
+        print(token)
+
+    async def get_all_emails_from_date(self):
+        setup_instance = Setup()
+        start_date = datetime(2024, 2, 2)
+
+        try:
+            emails = await setup_instance.make_graph_call_get_previous_emails(start_date)
+            num_of_emails_processed = 0
+            
+
+            for email in emails:
+                result = await self.process_email(email)
+                if result:
+                    num_of_emails_processed += 1
+
+            
+            print(f"Processed {num_of_emails_processed} emails")
+
+        except Exception as e:
+            print(f"Error fetching emails: {str(e)}")
+
+    async def get_shared_mailbox_folders(self):
+        setup_instance = Setup()
+
+        try:
+            folders = await setup_instance.get_shared_mailbox_folder()
+
+            pprint(folders)
+        except Exception as e:
+            print(e)
+
+    def convert_datetime_to_db_str(self,rcvd_time_str):
+    
+
+        # Convert the string to a datetime object
+        rcvd_time = datetime.strptime(rcvd_time_str, '%Y-%m-%dT%H:%M:%SZ')
+
+        # Get the UTC timezone
+        utc_timezone = timezone.utc
+
+        # Convert UTC time to local time
+        local_time = rcvd_time.replace(tzinfo=utc_timezone).astimezone(tz=None)
+
+        # Format local time as a string
+        local_rcvd_time_str = local_time.strftime('%Y-%m-%d %H:%M:%S')
+
+        return local_rcvd_time_str
+    # Run the event loop to execute the async function
+    async def send_email(self):
+        setup_instance = Setup()
+
+        try:
+            await setup_instance.send_error_email(body='Test')
+
+        except Exception as e:
+            print(e)
 
 def get_emails_and_store():
     sorting_obj = Sorting()

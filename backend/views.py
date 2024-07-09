@@ -1291,18 +1291,18 @@ def download_sowc(request, file_number):
     for note in attendance_notes:
         date = note.date.strftime('%d/%m/%Y')
         time = note.start_time.strftime('%H:%M')
-        fee_earner = note.person_attended.username
+        fee_earner = note.person_attended.username if note.person_attended != None else ''
         desc = f'Attendance Note - {note.subject_line} from {note.start_time.strftime(
             '%I:%M %p')} to {note.finish_time.strftime('%I:%M %p')}'
         units = note.unit
-        amount = (note.person_attended.hourly_rate.hourly_amount/10) * units
+        amount = ((note.person_attended.hourly_rate.hourly_amount/10) * units) if note.person_attended != None else ((note.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
 
     for email in emails:
         date = email.time.date().strftime('%d/%m/%Y')
         time = email.time.time().strftime('%H:%M')
-        fee_earner = email.fee_earner.username
+        fee_earner = email.fee_earner.username if email.fee_earner != None else ''
         receiver = json.loads(email.receiver)
         sender = json.loads(email.sender)
 
@@ -1310,19 +1310,19 @@ def download_sowc(request, file_number):
             sender['emailAddress']['name']}'
         desc = to_or_from + f' @ {email.time.time().strftime('%I:%M %p')}'
         units = email.units
-        amount = (email.fee_earner.hourly_rate.hourly_amount/10) * units
+        amount = ((email.fee_earner.hourly_rate.hourly_amount/10) * units) if email.fee_earner != None else ((email.file_number.fee_earner.hourly_rate.hourly_amount/10)* units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
 
     for letter in letters:
         date = letter.date.strftime('%d/%m/%Y')
         time = None
-        fee_earner = letter.person_attended.username
+        fee_earner = letter.person_attended.username if letter.person_attended != None else ''
         to_or_from = f'Letter to {
             letter.to_or_from}' if letter.sent else f'Letter from {letter.to_or_from}'
         desc = f'{to_or_from} - {letter.subject_line}'
         units = 1
-        amount = (letter.person_attended.hourly_rate.hourly_amount/10) * units
+        amount = ((letter.person_attended.hourly_rate.hourly_amount/10) * units) if letter.person_attended != None else ((letter.file_number.fee_earner.hourly_rate.hourly_amount/10)* units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
 
