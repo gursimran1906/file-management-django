@@ -264,7 +264,10 @@ def display_data_home_page(request, file_number):
         if risk_assessment.exists():
             risk_assessment = risk_assessment[0]
             if risk_assessment.due_diligence_date <= eleven_months_ago:
-                if ongoing_monitorings[0].date_due_diligence_conducted <= eleven_months_ago:
+                if ongoing_monitorings.exists():
+                    if ongoing_monitorings[0].date_due_diligence_conducted <= eleven_months_ago:
+                        eleven_months_since_last_risk_assessment = True
+                else:
                     eleven_months_since_last_risk_assessment = True
             else:
                 eleven_months_since_last_risk_assessment = False
@@ -3015,17 +3018,23 @@ def allocate_emails(request):
     i = 0
     file_numbers = request.POST.getlist('FileNumber[]')
     emails_ids = request.POST.getlist('email_ids[]')
+    j = 0
     for file_number in file_numbers:
+        
         if file_number != '':
             file_number= file_number
             email_id = emails_ids[i]
             email = MatterEmails.objects.filter(id=email_id).first()
             file = WIP.objects.filter(file_number=file_number).first()
             email.file_number = file
+            j = j + 1
             email.fee_earner = file.fee_earner if file.fee_earner != None else None
             email.save()
-            i = i+1
-    messages.success(request, f'Successfully allocated {i} emails')
+        i = i+1
+
+                
+            
+    messages.success(request, f'Successfully allocated {j} emails')
    
     return redirect('unallocated_emails')
 
