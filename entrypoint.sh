@@ -3,7 +3,10 @@
 echo 'Running migrations...'
 python manage.py migrate
 
-# echo 'Collecting static files...'
-# python manage.py collectstatic --no-input
+echo 'Adding crontab...'
+python manage.py crontab add
+
+echo 'Starting crond...'
+crond -b
 
 exec "$@"
