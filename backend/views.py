@@ -2588,16 +2588,16 @@ def edit_invoice(request, id):
         for i in range(len(costs)):
 
             our_costs_display = f"""
-            <div class="row">
-                <div class="col-md-5">
-                    <input type="text" class="form-control" id="our_costs_description" placeholder="Costs Description"
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mt-2">
+                <div class="col-span-5">
+                    <input type="text" class="form-input" id="our_costs_description" placeholder="Costs Description"
                     name="our_costs_desc[]" value="{our_costs_desc[i]}">
                 </div>
-                <div class="col-md-5">
-                    <input required type="number" step="0.01" class="form-control" name="our_costs[]" id="our_costs"
+                <div class="col-span-5">
+                    <input required type="number" step="0.01" class="form-input" name="our_costs[]" id="our_costs"
                     placeholder="£0.00" value={round(Decimal(costs[i]), 2)}>
                 </div>
-                <div class="col-md-2">
+                <div class="col-span-2">
                     <span type='button' class='btn btn-danger' onclick="removeField(this);" >-</span>
                 </div>
             </div>
@@ -2647,7 +2647,15 @@ def edit_invoice(request, id):
                 """
                 pink_slips.append(mark_safe(slip_display))
             elif slip.id in moa_ids or slip.balance_left > 0:
-                amount_invoiced = json.loads(slip.amount_invoiced) if slip.amount_invoiced != {} else slip.amount_invoiced
+                if isinstance(slip.amount_invoiced, str):
+                    amount_invoiced = json.loads(slip.amount_invoiced)
+                elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
+                    amount_invoiced = json.loads(slip.amount_invoiced.decode('utf-8'))
+                elif isinstance(slip.amount_invoiced, dict):
+                    amount_invoiced = slip.amount_invoiced
+                else:
+                    raise ValueError("Unsupported type for slip.amount_invoiced")
+                
                 if slip.id in moa_ids:
                     amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
                 else:
