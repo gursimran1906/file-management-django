@@ -1292,8 +1292,8 @@ def download_sowc(request, file_number):
         date = note.date.strftime('%d/%m/%Y')
         time = note.start_time.strftime('%H:%M')
         fee_earner = note.person_attended.username if note.person_attended != None else ''
-        desc = f'Attendance Note - {note.subject_line} from {note.start_time.strftime(
-            '%I:%M %p')} to {note.finish_time.strftime('%I:%M %p')}'
+        desc = f"Attendance Note - {note.subject_line} from {note.start_time.strftime(
+            '%I:%M %p')} to {note.finish_time.strftime('%I:%M %p')}"
         units = note.unit
         amount = ((note.person_attended.hourly_rate.hourly_amount/10) * units) if note.person_attended != None else ((note.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
         row = [date, time, fee_earner, desc, units, amount]
@@ -1306,9 +1306,8 @@ def download_sowc(request, file_number):
         receiver = json.loads(email.receiver)
         sender = json.loads(email.sender)
 
-        to_or_from = f'Email to {receiver['emailAddress']['name']}' if email.is_sent else f'Email from {
-            sender['emailAddress']['name']}'
-        desc = to_or_from + f' @ {email.time.time().strftime('%I:%M %p')}'
+        to_or_from = f"Email to {receiver['emailAddress']['name']}" if email.is_sent else f"Email from {sender['emailAddress']['name']}"
+        desc = to_or_from + f" @ {email.time.time().strftime('%I:%M %p')}"
         units = email.units
         amount = ((email.fee_earner.hourly_rate.hourly_amount/10) * units) if email.fee_earner != None else ((email.file_number.fee_earner.hourly_rate.hourly_amount/10)* units)
         row = [date, time, fee_earner, desc, units, amount]
@@ -1318,8 +1317,7 @@ def download_sowc(request, file_number):
         date = letter.date.strftime('%d/%m/%Y')
         time = None
         fee_earner = letter.person_attended.username if letter.person_attended != None else ''
-        to_or_from = f'Letter to {
-            letter.to_or_from}' if letter.sent else f'Letter from {letter.to_or_from}'
+        to_or_from = f'Letter to {letter.to_or_from}' if letter.sent else f'Letter from {letter.to_or_from}'
         desc = f'{to_or_from} - {letter.subject_line}'
         units = 1
         amount = ((letter.person_attended.hourly_rate.hourly_amount/10) * units) if letter.person_attended != None else ((letter.file_number.fee_earner.hourly_rate.hourly_amount/10)* units)
@@ -1344,8 +1342,7 @@ def download_sowc(request, file_number):
     last_date = sorted_rows[-1][0] if sorted_rows else None
 
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = f'attachment; filename="({
-        file_number}) Schedule of Work and Costs from {first_date} to {last_date}.csv"'
+    response['Content-Disposition'] = f'attachment; filename="({file_number}) Schedule of Work and Costs from {first_date} to {last_date}.csv"'
 
     writer = csv.writer(response)
 
