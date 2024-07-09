@@ -1431,7 +1431,7 @@ def finance_view(request, file_number):
                     raise ValueError("Unsupported type for slip.amount_invoiced")
 
                 date = slip.date.strftime('%d/%m/%Y')
-                amt = amount_invoiced[invoice.id]['amt_invoiced']
+                amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
                 total_blue_slips = total_blue_slips + Decimal(amt)
                 blue_slips_display = blue_slips_display + \
                     f"Payment from {slip.pmt_person} of <b>£{amt}</b> on <b>{date}</b><br>"
@@ -1464,7 +1464,7 @@ def finance_view(request, file_number):
             for slip in invoice.green_slip_ids.all():
                 date = slip.date.strftime('%d/%m/%Y')
                 if slip.file_number_from.file_number == file_number:
-                    total_green_slips = - slip.amount
+                    total_green_slips = total_green_slips - slip.amount
                     green_slips_display = green_slips_display + \
                         f"Transfer to {slip.file_number_to} of £{
                             slip.amount} on {date}<br>"
@@ -1491,13 +1491,22 @@ def finance_view(request, file_number):
         total_cash_allocated_slips = 0
         if invoice.cash_allocated_slips.exists():
             for slip in invoice.cash_allocated_slips.all():
-                amount_invoiced = json.loads(slip.amount_allocated)
-
+                if isinstance(slip.amount_invoiced, str):
+                    amount_invoiced = json.loads(slip.amount_invoiced)
+                elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
+                    amount_invoiced = json.loads(slip.amount_invoiced.decode('utf-8'))
+                elif isinstance(slip.amount_invoiced, dict):
+                    amount_invoiced = slip.amount_invoiced
+                else:
+                    raise ValueError("Unsupported type for slip.amount_invoiced")
+                
                 date = slip.date.strftime('%d/%m/%Y')
-                amt = amount_invoiced[f'{invoice.id}']
-                total_cash_allocated_slips = total_cash_allocated_slips + Decimal(amt)
-                cash_allocated_slips_display = cash_allocated_slips_display + \
-                    f"Payment from {slip.pmt_person} of <b>£{amt}</b> on <b>{date}</b><br>"
+                invoice_id_str = f'{invoice.id}'
+                if invoice_id_str in amount_invoiced:
+                    amt = amount_invoiced[invoice_id_str]
+                    total_cash_allocated_slips = total_cash_allocated_slips + Decimal(amt)
+                    cash_allocated_slips_display = cash_allocated_slips_display + \
+                        f"Payment from {slip.pmt_person} of <b>£{amt}</b> on <b>{date}</b><br>"
                 
             cash_allocated_slips_display = cash_allocated_slips_display + \
                 f"<b>Total Allocated Slips:</b> £{total_cash_allocated_slips}<br>"

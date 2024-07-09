@@ -5,10 +5,10 @@ import pytz
 
 
 
-conn = psycopg2.connect(database="filemanagement",
-                        user="anp",
+conn = psycopg2.connect(database="wip",
+                        user="gb",
                         password="Mango@ANP290!",
-                        host="192.168.5.251",
+                        host="localhost",
                         port="5432")
 cur = conn.cursor()
 
@@ -739,10 +739,10 @@ def insert_invoices(file_path):
             break
 
     insert_query = """INSERT INTO backend_invoices
-    (invoice_number, state, file_number_id, date,
+    (id, invoice_number, state, file_number_id, date,
     payable_by, by_email, by_post, description, 
     our_costs_desc, our_costs, total_due_left, timestamp) 
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"""
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"""
 
     invoice_id_to_pink_slips = {}
     invoice_id_to_blue_slips = {}
@@ -753,6 +753,7 @@ def insert_invoices(file_path):
         try:
             if item['InvoiceNumber'] != '2871':
                 cur.execute(insert_query, (
+                    item['ID'],
                     str(item['InvoiceNumber']),
                     'D' if item['State'] == 'Draft' else 'F',
                     get_wip_id_by_file_number(item['FileNumber']),
@@ -890,19 +891,19 @@ def insert_letters(file_path):
 
 data_path = 'old_db_data/all_data.json'
 
-# add_hourly_rates()
-# add_users()
-# insert_client_contact_details(data_path)
-# insert_authorised_parties(data_path)
-# add_file_locations()
-# add_matter_types()
-# add_file_status()
-# insert_wip(data_path)
-# insert_emails(data_path)
-# insert_attendance_notes(data_path)
-# insert_pmt_slips(data_path)
-# insert_green_slips(data_path)
-# insert_invoices(data_path)
+add_hourly_rates()
+add_users()
+insert_client_contact_details(data_path)
+insert_authorised_parties(data_path)
+add_file_locations()
+add_matter_types()
+add_file_status()
+insert_wip(data_path)
+insert_emails(data_path)
+insert_attendance_notes(data_path)
+insert_pmt_slips(data_path)
+insert_green_slips(data_path)
+insert_invoices(data_path)
 insert_letters(data_path)
 # Close the connection
 cur.close()
