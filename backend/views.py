@@ -111,6 +111,8 @@ def download_search_report(request):
         if search_by == 'ClientName':
             filter_factor &= Q(client1__name__icontains=val_to_search) | Q(
                 client2__name__icontains=val_to_search)
+        elif search_by == 'FeeEarner':
+            filter_factor &= Q(fee_earner__username__icontains=val_to_search)
         else:
             filter_factor &= Q(file_number__icontains=val_to_search)
 
@@ -1417,7 +1419,14 @@ def finance_view(request, file_number):
         total_blue_slips = 0
         if invoice.moa_ids.exists():
             for slip in invoice.moa_ids.all():
-                amount_invoiced = json.loads(slip.amount_invoiced)
+                if isinstance(slip.amount_invoiced, str):
+                    amount_invoiced = json.loads(slip.amount_invoiced)
+                elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
+                    amount_invoiced = json.loads(slip.amount_invoiced.decode('utf-8'))
+                elif isinstance(slip.amount_invoiced, dict):
+                    amount_invoiced = slip.amount_invoiced
+                else:
+                    raise ValueError("Unsupported type for slip.amount_invoiced")
 
                 date = slip.date.strftime('%d/%m/%Y')
                 amt = amount_invoiced[f'{invoice.id}']['amt_invoiced']
@@ -2011,7 +2020,14 @@ def download_invoice(request, id):
         blue_slips_display = "<tr><td colspan='2'><b>Less Monies Received</b></td></tr>"
         for slip in invoice.moa_ids.all():
 
-            amount_invoiced = json.loads(slip.amount_invoiced)
+            if isinstance(slip.amount_invoiced, str):
+                amount_invoiced = json.loads(slip.amount_invoiced)
+            elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
+                amount_invoiced = json.loads(slip.amount_invoiced.decode('utf-8'))
+            elif isinstance(slip.amount_invoiced, dict):
+                amount_invoiced = slip.amount_invoiced
+            else:
+                raise ValueError("Unsupported type for slip.amount_invoiced")
             date = slip.date.strftime('%d/%m/%Y')
             amt = amount_invoiced[f'{invoice.id}']['amt_invoiced']
 
@@ -2426,7 +2442,14 @@ def edit_invoice(request, id):
 
         for id in prev_moa_ids:
             slip = PmtsSlips.objects.filter(id=id).first()
-            amount_invoiced = json.loads(slip.amount_invoiced)
+            if isinstance(slip.amount_invoiced, str):
+                amount_invoiced = json.loads(slip.amount_invoiced)
+            elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
+                amount_invoiced = json.loads(slip.amount_invoiced.decode('utf-8'))
+            elif isinstance(slip.amount_invoiced, dict):
+                amount_invoiced = slip.amount_invoiced
+            else:
+                raise ValueError("Unsupported type for slip.amount_invoiced")
             inv_data = amount_invoiced.get(str(str(invoice.id)), {})
             amount_inv = inv_data.get('amt_invoiced', 0)
             balance_left = inv_data.get('balance_left', 0)
@@ -2613,8 +2636,7 @@ def edit_invoice(request, id):
                 """
                 pink_slips.append(mark_safe(slip_display))
             elif slip.id in moa_ids or slip.balance_left > 0:
-                amount_invoiced = json.loads(slip.amount_invoiced) if slip.amount_invoiced != {
-                } else slip.amount_invoiced
+                amount_invoiced = json.loads(slip.amount_invoiced) if slip.amount_invoiced != {} else slip.amount_invoiced
                 if slip.id in moa_ids:
                     amt = amount_invoiced[f'{invoice.id}']['amt_invoiced']
                 else:
