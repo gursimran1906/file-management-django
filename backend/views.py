@@ -55,6 +55,8 @@ def display_data_index_page(request):
         if search_by == 'ClientName':
             filter_factor &= Q(client1__name__icontains=val_to_search) | Q(
                 client2__name__icontains=val_to_search)
+        elif search_by == 'FeeEarner':
+            filter_factor &= Q(fee_earner__username__icontains=val_to_search)
         else:
             filter_factor &= Q(file_number__icontains=val_to_search)
 
