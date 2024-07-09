@@ -1307,7 +1307,7 @@ def download_sowc(request, file_number):
         sender = json.loads(email.sender)
         print('sebder',sender)
         print('receiver', receiver)
-        to_or_from = f"Email to {receiver['emailAddress']['name']}" if email.is_sent else f"Email from {sender['emailAddress']['name']}"
+        to_or_from = f"Email to {receiver[0]['emailAddress']['name']}" if email.is_sent else f"Email from {sender['emailAddress']['name']}"
         desc = to_or_from + f" @ {email.time.time().strftime('%I:%M %p')}"
         units = email.units
         amount = ((email.fee_earner.hourly_rate.hourly_amount/10) * units) if email.fee_earner != None else ((email.file_number.fee_earner.hourly_rate.hourly_amount/10)* units)
