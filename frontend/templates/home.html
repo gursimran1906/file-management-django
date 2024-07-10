@@ -170,9 +170,9 @@
             <h3 class='text-2xl  mb-2'>File Summary</h3>
             <div class="overflow-y-auto" id="FileSummary" aria-expanded="true">
                 <ul class="list">
-                    <li class="list-item rounded-t-lg bg-gray-50">File Number: {{matter.file_number}}</li>
+                    <li class="list-item rounded-t-lg ">File Number: {{matter.file_number}}</li>
                     <li class="list-item">FeeEarner: {{matter.fee_earner}}</li>
-                    <li class="list-item bg-gray-50">Matter Description: {{matter.matter_description}}</li>
+                    <li class="list-item">Matter Description: {{matter.matter_description}}</li>
                     <li class="list-item rounded-b-lg">Funding: {% if matter.funding == 'PF'%}
                     Private Funding
                     {% else %}
@@ -326,8 +326,24 @@
                     </div>
                     
                     <li class="list-item">Matter Type: {{matter.matter_type}}</li>
-                    <li class="list-item bg-gray-50">File Status: {{matter.file_status}}</li>
-                    <li class="list-item rounded-b-lg">File Location: {{matter.file_location}}</li>
+                    <li class="list-item ">File Location: {{matter.file_location}}</li>
+                    <li class="list-item">Key Information: {{matter.key_information}}</li>
+                    <li class="list-item ">Undertakings:<br>
+                        {% with matter.undertakings|jsonify as undertakings %}
+                            
+                            {% for undertaking in undertakings %}
+                                {% if undertaking != '' %}
+                                    {{ forloop.counter }} - {{undertaking }}<br>
+                                {% endif %}
+                            {% empty %}
+                            <span class="text-green-700">No undertakings</span>
+                            {% endfor %}
+                            
+                        {% endwith %}
+                    </li>
+                    <li class="list-item">File Status: {{matter.file_status}}</li>
+                    <li class="list-item rounded-b-lg">Comments: {{matter.comments}}</li>
+                    
                 </ul>
             
             </div>
@@ -349,7 +365,7 @@
 
             {% if eleven_months_since_last_risk_assessment  %}
             
-                <p class='px-2 py-2 bg-red-50 rounded-lg border border-red-200 text-red-900'>Ongoing Monitoring required as risk assessment or ongoing monitoring was done 11 months ago.</p>
+                <p class='px-2 py-2 bg-red-50 rounded-lg border border-red-200 text-red-900'>Ongoing Monitoring required as last risk assessment or last ongoing monitoring was done 11 months ago.</p>
             
             {% endif %}
 
