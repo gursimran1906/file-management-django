@@ -287,7 +287,7 @@
                         <form class='w-100 grid grid-cols-12 gap-2' method='post' action="{% url 'add_invoice' file_number %}">
                             {% csrf_token %}
                             {% include 'forms/add_invoice.html' with slips=pmts_slips green_slips=green_slips file_number_id=file_number_id %}
-                            <button class='col-span-2 btn btn-primary '>Submit</button>
+                            <button class='col-span-2 btn btn-primary mt-2'>Submit</button>
                         </form>
                     </div>
                 </div>
@@ -323,7 +323,7 @@
                         <form class='' method='post' action="{% url 'add_green_slip' file_number %}">
                             {% csrf_token %}
                             {{green_slip_form.as_p}}
-                            <button class='btn btn-primary'>Submit</button>
+                            <button class='mt-2 btn btn-primary'>Submit</button>
                         </form>
                     </div>
                 </div>

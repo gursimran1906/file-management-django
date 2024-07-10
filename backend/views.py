@@ -894,7 +894,7 @@ def edit_file(request, file_number):
 
     if request.method == 'POST':
         try:
-            print('Working0')
+            
             request_post_copy = preprocess_form_data(request.POST)
             request_post_copy['undertakings'] = json.dumps(
                 request_post_copy.getlist('undertakings[]'))
@@ -902,11 +902,11 @@ def edit_file(request, file_number):
             if request_post_copy['client2'] == '-1':
                 request_post_copy['client2'] = add_new_client(
                     request_post_copy, 2, request.user)
-            print('Working1')
+            
             if request_post_copy['authorised_party1'] == '-1':
                 request_post_copy['authorised_party1'] = add_new_authorised_party(
                     request_post_copy, 1, request.user)
-            print('Working 2')
+            
             if request_post_copy['authorised_party2'] == '-1':
                 request_post_copy['authorised_party2'] = add_new_authorised_party(
                     request_post_copy, 2, request.user)
@@ -964,7 +964,7 @@ def edit_file(request, file_number):
     else:
 
         form = OpenFileForm(instance=file)
-        print('undertaking',file.undertakings)
+        
 
     return render(request, 'edit_file.html', {'form': form, 'form_data': form_data,
                                               'file_number': file_number})

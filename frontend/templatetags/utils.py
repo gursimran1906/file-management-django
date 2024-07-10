@@ -18,7 +18,9 @@ def jsonify(data):
     
     if isinstance(data, dict):
         return data
-    elif data == '':
+    elif isinstance(data,list):
+        return data
+    elif data == '' or data == None:
         return {}
     else:
         return json.loads(data)

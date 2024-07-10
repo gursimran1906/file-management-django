@@ -22,12 +22,11 @@
             <div class="overflow-y-scroll div-container md:col-span-3">
                 <h2 class="text-xl mb-2">Files</h2>
                 <div class='overflow-x-scroll rounded-lg border'>
-                    <table class='text-gray-600'>
-                        <tr class='border-b rounded-t-lg even:bg-white odd:bg-gray-50 font-medium'>
+                    <table class='text-gray-600 w-full'>
+                        <tr class='w-full border-b rounded-t-lg even:bg-white odd:bg-gray-50 font-medium'>
                             <td class='py-2 px-2 '>File number</td>
-                            <td class='py-2 px-2 whitespace-nowrap'>Description</td>
-                            <td class='py-2 px-2 whitespace-nowrap'>Client(s)</td>
-
+                            <td class='py-2 px-2 '>Description</td>
+                            <td class='py-2 px-2 '>Client(s)</td>
                         </tr>
                         {% for file in files %}
                         <tr class="{% if forloop.last %}rounded-b-lg border-b-0 {% endif %}border-b even:bg-white odd:bg-gray-50">
@@ -35,6 +34,10 @@
                             <td class='py-2 px-2 '>{{file.matter_description}}</td>
                             <td class='py-2 px-2 '>{{file.client1.name}} {{file.client2.name}}</td>
 
+                        </tr>
+                        {% empty %}
+                        <tr class=" text-green-700">
+                            <td class="py-2 px-2" colspan='3' >No files to show</td>
                         </tr>
                         {% endfor %}
                     
