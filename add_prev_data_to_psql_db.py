@@ -903,8 +903,7 @@ data_path = 'old_db_data/all_data.json'
 # insert_attendance_notes(data_path)
 # insert_pmt_slips(data_path)
 # insert_green_slips(data_path)
-insert_invoices(data_path)
-# insert_letters(data_path)
+insert_invoices(data_path# insert_letters(data_path)
 # Close the connection
 cur.close()
 conn.close()

@@ -2411,7 +2411,8 @@ def edit_invoice(request, id):
             if request.POST['state'] == 'F':
                 largest_invoice_number = Invoices.objects.aggregate(Max('invoice_number'))[
                     'invoice_number__max']
-                invoice.invoice_number = largest_invoice_number+1
+                invoice.invoice_number = largest_invoice_number + 1
+                invoice.state = 'F'
 
         invoice.payable_by = request.POST['payable_by']
         if 'by_email' in request.POST:
