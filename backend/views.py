@@ -599,7 +599,7 @@ def add_new_client(request_post_copy, client_prefix, user):
     contact_number = request_post_copy[f'Client{client_prefix}ContactNumber']
     date_of_last_aml = request_post_copy[f'Client{client_prefix}AMLCheckDate']
     id_verified = f'IDVer{client_prefix}' in request_post_copy
-    created_by = request_post_copy.user
+    
     client_contact = ClientContactDetails(
         name=name,
         dob=dob,
@@ -619,7 +619,6 @@ def add_new_client(request_post_copy, client_prefix, user):
 
     return client_contact.id
 
-
 def add_new_authorised_party(request_post_copy, ap_prefix, user):
     name = request_post_copy[f'APName{ap_prefix}']
     relationship_to_client = request_post_copy[f'AP{ap_prefix}RelationshipToC']
@@ -631,8 +630,7 @@ def add_new_authorised_party(request_post_copy, ap_prefix, user):
     contact_number = request_post_copy[f'AP{ap_prefix}ContactNumber']
     id_check = f'AP{ap_prefix}IDCheck' in request_post_copy
     date_of_id_check = request_post_copy[f'AP{ap_prefix}IDCheckDate']
-    print(request_post_copy)
-
+    
     try:
         authorised_party = AuthorisedParties(
             name=name,
@@ -653,7 +651,6 @@ def add_new_authorised_party(request_post_copy, ap_prefix, user):
     authorised_party.save()
 
     return authorised_party.id
-
 
 def add_new_otherside_details(request_post_copy, user):
 
@@ -685,7 +682,6 @@ def add_new_otherside_details(request_post_copy, user):
     # Return the ID of the newly added OthersideDetails
     return otherside_details.id
 
-
 def preprocess_form_data(post_data):
     post_copy = post_data.copy()
 
@@ -697,13 +693,11 @@ def preprocess_form_data(post_data):
 
     return post_copy
 
-
 def update_checkbox_values(data, *fields):
     for field in fields:
         data[field] = field in data
 
     return data
-
 
 def get_standard_data():
     fee_earners = CustomUser.objects.filter(is_matter_fee_earner=True)
@@ -725,7 +719,6 @@ def get_standard_data():
     }
 
     return form_data
-
 
 @login_required
 def open_new_file_page(request):
