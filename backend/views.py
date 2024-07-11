@@ -602,7 +602,7 @@ def add_new_client(request_post_copy, client_prefix, user):
     
     client_contact = ClientContactDetails(
         name=name,
-        dob=dob,
+        dob=dob if dob != '' else None,
         occupation=occupation,
         address_line1=address_line1,
         address_line2=address_line2,
@@ -610,7 +610,7 @@ def add_new_client(request_post_copy, client_prefix, user):
         postcode=postcode,
         email=email,
         contact_number=contact_number,
-        date_of_last_aml=date_of_last_aml,
+        date_of_last_aml=date_of_last_aml if date_of_last_aml != '' else None,
         id_verified=id_verified,
         created_by=user
     )
@@ -2419,7 +2419,7 @@ def edit_invoice(request, id):
             invoice.by_email = True
 
         if 'by_post' in request.POST:
-            invoice.by_post
+            invoice.by_post = True
 
         our_costs_desc = request.POST.getlist('our_costs_desc[]')
         our_costs = request.POST.getlist('our_costs[]')
@@ -2474,7 +2474,7 @@ def edit_invoice(request, id):
 
         for id in prev_green_slip_ids:
             slip = LedgerAccountTransfers.objects.filter(id=id).first()
-            if slip.file_number_from == invoice.file_number:
+            if slip.file_number_to == invoice.file_number:
                 amount_invoiced = json.loads(slip.amount_invoiced_to)
                 inv_data = amount_invoiced.get(str(str(invoice.id)), {})
                 amount_inv = inv_data.get('amt_invoiced', 0)
