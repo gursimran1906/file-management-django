@@ -8,6 +8,9 @@ module.exports = {
       width: {
         'vw-64': 'calc(100vw - 256px)'
       },
+      height: {
+        '1/4-screen': '25vh',
+      },
       transitionProperty: {
         'height': 'height'
       },

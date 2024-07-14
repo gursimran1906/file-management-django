@@ -1305,8 +1305,6 @@ def download_sowc(request, file_number):
         fee_earner = email.fee_earner.username if email.fee_earner != None else ''
         receiver = json.loads(email.receiver)
         sender = json.loads(email.sender)
-        print('sebder',sender)
-        print('receiver', receiver)
         to_or_from = f"Email to {receiver[0]['emailAddress']['name']}" if email.is_sent else f"Email from {sender['emailAddress']['name']}"
         desc = to_or_from + f" @ {email.time.time().strftime('%I:%M %p')}"
         units = email.units
@@ -3627,7 +3625,8 @@ def add_ongoing_monitoring(request, file_number):
 
 @login_required
 def policies_display(request):
-    return render(request,'policies_home.html')
+    policies_read = PoliciesRead.objects.filter(read_by=request.user)
+    return render(request,'policies_home.html', {'policies_read':policies_read})
 
 @login_required
 def policy_read(request, policy_id):
@@ -3831,3 +3830,4 @@ def download_document(request):
         return response
     else:
         raise Http404("File does not exist")
+    

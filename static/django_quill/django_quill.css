@@ -1,6 +1,22 @@
 div.form-row div.django-quill-widget-container {
     display: inline-block;
 }
+
+.django-quill-widget-container{
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.ql-toolbar{
+    border-radius:  10px 10px 0px 0px;
+}
+
+.django-quill-widget{
+    border-radius:  0px 0px 10px 10px;
+}
+
+
 .quill-editor iframe,
 .quill-editor video,
 button.ytp-large-play-button,
