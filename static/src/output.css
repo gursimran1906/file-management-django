@@ -1046,6 +1046,18 @@ video {
   top: 5rem;
 }
 
+.top-40 {
+  top: 10rem;
+}
+
+.top-5 {
+  top: 1.25rem;
+}
+
+.top-52 {
+  top: 13rem;
+}
+
 .z-10 {
   z-index: 10;
 }
@@ -1248,6 +1260,10 @@ video {
   height: 0.75rem;
 }
 
+.h-3\/4 {
+  height: 75%;
+}
+
 .h-4 {
   height: 1rem;
 }
@@ -1281,24 +1297,8 @@ video {
   height: 100vh;
 }
 
-.h-10 {
-  height: 2.5rem;
-}
-
-.h-3\/4 {
-  height: 75%;
-}
-
 .h-5\/6 {
   height: 83.333333%;
-}
-
-.h-3\/6 {
-  height: 50%;
-}
-
-.max-h-full {
-  max-height: 100%;
 }
 
 .w-1\/2 {
@@ -1440,14 +1440,6 @@ video {
 
 .resize {
   resize: both;
-}
-
-.snap-y {
-  scroll-snap-type: y var(--tw-scroll-snap-strictness);
-}
-
-.snap-start {
-  scroll-snap-align: start;
 }
 
 .list-none {
@@ -1601,10 +1593,6 @@ video {
   overflow: hidden;
 }
 
-.overflow-clip {
-  overflow: clip;
-}
-
 .overflow-scroll {
   overflow: scroll;
 }
@@ -1623,6 +1611,10 @@ video {
 
 .overflow-y-scroll {
   overflow-y: scroll;
+}
+
+.overscroll-none {
+  overscroll-behavior: none;
 }
 
 .truncate {
@@ -1892,10 +1884,6 @@ video {
 
 .pb-4 {
   padding-bottom: 1rem;
-}
-
-.pe-2 {
-  padding-inline-end: 0.5rem;
 }
 
 .pr-3 {
@@ -2205,16 +2193,6 @@ video {
 }
 
 .odd\:bg-gray-50:nth-child(odd) {
-  --tw-bg-opacity: 1;
-  background-color: rgb(249 250 251 / var(--tw-bg-opacity));
-}
-
-.odd\:bg-white:nth-child(odd) {
-  --tw-bg-opacity: 1;
-  background-color: rgb(255 255 255 / var(--tw-bg-opacity));
-}
-
-.even\:bg-gray-50:nth-child(even) {
   --tw-bg-opacity: 1;
   background-color: rgb(249 250 251 / var(--tw-bg-opacity));
 }

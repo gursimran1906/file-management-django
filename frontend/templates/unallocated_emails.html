@@ -5,8 +5,8 @@
 {% block container_class %}container-fluid{% endblock %} 
 {% block container %}
 
-<form action="{% url 'allocate_emails' %}" method="POST">
-    <div class="div-container shadow flex flex-col md:flex-row justify-between sticky top-20 gap-y-4 bg-white"> 
+<form class="h-screen" action="{% url 'allocate_emails' %}" method="POST">
+    <div class="div-container flex flex-col md:flex-row justify-between sticky top-20 gap-y-4 bg-white"> 
         <div class=' '>
             <label class=" form-label ">Choose email to filter</label>
             <select id="emailFilter" class="form-input" onchange="filterRows()">
@@ -26,7 +26,7 @@
             </div>
         </div>
     </div>
-    <div class='overflow-auto div-container mt-4'>
+    <div class='h-3/4 sticky top-52 overscroll-none overflow-auto div-container mt-4'>
         <table  class="table ">
         <tr class='thead rounded-t-lg'>
             <th class='td'>Index</th>
