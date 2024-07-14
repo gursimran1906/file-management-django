@@ -9,7 +9,7 @@ __pycache__/
 old_db_data/
 node_modules/
 scripts/
-static/CACHE/
+
 # Distribution / packaging
 .Python
 
