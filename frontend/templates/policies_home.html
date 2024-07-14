@@ -1,9 +1,29 @@
 {% extends 'base.html' %}
 {% block title %}Policies{% endblock %}
 {% block container %}
-<div class='grid md:grid-cols-2 gap-4 mt-2'>
+<div class='grid  {% if policies_read %}md:grid-cols-3 {% else %}md:grid-cols-2{% endif %} gap-4 mt-2 '>
     <h1 class='div-container md:w-fit h-fit text-3xl font-medium '>ANP Policies</h1>
-    <div class='div-container'>
+    {% if policies_read %}
+    <div class='div-container h-1/4-screen '>
+            <h2 class='text-xl '>Policies read</h2>
+            <div class=" rounded-lg border mt-2 h-3/4 overflow-auto">
+                <table class='table table-auto '>
+                    <tr class="sticky top-0  bg-white border-b rounded-t-lg text-gray-800">
+                        <td class="py-1 px-2">Policy Number</td>
+                        <td class="py-2 px-2">Read On</td>
+                    </tr>
+                    {% for policy_read in policies_read %}
+                    <tr class=" hover:bg-gray-50  {% if forloop.last %} rounded-b-lg {% else %} border-b {% endif %}">
+                        <td class="py-1 px-2">{{policy_read.policy_number}}</td>
+                        <td class="py-1 px-2">{{policy_read.timestamp|date:'d/m/Y h:i a'}}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+        
+    </div>
+    {% endif %}
+    <div class='div-container h-fit'>
         <p class='text-justify' style='font-family:"arial";'>
             All ANP Staff must understand and implement these policies accordingly. If you do not understand anything please speak to a director.
             

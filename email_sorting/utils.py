@@ -272,7 +272,7 @@ class Graph:
         }
 
         all_messages = []
-        fifteen_minutes_ago = datetime.utcnow() - timedelta(minutes=15)
+        fifteen_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=15)
         formatted_time = fifteen_minutes_ago.strftime('%Y-%m-%dT%H:%M:%SZ')
 
        
