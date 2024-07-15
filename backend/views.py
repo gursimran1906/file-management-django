@@ -3,7 +3,7 @@ from django.db.models import Q, Q, F, OuterRef, Subquery, Max, CharField
 from django.db.models.functions import Cast
 from .models import WIP, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties, OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring
 from .forms import OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm
-from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm
+from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm,OtherSideForm
 from .utils import create_modification
 from django.utils import timezone
 from users.models import CustomUser
@@ -878,6 +878,41 @@ def edit_authorised_party(request, id):
     else:
         form = AuthorisedPartyForm(instance=ap)
     return render(request, 'edit_models.html', {'form': form, 'title': 'Authorised Party Information'})
+
+@login_required
+def edit_otherside(request, id):
+    os = OthersideDetails.objects.get(id=id)
+    if request.method == 'POST':
+        duplicate_obj = copy.deepcopy(os)
+        form = OtherSideForm(request.POST, instance=os)
+        if form.is_valid():
+            changed_fields = form.changed_data
+            changes = {}
+            for field in changed_fields:
+                changes[field] = {
+                    'old_value': str(getattr(duplicate_obj, field)),
+                    'new_value': None
+                }
+            form.save()
+            for field in changed_fields:
+                changes[field]['new_value'] = str(
+                    getattr(os, field))
+            create_modification(
+                user=request.user,
+                modified_obj=os,
+                changes=changes
+            )
+            messages.success(
+                request, 'Successfully updated Other Side Details on all applicable files. Please search for a File Number you were working on.')
+            return redirect('index')
+        else:
+            error_message = 'Form is not valid. Please correct the errors:'
+            for field, errors in form.errors.items():
+                error_message += f'\n{field}: {", ".join(errors)}'
+            messages.error(request, error_message)
+    else:
+        form = OtherSideForm(instance=os)
+    return render(request, 'edit_models.html', {'form': form, 'title': 'Other Side Details'})
 
 
 @login_required
@@ -2989,7 +3024,7 @@ def unallocated_emails(request):
                             <b>To:</b> {receiver[0]['emailAddress']['name']} ({receiver[0]['emailAddress']['address']})
                         </td>
                         <td class='td'>{email.subject}</td>
-                        <td class='td'><a class="link" target="_blank" href="{{email.link}}">See Email</a></td>
+                        <td class='td'><a class="link" target="_blank" href="{email.link}">See Email</a></td>
                         <td>
                             <input class="hidden" name="email_ids[]" value={email.id}></input>
                             {files_options}

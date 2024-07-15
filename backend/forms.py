@@ -1,5 +1,5 @@
 from django import forms
-from .models import WIP, ClientContactDetails, NextWork, LastWork, MatterAttendanceNotes, MatterLetters, PmtsSlips, LedgerAccountTransfers, Invoices, ClientContactDetails, AuthorisedParties, RiskAssessment, OngoingMonitoring
+from .models import WIP, ClientContactDetails, NextWork, LastWork, MatterAttendanceNotes, MatterLetters, PmtsSlips, LedgerAccountTransfers, Invoices, ClientContactDetails, AuthorisedParties, RiskAssessment, OngoingMonitoring, OthersideDetails
 from datetime import date
 from math import ceil
 
@@ -262,6 +262,20 @@ class AuthorisedPartyForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super(AuthorisedPartyForm, self).__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            field.widget.attrs['class'] = 'form-input'
+
+class OtherSideForm(forms.ModelForm):
+    
+    class Meta:
+        model = OthersideDetails
+        fields = '__all__'
+        widgets = {
+            
+        }
+
+    def __init__(self, *args, **kwargs):
+        super(OtherSideForm, self).__init__(*args, **kwargs)
         for field_name, field in self.fields.items():
             field.widget.attrs['class'] = 'form-input'
 

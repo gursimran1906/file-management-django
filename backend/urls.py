@@ -6,7 +6,7 @@ from .views import finance_view, add_blue_slip, add_pink_slip, add_green_slip, e
 from .views import allocate_monies, download_statement_account, download_invoice, edit_invoice, download_estate_accounts, unallocated_emails, allocate_emails
 from .views import download_cashier_data, edit_file, edit_client, edit_authorised_party,download_file_logs, download_frontsheet, generate_ledgers_report, user_dashboard, download_risk_assessment
 from .views import add_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring
-from .views import edit_ongoing_monitoring, download_document, questionnaires_display
+from .views import edit_ongoing_monitoring, download_document, questionnaires_display, edit_otherside
 
 urlpatterns = [
     path('dashboard/', user_dashboard, name='user_dashboard'),
@@ -27,7 +27,8 @@ urlpatterns = [
     path('<str:file_number>/edit/', edit_file, name='edit_file'),
 
     path('client/edit/<int:id>/', edit_client, name='edit_client'),
-    path('authorised_part/edit/<int:id>/',edit_authorised_party, name='edit_authorised_party'),
+    path('authorised_party/edit/<int:id>/',edit_authorised_party, name='edit_authorised_party'),
+    path('other_side/edit/<int:id>/',edit_otherside, name='edit_otherside'),
 
     path('home/<str:file_number>/', display_data_home_page, name='home'),
     path('home/<str:file_number>/next_work/add/', add_new_work_file, name='add_next_work_file'),
