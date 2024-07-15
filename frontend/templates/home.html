@@ -309,15 +309,15 @@
                                 <div class="py-2 border border-b border-gray-200 dark:border-gray-700 dark:bg-gray-900">
                                     <div class='grid grid-cols-2'>
                                         <div class='space-y-1'>
-                                            Name: {{matter.other_side.name}}
-                                            Address: {{matter.other_side.address_line1}}, {{matter.other_side.address_line2}}, {{matter.other_side.county}}, {{matter.other_side.postcode}}
-                                            Email: {{matter.other_side.email}}
-                                            Contact Number: {{matter.other_side.contact_number}}
-                                            Solicitors: {{matter.other_side.solicitors}}
-                                            Solicitors Email: {{matter.other_side.solicitors_email}}
+                                            <p>Name: {{matter.other_side.name}}</p>
+                                            <p>Address: {{matter.other_side.address_line1}}, {{matter.other_side.address_line2}}, {{matter.other_side.county}}, {{matter.other_side.postcode}}</p>
+                                            <p>Email: {{matter.other_side.email}}</p>
+                                            <p>Contact Number: {{matter.other_side.contact_number}}</p>
+                                            <p>Solicitors: {{matter.other_side.solicitors}}</p>
+                                            <p>Solicitors Email: {{matter.other_side.solicitors_email}}</p>
                                         </div>
                                         <div class="grid grid-cols-1 justify-items-end h-fit self-top">
-                                            <a class='me-2 btn-primary' href="{% url 'edit_authorised_party' matter.authorised_party2.id %}">Edit</a>
+                                            <a class='me-2 btn-primary' href="{% url 'edit_otherside' matter.other_side.id %}">Edit</a>
                                         </div>
                                     </div>
                                 </div>
