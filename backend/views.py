@@ -1499,7 +1499,14 @@ def finance_view(request, file_number):
                             slip.amount} on {date}<br>"
                 else:
 
-                    amount_invoiced = json.loads(slip.amount_invoiced_to)
+                    if isinstance(slip.amount_invoiced_to, str):
+                        amount_invoiced = json.loads(slip.amount_invoiced_to)
+                    elif isinstance(slip.amount_invoiced_to, (bytes, bytearray)):
+                        amount_invoiced = json.loads(slip.amount_invoiced_to.decode('utf-8'))
+                    elif isinstance(slip.amount_invoiced_to, dict):
+                        amount_invoiced = slip.amount_invoiced_to
+                    else:
+                        raise ValueError("Unsupported type for slip.amount_invoiced_to")
 
                     date = slip.date.strftime('%d/%m/%Y')
                     amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
@@ -3424,10 +3431,18 @@ def download_frontsheet(request, file_number):
         other_side_solicitors = ''
         other_side_solicitors_email = ''
     undertakings = ''
-    for undertaking in json.loads(file.undertakings):
+    if isinstance(file.undertakings, str):
+        undertakings_arr = json.loads(file.undertakings)
+    elif isinstance(file.undertakings, (bytes, bytearray)):
+        undertakings_arr = json.loads(file.undertakings.decode('utf-8'))
+    elif isinstance(file.undertakings, (dict, list)):
+        undertakings_arr = file.undertakings
+    else:
+        raise ValueError("Unsupported type for file.undertakings")
+    
+    for undertaking in undertakings_arr:
         undertakings = undertakings + f'<li>{undertaking}</li>'
 
-    print(json.loads(file.undertakings))
     html = f"""
     <html>
         <head>
