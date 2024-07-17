@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.db.models import Q, Q, F, OuterRef, Subquery, Max, CharField
 from django.db.models.functions import Cast
 from .models import WIP, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties, OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring
@@ -274,7 +275,8 @@ def display_data_home_page(request, file_number):
         else:
             risk_assessment = ""
             eleven_months_since_last_risk_assessment = False
-            
+        if matter.file_status.status == 'Archived':
+            messages.error(request,"ARCHIVED MATTER. Please note this matter is archived.")
         return render(request, 'home.html', {'matter': matter,
                                              'file_number':file_number,
                                              'next_work_form': next_work_form, 'next_work': next_work,
@@ -1033,6 +1035,7 @@ def edit_next_work(request, id):
             changed_fields = form.changed_data
             changes = {}
             for field in changed_fields:
+                
                 changes[field] = {
                     'old_value': str(getattr(duplicate_obj, field)),
                     'new_value': None
@@ -1040,6 +1043,12 @@ def edit_next_work(request, id):
             form.save()
 
             for field in changed_fields:
+                
+                if field == 'completed':
+                    if getattr(nextwork_instance, field):
+                        link = reverse('attendance_note_view', args=[nextwork_instance.file_number.file_number])
+                        add_attendance_note_link = f"<a href='{link}' class='link'>add an attendance note</a>"
+                        messages.info(request, mark_safe(f'Please remember to {add_attendance_note_link} for work just completed.'))
                 changes[field]['new_value'] = str(
                     getattr(nextwork_instance, field))
 
@@ -1073,6 +1082,9 @@ def add_last_work_file(request, file_number):
         form = LastWorkForm(request_post_copy)
         if form.is_valid():
             form.save()
+            link = reverse('attendance_note_view', args=[file_number])
+            add_attendance_note_link = f"<a href='{link}' class='link '>add an attendance note</a>"
+            messages.info(request, mark_safe(f'Please remember to {add_attendance_note_link} for work just added.'))
             messages.success(request, 'Last work successfully added.')
             return redirect('home', file_number=file_number)
         else:
@@ -3007,14 +3019,17 @@ def unallocated_emails(request):
 
     def file_number_options():
         files = WIP.objects.all().order_by('file_number')
-        select = f"""<select name="FileNumber[]" class="form-input">
+        select = f"""<input list="file_options"  type="text" name="FileNumber[]" class="form-input"
+                 placeholder="XYZ0010001" pattern="^(XXXXXXXXXX|[A-Z]{{3}}\\d{{6}})$" 
+               title="Must be either XXXXXXXXXX or 3 uppercase letters followed by 6 digits">
+                    <datalist id="file_options">
                     <option value=''></option>
                     <option value="XXXXXXXXXX">To be deleted</option>
                 """
         options = [f'<option value="{file.file_number}">{file.file_number}</option>' for file in files]
         select += ''.join(options)
 
-        select = select + """</select>
+        select = select + """</datalist>
                 """
         return select
     files_options = file_number_options()
