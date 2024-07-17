@@ -19,6 +19,9 @@
             startMinutes = new Date().getMinutes();
             $('#startTimer').prop("disabled", false);
             selector_start_time = document.getElementsByName('start_time');
+            if (startHour<10){
+                startHour = "0"+ startHour
+            }
             if (startMinutes<10){
                 startMinutes = "0"+ startMinutes
             }
@@ -47,6 +50,9 @@
             // Adjust finish time based on total elapsed time
             finishHour = new Date().getHours();
             finishMinutes = new Date().getMinutes();
+            if (finishHour<10){
+                finishHour = "0"+ finishHour
+            }
             if (finishMinutes<10){
                 finishMinutes = "0"+ finishMinutes
             }
@@ -83,7 +89,7 @@
             var seconds = Math.floor((elapsedTime % (1000 * 60)) / 1000);
             
             timeString = hours + 'h ' + minutes + 'm ' + seconds + 's'
-            
+
             $('#timer').html(timeString);
             startTime = currentTime; // Update start time for next interval
         }
