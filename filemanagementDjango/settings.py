@@ -32,9 +32,10 @@ ALLOWED_HOSTS = ['*']
 LOGIN_URL = '/login/'
 
 
+SESSION_COOKIE_HTTPONLY = True
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_COOKIE_AGE = 36000
 
-
-# Application definition
 
 INSTALLED_APPS = [
     'django.contrib.admin',
