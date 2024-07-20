@@ -3115,11 +3115,11 @@ def download_cashier_data(request):
                             <td></td>
                             <td></td>
                         """
-        invoices = Invoices.objects.filter(Q(date__range=(start_date, end_date)) & Q(state='F'))
+        invoices = Invoices.objects.filter(Q(date__range=(start_date, end_date)) & Q(state='F')).order_by('invoice_number')
         slips = PmtsSlips.objects.filter(
-            timestamp__range=(start_date, end_date))
+            timestamp__range=(start_date, end_date)).order_by('date')
         green_slips = LedgerAccountTransfers.objects.filter(
-            timestamp__range=(start_date, end_date))
+            timestamp__range=(start_date, end_date)).order_by('date')
 
         invoice_display_table = ''
         if get_pending_slips:
