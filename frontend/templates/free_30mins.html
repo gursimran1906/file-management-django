@@ -1,0 +1,255 @@
+{% extends 'base.html' %}
+{% load utils %}
+{% block title %}Free 30 Mins{% endblock %} 
+{% block container %}
+<script>
+    function add_more_attendee(containerId) {
+        const parentContainer = document.getElementById(containerId);
+        const numberOfAttendeesInput = document.getElementById('number_of_attendees');
+        let numberOfAttendees = parseInt(numberOfAttendeesInput.value);
+
+        // Clone the first attendee form
+        const originalAttendeeDiv = parentContainer.children[0];
+        const newAttendeeDiv = originalAttendeeDiv.cloneNode(true);
+
+        // Update the cloned form fields' names and ID
+        const inputs = newAttendeeDiv.getElementsByTagName('input');
+        for (let i = 0; i < inputs.length; i++) {
+            const input = inputs[i];
+            const name = input.getAttribute('name');
+            if (name) {
+                input.setAttribute('name', numberOfAttendees + '_' + name);
+                input.setAttribute('id', numberOfAttendees + '_' + name ); 
+                input.value = ''; 
+            }
+        }
+
+        // Update the cloned form fields' labels (for accessibility)
+        const labels = newAttendeeDiv.getElementsByTagName('label');
+        for (let i = 0; i < labels.length; i++) {
+            const label = labels[i];
+            const htmlFor = label.getAttribute('for');
+            if (htmlFor) {
+                label.setAttribute('for', numberOfAttendees + '_' +  htmlFor );
+            }
+        }
+
+        // Enable the remove button for the new attendee
+        const removeButton = newAttendeeDiv.querySelector('.remove-attendee-btn');
+        removeButton.className = 'text-red-700 remove-attendee-btn underline'
+        removeButton.disabled = false;
+        removeButton.onclick = function() {
+            delete_attendee(newAttendeeDiv);
+        };
+
+        // Append the new attendee form
+        parentContainer.appendChild(newAttendeeDiv);
+
+        // Update the number of attendees
+        numberOfAttendees += 1;
+        numberOfAttendeesInput.value = numberOfAttendees;
+        console.log(numberOfAttendees)
+        // Update the grid layout class based on new number of attendees
+        const parentDiv = document.getElementById('attendees_form_parent');
+        parentDiv.className = 'gap-4 grid md:grid-cols-' + numberOfAttendees;
+    }
+
+
+    function delete_attendee(divToRemove) {
+        const parentContainer = document.getElementById('attendees_form_parent');
+        parentContainer.removeChild(divToRemove);
+
+        // Update the number of attendees
+        const numberOfAttendeesInput = document.getElementById('number_of_attendees');
+        let numberOfAttendees = parseInt(numberOfAttendeesInput.value);
+        numberOfAttendees -= 1;
+        numberOfAttendeesInput.value = numberOfAttendees;
+
+        // Update the grid layout class based on new number of attendees
+        const parentDiv = document.getElementById('attendees_form_parent');
+        parentDiv.className = 'gap-4 grid md:grid-cols-' + numberOfAttendees;
+    }
+</script>
+<div class='grid grid-cols-1 md:grid-cols-2 mt-2 gap-4'>
+    <h1 class='div-container md:w-fit h-fit text-3xl font-medium'>Free 30 mins</h1>
+    <div class="div-container flex flex-col gap-2 md:justify-self-end ">
+        <h3 class='text-2xl text-center'>Actions</h3>
+        <div class="flex gap-2">
+            <button class='btn btn-primary' onclick="toggleNormalCollapse('add_meeting_form');">Add Free 30 Mins</button>
+        </div>
+    </div>
+</div>
+<form class="hidden" method="post" id="add_meeting_form" action="{% url 'free30mins' %}" >
+    {% csrf_token %}
+    <div class="grid md:grid-cols-2 gap-4 mt-4 ">
+
+        <div class="div-container md:col-span-2 grid md:grid-cols-2 gap-4">
+            
+            <div class=" space-y-2">
+                
+                <div class='grid grid-cols-2 mb-2'>
+                    <h3 class='text-xl'>Attendee(s)</h3>
+                    <input name="number_of_attendees" id="number_of_attendees" value="1" class="hidden">
+                    <div class='justify-self-end'>
+                        <button data-popover-target="add_more_fields_popover" class='btn-primary text-xs' type="button" onclick="add_more_attendee('attendees_form_parent');" aria-expanded="false" aria-controls="attendees_form_parent">Add More</button>
+
+                        <div data-popover id="add_more_fields_popover" role="tooltip" class="absolute z-10 invisible inline-block w-72 text-sm text-gray-500 transition-opacity duration-300 bg-white border border-gray-200 rounded-lg shadow-sm opacity-0 dark:text-gray-400 dark:border-gray-600 dark:bg-gray-800">
+                            <div class="px-3 py-2 bg-gray-100 border-b border-gray-200 rounded-t-lg dark:border-gray-600 dark:bg-gray-700">
+                                <h3 class="font-semibold text-gray-900 dark:text-white">Add More Fields For Attendees</h3>
+                            </div>
+                            <div class="px-3 py-2">
+                                <p>Use this button to add more fields for attendees, extra fields column can be removed by clicking or remove under every column of fields.</p>
+                            </div>
+                            <div data-popper-arrow></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="attendees_form_parent" class="gap-4 grid grid-cols-1">
+                    <div class="space-y-2 col-span-1" id="attendee_div_0">
+                        {{ free30_mins_attendees_form.as_p }}
+                        <button class="hidden remove-attendee-btn" type="button">Remove</button>
+                    </div>
+                </div>
+            </div>
+            <div class=" space-y-2">
+                {{ free30_mins_form.as_p }}
+                <button class="btn-primary" type="submit">Submit</button>
+            
+            </div>
+        </div>
+        
+    </div>
+</form>
+
+<div class="div-container mt-4 overflow-auto">
+    <table id="meetings_table" class="table">
+        <thead class="text-gray-900">
+            <tr class="border-b">
+                <th class="td">Date</th>
+                <th class="td">Attendees</th>
+                <th class="td">Matter Type</th>
+                <th class="td">Start Time</th>
+                <th class="td">Finish Time</th>
+                <th class="td">Link</th>
+                <th class="td">Created By</th>
+                <th class="td">Timestamp</th>
+            </tr>
+        </thead>
+        <tbody class="text-gray-900">
+            {% for meeting in meetings %}
+            <div data-popover id="popover_meeting_{{ meeting.id }}" role="tooltip" class="absolute z-10 overflow-auto invisible inline-block w-64 text-sm text-gray-500 
+                transition-opacity duration-300 bg-white border border-gray-200 rounded-lg shadow-sm opacity-0 dark:text-gray-400 dark:border-gray-600 dark:bg-gray-800">
+                <div class="px-3 py-2 bg-gray-100 border-b border-gray-200 rounded-t-lg dark:border-gray-600 dark:bg-gray-700">
+                    <h3 class="font-semibold text-gray-900 dark:text-white">Attendnees</h3>
+                </div>
+                <div class="px-3 py-2">
+                    {% for attendee in meeting.attendees.all %}
+                    <div class="py-2">
+                        <span class="text-black font-medium">{{ attendee.name }}</span><br>
+                        {{ attendee.email}}<br>
+                        {{ attendee.contact_number}}<br>
+                        {{ attendee.address_line1}}<br>
+                        {{ attendee.address_line2}}<br>
+                        {{ attendee.postcode}}<br>
+                        {{ attendee.county}}<br>
+                    </div>
+                        <hr>
+                    {% endfor %}
+                </div>
+                <div data-popper-arrow></div>
+            </div>
+
+            <tr  class="border-b hover:bg-gray-50">
+                <td class="td">{{ meeting.date|date:'d/m/Y' }}</td>
+                <td class="td" data-popover-target="popover_meeting_{{ meeting.id }}">
+                    {% for attendee in meeting.attendees.all %}
+                        {{ attendee.name }}<br>
+                    {% endfor %}
+                </td>
+                <td class="td">{{ meeting.matter_type }}</td>
+                <td class="td">{{ meeting.start_time }}</td>
+                <td class="td">{{ meeting.finish_time }}</td>
+                <td class="td">
+                    <a class="link" href="{% url 'edit_free30mins' meeting.id %}">Edit</a>
+                    /
+                    <a class="link" href="{% url 'download_free30mins' meeting.id %}">Download</a>
+                </td>
+                <td class="td">{{ meeting.created_by }}</td>
+                <td class="td">{{ meeting.timestamp|date:'d/m/Y h:i a' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot class="">
+            <tr class="">
+                <th class="td">Date</th>
+                <th class="td">Attendees</th>
+                <th class="td">Matter Type</th>
+                <th class="td">Start Time</th>
+                <th class="td">Finish Time</th>
+                <th class="td">Download</th>
+                <th class="td">Created By</th>
+                <th class="td">Timestamp</th>
+                
+            </tr>
+        </tfoot>
+    </table>
+</div>
+
+<script>
+    $(document).ready(function() {
+        // Initialize DataTables with sorting and filtering
+        var table = $('#meetings_table').DataTable({
+            "ordering": true,
+            "responsive": true,
+            "searching": true,
+            lengthMenu: [
+                [10, 25, 50, -1],
+                [10, 25, 50, 'All']
+            ],
+            pageLength: 10,
+        });
+
+
+
+
+        $('#meetings_table tfoot th').each(function() {
+            var title = $(this).text();
+            $(this).html('<input class="form-input" type="text" placeholder="Search ' + title + '" />');
+        });
+
+
+        table.columns().every(function() {
+            var that = this;
+            $('input', this.footer()).on('keyup change', function() {
+                if (that.search() !== this.value) {
+                    that
+                        .search(this.value)
+                        .draw();
+                }
+            });
+        });
+
+
+        $('#meetings_table th').hover(
+            function() {
+                $(this).css('cursor', 'pointer');
+            },
+            function() {
+                $(this).css('cursor', 'auto');
+            }
+        );
+
+        table.on('order.dt', function() {
+            $('#meetings_table thead th').each(function() {
+                $(this).removeClass('asc desc');
+            });
+
+            var order = table.order();
+            if (order.length) {
+                var th = $('#meetings_table thead th:eq(' + order[0][0] + ')');
+                th.addClass(order[0][1]);
+            }
+        });
+    });
+</script>
+{% endblock %}

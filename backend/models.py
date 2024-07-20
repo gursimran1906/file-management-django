@@ -546,3 +546,29 @@ class PoliciesRead(models.Model):
                                    related_name='read_by', null=True, blank=True)
 
     timestamp = models.DateTimeField(auto_now_add=True)
+
+class Free30MinsAttendees(models.Model):
+    name = models.CharField(max_length=255)
+    address_line1 = models.CharField(max_length=255, null=True, blank=True)
+    address_line2 = models.CharField(max_length=255, null=True, blank=True)
+    county = models.CharField(max_length=255, null=True, blank=True)
+    postcode = models.CharField(max_length=10, null=True, blank=True)
+    email = models.CharField(max_length=50)
+    contact_number = models.CharField(max_length=50)
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
+                                   related_name='free30_mins_attendees_created_by', null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+class Free30Mins(models.Model):
+    id = models.AutoField(primary_key=True)
+    matter_type = models.ForeignKey(MatterType, on_delete=models.SET_NULL, null=True, blank=True)
+    notes = QuillField()
+    date = models.DateField()
+    start_time = models.TimeField()
+    finish_time = models.TimeField()
+    attendees = models.ManyToManyField(Free30MinsAttendees)
+    fee_earner = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
+                                   related_name='free30_mins_fee_earner', null=True, blank=True)
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
+                                   related_name='free30_mins_created_by', null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)

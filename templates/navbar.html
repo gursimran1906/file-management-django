@@ -244,7 +244,25 @@
           <span class="ms-3">Allocate Emails</span>
         </a>
       </li>
+      <li>
+        <a
+          href="{% url 'free30mins'%}"
+          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'free30mins' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+        >
+         
+          <svg  class="w-5 h-5 {% if request.path == url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
+          aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+          </svg>
+          
+          
+          
+          
+          <span class="ms-3">Free 30 Mins</span>
+        </a>
+      </li>
       {% if request.user.is_manager %}
+      <hr>
       <li>
         <a
           href="{% url 'invoices_list'%}"

@@ -1,5 +1,7 @@
 from django import forms
 from .models import WIP, ClientContactDetails, NextWork, LastWork, MatterAttendanceNotes, MatterLetters, PmtsSlips, LedgerAccountTransfers, Invoices, ClientContactDetails, AuthorisedParties, RiskAssessment, OngoingMonitoring, OthersideDetails
+from .models import Free30Mins, Free30MinsAttendees
+from django.forms import inlineformset_factory, formset_factory
 from datetime import date
 from math import ceil
 
@@ -309,7 +311,6 @@ class RiskAssessmentForm(forms.ModelForm):
                 field.widget.attrs['class'] = 'h-16 shadow-sm mb-2 mt-1 border border-gray-300 text-gray-900 text-sm rounded focus:ring-blue-100 focus:border-blue-100 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500'
                 field.widget.attrs['rows'] = 4
 
-
 class OngoingMonitoringForm(forms.ModelForm):
     
     class Meta:
@@ -336,3 +337,31 @@ class OngoingMonitoringForm(forms.ModelForm):
             if isinstance(field.widget, forms.Textarea):
                 field.widget.attrs['class'] = 'h-16 shadow-sm mb-2 mt-1 border border-gray-300 text-gray-900 text-sm rounded focus:ring-blue-100 focus:border-blue-100 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500'
                 field.widget.attrs['rows'] = 4
+
+class Free30MinsForm(forms.ModelForm):
+    class Meta:
+        model = Free30Mins
+        fields = ['date', 'start_time', 'finish_time', 'matter_type',  'notes', 'fee_earner']
+        today_date = date.today()
+        widgets = {
+            'date': forms.DateInput(attrs={'type': 'date', 'value': today_date}),
+            'start_time': forms.TimeInput(attrs={'type': 'time'}),
+            'finish_time': forms.TimeInput(attrs={'type': 'time'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super(Free30MinsForm, self).__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            field.widget.attrs['class'] = 'form-input'
+
+class Free30MinsAttendeesForm(forms.ModelForm):
+    class Meta:
+        model = Free30MinsAttendees
+        fields = ['name', 'email', 'contact_number','address_line1', 'address_line2', 'county', 'postcode' ]
+
+    def __init__(self, *args, **kwargs):
+        super(Free30MinsAttendeesForm, self).__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            field.widget.attrs['class'] = 'form-input'
+
+formset_free_30mins_attendees = formset_factory(Free30MinsAttendeesForm,extra=2)

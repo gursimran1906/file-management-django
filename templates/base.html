@@ -27,32 +27,30 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/datepicker.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
     <script>
-      function toggleNormalCollapse(id){
-        const element = document.getElementById(id);
-        if (element.classList.contains('hidden')) {
-            element.classList.remove('hidden');
-
+      function toggleNormalCollapse(id) {
+        const element = $('#' + id);
+        if (element.hasClass('hidden')) {
+          element.hide().removeClass('hidden').slideDown();
         } else {
-          element.classList.add('hidden'); 
+          element.slideUp(() => element.addClass('hidden'));
         }
       }
+  
       function toggleCollapse(id) {
-        const element = document.getElementById(id);
-        if (element.classList.contains('h-0')) {
-          element.classList.remove('h-0');
-          element.classList.add('h-full');
-        element.parentNode.classList.add('mb-4');
-        element.parentNode.parentNode.classList.add('h-full');
-          
-
-      } else {
-        
-        element.classList.add('h-0');
-        element.classList.remove('h-full', 'div-container');
-        
-        element.parentNode.parentNode.classList.remove('h-full');
-        element.parentNode.classList.remove('mb-4');
-          
+        const element = $('#' + id);
+        const parentElement = element.parent();
+        const grandParentElement = parentElement.parent();
+  
+        if (element.hasClass('h-0')) {
+          element.hide().removeClass('h-0').addClass('h-full').slideDown();
+          parentElement.addClass('mb-4');
+          grandParentElement.addClass('h-full');
+        } else {
+          element.slideUp(() => {
+            element.addClass('h-0').removeClass('h-full');
+            parentElement.removeClass('mb-4');
+            grandParentElement.removeClass('h-full');
+          });
         }
       }
     </script>
@@ -123,20 +121,24 @@
         color: #aaa; /* Disabled page text color */
         pointer-events: none; /* Disable pointer events */
       }
-      
-        #invoicesTable thead th.asc::after {
-            content: ' ▲';
-    
-            color: #000;
-            margin-left: 1px;
-        }
-    
-        #invoicesTable thead th.desc::after {
-            content: ' ▼';
-    
-            color: #000;
-            margin-left: 1px;
-        }
+      .dataTable thead th::after {
+        content: ' ▲▼';
+        color: rgb(209 213 219);
+        margin-left: 1px;
+      }
+      .dataTable thead th.asc::after {
+          content: ' ▲';
+  
+          color: rgb(75 85 99);
+          margin-left: 1px;
+      }
+  
+      .dataTable thead th.desc::after {
+          content: ' ▼';
+  
+          color: rgb(75 85 99);
+          margin-left: 1px;
+      }
     </style>
     <!-- Add your custom styles here if needed -->
     {% block styles %}{% endblock %}

@@ -22,7 +22,7 @@ from django.contrib import admin
 from .models import (Modifications, ClientContactDetails, AuthorisedParties, OthersideDetails,
                      FileLocation, FileStatus, MatterType, WIP, NextWork, LastWork, PmtsSlips,
                      LedgerAccountTransfers, TempSlips, Invoices, MatterEmails, MatterLetters,
-                     MatterAttendanceNotes, RiskAssessment, OngoingMonitoring)
+                     MatterAttendanceNotes, RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees)
 
 @admin.register(Modifications)
 class ModificationsAdmin(admin.ModelAdmin):
@@ -165,3 +165,36 @@ class OngoingMonitoringAdmin(admin.ModelAdmin):
     readonly_fields = ('timestamp',)
 
 admin.site.register(OngoingMonitoring, OngoingMonitoringAdmin)
+
+class Free30MinsAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 
+        'matter_type', 
+        'notes', 
+        'date', 
+        'start_time', 
+        'finish_time', 
+        'created_by', 
+        'timestamp'
+    )
+    search_fields = ('id', 'matter_type__name', 'notes')
+    list_filter = ('date', 'matter_type', 'created_by', 'timestamp')
+
+admin.site.register(Free30Mins, Free30MinsAdmin)
+
+class Free30MinsAttendeesAdmin(admin.ModelAdmin):
+    list_display = (
+        'name', 
+        'address_line1', 
+        'address_line2', 
+        'county', 
+        'postcode', 
+        'email', 
+        'contact_number', 
+        'created_by', 
+        'timestamp'
+    )
+    search_fields = ('name', 'email', 'contact_number')
+    list_filter = ('county', 'created_by', 'timestamp')
+
+admin.site.register(Free30MinsAttendees, Free30MinsAttendeesAdmin)

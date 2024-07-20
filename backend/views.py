@@ -2,9 +2,12 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.db.models import Q, Q, F, OuterRef, Subquery, Max, CharField
 from django.db.models.functions import Cast
-from .models import WIP, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties, OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring
+from .models import WIP, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties
+from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring
+from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
 from .forms import OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm
 from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm,OtherSideForm
+from .forms import Free30MinsForm, Free30MinsAttendeesForm
 from .utils import create_modification
 from django.utils import timezone
 from users.models import CustomUser
@@ -234,7 +237,6 @@ def user_dashboard(request):
     unique_aml_checks_due = sorted(unique_aml_checks_due, key=lambda x: x['date_of_last_aml'])
     # Filter for unsettled invoices
     last_100_emails = MatterEmails.objects.filter(fee_earner=user).order_by('-time')[:100]
-    print(unique_aml_checks_due)
     context = {
         'user_next_works': user_next_works,
         'user_last_works': user_last_works,
@@ -756,7 +758,7 @@ def open_new_file_page(request):
             request_post_copy['undertakings'] = json.dumps(
                 request_post_copy.getlist('undertakings[]'))
             request_post_copy['created_by'] = request.user
-            print(request_post_copy)
+            
             form = OpenFileForm(request_post_copy)
             if form.is_valid():
                 instance = form.save()
@@ -2473,6 +2475,9 @@ def edit_invoice(request, id):
         if 'by_post' in request.POST:
             invoice.by_post = True
 
+        desc = request.POST['description']
+        invoice.description = desc 
+
         our_costs_desc = request.POST.getlist('our_costs_desc[]')
         our_costs = request.POST.getlist('our_costs[]')
 
@@ -2773,9 +2778,6 @@ def edit_invoice(request, id):
         }
         return render(request, 'edit_invoice.html', context)
 
-
-'''Estate Account is not final'''
-
 @login_required
 def download_estate_accounts(request, file_number):
     file = WIP.objects.filter(file_number=file_number).first()
@@ -3061,7 +3063,6 @@ def unallocated_emails(request):
 
     return render(request, 'unallocated_emails.html', context=context)
 
-
 @login_required
 def allocate_emails(request):
     i = 0
@@ -3086,7 +3087,6 @@ def allocate_emails(request):
     messages.success(request, f'Successfully allocated {j} emails')
    
     return redirect('unallocated_emails')
-
 
 @login_required
 def download_cashier_data(request):
@@ -3115,9 +3115,7 @@ def download_cashier_data(request):
                             <td></td>
                             <td></td>
                         """
-
-        invoices = Invoices.objects.filter(
-            Q(timestamp__range=(start_date, end_date)) and Q(state='F'))
+        invoices = Invoices.objects.filter(Q(date__range=(start_date, end_date)) & Q(state='F'))
         slips = PmtsSlips.objects.filter(
             timestamp__range=(start_date, end_date))
         green_slips = LedgerAccountTransfers.objects.filter(
@@ -3708,7 +3706,6 @@ def invoices_list(request):
         for invoice in invoices:
 
             our_costs = invoice.our_costs
-            print(type(our_costs), invoice.id)
             costs = ast.literal_eval(our_costs) if type(our_costs) != type([]) else our_costs
             total_cost_invoice = 0
         
@@ -3896,3 +3893,141 @@ def download_document(request):
     else:
         raise Http404("File does not exist")
     
+def free30mins(request):
+    free_30mins_meetings = Free30Mins.objects.all().order_by('-date')
+    free30_mins_form = Free30MinsForm()
+    free30_mins_attendees_form = Free30MinsAttendeesForm()
+    
+    if request.method == 'POST':
+        try:
+            number_of_attendees = int(request.POST['number_of_attendees'])
+            attendee_ids = []
+            
+            for i in range(number_of_attendees):
+                index = f'{i}_' if i > 0 else ''
+                name = request.POST[f'{index}name']
+                address_line1 = request.POST[f'{index}address_line1']
+                address_line2 = request.POST[f'{index}address_line2']
+                county = request.POST[f'{index}county']
+                postcode = request.POST[f'{index}postcode']
+                email = request.POST[f'{index}email']
+                contact_number = request.POST[f'{index}contact_number']
+                created_by = request.user
+
+                attendee = Free30MinsAttendees.objects.create(
+                    name=name,
+                    address_line1=address_line1,
+                    address_line2=address_line2,
+                    county=county,
+                    postcode=postcode,
+                    email=email,
+                    contact_number=contact_number,
+                    created_by=created_by,
+                )
+                attendee.save()
+                attendee_ids.append(attendee.id)
+            
+            matter_type_id = request.POST['matter_type']
+            matter_type = MatterType.objects.filter(pk=matter_type_id).first()
+            notes = request.POST['notes']
+            date = request.POST['date']
+            start_time = request.POST['start_time']
+            finish_time = request.POST['finish_time']
+            fee_earner_id = request.POST['fee_earner']
+            fee_earner = CustomUser.objects.filter(pk=fee_earner_id).first()
+            created_by = request.user
+
+            free_30_mins = Free30Mins.objects.create(
+                matter_type=matter_type,
+                notes=notes,
+                date=date,
+                start_time=start_time,
+                finish_time=finish_time,
+                fee_earner=fee_earner,
+                created_by=created_by
+            )
+            
+            # Assign attendees to the meeting
+            free_30_mins.attendees.set(attendee_ids)
+            
+            free_30_mins.save()
+            messages.success(request, "Meeting successfully created.")
+            return redirect('free30mins')
+        
+        except Exception as e:
+            messages.error(request, f"An error occurred: {e}")
+    
+    return render(request, 'free_30mins.html', {
+        'free30_mins_form': free30_mins_form,
+        'free30_mins_attendees_form': free30_mins_attendees_form,
+        'meetings': free_30mins_meetings
+    })
+
+def download_free30mins(request, id):
+    obj = Free30Mins.objects.filter(id=id).first()
+
+    obj_dict = {
+        'id': obj.id,
+        'matter_type': obj.matter_type.type if obj.matter_type else None,  # Adjust attribute if needed
+        'notes': mark_safe(obj.notes.html),  # Assuming QuillField stores HTML content
+        'date': obj.date,
+        'start_time': obj.start_time,
+        'finish_time': obj.finish_time,
+        'attendees': [attendee.name for attendee in obj.attendees.all()],  # Adjust attribute if needed
+        'fee_earner': obj.fee_earner.username if obj.fee_earner else None,
+        'created_by': obj.created_by.username if obj.created_by else None,
+        'timestamp': obj.timestamp,
+    }
+
+    html_string = render_to_string('download_templates/free_30mins.html', obj_dict)
+    pdf_file = HTML(string=html_string).write_pdf()
+
+    return HttpResponse(pdf_file, content_type='application/pdf')
+
+def edit_free30mins(request, id):
+    instance = get_object_or_404(Free30Mins, pk=id)
+    if request.method == 'POST':
+
+        duplicate_obj = copy.deepcopy(instance)
+        form = Free30MinsForm(
+            request.POST, instance=instance)
+
+        if form.is_valid():
+            changed_fields = form.changed_data
+            changes = {}
+            for field in changed_fields:
+                if field == 'content':
+                    changes[field] = {
+                        'old_value': duplicate_obj.content.html,
+                        'new_value': None
+                    }
+                else:
+                    changes[field] = {
+                        'old_value': str(getattr(duplicate_obj, field)),
+                        'new_value': None
+                    }
+            form.save()
+
+            for field in changed_fields:
+                if field == 'content':
+                    changes[field]['new_value'] = instance.content.html
+                else:
+                    changes[field]['new_value'] = str(
+                        getattr(instance, field))
+
+            create_modification(
+                user=request.user,
+                modified_obj=instance,
+                changes=changes
+            )
+            messages.success(request, 'Successfully updated Free 30 Mins.')
+            return redirect('free30mins')
+        else:
+            error_message = 'Form is not valid. Please correct the errors:'
+            for field, errors in form.errors.items():
+                error_message += f'\n{field}: {", ".join(errors)}'
+            messages.error(request, error_message)
+    else:
+        form = Free30MinsForm(instance=instance)
+
+    return render(request, 'edit_models.html', {'form': form, 'title': 'Free 30 Mins'})
