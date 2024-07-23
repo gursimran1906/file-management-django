@@ -3274,6 +3274,48 @@ def download_cashier_data(request):
         client_pink_slips_table = client_pink_slips_table + "</table>"
         office_blue_slips_table = office_blue_slips_table + "</table>"
         office_pink_slips_table = office_pink_slips_table + "</table>"
+
+        green_slips_table = f"""
+            <table class='table table-striped'>
+                <thead>
+                    <th>
+                        Date
+                    </th>
+                    <th>
+                        File Number From
+                    </th>
+                    <th>
+                        File Number To
+                    </th>
+                    <th>
+                        Ledger Account From
+                    </th>
+                    <th>
+                        Ledget Account To
+                    </th>
+                    <th>
+                        Description
+                    </th>
+                    <th>
+                        Amount
+                    </th>
+                </thead>
+                <tbody>
+        """
+        
+        for slip in green_slips:
+            green_slips_table = green_slips_table + f"""
+            <tr>
+                <td>{slip.date.strftime("%d/%m/%Y")}</td>
+                <td>{slip.file_number_from.file_number}</td>
+                <td>{slip.file_number_to.file_number}</td>
+                <td>{slip.from_ledger_account}</td>
+                <td>{slip.to_ledger_account}</td>
+                <td>{slip.description}</td>
+                <td>£{slip.amount}</td>
+            </tr>
+            """
+        green_slips_table = green_slips_table + f"""</tbody></table>"""
         page_style = '@page { size: landscape; }'
         html = f"""
                 <html>
@@ -3296,6 +3338,8 @@ def download_cashier_data(request):
                         {office_blue_slips_table}
                         <h2 class='mt-3'>Office Pink Slips</h2>
                         {office_pink_slips_table}
+                        <h2 class='mt-3'>Green Slips </h2>
+                        {green_slips_table}
                         <div>
                             <br>
                             <p><b>Date:</b> {datetime.today().date().strftime('%d/%m/%Y')}</p>

@@ -505,7 +505,6 @@ class MatterEmails(models.Model):
     def __str__(self):
         return (f'ID: {str(self.id)}, File Number: {self.file_number}')
 
-
 class MatterLetters(models.Model):
     id = models.AutoField(primary_key=True)
     file_number = models.ForeignKey(WIP, on_delete=models.SET_NULL, null=True)
@@ -519,7 +518,6 @@ class MatterLetters(models.Model):
     created_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, related_name='letter_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
-
 
 class MatterAttendanceNotes(models.Model):
     id = models.AutoField(primary_key=True)
@@ -537,7 +535,6 @@ class MatterAttendanceNotes(models.Model):
                                    related_name='attendance_note_created_by', null=True, blank=True)
 
     timestamp = models.DateTimeField(auto_now_add=True)
-
 
 class PoliciesRead(models.Model):
     id = models.AutoField(primary_key=True)

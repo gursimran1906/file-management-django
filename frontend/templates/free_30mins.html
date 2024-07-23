@@ -137,17 +137,17 @@
         </thead>
         <tbody class="text-gray-900">
             {% for meeting in meetings %}
-            <div data-popover id="popover_meeting_{{ meeting.id }}" role="tooltip" class="absolute z-10 overflow-auto invisible inline-block w-64 text-sm text-gray-500 
+            <div data-popover id="popover_meeting_{{ meeting.id }}" role="tooltip" class="absolute z-50 overflow-auto invisible inline-block w-64 text-sm text-gray-500 
                 transition-opacity duration-300 bg-white border border-gray-200 rounded-lg shadow-sm opacity-0 dark:text-gray-400 dark:border-gray-600 dark:bg-gray-800">
                 <div class="px-3 py-2 bg-gray-100 border-b border-gray-200 rounded-t-lg dark:border-gray-600 dark:bg-gray-700">
                     <h3 class="font-semibold text-gray-900 dark:text-white">Attendnees</h3>
                 </div>
-                <div class="px-3 py-2">
+                <div class="px-3 py-1">
                     {% for attendee in meeting.attendees.all %}
                     <div class="py-2">
                         <span class="text-black font-medium">{{ attendee.name }}</span><br>
-                        {{ attendee.email}}<br>
-                        {{ attendee.contact_number}}<br>
+                        E: {{ attendee.email}}<br>
+                        M: {{ attendee.contact_number}}<br>
                         {{ attendee.address_line1}}<br>
                         {{ attendee.address_line2}}<br>
                         {{ attendee.postcode}}<br>
@@ -161,7 +161,7 @@
 
             <tr  class="border-b hover:bg-gray-50">
                 <td class="td">{{ meeting.date|date:'d/m/Y' }}</td>
-                <td class="td" data-popover-target="popover_meeting_{{ meeting.id }}">
+                <td class="td link" data-popover-target="popover_meeting_{{ meeting.id }}">
                     {% for attendee in meeting.attendees.all %}
                         {{ attendee.name }}<br>
                     {% endfor %}
