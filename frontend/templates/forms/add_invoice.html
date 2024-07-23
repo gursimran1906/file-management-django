@@ -64,8 +64,13 @@
       {% for slip in slips %}
         {% if slip.is_money_out and slip.balance_left > 0 %}
         <div class="form-check">
+
+            <div id="tooltip-top-pink-{{slip.id}}" role="tooltip" class="absolute z-50 invisible inline-block px-3 py-2 text-sm font-medium text-white bg-black rounded-lg border shadow-sm  dark:bg-gray-700">
+                Description: {{slip.description}}
+                <div class="tooltip-arrow" data-popper-arrow></div>
+            </div>
             <input class="form-check-input" name="pink_slips[]" type="checkbox" value="{{slip.id}}">
-            <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{{slip.description}}">Payment to&nbsp;<b >'{{slip.pmt_person}}'</b>&nbsp;of £{{slip.balance_left}} from  {{slip.get_ledger_account_display}} Ledger on {{slip.date|date:'d/m/Y'}}</label>
+            <label class="form-check-label" data-tooltip-target="tooltip-top-pink-{{slip.id}}" data-tooltip-placement="top">Payment to&nbsp;<b >'{{slip.pmt_person}}'</b>&nbsp;of £{{slip.balance_left}} from  {{slip.get_ledger_account_display}} Ledger on {{slip.date|date:'d/m/Y'}}</label>
         </div>
         {% endif %}
       {% endfor %}
@@ -76,8 +81,12 @@
       {% for slip in slips %}
         {% if slip.is_money_out != True and slip.balance_left > 0 %}
         <div class="form-check">
+            <div id="tooltip-top-blue-{{slip.id}}" role="tooltip" class="absolute z-50 invisible inline-block px-3 py-2 text-sm font-medium text-white bg-black rounded-lg border shadow-sm  dark:bg-gray-700">
+              Description: {{slip.description}}
+              <div class="tooltip-arrow" data-popper-arrow></div>
+          </div>
             <input class="form-check-input" name="blue_slips[]" type="checkbox" value="{{slip.id}}">
-            <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{{slip.description}}">Payment from&nbsp;<b >'{{slip.pmt_person}}'</b>&nbsp;of £{{slip.balance_left}}(from £{{slip.amount}}) to  {{slip.get_ledger_account_display}} Ledger on {{slip.date|date:'d/m/Y'}}</label>
+            <label class="form-check-label" data-tooltip-target="tooltip-top-blue-{{slip.id}}" data-tooltip-placement="top">Payment from&nbsp;<b >'{{slip.pmt_person}}'</b>&nbsp;of £{{slip.balance_left}}(from £{{slip.amount}}) to  {{slip.get_ledger_account_display}} Ledger on {{slip.date|date:'d/m/Y'}}</label>
         </div>
         {% endif %}
       {% endfor %}
