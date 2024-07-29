@@ -3022,7 +3022,7 @@ def download_estate_accounts(request, file_number):
 @login_required
 def unallocated_emails(request):
 
-    unallocated_emails_obj = MatterEmails.objects.filter(file_number=None).only()
+    unallocated_emails_obj = MatterEmails.objects.filter(file_number=None).order_by('time').only()
     i = 0
     rows = []
 
