@@ -162,7 +162,7 @@ def download_search_report(request):
 
 @login_required
 def user_dashboard(request):
-    user = CustomUser.objects.get(username=request.user)  # Corrected to use 'username'
+    user = CustomUser.objects.get(username=request.user)
     user_next_works = NextWork.objects.filter(Q(person=user) & Q(completed=False)).order_by('date')
     user_last_works = LastWork.objects.filter(person=user).order_by('-date')
     
@@ -237,12 +237,19 @@ def user_dashboard(request):
     unique_aml_checks_due = sorted(unique_aml_checks_due, key=lambda x: x['date_of_last_aml'])
     # Filter for unsettled invoices
     last_100_emails = MatterEmails.objects.filter(fee_earner=user).order_by('-time')[:100]
+
+    unsettled_invoices = Invoices.objects.filter(
+        file_number__in=unique_wips,
+        state='F',
+        total_due_left__gt=0
+    ).order_by('invoice_number')
+
     context = {
         'user_next_works': user_next_works,
         'user_last_works': user_last_works,
         'risk_assessments_due_files': risk_assessments_due,
         'aml_checks_due': unique_aml_checks_due,
-        'unsettled_invoices': '',
+        'unsettled_invoices': unsettled_invoices,
         'last_100_emails': last_100_emails,
         'files':unique_wips
     }

@@ -205,7 +205,13 @@
                 <h2 class="text-xl mb-2">Overdue Invoices</h2>
                 <ul>
                     {% for invoice in unsettled_invoices %}
-                        <li class="border-b py-2">{{ invoice.invoice_number }} - {{ invoice.our_costs }}</li>
+                        <li class="border-b py-2">
+                            {{invoice.file_number.file_number}} - 
+                            <a class="link" href="{% url 'download_invoice' invoice.id %}">{{ invoice.invoice_number }}</a> - 
+                            {% for cost, cost_desc in invoice.our_costs|zip:invoice.our_costs_desc %}
+                                {{ cost_desc }} - {{ cost }}<br>
+                            {% endfor %}
+                        </li>
                         {% empty %}
                         <li class="text-sm border-t border-b py-2 text-green-700">No Invoices Overdue</li>
     
@@ -221,51 +227,6 @@
         
 
 
-<!-- Tailwind CSS and Chart.js Scripts -->
-
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var ctx = document.getElementById('workChart').getContext('2d');
-        var workChart = new Chart(ctx, {
-            type: 'bar', // You can change the chart type to 'line', 'pie', etc.
-            data: {
-                labels: ['Next Works', 'Last Works', 'Risk Assessments Due', 'AML Checks Due', 'Unsettled Invoices'],
-                datasets: [{
-                    label: 'Count',
-                    data: [
-                        {{ user_next_works|length }},
-                        {{ user_last_works|length }},
-                        {{ risk_assessments_due|length }},
-                        {{ aml_checks_due|length }},
-                        {{ unsettled_invoices|length }}
-                    ],
-                    backgroundColor: [
-                        'rgba(54, 162, 235, 0.2)',
-                        'rgba(255, 206, 86, 0.2)',
-                        'rgba(75, 192, 192, 0.2)',
-                        'rgba(153, 102, 255, 0.2)',
-                        'rgba(255, 159, 64, 0.2)'
-                    ],
-                    borderColor: [
-                        'rgba(54, 162, 235, 1)',
-                        'rgba(255, 206, 86, 1)',
-                        'rgba(75, 192, 192, 1)',
-                        'rgba(153, 102, 255, 1)',
-                        'rgba(255, 159, 64, 1)'
-                    ],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    });
-</script>
 
 
 {% endblock %}

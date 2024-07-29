@@ -37,3 +37,7 @@ def add_list_class(value):
     
     updated_html = re.sub(r'<ol[^>]*>', replace_ol, value)
     return mark_safe(updated_html)
+
+@register.filter(name='zip')
+def zip_lists(a, b):
+    return zip(a, b)
