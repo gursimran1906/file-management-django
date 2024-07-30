@@ -1356,12 +1356,13 @@ def download_sowc(request, file_number):
         rows.append(row)
 
     for email in emails:
-        date = email.time.date().strftime('%d/%m/%Y')
-        time = email.time.time().strftime('%H:%M')
+        aware_datetime = timezone.localtime(email.time)
+        date = aware_datetime.date().strftime('%d/%m/%Y')
+        time = aware_datetime.time().strftime('%H:%M')
         fee_earner = email.fee_earner.username if email.fee_earner != None else ''
         receiver = json.loads(email.receiver)
         sender = json.loads(email.sender)
-        to_or_from = f"Email to {receiver[0]['emailAddress']['name']}" if email.is_sent else f"Email from {sender['emailAddress']['name']}"
+        to_or_from = f"Email to {receiver[0]['emailAddress']['name']}" if email.is_sent else f"Perusal of email from {sender['emailAddress']['name']}"
         desc = to_or_from + f" @ {email.time.time().strftime('%I:%M %p')}"
         units = email.units
         amount = ((email.fee_earner.hourly_rate.hourly_amount/10) * units) if email.fee_earner != None else ((email.file_number.fee_earner.hourly_rate.hourly_amount/10)* units)
