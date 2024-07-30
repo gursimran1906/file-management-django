@@ -3029,8 +3029,8 @@ def unallocated_emails(request):
     def file_number_options():
         files = WIP.objects.all().order_by('file_number')
         select = f"""<input list="file_options"  type="text" name="FileNumber[]" class="form-input"
-                 placeholder="XYZ0010001" pattern="^(XXXXXXXXXX|[A-Z]{{3}}\\d{{6}})$" 
-               title="Must be either XXXXXXXXXX or 3 uppercase letters followed by 6 digits">
+                 placeholder="XYZ0010001" pattern="^(XXXXXXXXXX|[A-Z]{{3}}\\d{{7}})$" 
+               title="Must be either XXXXXXXXXX or 3 uppercase letters followed by 7 digits">
                     <datalist id="file_options">
                     <option value=''></option>
                     <option value="XXXXXXXXXX">To be deleted</option>
