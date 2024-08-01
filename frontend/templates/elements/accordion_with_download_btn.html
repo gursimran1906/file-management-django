@@ -13,7 +13,7 @@
 </div>
 <div id="accordion-open-body-{{ number }}" class="hidden" aria-labelledby="accordion-open-heading-{{ number }}">
     <div class="p-5 border border-b-0 border-gray-200 dark:border-gray-700 dark:bg-gray-900">
-        <form action="{% url 'questionnaires' %}" method="POST" >
+        <form action="{% url 'onboarding_documents' %}" method="POST" >
             {% csrf_token %}
             <input class="hidden" name="file" value="{{body}}" />
             <button style="text-decoration: none !important; color: white !important;" class="btn-primary float-end" type="submit" >Download</button>

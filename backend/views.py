@@ -165,7 +165,7 @@ def user_dashboard(request):
     user = CustomUser.objects.get(username=request.user)
     user_next_works = NextWork.objects.filter(Q(person=user) & Q(completed=False)).order_by('date')
     user_last_works = LastWork.objects.filter(person=user).order_by('-date')
-    
+    now = timezone.now()
     # Collect unique WIP objects from user_next_works and user_last_works
     next_work_wips = user_next_works.values_list('file_number', flat=True)
     last_work_wips = user_last_works.values_list('file_number', flat=True)
@@ -245,6 +245,7 @@ def user_dashboard(request):
     ).order_by('invoice_number')
 
     context = {
+        'now':now,
         'user_next_works': user_next_works,
         'user_last_works': user_last_works,
         'risk_assessments_due_files': risk_assessments_due,
@@ -1356,9 +1357,9 @@ def download_sowc(request, file_number):
         rows.append(row)
 
     for email in emails:
-        aware_datetime = timezone.localtime(email.time)
-        date = aware_datetime.date().strftime('%d/%m/%Y')
-        time = aware_datetime.time().strftime('%H:%M')
+        
+        date = email.time.date().strftime('%d/%m/%Y')
+        time =email.time.time().strftime('%H:%M')
         fee_earner = email.fee_earner.username if email.fee_earner != None else ''
         receiver = json.loads(email.receiver)
         sender = json.loads(email.sender)
@@ -3911,7 +3912,7 @@ def download_ongoing_monitoring(request,id):
     return response
 
 @login_required
-def questionnaires_display(request):
+def onboarding_documents_display(request):
     if request.method == "POST":
         file = request.POST['file']
         html_string = render_to_string(file)
@@ -3919,10 +3920,10 @@ def questionnaires_display(request):
         pdf_file = HTML(string=html_string).write_pdf()
 
         response = HttpResponse(pdf_file, content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="questionnaire.pdf"'
+        response['Content-Disposition'] = f'attachment; filename="{file}_document.pdf"'
         return response
     else:
-        return render(request,'questionnaires.html')
+        return render(request,'onboarding_documents.html')
 
 @login_required
 def download_document(request):
