@@ -3,7 +3,7 @@
 {% block container %}
 {% load utils %}
 <div class='grid md:grid-cols-2 gap-4 mt-2'>
-    <h1 class='div-container md:w-fit h-fit text-3xl font-medium '>Hello 👋 {{request.user.first_name}}</h1>
+    <h1 class='div-container md:w-fit h-fit text-3xl font-medium '>{{now}} Hello 👋 {{request.user.first_name}}</h1>
     {% comment %} <div class='div-container md:justify-self-end '>
         <h3 class='text-xl mb-4 text-center'>Actions</h3>
        <div>

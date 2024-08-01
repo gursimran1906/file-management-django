@@ -4,7 +4,7 @@ from .models import Free30Mins, Free30MinsAttendees
 from django.forms import inlineformset_factory, formset_factory
 from datetime import date
 from math import ceil
-
+from django.utils import timezone
 
 class OpenFileForm(forms.ModelForm):
     class Meta:
@@ -90,7 +90,7 @@ class AttendanceNoteFormHalf(forms.ModelForm):
         model = MatterAttendanceNotes
         fields = ['date', 'start_time', 'finish_time', 'subject_line',
                   'content', 'is_charged', 'person_attended', ]
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date', 'value': today_date}),
             'start_time': forms.TimeInput(attrs={'type': 'time'}),
@@ -138,7 +138,7 @@ class LetterForm(forms.ModelForm):
     class Meta:
         model = MatterLetters
         fields = '__all__'
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date', 'value': today_date})
         }
@@ -153,7 +153,7 @@ class LetterHalfForm(forms.ModelForm):
         model = MatterLetters
         fields = ['date', 'to_or_from', 'subject_line',
                   'sent', 'person_attended', ]
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date', 'value': today_date})
         }
@@ -167,7 +167,7 @@ class PmtsForm(forms.ModelForm):
     class Meta:
         model = PmtsSlips
         fields = '__all__'
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date', 'value': today_date})
         }
@@ -182,7 +182,7 @@ class PmtsHalfForm(forms.ModelForm):
         model = PmtsSlips
         fields = ['date', 'ledger_account', 'mode_of_pmt',
                   'amount', 'pmt_person', 'description']
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date', 'value': today_date})
         }
@@ -196,7 +196,7 @@ class LedgerAccountTransfersForm(forms.ModelForm):
     class Meta:
         model = LedgerAccountTransfers
         fields = '__all__'
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date', 'value': today_date})
         }
@@ -211,7 +211,7 @@ class LedgerAccountTransfersHalfForm(forms.ModelForm):
         model = LedgerAccountTransfers
         fields = ['date', 'file_number_to', 'from_ledger_account',
                   'to_ledger_account', 'amount', 'description']
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date', 'value': today_date})
         }
@@ -225,7 +225,7 @@ class InvoicesForm(forms.ModelForm):
     class Meta:
         model = Invoices
         fields = '__all__'
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date'})
         }
@@ -240,7 +240,7 @@ class ClientForm(forms.ModelForm):
         model = ClientContactDetails
         fields = ['name', 'dob', 'occupation','address_line1', 'address_line2',
                   'county', 'postcode', 'email', 'contact_number', 'date_of_last_aml', 'id_verified']
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
             'dob': forms.DateInput(attrs={'type': 'date'}),
             'date_of_last_aml': forms.DateInput(attrs={'type': 'date'})
@@ -256,7 +256,7 @@ class AuthorisedPartyForm(forms.ModelForm):
         model = AuthorisedParties
         fields = ['name', 'relationship_to_client', 'address_line1', 'address_line2',
                   'county', 'postcode', 'email', 'contact_number', 'id_check', 'date_of_id_check', ]
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
 
             'date_of_id_check': forms.DateInput(attrs={'type': 'date'})
@@ -286,7 +286,7 @@ class RiskAssessmentForm(forms.ModelForm):
     class Meta:
         model = RiskAssessment
         fields = '__all__'
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
             'due_diligence_date': forms.DateInput(attrs={'type': 'date', 'value': today_date}),
             'escalated_date':forms.DateInput(attrs={'type': 'date'}),
@@ -316,7 +316,7 @@ class OngoingMonitoringForm(forms.ModelForm):
     class Meta:
         model = OngoingMonitoring
         fields = '__all__'
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
             'date_due_diligence_conducted': forms.DateInput(attrs={'type': 'date', 'value': today_date})
         }
@@ -342,7 +342,7 @@ class Free30MinsForm(forms.ModelForm):
     class Meta:
         model = Free30Mins
         fields = ['date', 'start_time', 'finish_time', 'matter_type',  'notes', 'fee_earner']
-        today_date = date.today()
+        today_date = timezone.localdate()
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date', 'value': today_date}),
             'start_time': forms.TimeInput(attrs={'type': 'time'}),
