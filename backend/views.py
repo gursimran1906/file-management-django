@@ -445,7 +445,7 @@ def get_file_logs(file_number):
 
         modifications = Modifications.objects.filter(
             Q(content_type=ContentType.objects.get_for_model(letter)) &
-            Q(object_id=note.id)
+            Q(object_id=letter.id)
         )
         for modification in modifications:
             # You can append modifications to logs similarly
