@@ -1488,7 +1488,7 @@ def finance_view(request, file_number):
                 blue_slips_display = blue_slips_display + \
                     f"Payment from {slip.pmt_person} of <b>£{amt}</b> on <b>{date}</b><br>"
             blue_slips_display = blue_slips_display + \
-                f"<b>Total Blue Slips:</b> £{total_blue_slips}<br>"
+                f"<b>Total Blue Slips:</b> £{round(total_blue_slips,2)}<br>"
         else:
             blue_slips_display = blue_slips_display + "No Blue Slips Attached"
 
@@ -1577,10 +1577,10 @@ def finance_view(request, file_number):
         balance = (total_cost_and_vat + total_pink_slips) - total_green_slips - (total_blue_slips + total_cash_allocated_slips)
 
         if balance >= 0:
-            total_due_display = f"<div><b>Total Due: </b> £{balance}<br></div>"
+            total_due_display = f"<div><b>Total Due: </b> £{round(balance,2)}<br></div>"
         else:
             balance = balance * -1
-            total_due_display = f"<div><b>Balance remaining on account:</b> £{balance}<br></div>"
+            total_due_display = f"<div><b>Balance remaining on account:</b> £{round(balance,2)}<br></div>"
 
         data = {'id': invoice.id,
                 'state': invoice.state,
@@ -1995,14 +1995,20 @@ def download_invoice(request, id):
     file_details_display = file_details_display + \
         f"<tr><td><b>Private & Confidential</b></td><td></td></tr>"
     file_details_display = file_details_display + \
-        f"<tr><td>{invoice.file_number.client1.name}</td><td></td></tr>"
-    file_details_display = file_details_display + \
-        f"<tr><td>{invoice.file_number.client1.address_line1}</td><td></td></tr>"
-    file_details_display = file_details_display + \
-        f"<tr><td>{invoice.file_number.client1.address_line2}</td><td></td></tr>"
-    file_details_display = file_details_display + \
-        f"<tr><td>{invoice.file_number.client1.county}, {
-            invoice.file_number.client1.postcode}</td><td></td></tr>"
+        f"""<tr><td class='d-flex flex-row'>
+        <div class="me-4 " >{invoice.file_number.client1.name}<br>
+        {invoice.file_number.client1.address_line1}<br>
+        {invoice.file_number.client1.address_line2}<br>
+        {invoice.file_number.client1.county}, {invoice.file_number.client1.postcode}
+        </div>"""
+    if invoice.file_number.client2 :
+        file_details_display = file_details_display + f"""
+            <div class="border-start ps-4">{invoice.file_number.client2.name}<br>
+            {invoice.file_number.client2.address_line1}<br>
+            {invoice.file_number.client2.address_line2}<br>
+            {invoice.file_number.client2.county}, {invoice.file_number.client2.postcode}
+            </div>"""
+    file_details_display = file_details_display + """ </td><td></td></tr>"""
     if invoice.payable_by == 'Client':
         payable_by = "&nbsp;"
     else:
@@ -2159,10 +2165,9 @@ def download_invoice(request, id):
 
     balance = (total_cost_and_vat + total_pink_slips) - \
         total_blue_slips - total_green_slips
-
+    balance = round(balance, 2)
     if balance >= 0:
-        total_due_display = f"<tr class='mt-5'><td><b>Total Due:</b></td><td style='text-align: center; border-top: solid; border-top-width: thin; border-bottom: solid;  border-bottom-style:double;'>£{
-            balance}</td></tr>"
+        total_due_display = f"<tr class='mt-5'><td><b>Total Due:</b></td><td style='text-align: center; border-top: solid; border-top-width: thin; border-bottom: solid;  border-bottom-style:double;'>£{balance}</td></tr>"
         bank_details = f"""
                 <tr>
                         <td>&nbsp;</td>
