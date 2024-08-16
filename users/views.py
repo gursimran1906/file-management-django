@@ -4,6 +4,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.urls import reverse
 from urllib.parse import unquote
 from .forms import CustomUserCreationForm
+from django.contrib.auth.decorators import login_required
 
 def login_view(request):
     if request.method == 'POST':
@@ -29,6 +30,7 @@ def logout_view(request):
     log_out_msg = 'Successfully Logged ' + str(user) + ' out!!'
     return render(request, 'login.html', {'message': log_out_msg})
 
+@login_required
 def register_view(request):
     if request.method == 'POST':
         form = CustomUserCreationForm(request.POST)
