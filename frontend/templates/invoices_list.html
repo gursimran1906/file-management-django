@@ -118,8 +118,11 @@
 
 <script>
     $(document).ready(function() {
-        // Initialize DataTables with sorting and filtering
+        
+        $.fn.dataTable.moment('DD/MM/YYYY');
+        
         var table = $('#invoicesTable').DataTable({
+            
             "ordering": true,
             "responsive": true,
             lengthMenu: [

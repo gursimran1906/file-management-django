@@ -544,6 +544,25 @@ class PoliciesRead(models.Model):
 
     timestamp = models.DateTimeField(auto_now_add=True)
 
+def undertaking_file_upload_path(instance, filename):
+    return f'undertakings/{instance.file_number.file_number}/{filename}'
+
+class Undertaking(models.Model):
+    id = models.AutoField(primary_key=True)
+    file_number = models.ForeignKey(WIP, on_delete=models.SET_NULL, null=True)
+    date_given = models.DateField()
+    given_to = models.TextField()
+    description = models.TextField()
+    given_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, related_name='undertaking_given_by', null=True, blank=True)
+    document_given_on = models.FileField(upload_to=undertaking_file_upload_path)
+    date_discharged = models.DateField()
+    discharged_proof = models.FileField(upload_to=undertaking_file_upload_path)
+    discharged_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
+                                   related_name='undertaking_created_by', null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+
 class Free30MinsAttendees(models.Model):
     name = models.CharField(max_length=255)
     address_line1 = models.CharField(max_length=255, null=True, blank=True)

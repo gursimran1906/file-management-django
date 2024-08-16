@@ -197,7 +197,8 @@
 
 <script>
     $(document).ready(function() {
-        // Initialize DataTables with sorting and filtering
+        $.fn.dataTable.moment('DD/MM/YYYY');
+        $.fn.dataTable.moment('DD/MM/YYYY h:mm A');
         var table = $('#meetings_table').DataTable({
             "ordering": true,
             "responsive": true,
