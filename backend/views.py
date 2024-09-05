@@ -5,9 +5,10 @@ from django.db.models.functions import Cast
 from .models import WIP, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
+from .models import Undertaking
 from .forms import OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm
 from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm,OtherSideForm
-from .forms import Free30MinsForm, Free30MinsAttendeesForm
+from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm
 from .utils import create_modification
 from django.utils import timezone
 from users.models import CustomUser
@@ -786,7 +787,6 @@ def open_new_file_page(request):
     else:
         return render(request, 'open_file.html', {'form_data': form_data})
 
-
 @login_required
 def add_risk_assessment(request, file_number):
     try:
@@ -814,7 +814,6 @@ def add_risk_assessment(request, file_number):
 
     
     return render(request, 'risk_assessment.html', {'form': form, 'file_number':file_number, 'title':'Add'})
-
 
 @login_required
 def edit_client(request, id):
@@ -854,7 +853,6 @@ def edit_client(request, id):
     else:
         form = ClientForm(instance=client)
     return render(request, 'edit_models.html', {'form': form, 'title': 'Client Information'})
-
 
 @login_required
 def edit_authorised_party(request, id):
@@ -925,7 +923,6 @@ def edit_otherside(request, id):
     else:
         form = OtherSideForm(instance=os)
     return render(request, 'edit_models.html', {'form': form, 'title': 'Other Side Details'})
-
 
 @login_required
 def edit_file(request, file_number):
@@ -1009,7 +1006,6 @@ def edit_file(request, file_number):
     return render(request, 'edit_file.html', {'form': form, 'form_data': form_data,
                                               'file_number': file_number})
 
-
 @login_required
 def add_new_work_file(request, file_number):
     if request.method == 'POST':
@@ -1030,7 +1026,6 @@ def add_new_work_file(request, file_number):
     else:
         messages.error(request, 'Invalid request method.')
     return redirect('home', file_number=file_number)
-
 
 @login_required
 def edit_next_work(request, id):
@@ -1081,7 +1076,6 @@ def edit_next_work(request, id):
     # Render the template with the form
     return render(request, 'edit_models.html', {'form': form, 'title': 'Next Work','file_number':nextwork_instance.file_number.file_number})
 
-
 @login_required
 def add_last_work_file(request, file_number):
     if request.method == 'POST':
@@ -1105,7 +1099,6 @@ def add_last_work_file(request, file_number):
     else:
         messages.error(request, 'Invalid request method.')
     return redirect('home', file_number=file_number)
-
 
 @login_required
 def edit_last_work(request, id):
@@ -1146,7 +1139,6 @@ def edit_last_work(request, id):
     # Render the template with the form
     return render(request, 'edit_models.html', {'form': form, 'title': 'Last Work','file_number':lastwork_instance.file_number.file_number})
 
-
 @login_required
 def attendance_note_view(request, file_number):
     form = AttendanceNoteFormHalf()
@@ -1154,7 +1146,6 @@ def attendance_note_view(request, file_number):
     attendance_notes = MatterAttendanceNotes.objects.filter(
         file_number=file_number_id).order_by('-date')
     return render(request, 'attendance_notes.html', {'form': form, 'file_number': file_number, 'attendance_notes': attendance_notes})
-
 
 @login_required
 def add_attendance_note(request, file_number):
@@ -1178,7 +1169,6 @@ def add_attendance_note(request, file_number):
         messages.error(request, 'Invalid request method.')
 
     return redirect(attendance_note_view, file_number=file_number)
-
 
 @login_required
 def download_attendance_note(request, id):
@@ -1206,7 +1196,6 @@ def download_attendance_note(request, id):
     pdf_file = HTML(string=html_string).write_pdf()
 
     return HttpResponse(pdf_file, content_type='application/pdf')
-
 
 @login_required
 def edit_attendance_note(request, id):
@@ -1257,7 +1246,6 @@ def edit_attendance_note(request, id):
 
     return render(request, 'edit_models.html', {'form': form, 'title': 'Attendance Note','file_number':attendance_note_instance.file_number.file_number})
 
-
 @login_required
 def correspondence_view(request, file_number):
     letter_form = LetterHalfForm()
@@ -1268,7 +1256,6 @@ def correspondence_view(request, file_number):
         file_number=file_number_id).order_by('-date')
     return render(request, 'correspondence.html', {'letter_form': letter_form, 'file_number': file_number,
                                                    'emails': emails, 'letters': letters})
-
 
 @login_required
 def add_letter(request, file_number):
@@ -1291,7 +1278,6 @@ def add_letter(request, file_number):
         messages.error(request, 'Invalid request method.')
 
     return redirect('correspondence_view', file_number=file_number)
-
 
 @login_required
 def edit_letter(request, id):
@@ -1359,12 +1345,12 @@ def download_sowc(request, file_number):
     for email in emails:
         
         date = email.time.date().strftime('%d/%m/%Y')
-        time =email.time.time().strftime('%H:%M')
+        time = email.time.astimezone(timezone.get_current_timezone()).time().strftime('%I:%M %p')
         fee_earner = email.fee_earner.username if email.fee_earner != None else ''
         receiver = json.loads(email.receiver)
         sender = json.loads(email.sender)
         to_or_from = f"Email to {receiver[0]['emailAddress']['name']}" if email.is_sent else f"Perusal of email from {sender['emailAddress']['name']}"
-        desc = to_or_from + f" @ {email.time.time().strftime('%I:%M %p')}"
+        desc = to_or_from + f" @ {time}"
         units = email.units
         amount = ((email.fee_earner.hourly_rate.hourly_amount/10) * units) if email.fee_earner != None else ((email.file_number.fee_earner.hourly_rate.hourly_amount/10)* units)
         row = [date, time, fee_earner, desc, units, amount]
@@ -2347,7 +2333,7 @@ def download_statement_account(request, file_number):
 
     writer.writerow(['', f'Client Name: {file.client1.name} Matter:{
                     file.matter_description}[{file.file_number}]'])
-    writer.writerow(['', f'Statment of Account'])
+    writer.writerow(['', f'Statement of Account'])
 
     writer.writerow([])
     writer.writerow(
@@ -2491,7 +2477,8 @@ def edit_invoice(request, id):
 
         desc = request.POST['description']
         invoice.description = desc 
-
+        date = request.POST['date']
+        invoice.date = date
         our_costs_desc = request.POST.getlist('our_costs_desc[]')
         our_costs = request.POST.getlist('our_costs[]')
 
@@ -4089,3 +4076,94 @@ def edit_free30mins(request, id):
         form = Free30MinsForm(instance=instance)
 
     return render(request, 'edit_models.html', {'form': form, 'title': 'Free 30 Mins'})
+
+@login_required
+def undertakings(request):
+    # If the request is a POST (form submission), process the form data
+    if request.method == 'POST':
+        request_post_copy = request.POST.copy()
+    
+        file = WIP.objects.filter(file_number=request_post_copy.get('file_number')).first().id
+        request_post_copy['file_number'] = file
+        form = UndertakingForm(request_post_copy, request.FILES)  
+        if form.is_valid():
+            undertaking = form.save(commit=False)
+            
+            # Automatically assign fields that are not user inputs
+            undertaking.created_by = request.user  
+            undertaking.date_discharged = None  
+            undertaking.discharged_proof = None  
+            undertaking.discharged_by = None 
+
+            # Save the undertaking object
+            undertaking.save()
+
+            messages.success(request, "Undertaking has been successfully created.")
+            return redirect('undertakings')
+        else:
+            # Iterate through form errors and display them
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f"{field}: {error}")
+
+    else:
+        # If the request is a GET, load a blank form
+        form = UndertakingForm()
+
+    # Fetch all undertakings to display in the template
+    undertakings = Undertaking.objects.all()
+
+    undertakings_pending = undertakings.filter(date_discharged=None).count()
+
+    return render(request, 'undertakings.html', {'form': form, 'undertakings': undertakings, 'undertakings_pending':undertakings_pending})
+
+@login_required
+def edit_undertaking(request, id):
+    # Get the specific undertaking object
+    undertaking = get_object_or_404(Undertaking, pk=id)
+
+    # Get list of users and WIPs for the dropdowns
+    users = CustomUser.objects.all().order_by('username')
+    wips = WIP.objects.all().order_by('file_number')
+
+    if request.method == 'POST':
+        try:
+            # Get the form data from the request
+            undertaking.file_number_id = request.POST.get('file_number')
+            undertaking.date_given = request.POST.get('date_given')
+            undertaking.given_to = request.POST.get('given_to')
+            undertaking.description = request.POST.get('description')
+            undertaking.given_by_id = request.POST.get('given_by')
+
+            # Handle file upload for document_given_on
+            if request.FILES.get('document_given_on'):
+                undertaking.document_given_on = request.FILES['document_given_on']
+
+            undertaking.date_discharged = request.POST.get('date_discharged')
+            undertaking.discharged_by_id = request.POST.get('discharged_by')
+
+            # Handle file upload for discharged_proof
+            if request.FILES.get('discharged_proof'):
+                undertaking.discharged_proof = request.FILES['discharged_proof']
+
+            # Save the updated undertaking
+            undertaking.save()
+
+            # Display success message
+            messages.success(request, 'Undertaking updated successfully.')
+
+            # Redirect to the list view or wherever appropriate
+            return redirect('undertakings')
+
+        except Exception as e:
+            # If there was an error, log the exception (if needed) and display an error message
+            messages.error(request, f'Error updating undertaking: {str(e)}')
+
+    # Render the template with the undertaking object and other context
+    context = {
+        'undertaking': undertaking,
+        'users': users,
+        'wips': wips,
+    }
+    return render(request, 'forms/edit_undertaking.html', context)
+

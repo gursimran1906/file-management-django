@@ -261,6 +261,21 @@
           <span class="ms-3">Free 30 Mins</span>
         </a>
       </li>
+      <li>
+        <a
+          href="{% url 'undertakings'%}"
+          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'undertakings' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+        >
+         
+          <svg  class="w-5 h-5 {% if request.path == url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
+          aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 0 0-2 2v4m5-6h8M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m0 0h3a2 2 0 0 1 2 2v4m0 0v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6m18 0s-4 2-9 2-9-2-9-2m9-2h.01"/>
+          </svg>
+
+          
+          <span class="ms-3">Undertakings</span>
+        </a>
+      </li>
       {% if request.user.is_manager %}
       <hr>
       <li>
