@@ -5,10 +5,11 @@ __pycache__/
 
 # C extensions
 *.so
-
+media/
 old_db_data/
 node_modules/
 scripts/
+
 
 # Distribution / packaging
 .Python

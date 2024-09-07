@@ -291,62 +291,7 @@
       </div>
     </div>
   </div>
-  <div class="md:col-span-6" id="UndertakingDiv">
-    
-    <legend class='md:col-span-12'>Undertakings</legend>
-    {% with form.undertakings.value|jsonify as undertakings %}
-    
-    {% for undertaking in undertakings %}
-    
-        <div class="grid md:grid-cols-12 gap-2">
-            
-            <div class="md:col-span-10">
-                <textarea
-                type="text"
-                class="form-input w-full"
-                name="undertakings[]"
-                >{{undertaking}}</textarea>
-            </div>
-            <div class="md:col-span-2">
-                <span
-                type="button"
-                {% if forloop.counter == 1 %}
-                class="btn btn-primary"
-                onclick="addFieldsUndertaking('UndertakingDiv');"
-                id="add_more_fields"
-                >+</span >
-                {% else %}
-                    class="btn btn-danger"
-                    onclick="removeField(this);"
-                    id="add_more_fields"
-                    >-
-                {% endif %}
-                
-            </div>
-        </div>
-    {% empty %}
-        <div class="grid md:grid-cols-12 gap-2 mt-2">
-            <div class="col-span-10">
-            <textarea
-                type="text"
-                class="form-input"
-                name="undertakings[]"
-            >{{undertaking}}</textarea>
-            </div>
-            <div class="col-span-2">
-            <span
-                type="button"
-                
-                class="btn btn-primary"
-                onclick="addFieldsUndertaking('UndertakingDiv');"
-                id="add_more_fields"
-                >+</span >
-                
-            </div>
-        </div>
-    {% endfor %}
-    {% endwith %}
-  </div>
+
   <div class="md:col-span-12">
     <label class="form-label">Comments</label>
     <textarea type="text" class="form-input" name="comments">{{form.comments.value}}</textarea>

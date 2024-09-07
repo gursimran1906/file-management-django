@@ -170,16 +170,10 @@
             <h3 class='text-2xl  mb-2'>File Summary</h3>
             <div class="overflow-y-auto" id="FileSummary" aria-expanded="true">
                 <ul class="list">
-                    <li class="list-item rounded-t-lg ">File Number: {{matter.file_number}}</li>
+                    
                     <li class="list-item">FeeEarner: {{matter.fee_earner}}</li>
                     <li class="list-item">Matter Description: {{matter.matter_description}}</li>
-                    <li class="list-item rounded-b-lg">Funding: {% if matter.funding == 'PF'%}
-                    Private Funding
-                    {% else %}
-                    Conditional Fee Agreement
-                    {% endif %}
-                    </li>
-
+                    
                     <div id="accordion-color" data-accordion="collapse" data-active-classes="bg-blue-100 dark:bg-gray-800 text-blue-600 dark:text-white">
                         <h2 id="accordion-color-heading-1">
                             <button type="button" class="text-left flex bg-gray-50 items-center justify-between w-full px-2 py-2 rtl:text-right text-black border-b dark:focus:ring-blue-800 dark:border-gray-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-800 gap-3" 
@@ -324,23 +318,58 @@
                             </div>
                         {% endif %}
                     </div>
-                    
+                    <li class="list-item "><div class="flex flex-row justify-between"><span>Undertakings</span></div>
+                        
+                        <ol class="list-decimal mt-2 space-y-3">
+                            {% for undertaking in undertakings %}
+                                <li class="ml-4">
+                                    <div class="flex flex-row justify-between">
+                                        <!-- Badge display -->
+                                        {% if undertaking.date_discharged %}
+                                            <div>
+                                                <a class="link" href="{% url 'edit_undertaking' undertaking.id %}">{{ undertaking.description }} to {{ undertaking.given_to }} by {{ undertaking.given_by }}</a>
+                                                <span class="text-sm text-gray-500"> discharged by {{ undertaking.discharged_by }} on {{ undertaking.date_discharged|date:'d/m/Y' }}</span>
+                                            </div>
+                                            <div>
+                                                <span class="badge-green">
+                                                    Discharged
+                                                </span>
+                                            </div>
+                                            
+                                        {% else %}
+                                            <div>
+                                                <span class="link" href="{% url 'edit_undertaking' undertaking.id %}">{{ undertaking.description }} to {{ undertaking.given_to }} by {{ undertaking.given_by }}</span>
+                                            </div>
+                                            <div>
+                                                <span class="badge-red">
+                                                    Pending
+                                                </span>
+                                            </div>
+                                        
+                                            
+                                        {% endif %}
+                                    </div>
+                                </li>
+                            {% empty %}
+                                <p class="text-green-700">No undertakings available.</p>
+                            {% endfor %}
+                        </ol>
+                        
+                        
+                            
+                       
+                    </li>
+                    <li class="list-item ">Funding: {% if matter.funding == 'PF'%}
+                        Private Funding
+                        {% else %}
+                        Conditional Fee Agreement
+                        {% endif %}
+                    </li>
+                    <li class="list-item">File Status: {{matter.file_status}}</li>
+                    <li class="list-item rounded-t-lg ">File Number: {{matter.file_number}}</li>
                     <li class="list-item">Matter Type: {{matter.matter_type}}</li>
                     <li class="list-item ">File Location: {{matter.file_location}}</li>
                     <li class="list-item">Key Information: {{matter.key_information}}</li>
-                    <li class="list-item ">Undertakings:<br>
-                        {% with matter.undertakings|jsonify as undertakings %}
-                            
-                            {% for undertaking in undertakings %}
-                                {% if undertaking != '' %}
-                                    {{ forloop.counter }} - {{undertaking }}<br>
-                                {% endif %}
-                            {% empty %}
-                            <span class="text-green-700">No undertakings</span>
-                            {% endfor %}
-                            
-                        {% endwith %}
-                    </li>
                     <li class="list-item">File Status: {{matter.file_status}}</li>
                     <li class="list-item rounded-b-lg">Comments: {{matter.comments}}</li>
                     
