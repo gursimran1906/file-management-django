@@ -160,7 +160,7 @@ class WIP(models.Model):
         AuthorisedParties, on_delete=models.SET_NULL, related_name='auth_party2_wip', null=True, blank=True)
 
     key_information = models.TextField(null=True, blank=True)
-    undertakings = models.JSONField(null=True, blank=True)
+    
     comments = models.TextField(null=True, blank=True)
     created_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, related_name='wip_created_by', null=True, blank=True)

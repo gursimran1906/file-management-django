@@ -262,6 +262,7 @@ def user_dashboard(request):
 def display_data_home_page(request, file_number):
     try:
         matter = WIP.objects.get(file_number=file_number)
+        undertakings = Undertaking.objects.filter(file_number=matter)
         next_work_form = NextWorkFormWithoutFileNumber()
         next_work = NextWork.objects.filter(
             file_number=matter, completed=False).order_by('date')
@@ -289,6 +290,7 @@ def display_data_home_page(request, file_number):
         if matter.file_status.status == 'Archived':
             messages.error(request,"ARCHIVED MATTER. Please note this matter is archived.")
         return render(request, 'home.html', {'matter': matter,
+                                             'undertakings':undertakings,
                                              'file_number':file_number,
                                              'next_work_form': next_work_form, 'next_work': next_work,
                                              'last_work': last_work, 'last_work_form': last_work_form,
@@ -764,8 +766,7 @@ def open_new_file_page(request):
                 request_post_copy, 'terms_of_engagement_client1', 'terms_of_engagement_client2')
             update_checkbox_values(
                 request_post_copy, 'ncba_client1', 'ncba_client2')
-            request_post_copy['undertakings'] = json.dumps(
-                request_post_copy.getlist('undertakings[]'))
+            
             request_post_copy['created_by'] = request.user
             
             form = OpenFileForm(request_post_copy)
@@ -933,8 +934,7 @@ def edit_file(request, file_number):
         try:
             
             request_post_copy = preprocess_form_data(request.POST)
-            request_post_copy['undertakings'] = json.dumps(
-                request_post_copy.getlist('undertakings[]'))
+            
 
             if request_post_copy['client2'] == '-1':
                 request_post_copy['client2'] = add_new_client(
@@ -955,8 +955,7 @@ def edit_file(request, file_number):
                 request_post_copy, 'terms_of_engagement_client1', 'terms_of_engagement_client2')
             update_checkbox_values(
                 request_post_copy, 'ncba_client1', 'ncba_client2')
-            request_post_copy['undertakings'] = json.dumps(
-                request_post_copy.getlist('undertakings[]'))
+            
             request_post_copy['created_by'] = file.created_by
 
             form = OpenFileForm(request_post_copy, instance=file)
@@ -3489,17 +3488,15 @@ def download_frontsheet(request, file_number):
         other_side_solicitors = ''
         other_side_solicitors_email = ''
     undertakings = ''
-    if isinstance(file.undertakings, str):
-        undertakings_arr = json.loads(file.undertakings)
-    elif isinstance(file.undertakings, (bytes, bytearray)):
-        undertakings_arr = json.loads(file.undertakings.decode('utf-8'))
-    elif isinstance(file.undertakings, (dict, list)):
-        undertakings_arr = file.undertakings
-    else:
-        raise ValueError("Unsupported type for file.undertakings")
+    undertakings_obj = Undertaking.objects.filter(file_number=file)
     
-    for undertaking in undertakings_arr:
-        undertakings = undertakings + f'<li>{undertaking}</li>'
+    for undertaking in undertakings_obj:
+        if undertaking.date_discharged:
+            undertakings += f'''<li><s>{undertaking.description} to {undertaking.given_to} by {undertaking.given_by}</s>
+              Discharged by {undertaking.discharged_by} on {undertaking.date_discharged.strftime('%d/%m/%Y')}
+            </li>'''
+        else:
+            undertakings += f'<li>{undertaking.description} to {undertaking.given_to} by {undertaking.given_by}</li>'
 
     html = f"""
     <html>
@@ -3666,7 +3663,7 @@ def download_frontsheet(request, file_number):
                     <td style="background-color:grey;"  colspan='3'></td>
                 </tr>
                 <tr>
-                    <td class='' colspan='3'><b>UNDERTAKINGS</b></td>
+                    <td class='' colspan='3'><b>UNDERTAKINGS</b> (discharged undertakings will be striked through)</td>
                 </tr>
                 <tr>
                     <td class='' colspan='3'><ul>{undertakings}</ul></td>
