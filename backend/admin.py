@@ -22,7 +22,7 @@ from django.contrib import admin
 from .models import (Modifications, ClientContactDetails, AuthorisedParties, OthersideDetails,
                      FileLocation, FileStatus, MatterType, WIP, NextWork, LastWork, PmtsSlips,
                      LedgerAccountTransfers, TempSlips, Invoices, MatterEmails, MatterLetters,
-                     MatterAttendanceNotes, RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees)
+                     MatterAttendanceNotes, RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees, Undertaking)
 
 @admin.register(Modifications)
 class ModificationsAdmin(admin.ModelAdmin):
@@ -198,3 +198,19 @@ class Free30MinsAttendeesAdmin(admin.ModelAdmin):
     list_filter = ('county', 'created_by', 'timestamp')
 
 admin.site.register(Free30MinsAttendees, Free30MinsAttendeesAdmin)
+
+@admin.register(Undertaking)
+class UndertakingAdmin(admin.ModelAdmin):
+    # List display for the admin list view
+    list_display = ('id', 'file_number', 'date_given', 'given_to', 'given_by', 'date_discharged', 'discharged_by', 'timestamp')
+    
+    # Add search fields
+    search_fields = ('file_number__file_number', 'given_to', 'description', 'given_by__username', 'discharged_by__username')
+    
+    # Add filters for fields
+    list_filter = ('date_given', 'date_discharged', 'given_by', 'discharged_by')
+    
+    # Make the list ordered by timestamp by default
+    ordering = ('-timestamp',)
+
+   

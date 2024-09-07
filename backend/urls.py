@@ -7,6 +7,7 @@ from .views import allocate_monies, download_statement_account, download_invoice
 from .views import download_cashier_data, edit_file, edit_client, edit_authorised_party,download_file_logs, download_frontsheet, generate_ledgers_report, user_dashboard, download_risk_assessment
 from .views import add_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring
 from .views import edit_ongoing_monitoring, download_document, onboarding_documents_display, edit_otherside, free30mins, download_free30mins, edit_free30mins
+from .views import undertakings, edit_undertaking
 
 urlpatterns = [
     path('dashboard/', user_dashboard, name='user_dashboard'),
@@ -91,6 +92,9 @@ urlpatterns = [
 
     path('free30mins/',free30mins, name='free30mins'),
     path('free30mins/download/<int:id>/',download_free30mins, name='download_free30mins'),
-    path('free30mins/edit/<int:id>/', edit_free30mins, name='edit_free30mins')
+    path('free30mins/edit/<int:id>/', edit_free30mins, name='edit_free30mins'),
+
+    path('undertakings/',undertakings, name='undertakings' ),
+    path('undertakings/edit/<int:id>/', edit_undertaking, name='edit_undertaking'),
 
 ]

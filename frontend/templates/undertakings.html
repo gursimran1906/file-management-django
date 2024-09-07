@@ -1,0 +1,210 @@
+{% extends 'base.html' %}
+{% load utils %}
+{% block title %}Free 30 Mins{% endblock %} 
+{% block container %}
+
+<div class='grid grid-cols-1 md:grid-cols-3 mt-2 gap-4'>
+    <h1 class='div-container md:w-fit h-fit text-3xl font-medium'>Undertakings</h1>
+    <div class='div-container'>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th colspan="2" class="text-lg text-black font-normal ">Summary</th>
+
+                </tr>
+            </thead>
+            <tbody>
+                <tr class='border-b border-t text-black'>
+                    <th class='py-2 pe-2 font-normal' scope="row">Undertakings yet to be discharged</th>
+                    <td class='td'><span id="totalOurCosts" class="{% if undertakings_pending > 0 %} badge-red {% else %} badge-green {% endif %}">{{undertakings_pending}}</span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="div-container flex flex-col gap-2 md:justify-self-end  h-fit ">
+        <h3 class='text-2xl text-center'>Actions</h3>
+        <div class="flex gap-2 justify-center">
+            <button class='btn-primary' onclick="toggleNormalCollapse('add_undertaking_form');">Add Undertaking</button>
+        </div>
+    </div>
+</div>
+<form class="hidden" method="post" id="add_undertaking_form" action="{% url 'undertakings' %}" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="grid md:grid-cols-2 gap-4 mt-4 ">
+
+        <div class="div-container md:col-span-2 grid md:grid-cols-2 gap-4">
+            <div class="space-y-2">
+                <div>
+                    <label for="{{ form.file_number.id_for_label }}">File Number</label>
+                    {{ form.file_number }}
+                </div>
+                <div>
+                    <label for="{{ form.date_given.id_for_label }}">Date Given</label>
+                    {{ form.date_given }}
+                </div>
+                <div>
+                    <label for="{{ form.given_to.id_for_label }}">Given To</label>
+                    {{ form.given_to }}
+                </div>
+            </div>
+            <div class="space-y-2">
+                <div>
+                    <label for="{{ form.description.id_for_label }}">Description</label>
+                    {{ form.description }}
+                </div>
+                <div>
+                    <label for="{{ form.given_by.id_for_label }}">Given By</label>
+                    {{ form.given_by }}
+                </div>
+                <div>
+                    <label for="{{ form.document_given_on.id_for_label }}">Document Given On</label>
+                    {{ form.document_given_on }}
+                </div>
+                
+            </div>
+            <div>
+                <button class="btn-primary " type="submit">Submit</button>
+            </div>
+        </div>
+        
+        
+    </div>
+</form>
+
+<div class="div-container mt-4 overflow-auto">
+    <table id="undertaking_table" class="table">
+        <thead class="text-gray-600 ">
+            <tr class="border-b">
+                <th class="td">File Number</th>
+                <th class="td">Date Given</th>
+                <th class="td">Given To</th>
+                <th class="td">Description</th>
+                <th class="td">Document Given On</th>
+                <th class="td">Date Discharged</th>
+                <th class="td">Discharged Proof</th>
+                <th class="td">Given By</th>
+                <th class="td">Discharged By</th>
+                <th class="td">Created By</th>
+                <th class="td">Timestamp</th>
+                <th class="td">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="text-gray-900">
+            {% for undertaking in undertakings %}
+            <tr class="border-b hover:bg-gray-50">
+                <td class="td">{{ undertaking.file_number.file_number }}</td>
+                <td class="td">{{ undertaking.date_given|date:'d/m/Y' }}</td>
+                <td class="td">{{ undertaking.given_to }}</td>
+                <td class="td">{{ undertaking.description }}</td>
+                <td class="td">
+                    {% if undertaking.document_given_on %}
+                        <a href="{{ undertaking.document_given_on.url }}" class='link' target="_blank">View</a>
+                    {% else %}
+                        No Document
+                    {% endif %}
+                </td>
+                <td class="td ">
+                    {% if undertaking.date_discharged %}
+                    <div class='badge-green w-fit'>
+                        <span>
+                            {{ undertaking.date_discharged|date:'d/m/Y' }}
+                        </span>
+                    </div>
+                    {% else %}
+                        <div class='badge-red w-fit'>
+                            <span>
+                                Pending
+                            </span>
+                        </div>
+                    {% endif %}
+                </td>
+                <td class="td">
+                    {% if undertaking.discharged_proof %}
+                        <a href="{{ undertaking.discharged_proof.url }}" target="_blank" class='link'>View</a>
+                    {% else %}
+                        No Proof
+                    {% endif %}
+                </td>
+                <td class="td">{{ undertaking.given_by }}</td>
+                <td class="td">{{ undertaking.discharged_by }}</td>
+                <td class="td">{{ undertaking.created_by }}</td>
+                <td class="td">{{ undertaking.timestamp|date:'d/m/Y h:i a' }}</td>
+                <td class="td">
+                    <a class="link" href="{% url 'edit_undertaking' undertaking.id %}">Edit</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot class="">
+            <tr class="">
+                <th class="td">File Number</th>
+                <th class="td">Date Given</th>
+                <th class="td">Given To</th>
+                <th class="td">Description</th>
+                <th class="td">Document Given On</th>
+                <th class="td">Date Discharged</th>
+                <th class="td">Discharged Proof</th>
+                <th class="td">Given By</th>
+                <th class="td">Discharged By</th>
+                <th class="td">Created By</th>
+                <th class="td">Timestamp</th>
+                <th class="td">Actions</th>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+
+<script>
+    $(document).ready(function() {
+        $.fn.dataTable.moment('DD/MM/YYYY');
+        $.fn.dataTable.moment('DD/MM/YYYY h:mm A');
+        var table = $('#undertaking_table').DataTable({
+            "ordering": true,
+            "responsive": true,
+            "searching": true,
+            lengthMenu: [
+                [10, 25, 50, -1],
+                [10, 25, 50, 'All']
+            ],
+            pageLength: 10,
+        });
+
+        $('#undertaking_table tfoot th').each(function() {
+            var title = $(this).text();
+            $(this).html('<input class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" type="text" placeholder="Search ' + title + '" />');
+        });
+
+        table.columns().every(function() {
+            var that = this;
+            $('input', this.footer()).on('keyup change', function() {
+                if (that.search() !== this.value) {
+                    that
+                        .search(this.value)
+                        .draw();
+                }
+            });
+        });
+
+        $('#undertaking_table th').hover(
+            function() {
+                $(this).css('cursor', 'pointer');
+            },
+            function() {
+                $(this).css('cursor', 'auto');
+            }
+        );
+
+        table.on('order.dt', function() {
+            $('#undertaking_table thead th').each(function() {
+                $(this).removeClass('asc desc');
+            });
+
+            var order = table.order();
+            if (order.length) {
+                var th = $('#undertaking_table thead th:eq(' + order[0][0] + ')');
+                th.addClass(order[0][1]);
+            }
+        });
+    });
+</script>
+{% endblock %}

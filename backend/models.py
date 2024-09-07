@@ -555,9 +555,9 @@ class Undertaking(models.Model):
     description = models.TextField()
     given_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, related_name='undertaking_given_by', null=True, blank=True)
     document_given_on = models.FileField(upload_to=undertaking_file_upload_path)
-    date_discharged = models.DateField()
-    discharged_proof = models.FileField(upload_to=undertaking_file_upload_path)
-    discharged_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
+    date_discharged = models.DateField(null=True, blank=True)
+    discharged_proof = models.FileField(upload_to=undertaking_file_upload_path, null=True, blank=True)
+    discharged_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
                                    related_name='undertaking_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
