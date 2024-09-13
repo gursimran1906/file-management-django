@@ -1344,7 +1344,7 @@ def download_sowc(request, file_number):
     for email in emails:
         
         date = email.time.date().strftime('%d/%m/%Y')
-        time = email.time.astimezone(timezone.get_current_timezone()).time().strftime('%I:%M %p')
+        time = email.time.astimezone(timezone.get_current_timezone()).time().strftime('%H:%M')
         fee_earner = email.fee_earner.username if email.fee_earner != None else ''
         receiver = json.loads(email.receiver)
         sender = json.loads(email.sender)
