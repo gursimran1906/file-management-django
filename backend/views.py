@@ -1370,9 +1370,9 @@ def download_sowc(request, file_number):
         def get_sort_key(row):
             # Handling empty dates
             date_str = row[0] if row[0] else '01/01/0001'
-            time_str = row[1] if row[1] else '00:00'    # Handling empty times
+            time_str = row[1] if row[1] else '00:00'
             date_time_str = f"{date_str} {time_str}"
-            date_time = datetime.strptime(date_time_str, '%d/%m/%Y %I:%M %p')
+            date_time = datetime.strptime(date_time_str, '%d/%m/%Y %I:%M')
             return date_time
 
         sorted_rows = sorted(rows, key=get_sort_key)
