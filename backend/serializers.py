@@ -1,14 +1,21 @@
+from datetime import datetime
 class InvoicesSerializer:
     def __init__(self, invoice_instance):
         self.invoice_instance = invoice_instance
 
     def to_dict(self):
+        date_value = self.invoice_instance.date
+
+        if isinstance(date_value, str):
+            date_value = datetime.strptime(date_value, '%Y-%m-%d')
+            
+        formatted_date = date_value.strftime('%Y-%m-%d')
         return {
             'id': self.invoice_instance.id,
             'invoice_number': self.invoice_instance.invoice_number,
             'state': self.invoice_instance.state,
             'file_number_id': self.invoice_instance.file_number_id,
-            'date': self.invoice_instance.date.strftime('%Y-%m-%d'),  # Convert to string
+            'date': formatted_date,
             'payable_by': self.invoice_instance.payable_by,
             'by_email': self.invoice_instance.by_email,
             'by_post': self.invoice_instance.by_post,
