@@ -196,7 +196,7 @@ class LedgerAccountTransfersForm(forms.ModelForm):
 class LedgerAccountTransfersHalfForm(forms.ModelForm):
     class Meta:
         model = LedgerAccountTransfers
-        fields = ['date', 'from_ledger_account', 'to_ledger_account', 'amount', 'description']
+        fields = ['date', 'from_ledger_account','file_number_from', 'to_ledger_account', 'file_number_to', 'amount', 'description']
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date'}),
         }
@@ -204,6 +204,8 @@ class LedgerAccountTransfersHalfForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super(LedgerAccountTransfersHalfForm, self).__init__(*args, **kwargs)
         self.fields['date'].initial = timezone.localdate()
+        self.fields['file_number_from'].choices = sorted(self.fields['file_number_from'].choices, key=lambda choice: choice[1])
+        self.fields['file_number_to'].choices = sorted(self.fields['file_number_to'].choices, key=lambda choice: choice[1])
         for field_name, field in self.fields.items():
             field.widget.attrs['class'] = 'form-input'
 
