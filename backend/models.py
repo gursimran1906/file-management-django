@@ -536,6 +536,9 @@ class MatterAttendanceNotes(models.Model):
 
     timestamp = models.DateTimeField(auto_now_add=True)
 
+class Policies(models.Model):
+    id = models.AutoField(primary_key=True)
+
 class PoliciesRead(models.Model):
     id = models.AutoField(primary_key=True)
     policy_number = models.IntegerField()
@@ -588,3 +591,4 @@ class Free30Mins(models.Model):
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
                                    related_name='free30_mins_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+

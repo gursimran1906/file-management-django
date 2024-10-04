@@ -1,0 +1,225 @@
+{% extends 'base.html' %} {% load utils %} {% block title %}Profile{% endblock %} {% block container %}
+<div class="flex flex-row justify-between gap-4">
+  <h1 class="div-container md:w-fit h-fit text-3xl font-medium">Profile</h1>
+  <div class="div-container">
+    <table class="table">
+      <thead>
+        <tr>
+          <th colspan="2" class="text-lg text-black font-normal text-center">
+            Holidays Summary <span class='text-xs'>for current year</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="border-b text-black">
+          <th class="td" scope="row">Total Paid</th>
+          <td class="td"><span id="totalOurCosts">{{total_paid_holidays}}</span></td>
+        </tr>
+        <tr class="border-b text-black">
+          <th class="td" scope="row">Total Unpaid</th>
+          <td class="td"><span class="inline" id="totalVAT">{{total_unpaid_holidays}}</span></td>
+        </tr>
+        <tr class="border-b text-black">
+          <th class="td" scope="row">Total Paid Remaining</th>
+          <td class="td">
+            <span class="inline" id="totalCostsAndVat">{{request.user.remaining_holidays}}</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="div-container flex flex-col gap-2 md:justify-self-end h-fit">
+    <h3 class="text-2xl text-center">Actions</h3>
+    <div class="flex gap-2">
+      <button
+        class="btn btn-primary"
+        onclick="toggleNormalCollapse('request_holiday_form');"
+      >
+        Request Holiday
+      </button>
+
+      <button
+        class="btn btn-primary"
+        onclick="toggleNormalCollapse('sick_leave_form');"
+      >
+        Add Sick Leave
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Holiday Request Form -->
+<div class="hidden div-container w-fit mt-2" id="request_holiday_form">
+  <h2 class="text-2xl font-bold mb-4">Holiday Request</h2>
+  <form method="POST" action="{% url 'add_holiday_request' %}" class="">
+    {% csrf_token %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="">
+        <label
+          for="start_date"
+          class="block text-gray-700 text-sm font-bold mb-2"
+        >
+          Start Date <span class="text-red-500">*</span>
+        </label>
+        <input
+          type="datetime-local"
+          name="start_date"
+          id="start_date"
+          class="form-input"
+          required
+        />
+      </div>
+      <div class="">
+        <label
+          for="end_date"
+          class="block text-gray-700 text-sm font-bold mb-2"
+        >
+          End Date <span class="text-red-500">*</span>
+        </label>
+        <input
+          type="datetime-local"
+          name="end_date"
+          id="end_date"
+          class="form-input"
+          required
+        />
+      </div>
+
+      <div class="">
+        <label for="reason" class="block text-gray-700 text-sm font-bold mb-2"
+          >Reason</label
+        >
+        <input type="text" name="reason" id="reason" class="form-input" />
+      </div>
+      <div class="">
+        <label for="type" class="block text-gray-700 text-sm font-bold mb-2">
+          Type <span class="text-red-500">*</span>
+        </label>
+        <select name="type" id="type" class="form-input" required>
+          <option value="" disabled selected>Select Type</option>
+          <option value="Paid">Paid</option>
+          <option value="Unpaid">Unpaid</option>
+        </select>
+      </div>
+    </div>
+    <div class="mt-4 flex items-center justify-between">
+      <button type="submit" class="btn-primary">Submit</button>
+    </div>
+  </form>
+</div>
+
+<!-- Sickness Record Form -->
+<div class="hidden div-container mt-4" id="sick_leave_form">
+  <h2 class="text-2xl font-bold mb-4">Sickness Record</h2>
+  <form method="POST" action="" class="">
+    {% csrf_token %}
+    <div class="mb-4">
+      <label for="employee" class="block text-gray-700 text-sm font-bold mb-2"
+        >Employee:</label
+      >
+      <select name="employee" id="employee" class="form-input">
+        {% for employee in employees %}
+        <option value="{{ employee.id }}">{{ employee.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="mb-4">
+      <label for="start_date" class="block text-gray-700 text-sm font-bold mb-2"
+        >Start Date:</label
+      >
+      <input
+        type="datetime-local"
+        name="start_date"
+        id="start_date"
+        class="form-input"
+      />
+    </div>
+    <div class="mb-4">
+      <label for="end_date" class="block text-gray-700 text-sm font-bold mb-2"
+        >End Date:</label
+      >
+      <input
+        type="datetime-local"
+        name="end_date"
+        id="end_date"
+        class="form-input"
+      />
+    </div>
+    <div class="mb-4">
+      <label
+        for="description"
+        class="block text-gray-700 text-sm font-bold mb-2"
+        >Description:</label
+      >
+      <textarea
+        name="description"
+        id="description"
+        class="form-input"
+      ></textarea>
+    </div>
+    <div class="flex items-center justify-between">
+      <button type="submit" class="btn-primary">Submit</button>
+    </div>
+  </form>
+</div>
+
+<div class="div-container mt-4">
+  <h2 class="text-2xl font-bold mb-4">Holidays</h2>
+  <table class="w-full text-sm">
+    <thead>
+      <tr>
+        <th class="py-2 px-4 border-b text-left text-gray-800">Sr No.</th>
+        <th class="py-2 px-4 border-b text-left text-gray-800">Start Date</th>
+        <th class="py-2 px-4 border-b text-left text-gray-800">End Date</th>
+        <th class="py-2 px-4 border-b text-left text-gray-800">Type</th>
+
+        <th class="py-2 px-4 border-b text-left text-gray-800">Approved</th>
+        <th class="py-2 px-4 border-b text-left text-gray-800">Approved By</th>
+
+        <th class="py-2 px-4 border-b text-left text-gray-800">Reason</th>
+
+        <th class="py-2 px-4 border-b text-left text-gray-800">
+          Number of Days
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for holiday in holiday_requests %}
+      <tr class="hover:bg-gray-50">
+        <td class="py-2 px-4 border-b">{{forloop.counter}}</td>
+
+        <td class="py-2 px-4 border-b">
+          {{ holiday.request.start_date|date:"d/m/Y H:i" }}
+        </td>
+        <td class="py-2 px-4 border-b">
+          {{ holiday.request.end_date|date:"d/m/Y H:i" }}
+        </td>
+        <td class="py-2 px-4 border-b">
+          <span class="">{{ holiday.request.type }}</span>
+        </td>
+        <td class="py-2 px-4 border-b">
+          <span
+            class="{% if holiday.request.approved %} badge-green {% else %} badge-red {% endif %}"
+            >{{ holiday.request.approved|yesno:"Yes,No" }}</span
+          >
+        </td>
+        <td class="py-2 px-4 border-b">
+          {% if holiday.request.approved_by %}{{ holiday.request.approved_by }}
+          {% else %} - {% endif %}
+        </td>
+        <td class="py-2 px-4 border-b">{{ holiday.request.reason }}</td>
+        <td class="py-2 px-4 border-b">{{holiday.total_days}}</td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="4" class="py-2 px-4 border-b text-center">
+          No holiday requests found.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

@@ -26,5 +26,35 @@ class CustomUser(AbstractUser):
     is_matter_fee_earner = models.BooleanField(default=False)
     is_manager = models.BooleanField(default=False)
     hourly_rate = models.ForeignKey(Rate,null=True, on_delete=models.SET_NULL)
+    remaining_holidays=models.DecimalField(decimal_places=2, max_digits=4)
     def __str__(self):
         return self.username
+    
+class AttendanceRecord(models.Model):
+    employee = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    clock_in = models.DateTimeField()
+    clock_out = models.DateTimeField(null=True, blank=True)
+    lunch_in = models.DateTimeField(null=True, blank=True)
+    lunch_out = models.DateTimeField(null=True, blank=True)
+
+class HolidayRecord(models.Model):
+    TYPE_CHOICES = [
+        ('Paid', 'Paid'),
+        ('Unpaid', 'Unpaid')  
+    ]
+    employee = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
+    reason = models.TextField(null=True, blank=True)
+    type=models.CharField(max_length=10, choices=TYPE_CHOICES, default='Paid')
+    approved = models.BooleanField(default=False)
+    approved_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='holiday_approved_by')
+    approved_on = models.DateTimeField(null=True, blank=True)
+
+class SicknessRecord(models.Model):
+    employee = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField(null=True, blank=True)
+    description = models.TextField()
+    created_by=models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='sickness_record_created_by')
+    timestamp = models.DateTimeField(auto_now_add=True)
