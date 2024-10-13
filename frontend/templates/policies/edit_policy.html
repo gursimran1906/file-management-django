@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% load utils %}
+{% block title %}Edit Policy{% endblock %}
+{% block container %}
+<h2 class="div-container text-xl w-fit font-medium">Edit Policy</h2>
+<form method="post" id="editPolicyForm" class="div-container mt-4">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button class="btn-primary mt-2" type="submit" id="submitBtn">Save Changes</button>
+</form>
+
+<script>
+    
+    document.getElementById('submitBtn').addEventListener('click', function(event) {
+        event.preventDefault(); 
+        
+        
+        const userConfirmed = confirm("Are you sure you want to save these changes?");
+        
+        if (userConfirmed) {
+            
+            document.getElementById('editPolicyForm').submit();
+        }
+    });
+</script>
+{% endblock %}

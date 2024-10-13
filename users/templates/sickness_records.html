@@ -1,0 +1,188 @@
+{% extends 'base.html' %} {% load utils %} 
+{% block title %}Sickness Records{% endblock %} {% block container %}
+
+  
+  <div class='grid md:grid-cols-2 gap-4 mt-2'>
+    <h1 class="div-container md:w-fit h-fit text-3xl font-medium">All Sickness Records</h1>
+   
+    <div class='div-container   md:justify-self-end '>
+        <form method="POST" action="{% url 'download_invoices' %}">
+            {% csrf_token %}
+            <h3 class='text-2xl mb-4 text-center'>Actions</h3>
+            <div class="flex flex-col gap-4">
+        
+                <div date-rangepicker datepicker-buttons datepicker-autoselect-today datepicker-format="dd/mm/yyyy" datepicker-title="Choose date range" class="flex items-center">
+                    <div class="relative">
+                        <div class="absolute inset-y-0 start-0 flex items-center ps-2 pointer-events-none">
+                            <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/>
+                            </svg>
+                        </div>
+                            <input name="start" type="text" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Select date start">
+                    </div>
+                    <span class="mx-4 text-gray-500">to</span>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 start-0 flex items-center ps-2 pointer-events-none">
+                            <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/>
+                            </svg>
+                        </div>
+                        <input name="end" type="text" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Select date end">
+                    </div>
+                </div>
+                <button class="btn-primary" type="submit" >Download Records as CSV</button>
+            </div>
+        </form>
+    </div>
+
+</div>
+  <div class="overflow-auto div-container mt-4">
+    <table id="sicknessTable" class="min-w-ful table">
+      <thead>
+        <tr class="text-gray-800">
+          <th class="text-left py-2 px-4 border-b ">Employee</th>
+          <th class="text-left py-2 px-4 border-b">Start Date</th>
+          <th class="text-left py-2 px-4 border-b ">End Date</th>
+          <th class="text-left py-2 px-4 border-b ">Description</th>
+          <th class="text-left py-2 px-4 border-b ">Created By</th>
+          <th class="text-left py-2 px-4 border-b ">Timestamp</th>
+          <th class="text-left py-2 px-4 border-b ">Edit</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in sickness_records %}
+        <tr class="text-gray-800">
+          <td class="py-2 px-4 border-b ">{{ record.employee }}</td>
+          <td class="py-2 px-4 border-b ">{{ record.start_date|date:"d/m/Y H:i" }}</td>
+          <td class="py-2 px-4 border-b ">
+            {% if record.end_date %}
+              {{ record.end_date|date:"d/m/Y H:i" }}
+            {% else %}
+              Ongoing
+            {% endif %}
+          </td>
+          <td class="py-2 px-4 border-b ">{{ record.description }}</td>
+          <td class="py-2 px-4 border-b ">{{ record.created_by }}</td>
+          <td class="py-2 px-4 border-b ">{{ record.timestamp|date:"d/m/Y H:i" }}</td>
+          <td class="py-2 px-4 border-b "><a class="link">Edit</a></td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" class="py-4 text-center text-gray-500">No sickness records found.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+
+<script>
+    $(document).ready(function() {
+        
+        $.fn.dataTable.moment('DD/MM/YYYY');
+        
+        var table = $('#sicknessTable').DataTable({
+            
+            "ordering": true,
+            "responsive": true,
+            lengthMenu: [
+                [10, 25, 50, -1],
+                [10, 25, 50, 'All']
+            ],
+            pageLength: 10,
+    
+    
+    
+        });
+    
+    
+    
+        function updateTotals() {
+    
+            var selectedRows = table.rows('.selected').data();
+            var totalOurCosts = 0;
+            var totalVAT = 0;
+            var totalCostsAndVat = 0;
+    
+            // Calculate totals from selected rows
+            for (var i = 0; i < selectedRows.length; i++) {
+                totalOurCosts += parseFloat(selectedRows[i][5].replace('£', '').replace(',', ''));
+                totalVAT += parseFloat(selectedRows[i][6].replace('£', '').replace(',', ''));
+                totalCostsAndVat += parseFloat(selectedRows[i][7].replace('£', '').replace(',', ''));
+            }
+    
+            // Update the totals in the fixed box
+            $('#totalOurCosts').text('£' + totalOurCosts.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+            $('#totalVAT').text('£' + totalVAT.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+            $('#totalCostsAndVat').text('£' + totalCostsAndVat.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+    
+        }
+        $('#sicknessTable tbody').on('click', 'tr', function() {
+            $(this).toggleClass('selected');
+            updateTotals();
+        });
+    
+        table.on('draw', function() {
+            // var visibleRows = table.rows({
+            //     search: 'applied'
+            // }).indexes();
+    
+            var visibleRows = table.rows({
+                page: 'current'
+            }).indexes();
+    
+            table.rows().every(function(rowIdx) {
+                var rowNode = this.node();
+                var isVisible = visibleRows.indexOf(rowIdx) !== -1;
+                console.log(rowIdx, visibleRows.indexOf(rowIdx))
+                if (isVisible) {
+                    $(rowNode).addClass('selected');
+                } else {
+                    $(rowNode).removeClass('selected');
+                }
+            });
+            updateTotals();
+    
+        });
+    
+        $('#sicknessTable tfoot th').each(function() {
+            var title = $(this).text();
+            $(this).html('<input class="form-input" type="text" placeholder="Search ' + title + '" />');
+        });
+    
+    
+        table.columns().every(function() {
+            var that = this;
+            $('input', this.footer()).on('keyup change', function() {
+                if (that.search() !== this.value) {
+                    that
+                        .search(this.value)
+                        .draw();
+                }
+            });
+        });
+    
+    
+        $('#sicknessTable th').hover(
+            function() {
+                $(this).css('cursor', 'pointer');
+            },
+            function() {
+                $(this).css('cursor', 'auto');
+            }
+        );
+    
+        table.on('order.dt', function() {
+            $('#sicknessTable thead th').each(function() {
+                $(this).removeClass('asc desc');
+            });
+    
+            var order = table.order();
+            if (order.length) {
+                var th = $('#sicknessTable thead th:eq(' + order[0][0] + ')');
+                th.addClass(order[0][1]);
+            }
+        });
+    });
+</script>
+{% endblock %}
