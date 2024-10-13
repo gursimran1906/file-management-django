@@ -3763,13 +3763,15 @@ def policies_display(request):
                 read_by=request.user
             )
         )
-    )
+    ).order_by('description')
 
     policies_read = PoliciesRead.objects.filter(read_by=request.user).order_by('-timestamp')
-
+    any_unread = policies.filter(is_read=False).exists()
     context = {
         'policies': policies,
         'policies_read': policies_read,
+        'all_read': not any_unread
+
     }
     
     return render(request, 'policies/policies_home.html', context)

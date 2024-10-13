@@ -418,8 +418,8 @@ class PolicyForm(forms.ModelForm):
     
     def __init__(self, *args, **kwargs):
         super(PolicyForm, self).__init__(*args, **kwargs)
-        
-        if self.instance:
+
+        if self.instance and self.instance.pk:
             latest_version = self.instance.latest_version()
             if latest_version:
                 self.fields['content'].initial = latest_version.content
