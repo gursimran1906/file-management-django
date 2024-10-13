@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% load utils %}
+{% block title %}Policies{% endblock %}
+{% block container %}
+<div class='grid {% if policies_read %}md:grid-cols-3 {% else %}md:grid-cols-2{% endif %} gap-4 mt-2'>
+    <h1 class='div-container md:w-fit h-fit text-3xl font-medium'>ANP Policies</h1>
+    
+    {% if policies_read %}
+    <div class='div-container h-1/4-screen'>
+        <h2 class='text-xl'>Policies read</h2>
+        <div class="rounded-lg border mt-2 h-3/4 overflow-auto">
+            <table class='table table-auto text-sm'>
+                <tr class="sticky top-0 bg-white border-b rounded-t-lg text-gray-800">
+                    <td class="py-1 px-2">Policy</td>
+                    <td class="py-2 px-2">Read On</td>
+                </tr>
+                {% for policy_read in policies_read %}
+                <tr class="hover:bg-gray-50 {% if forloop.last %}rounded-b-lg{% else %}border-b{% endif %}">
+                    <td class="py-1 px-2 text-gray-700">{{ policy_read.policy.description }}</td>
+                    <td class="py-1 px-2 text-gray-700">{{ policy_read.timestamp|date:'d/m/Y h:i a' }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+    {% endif %}
+    
+    <div class='div-container h-fit'>
+        <p class='text-justify text-sm text-gray-800' >
+            All ANP Staff must understand and implement these policies accordingly. If you do not understand anything please speak to a director.
+        </p>
+    </div>
+</div>
+
+<div class="mt-4">
+    <div  id="accordion-color" data-accordion="collapse" data-active-classes="bg-blue-100 dark:bg-gray-800 text-blue-600 dark:text-white rounded-b-none">
+    
+    {% for policy in policies %}
+        <div id="accordion-open-heading-{{ policy.id }}" class="sticky top-16">
+            <button type="button" 
+        class="relative flex items-center justify-between w-full p-5 font-medium rtl:text-right bg-white text-gray-900 border
+            {% if forloop.last %} border-b rounded-b-lg {% else %} border-b-0 {% endif %} border-gray-200 focus:ring-4 focus:ring-blue-100 active:bg-blue-50
+            dark:focus:ring-gray-800 {% if forloop.first %} rounded-t-lg {% endif %} 
+             dark:border-gray-700 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 gap-3"
+        data-accordion-target="#accordion-open-body-{{ policy.id }}" aria-expanded="false" aria-controls="accordion-open-body-{{ policy.id }}">
+
+    {% if not policy.is_read %}
+        <span class="animate-ping absolute left-4  transform -translate-y-1/2 inline-flex h-2 w-2 rounded-full bg-red-400 opacity-75"></span>
+    {% endif %}
+
+    <span class="flex items-center pl-6">  
+        {{ policy.description }}
+    </span>
+
+    <svg data-accordion-icon class="w-3 h-3 rotate-180 shrink-0" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/>
+    </svg>
+</button>
+
+        </div>
+        <div id="accordion-open-body-{{ policy.id }}" class="hidden" aria-labelledby="accordion-open-heading-{{ policy.id }}">
+            <div class="p-5 border border-b-0 border-gray-200 dark:border-gray-700 dark:bg-gray-900 bg-white flex md:flex-row flex-col gap-4">
+                <div class="ql-html md:px-20 md:w-5/6 text-sm">
+                    <div class="float-end sticky top-20 w-fit flex flex-row gap-2">
+                        {% if request.user.is_manager %}
+                            <a class="btn-secondary text-xs" href="{% url 'edit_policy' policy.id %}">Edit</a>
+                        {% endif %}
+                        <a class="btn-primary text-xs" href="{% url 'policy_read' policy.id %}">Read</a>
+                    </div>
+                    
+                    {{ policy.latest_version.content.html|add_list_class|safe }}
+                </div>
+                <div class="text-sm">
+                    <p class="sticky top-20">
+                        Updated on {{ policy.latest_version.timestamp|date:'d/m/Y' }}
+                    </p>
+                    <div class="border rounded-lg mt-4">
+                        <table class="table rounded-lg">
+                            <tr class="border-b">
+                                <td class="td text-gray-700" colspan="2">Previous Versions</td>
+                            </tr>
+                            {% for version in policy.versions.all %}
+                                {% if version != policy.latest_version %}
+                                    <tr class="border-b">
+                                        <td class="td"><a class="link cursor-pointer" href="{% url 'download_policy_pdf' version.id %}">View</a></td>
+                                        <td class="td">{{ version.timestamp|date:'d/m/Y' }}</td>
+                                    </tr>
+                                {% endif %}
+                            {% endfor %}
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+    
+        
+</div>
+
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends 'base.html' %} 
+{% load utils %} 
+
+{% block title %}Edit Holiday Records{% endblock %} 
+
+{% block container %}
+<div class="div-container mt-4">
+    <h2 class="text-2xl font-bold mb-4">Edit Holiday Record</h2>
+    
+    <form method="post" class="space-y-4">
+        {% csrf_token %}
+        
+        <!-- Holiday Details -->
+        <div class="form-group">
+            <label for="employee" class="block text-sm font-medium text-gray-700">Employee:</label>
+            {{form.employee}}
+        </div>
+        
+        <div class="form-group">
+            <label for="start_date" class="block text-sm font-medium text-gray-700">Start Date:</label>
+            {{form.start_date}}
+        </div>
+        
+        <div class="form-group">
+            <label for="end_date" class="block text-sm font-medium text-gray-700">End Date:</label>
+            {{form.end_date}}
+        </div>
+        
+        <div class="form-group">
+            <label for="reason" class="block text-sm font-medium text-gray-700">Reason:</label>
+            {{form.reason}}
+        </div>
+        
+        <div class="form-group">
+            <label for="type" class="block text-sm font-medium text-gray-700">Type:</label>
+            {{form.type}}
+        </div>
+
+        {% if user.is_manager %}
+            <!-- Manager's Approval Section -->
+            <div class="manager-section space-y-4">
+                <h4 class="text-lg font-semibold mt-4">Manager Approval</h4>
+                
+                <div class="form-check">
+                    {{form.approved}}
+                    <label class="form-check-label" for="approved" class="ml-2 text-sm font-medium text-gray-700">Approved</label>
+                </div>
+                
+                <div class="form-group">
+                    <label for="checked_by" class="block text-sm font-medium text-gray-700">Checked By:</label>
+                    {{form.checked_by}}
+                </div>
+
+                <div class="form-group">
+                    <label for="checked_on" class="block text-sm font-medium text-gray-700">Checked On:</label>
+                    {{form.checked_on}}
+                </div>
+
+                <div class="form-group">
+                    <label for="approved_by" class="block text-sm font-medium text-gray-700">Approved By:</label>
+                    {{form.approved_by}}
+                </div>
+                
+                <div class="form-group">
+                    <label for="approved_on" class="block text-sm font-medium text-gray-700">Approved On:</label>
+                    {{form.approved_on}}
+                </div>
+            </div>
+        {% else %}
+            <!-- Regular User Section -->
+            <div class="regular-user-section">
+                <h4 class="text-lg font-semibold mt-4">Update Your Holiday Request</h4>
+                <p class="text-sm text-gray-600"><strong>Note:</strong> This request will be reviewed by your manager.</p>
+            </div>
+        {% endif %}
+
+        <!-- Submit Button -->
+        <button type="submit" class="btn-primary w-full mt-4">Save Changes</button>
+    </form>
+</div>
+
+{% endblock %}
