@@ -7,7 +7,7 @@ from .views import allocate_monies, download_statement_account, download_invoice
 from .views import download_cashier_data, edit_file, edit_client, edit_authorised_party,download_file_logs, download_frontsheet, generate_ledgers_report, user_dashboard, download_risk_assessment
 from .views import add_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring
 from .views import edit_ongoing_monitoring, download_document, onboarding_documents_display, edit_otherside, free30mins, download_free30mins, edit_free30mins
-from .views import undertakings, edit_undertaking
+from .views import undertakings, edit_undertaking, add_policy, edit_policy, download_policy_pdf
 
 urlpatterns = [
     path('dashboard/', user_dashboard, name='user_dashboard'),
@@ -82,6 +82,9 @@ urlpatterns = [
     
     path('policies/', policies_display, name='policies_display' ),
     path('policy/read/<int:policy_id>/', policy_read , name='policy_read' ),
+    path('policy/add/', add_policy, name='add_policy'),
+    path('policy/<int:policy_id>/edit/', edit_policy, name='edit_policy'),
+    path('policy_version/<int:policy_version_id>/download/', download_policy_pdf, name='download_policy_pdf'),
 
     path('onboarding_documents/', onboarding_documents_display, name='onboarding_documents' ),
     

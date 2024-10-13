@@ -21,7 +21,7 @@
 from django.contrib import admin
 from .models import (Modifications, ClientContactDetails, AuthorisedParties, OthersideDetails,
                      FileLocation, FileStatus, MatterType, WIP, NextWork, LastWork, PmtsSlips,
-                     LedgerAccountTransfers, TempSlips, Invoices, MatterEmails, MatterLetters,
+                     LedgerAccountTransfers, Policy, PolicyVersion, TempSlips, Invoices, MatterEmails, MatterLetters,
                      MatterAttendanceNotes, RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees, Undertaking)
 
 @admin.register(Modifications)
@@ -213,4 +213,34 @@ class UndertakingAdmin(admin.ModelAdmin):
     # Make the list ordered by timestamp by default
     ordering = ('-timestamp',)
 
-   
+class PolicyVersionInline(admin.TabularInline):
+    model = PolicyVersion
+    fields = ('version_number', 'content', 'changes_by', 'timestamp')
+    readonly_fields = ('version_number', 'changes_by', 'timestamp')
+    extra = 0
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False  
+@admin.register(Policy)
+class PolicyAdmin(admin.ModelAdmin):
+    list_display = ('id', 'description', 'latest_version')
+    search_fields = ('description',)
+    inlines = [PolicyVersionInline]
+
+    def latest_version(self, obj):
+        return obj.versions.order_by('-version_number').first().version_number if obj.versions.exists() else "N/A"
+    latest_version.short_description = 'Latest Version'
+
+@admin.register(PolicyVersion)
+class PolicyVersionAdmin(admin.ModelAdmin):
+    list_display = ('policy', 'version_number', 'changes_by', 'timestamp')
+    list_filter = ('policy', 'changes_by')
+    search_fields = ('policy__description', 'content')
+    readonly_fields = ('version_number', 'policy', 'changes_by', 'timestamp')
+
+    def has_add_permission(self, request):
+        return False  # Disable adding PolicyVersion directly from admin
+
+    def has_change_permission(self, request, obj=None):
+        return False  # Disable editing PolicyVersion from admin

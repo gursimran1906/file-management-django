@@ -6,6 +6,7 @@ from math import ceil
 from django.utils import timezone
 from django.core.validators import RegexValidator
 from django.utils.safestring import mark_safe
+from django_quill.forms import QuillFormField
 
 class OpenFileForm(forms.ModelForm):
     class Meta:
@@ -407,5 +408,23 @@ class UndertakingForm(forms.ModelForm):
         # Adding the 'form-input' class to all fields
         for field_name, field in self.fields.items():
             field.widget.attrs['class'] = 'form-input'
+
+class PolicyForm(forms.ModelForm):
+    content = QuillFormField()
+
+    class Meta:
+        model = Policy
+        fields = ['description', 'content']
+    
+    def __init__(self, *args, **kwargs):
+        super(PolicyForm, self).__init__(*args, **kwargs)
+        
+        if self.instance:
+            latest_version = self.instance.latest_version()
+            if latest_version:
+                self.fields['content'].initial = latest_version.content
+        for field_name, field in self.fields.items():
+            field.widget.attrs['class'] = 'form-input'
+
 
 

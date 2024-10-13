@@ -23,3 +23,130 @@ button.ytp-large-play-button,
 button.ytp-button {
     pointer-events: none;
 }
+
+/* Text Alignment */
+.ql-align-justify {
+    text-align: justify;
+}
+.ql-align-center {
+    text-align: center;
+}
+.ql-align-left {
+    text-align: left;
+}
+.ql-align-right {
+    text-align: right;
+}
+
+/* Font Size */
+.ql-size-small {
+    font-size: 0.75em;
+}
+.ql-size-large {
+    font-size: 1.5em;
+}
+.ql-size-huge {
+    font-size: 2.5em;
+}
+
+/* Font Family */
+.ql-font-serif {
+    font-family: serif;
+}
+.ql-font-monospace {
+    font-family: monospace;
+}
+
+/* Text Direction */
+.ql-direction-rtl {
+    direction: rtl;
+}
+
+/* Indentation */
+.ql-indent-1 {
+    margin-left: 2em;
+}
+.ql-indent-2 {
+    margin-left: 3em;
+}
+.ql-indent-3 {
+    margin-left: 4em;
+}
+
+/* Headers */
+.ql-header-1 {
+    font-size: 2em;
+    font-weight: bold;
+}
+.ql-header-2 {
+    font-size: 1.5em;
+    font-weight: bold;
+}
+.ql-header-3 {
+    font-size: 1.2em;
+    font-weight: bold;
+}
+
+/* Color */
+.ql-color-red {
+    color: red;
+}
+.ql-background-yellow {
+    background-color: yellow;
+}
+
+/* Text Decoration */
+.ql-bold {
+    font-weight: bold;
+}
+.ql-italic {
+    font-style: italic;
+}
+.ql-underline {
+    text-decoration: underline;
+}
+.ql-strike {
+    text-decoration: line-through;
+}
+
+
+
+/* Code Block */
+.ql-code-block {
+    background-color: #f3f3f3;
+    font-family: monospace;
+    padding: 1em;
+    margin: 0.5em 0;
+    border-radius: 4px;
+}
+
+/* Links */
+.ql-link {
+    color: #1a0dab;
+    text-decoration: underline;
+}
+
+/* Lists */
+.ql-list-ordered {
+    list-style-type: decimal;
+    margin-left: 1.5em;
+}
+.ql-list-bullet {
+    list-style-type: disc;
+    margin-left: 1.5em;
+}
+
+.ql-list-bullet li {
+    margin-top: 0.2em;
+}
+
+.ql-html p {
+    margin-top: 1em;
+    line-height: 1.5;
+}
+
+.ql-editor p {
+    margin-top: 1em;
+    line-height: 1.5;
+}
+

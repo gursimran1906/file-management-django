@@ -1,12 +1,12 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
-from django.db.models import Q, Q, F, OuterRef, Subquery, Max, CharField
+from django.db.models import Q, Q, F, OuterRef, Subquery, Max, CharField, Exists
 from django.db.models.functions import Cast
 from .models import WIP, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
-from .models import Undertaking
-from .forms import OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm
+from .models import Undertaking, Policy, PolicyVersion
+from .forms import OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
 from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm,OtherSideForm
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm
 from .utils import create_modification
@@ -61,7 +61,11 @@ def display_data_index_page(request):
             filter_factor &= Q(client1__name__icontains=val_to_search) | Q(
                 client2__name__icontains=val_to_search)
         elif search_by == 'FeeEarner':
-            filter_factor &= Q(fee_earner__username__icontains=val_to_search)
+            if val_to_search == "DC":
+                print('DC')
+                filter_factor &= Q(fee_earner=None)
+            else:
+                filter_factor &= Q(fee_earner__username__icontains=val_to_search)
         else:
             filter_factor &= Q(file_number__icontains=val_to_search)
 
@@ -245,6 +249,21 @@ def user_dashboard(request):
         total_due_left__gt=0
     ).order_by('invoice_number')
 
+    latest_version_subquery = PolicyVersion.objects.filter(
+        policy=OuterRef('pk')
+    ).order_by('-version_number').values('pk')[:1]
+
+    unread_policies_exist = Policy.objects.annotate(
+        latest_version_id=Subquery(latest_version_subquery),
+        is_read=Exists(
+            PoliciesRead.objects.filter(
+                policy=OuterRef('pk'),
+                policy_version_id=OuterRef('latest_version_id'),
+                read_by=user
+            )
+        )
+    ).filter(is_read=False).exists()
+
     context = {
         'now':now,
         'user_next_works': user_next_works,
@@ -253,7 +272,8 @@ def user_dashboard(request):
         'aml_checks_due': unique_aml_checks_due,
         'unsettled_invoices': unsettled_invoices,
         'last_100_emails': last_100_emails,
-        'files':unique_wips
+        'files':unique_wips,
+        'unread_policies_exist': unread_policies_exist,
     }
 
     return render(request, 'dashboard.html', context)
@@ -3730,16 +3750,149 @@ def add_ongoing_monitoring(request, file_number):
 
 @login_required
 def policies_display(request):
-    policies_read = PoliciesRead.objects.filter(read_by=request.user)
-    return render(request,'policies_home.html', {'policies_read':policies_read})
+    latest_version_subquery = PolicyVersion.objects.filter(
+        policy=OuterRef('pk')
+    ).order_by('-version_number').values('pk')[:1]
+
+    policies = Policy.objects.annotate(
+        latest_version_id=Subquery(latest_version_subquery),
+        is_read=Exists(
+            PoliciesRead.objects.filter(
+                policy=OuterRef('pk'),
+                policy_version_id=OuterRef('latest_version_id'),
+                read_by=request.user
+            )
+        )
+    )
+
+    policies_read = PoliciesRead.objects.filter(read_by=request.user).order_by('-timestamp')
+
+    context = {
+        'policies': policies,
+        'policies_read': policies_read,
+    }
+    
+    return render(request, 'policies/policies_home.html', context)
+
 
 @login_required
 def policy_read(request, policy_id):
-    read_policy = PoliciesRead.objects.create(policy_number=policy_id, read_by=request.user)
-    read_policy.save()
-    messages.success(request, f'Successfully read policy {policy_id}')
-   
+    policy = get_object_or_404(Policy, pk=policy_id)
+
+    
+    latest_version = policy.versions.order_by('-version_number').first()
+
+    
+    if not latest_version:
+        messages.error(request, f"No versions available for policy '{policy.description}'.")
+        return redirect('policies_display')
+
+    try:
+        PoliciesRead.objects.create(policy=policy, policy_version=latest_version, read_by=request.user)
+        messages.success(request, f'Successfully marked the latest version of "{policy.description}" as read.')
+    except Exception as e:
+        messages.error(request, f"An error occurred: {str(e)}")
+    
     return redirect('policies_display')
+
+
+@login_required
+def add_policy(request):
+    if not request.user.is_manager:
+        messages.error(request, "You do not have permission to add policies.")
+        return redirect('policies_display')
+    
+    if request.method == 'POST':
+        form = PolicyForm(request.POST)
+        if form.is_valid():
+            try:
+                policy = form.save()
+                PolicyVersion.objects.create(
+                    policy=policy,
+                    content=form.cleaned_data['content'],
+                    version_number=1,
+                    changes_by=request.user,
+                    timestamp=timezone.now()
+                )
+                messages.success(request, "Policy added successfully.")
+                return redirect('policies_display')
+            except Exception as e:
+                messages.error(request, f"An error occurred while adding the policy: {str(e)}")
+        else:
+            messages.error(request, "There were errors in the form. Please correct them and try again.")
+    else:
+        form = PolicyForm()
+    
+    return render(request, 'policies/add_policy.html', {'form': form})
+
+
+@login_required
+def edit_policy(request, policy_id):
+    policy = get_object_or_404(Policy, id=policy_id)
+
+    if not request.user.is_manager:
+        messages.error(request, "You do not have permission to edit policies.")
+        return redirect('policies_display')
+    
+    if request.method == 'POST':
+        form = PolicyForm(request.POST, instance=policy)
+        if form.is_valid():
+            try:
+                
+                new_content = form.cleaned_data['content']
+                latest_version = policy.versions.order_by('-version_number').first()
+                
+                if latest_version is None or latest_version.content != new_content:
+                    # Determine new version number
+                    version_number = latest_version.version_number + 1 if latest_version else 1
+                    
+                    # Create a new PolicyVersion with the updated content
+                    PolicyVersion.objects.create(
+                        policy=policy,
+                        content=new_content,
+                        version_number=version_number,
+                        changes_by=request.user,
+                        timestamp=timezone.now()
+                    )
+                
+                form.save()
+                messages.success(request, "Policy edited successfully.")
+                return redirect('policies_display')
+            except Exception as e:
+                messages.error(request, f"An error occurred while editing the policy: {str(e)}")
+        else:
+            messages.error(request, "There were errors in the form. Please correct them and try again.")
+    else:
+        form = PolicyForm(instance=policy)
+    
+    return render(request, 'policies/edit_policy.html', {'form': form, 'policy': policy})
+
+
+@login_required
+def download_policy_pdf(request, policy_version_id):
+    #
+    policy_version = get_object_or_404(PolicyVersion, id=policy_version_id)
+    
+    try:
+        html_string = render_to_string('download_templates/policy_pdf.html', {
+            'policy_version': policy_version
+        })
+        
+        # Create the PDF using WeasyPrint
+        html = HTML(string=html_string)
+        pdf = html.write_pdf()
+
+       
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="Policy_{policy_version.policy.id}_Version_{policy_version.version_number}.pdf"'
+        
+        return response
+    
+    except Exception as e:
+        print(e)
+        messages.error(request, f"An error occurred while generating the PDF: {str(e)}")
+        return redirect('policies_display')
+
 
 @login_required
 def invoices_list(request):

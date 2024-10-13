@@ -27,15 +27,26 @@ def jsonify(data):
     
 @register.filter(name='add_list_class')
 def add_list_class(value):
-    # Use regex to add or modify the class attribute in <ol> tags
+    # Function to add or modify class for <ol> tags
     def replace_ol(match):
         tag = match.group(0)
         if 'class=' in tag:
-            return re.sub(r'class="([^"]*)"', r'class="\1 list-decimal"', tag)
+            return re.sub(r'class="([^"]*)"', r'class="\1 ql-list-ordered"', tag)
         else:
-            return tag[:-1] + ' class="list-decimal">'
+            return tag[:-1] + ' class="ql-list-ordered">'
     
+    # Function to add or modify class for <ul> tags
+    def replace_ul(match):
+        tag = match.group(0)
+        if 'class=' in tag:
+            return re.sub(r'class="([^"]*)"', r'class="\1 ql-list-bullet"', tag)
+        else:
+            return tag[:-1] + ' class="ql-list-bullet">'
+
+    # Apply replacements
     updated_html = re.sub(r'<ol[^>]*>', replace_ol, value)
+    updated_html = re.sub(r'<ul[^>]*>', replace_ul, updated_html)
+    
     return mark_safe(updated_html)
 
 @register.filter(name='zip')
