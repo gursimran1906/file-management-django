@@ -1,0 +1,575 @@
+{% extends 'base.html' %} {% load utils %} {% block title %}Profile{% endblock %} {% block container %}
+<div class="flex flex-col md:flex-row  justify-between gap-4">
+  <h1 class="div-container md:w-fit h-fit text-3xl font-medium">Profile</h1>
+  <div class="div-container">
+    <table class="table">
+      <thead>
+        <tr>
+          <th
+            colspan="2"
+            class="text-lg px-2 text-black font-normal text-center"
+          >
+            Holidays Summary
+            <span class="text-xs font-light">for current year</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="border-b text-black">
+          <th class="py-2 px-2 font-medium">Total Paid</th>
+          <td class="py-2 px-2 font-light">{{total_paid_holidays}}</td>
+        </tr>
+        <tr class="border-b text-black">
+          <th class="py-2 px-2 font-medium">Total Unpaid</th>
+          <td class="py-2 px-2 font-light">{{total_unpaid_holidays}}</td>
+        </tr>
+        <tr class="border-b text-black">
+          <th class="py-2 px-2 font-medium">Total Paid Remaining</th>
+          <td class="py-2 px-2 font-light">
+            {{total_paid_holidays_remaining}}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="div-container flex flex-col gap-2 md:justify-self-end h-fit">
+    <h3 class="text-2xl text-center">Actions</h3>
+    <div class="flex gap-2">
+      {% if request.user.is_manager %}
+      <a
+        id="dropdownDefaultButton"
+        data-dropdown-toggle="dropdown-actions"
+        class="text-black bg-white hover:bg-blue-600 hover:text-white focus:ring-4 focus:outline-none focus:ring-blue-300 rounded-lg border text-sm px-2 py-2 text-center inline-flex items-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
+        type="button"
+      >
+        View All
+        <svg
+          class="w-2.5 h-2.5 ms-3"
+          aria-hidden="true"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 10 6"
+        >
+          <path
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="m1 1 4 4 4-4"
+          />
+        </svg>
+      </a>
+      <div
+        id="dropdown-actions"
+        class="z-10 hidden border bg-white divide-y divide-gray-100 rounded-lg shadow w-44 dark:bg-gray-700"
+      >
+        <ul
+          class="py-2 text-sm text-gray-700 dark:text-gray-200 divide-y divide-gray-100"
+          aria-labelledby="dropdownDefaultButton"
+        >
+          <li>
+            <a
+              href="{% url 'holiday_records' %}"
+              target="_blank"
+              class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+              >Holiday Records</a
+            >
+          </li>
+          <li>
+            <a
+              href="{% url 'sickness_records'%}"
+              target="_blank"
+              class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+              >Sickness Records</a
+            >
+          </li>
+        </ul>
+      </div>
+
+      <button
+        class="btn btn-primary"
+        data-modal-target="sickness-crud-modal" data-modal-toggle="sickness-crud-modal"
+      >
+        Add Sick Leave
+      </button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div id="holiday-crud-modal" tabindex="-1" aria-hidden="true" class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full">
+  <div class="relative p-4 w-full max-w-md max-h-full">
+     
+      <div class="relative bg-gray-50 rounded-lg shadow  " >
+          
+          <div class="flex items-center bg-white justify-between p-4 md:p-5 border-b rounded-t-lg"  >
+              <h3 class="text-lg font-semibold text-gray-900  " >
+                  Request Holiday
+              </h3>
+              <button type="button" class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center"   data-modal-toggle="holiday-crud-modal">
+                  <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                      <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                  </svg>
+                  <span class="sr-only">Close modal</span>
+              </button>
+          </div>
+          <form method="POST" action="{% url 'add_holiday_request' %}" class="p-4">
+            {% csrf_token %}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="">
+                <label
+                  for="start_date"
+                  class="block text-gray-700 text-sm font-bold mb-2"
+                >
+                  Start Date<span class="text-red-500">*</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  name="start_date"
+                  id="start_date"
+                  class="form-input"
+                  required
+                />
+              </div>
+              <div class="">
+                <label
+                  for="end_date"
+                  class="block text-gray-700 text-sm font-bold mb-2"
+                >
+                  End Date<span class="text-red-500">*</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  name="end_date"
+                  id="end_date"
+                  class="form-input"
+                  required
+                />
+              </div>
+        
+              <div class="">
+                <label for="reason" class="block text-gray-700 text-sm font-bold mb-2"
+                  >Reason</label
+                >
+                <input type="text" name="reason" id="reason" class="form-input" />
+              </div>
+              <div class="">
+                <label for="type" class="block text-gray-700 text-sm font-bold mb-2">
+                  Type<span class="text-red-500">*</span>
+                </label>
+                <select name="type" id="type" class="form-input" required>
+                  <option value="" disabled selected>Select Type</option>
+                  <option value="Paid">Paid</option>
+                  <option value="Unpaid">Unpaid</option>
+                </select>
+              </div>
+            </div>
+            <div class="mt-4 flex items-center">
+              <button type="submit" class="btn-primary w-full">Submit</button>
+            </div>
+          </form>
+      </div>
+  </div>
+</div> 
+
+<div id="sickness-crud-modal" tabindex="-1" aria-hidden="true" class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full">
+  <div class="relative p-4 w-full max-w-md max-h-full">
+     
+      <div class="relative bg-gray-50 rounded-lg shadow  " >
+          
+          <div class="flex items-center bg-white justify-between p-4 md:p-5 border-b rounded-t-lg"  >
+              <h3 class="text-lg font-semibold text-gray-900  " >
+                  Add Sick Leave
+              </h3>
+              <button type="button" class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center"   data-modal-toggle="sickness-crud-modal">
+                  <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                      <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                  </svg>
+                  <span class="sr-only">Close modal</span>
+              </button>
+          </div>
+          <form method="POST" action="{% url 'add_sickness_record' %}" class="p-4">
+            {% csrf_token %}
+            <div class="grid md:grid-cols-2 gap-4">
+              <div class="mb-4">
+                <label
+                  for="start_date"
+                  class="block text-gray-700 text-sm font-bold mb-2"
+                  >Start Date:</label
+                >
+                <input
+                  type="datetime-local"
+                  name="start_date"
+                  id="start_date"
+                  class="form-input"
+                />
+              </div>
+              <div class="mb-4">
+                <label for="end_date" class="block text-gray-700 text-sm font-bold mb-2"
+                  >End Date:</label
+                >
+                <input
+                  type="datetime-local"
+                  name="end_date"
+                  id="end_date"
+                  class="form-input"
+                />
+              </div>
+              <div class="mb-4">
+                <label for="employee" class="block text-gray-700 text-sm font-bold mb-2"
+                  >Employee:</label
+                >
+                <select name="employee" id="employee" class="form-input">
+                  {% for employee in employees %}
+                  <option value="{{ employee.id }}">{{ employee.username }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="mb-4">
+                <label
+                  for="description"
+                  class="block text-gray-700 text-sm font-bold mb-2"
+                  >Description:</label
+                >
+                <textarea
+                  name="description"
+                  id="description"
+                  class="form-input"
+                ></textarea>
+              </div>
+            </div>
+            <div class="flex items-center">
+              <button type="submit" class="btn-primary w-full">Submit</button>
+            </div>
+          </form>
+      </div>
+  </div>
+</div> 
+
+
+<!-- FullCalendar CSS and JS -->
+<script src="
+https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
+"></script>
+
+<div class="mt-4 h-screen pb-4 space-y-4">
+  {% if request.user.is_manager %} {% if all_requests %}
+  <div class="div-container overflow-auto">
+    <h2 class="text-xl mb-4">Pending Holiday Requests</h2>
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b">
+          <th class="px-4 py-2 text-left">Employee</th>
+          <th class="px-4 py-2 text-left">Start Date</th>
+          <th class="px-4 py-2 text-left">End Date</th>
+          <th class="px-4 py-2 text-left">Type</th>
+          <th class="px-4 py-2 text-left">Reason</th>
+          <th class="px-4 py-2 text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for request in all_requests %}
+        <tr class="hover:bg-gray-50 border-b">
+          <td class="px-4 py-2">{{ request.employee.username }}</td>
+          <td class="px-4 py-2">{{ request.start_date|date:"d/m/Y H:i " }}</td>
+          <td class="px-4 py-2">{{ request.end_date|date:"d/m/Y H:i " }}</td>
+          <td class="px-4 py-2">{{ request.type }}</td>
+          <td class="px-4 py-2">{{ request.reason }}</td>
+          <td class="px-4 py-2 text-center">
+            <a
+              type="submit"
+              class="link cursor-pointer"
+              href="{% url 'approve_holiday_request' request.id %}"
+              >Approve</a
+            >
+            /
+            <a
+              type="submit"
+              class="link cursor-pointer"
+              href="{% url 'deny_holiday_request' request.id %}"
+              >Deny</a
+            >
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" class="text-center py-4 text-gray-500">
+            No pending requests found.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %} {% endif %}
+
+  <div class="grid md:grid-cols-2 h-1/2 gap-4">
+    <div class="div-container overflow-auto">
+      <div class="flex flex-row justify-between bg-white">
+        <h2 class="text-2xl mb-4">My Holidays</h2>
+        <div>
+          <button
+          data-modal-target="holiday-crud-modal" data-modal-toggle="holiday-crud-modal" class="btn-primary text-xs"
+          
+          >
+            Request
+          </button>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 gap-4">
+        {% for holiday in holiday_requests %}
+        <div class="div-container">
+          <div class="flex flex-col text-sm">
+            <div class="flex justify-between">
+              <h3 class="text-lg">
+                {% if holiday.request.type == "Paid" %}
+                Annual Leave
+                {% else %} 
+                Unpaid Leave
+                {% endif %}
+                <span class="text-xs text-gray-500"
+                  >({{ holiday.request.start_date|date:"d/m/Y H:i" }} - {{holiday.request.end_date|date:"d/m/Y H:i" }})</span
+                >
+              </h3>
+              <div class="flex flex-row gap-2 items-baseline align-baseline">
+                {% if holiday.request.approved %}
+                <div>
+                <span class="badge-green">
+                  {{ holiday.request.approved|yesno:"Approved,Rejected" }}
+                </span>
+              </div>
+                {% else %} {% if holiday.request.checked_by %}
+                <div>
+                <span class="badge-red">
+                  {{ holiday.request.approved|yesno:"Approved,Rejected" }}
+                </span>
+              </div>
+                {% else %}
+                <div>
+                  <a class="link" href="{% url 'edit_holiday_record' holiday.request.id %}">Edit</a>
+                </div>
+                <div>
+                  <span class="badge-purple">Pending</span>
+                </div>
+                {% endif %} {% endif %}
+              </div>
+            </div>
+            <p class="text-gray-600">Reason: {{ holiday.request.reason }}</p>
+            <p class="text-gray-600">Days: {{ holiday.total_days }}</p>
+            {% if holiday.request.approved != True %} {% if holiday.request.checked_by != None %}
+            <p class="text-gray-600">
+              Checked By: {{ holiday.request.checked_by }}
+            </p>
+            <p class="text-gray-600">
+              Checked On: {{ holiday.request.checked_on|date:"d/m/Y H:i" }}
+            </p>
+            {% endif %} {% else %}
+            <p class="text-gray-600">
+              Approved By: {% if holiday.request.approved_by %}{{holiday.request.approved_by }}{% else %} - {% endif %}
+            </p>
+            <p class="text-gray-600">
+              Approved On: {% if holiday.request.approved_by %}{{holiday.request.approved_on|date:"d/m/Y H:i" }}{% else %} - {% endif %}
+            </p>
+            {% endif %}
+          </div>
+        </div>
+        {% empty %}
+        <div class="col-span-1">
+          <div class="div-container">
+            <p class="text-gray-500">No holidays found.</p>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="div-container overflow-auto">
+      <h2 class="text-2xl mb-4">My Sickness Records</h2>
+      <div class="grid grid-cols-1 gap-4">
+        {% for record in sickness_records %}
+        <div class="div-container">
+          <div class="flex flex-col text-sm">
+            <div class="flex justify-between">
+              <h3 class="text-lg">
+                Sickness Record
+                <span class="text-xs text-gray-500">
+                  ({{ record.start_date|date:"d/m/Y H:i" }} - {% if record.end_date %}
+                  {{ record.end_date|date:"d/m/Y H:i" }}
+                  {% else %} Ongoing {% endif %})
+                </span>
+              </h3>
+            </div>
+            <p class="text-gray-600">Description: {{ record.description }}</p>
+            <p class="text-gray-600">Created By: {{ record.created_by }}</p>
+            <p class="text-gray-600">
+              Created On: {{ record.timestamp|date:"d/m/Y H:i" }}
+            </p>
+          </div>
+        </div>
+        {% empty %}
+        <div class="col-span-1">
+          <div class="div-container">
+            <p class="text-gray-500">No sickness records found.</p>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="grid md:grid-cols-2 h-1/2 gap-4">
+    <div class="div-container overflow-scroll col-span-2 h-full">
+      <h2 class="text-xl mb-4">Attendance Records</h2>
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="text-left border-b">
+            <th class="px-4 py-2">Date</th>
+            <th class="px-4 py-2">Check-in</th>
+            <th class="px-4 py-2">Lunch Start</th>
+            <th class="px-4 py-2">Lunch End</th>
+            <th class="px-4 py-2">Clock-out</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for record in attendance_records %}
+          <tr class="hover:bg-gray-50 border-b">
+            <td class="px-4 py-2">{{ record.date|date:"d/m/Y" }}</td>
+            <td class="px-4 py-2">{{ record.clock_in|date:"H:i a" }}</td>
+            <td class="px-4 py-2">{{ record.lunch_in|date:"H:i a" }}</td>
+            <td class="px-4 py-2">{{ record.lunch_out|date:"H:i a" }}</td>
+            <td class="px-4 py-2">{{ record.clock_out|date:"H:i a" }}</td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="5" class="px-4 py-2 text-center text-gray-500">
+              No attendance records found.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="calendar-wrapper">
+    <div class="div-container">
+      <div id="calendar"></div>
+    </div>
+  </div>
+</div>
+<style>
+  /* Basic responsiveness for calendar dimensions */
+  .calendar-wrapper {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .fc .fc-button {
+    background-color: #5a5a5a; /* Soft charcoal gray */
+    color: white; /* White text for readability */
+    border: none; /* Remove default border */
+    border-radius: 4px; /* Rounded corners */
+    padding: 5px 10px;
+    font-weight: 300;
+  }
+
+  /* Customize button on hover */
+  .fc .fc-button:hover {
+    background-color: #444444; /* Darker gray for hover effect */
+  }
+
+  /* Customize the active button */
+  .fc-button-active {
+    background-color: #333333; /* Very dark gray for active state */
+    color: #ffffff;
+  }
+
+  /* Header styles for mobile wrapping */
+  .fc-header-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* Allow header toolbar to wrap on smaller screens */
+  @media (max-width: 768px) {
+    .fc-header-toolbar {
+      flex-wrap: wrap;
+    }
+
+    /* Adjust each chunk to be full-width on smaller screens */
+    .fc-header-toolbar .fc-toolbar-chunk {
+      flex: 1 1 100%;
+      text-align: center;
+      margin-bottom: 5px;
+    }
+
+    #calendar {
+      height: 400px !important;
+    }
+  }
+</style>
+
+<script>
+  $(document).ready(function () {
+    function initializeCalendar() {
+      var calendarEl = document.getElementById("calendar");
+
+      // Adjust initial view based on screen size
+      var initialView = window.innerWidth < 768 ? "listWeek" : "multiMonthYear";
+
+      var calendar = new FullCalendar.Calendar(calendarEl, {
+        navLinks: true,
+        height: 600,
+        headerToolbar: {
+          start:
+            "dayGridMonth,timeGridWeek,timeGridDay,multiMonthYear,listDay,listWeek,listMonth",
+          center: "title",
+          end: "prevYear,prev,next,nextYear",
+        },
+        initialView: initialView,
+        buttonText: {
+          dayGridMonth: "Month",
+          timeGridWeek: "Week",
+          timeGridDay: "Day",
+          multiMonthYear: "Year",
+          listDay: "List Day",
+          listWeek: "List Week",
+          listMonth: "List Month",
+        },
+        events: function (fetchInfo, successCallback, failureCallback) {
+          $.ajax({
+            url: "/calendar/events/",
+            method: "GET",
+            dataType: "json",
+            success: function (events) {
+              successCallback(events);
+              console.log("Events loaded.");
+            },
+            error: function (xhr, status, error) {
+              console.error("Error fetching events:", status, error);
+              failureCallback(error);
+            },
+          });
+        },
+        eventDisplay: "block",
+      });
+
+      calendar.render();
+
+      console.log("Calendar has been initialized with events.");
+
+      // Handle window resizing to adjust the calendar view
+      $(window).resize(function () {
+        if (window.innerWidth < 768) {
+          calendar.changeView("listWeek");
+          calendar.setOption("height", 400);
+        } else {
+          calendar.changeView("multiMonthYear");
+          calendar.setOption("height", 600);
+        }
+      });
+    }
+
+    // Initialize calendar on page load
+    initializeCalendar();
+  });
+</script>
+{% endblock %}

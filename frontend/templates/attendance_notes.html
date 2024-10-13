@@ -120,7 +120,7 @@
             <b>Date:</b> {{ attendance_note.date|date:'d/m/Y' }}<br>
                     <b>Start Time:</b> {{ attendance_note.start_time }}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
                     <b>Finish Time:</b> {{ attendance_note.finish_time }}<br><br>
-                    <div>{{ attendance_note.content.html|add_list_class|safe }}</div><br><br>
+                    <div class="ql-html">{{ attendance_note.content.html|add_list_class|safe }}</div><br><br>
                     <b>Unit(s): </b>{{ attendance_note.unit }} - <b>{{ attendance_note.person_attended }}</b>&emsp;
                     <a class='link' href="{% url 'download_attendance_note' attendance_note.id %}" target="_blank" rel="noopener noreferrer">Print Attendance Note</a>
                     &nbsp; &nbsp;

@@ -536,13 +536,43 @@ class MatterAttendanceNotes(models.Model):
 
     timestamp = models.DateTimeField(auto_now_add=True)
 
+class Policy(models.Model):
+    id = models.AutoField(primary_key=True)
+    description = models.TextField()
+
+    def latest_version(self):
+        return self.versions.order_by('-version_number').first()
+    
+    def __str__(self):
+        return self.description
+
+class PolicyVersion(models.Model):
+    id = models.AutoField(primary_key=True)
+    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, related_name='versions')
+    content = QuillField()
+    version_number = models.PositiveIntegerField()
+    changes_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('policy', 'version_number')
+
+    
+
+    def __str__(self):
+        return f"Version {self.version_number} of {self.policy.description}"
+
 class PoliciesRead(models.Model):
     id = models.AutoField(primary_key=True)
-    policy_number = models.IntegerField()
-    read_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
-                                   related_name='read_by', null=True, blank=True)
-
+    policy = models.ForeignKey(Policy, on_delete=models.SET_NULL, null=True, blank=True, related_name='policies')
+    policy_version = models.ForeignKey(PolicyVersion, on_delete=models.SET_NULL, null=True, blank=True, related_name='read_versions')
+    read_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, related_name='read_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.read_by} read {self.policy} (Version {self.policy_version.version_number})"
+
+
 
 def undertaking_file_upload_path(instance, filename):
     return f'undertakings/{instance.file_number.file_number}/{filename}'
@@ -588,3 +618,4 @@ class Free30Mins(models.Model):
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
                                    related_name='free30_mins_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+
