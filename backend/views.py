@@ -3941,7 +3941,7 @@ def download_invoices(request):
         writer.writerow(['', f'Invoices from {start_date_str} to {end_date_str}'])
 
         writer.writerow([])
-        writer.writerow(['Invoice Number','Date','File Number','Our Costs', 'VAT', 'Total Costs and VAT'])
+        writer.writerow(['Invoice Number', 'Matter Type' ,'Date','File Number','Our Costs', 'VAT', 'Total Costs and VAT'])
 
       
         for invoice in invoices:
@@ -3956,7 +3956,7 @@ def download_invoices(request):
             total_cost_and_vat = round(total_cost_invoice + vat_inv, 2)
             
             
-            writer.writerow([f'{invoice.invoice_number}',f'{invoice.date.strftime("%d/%m/%Y")}',f'{invoice.file_number.file_number}',f'{total_cost_invoice}', f'{vat_inv}', f'{total_cost_and_vat}'])
+            writer.writerow([f'{invoice.invoice_number}',f'{invoice.file_number.matter_type.type}',f'{invoice.date.strftime("%d/%m/%Y")}',f'{invoice.file_number.file_number}',f'{total_cost_invoice}', f'{vat_inv}', f'{total_cost_and_vat}'])
 
         return response
     

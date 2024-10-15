@@ -107,7 +107,7 @@ def calculate_business_days(start_date, end_date):
 
     while current_date <= end_date:
         # Check if current date is a weekday and not a holiday
-        if current_date.weekday() < 5 and current_date.date() not in holiday_list:
+        if current_date.weekday() < 5:
             # Calculate workday start and end times for the current date
             day_start = datetime.combine(current_date.date(), work_start, tzinfo=current_date.tzinfo)
             day_end = datetime.combine(current_date.date(), work_end, tzinfo=current_date.tzinfo)
@@ -269,8 +269,6 @@ def get_holiday_color(holiday):
         return '#5cb85c' if holiday.type == 'Paid' else '#ffca66'  # Muted Green for Paid Approved, Soft Amber for Unpaid Approved
     else:
         return '#6699cc' if holiday.type == 'Paid' else '#ff9999'  # Muted Blue for Paid Pending, Soft Coral Red for Unpaid Pending
-
-
 
 @login_required
 def add_sickness_record(request):
