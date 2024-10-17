@@ -56,6 +56,45 @@ class HolidayRecordForm(forms.ModelForm):
             if isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs['class'] = ' mb-1 text-gray-900 rounded focus:ring-blue-100 focus:border-blue-100 dark:bg-gray-700 dark:border-gray-600 dark:focus:ring-blue-500 dark:focus:border-blue-500'
 
+
+class OfficeClosureRecordForm(forms.ModelForm):
+    employees = forms.ModelMultipleChoiceField(
+        queryset=CustomUser.objects.all(),
+        widget=forms.CheckboxSelectMultiple,
+        label="Select Employees"
+    )
+
+    class Meta:
+        model = HolidayRecord
+        fields = ['employees', 'start_date', 'end_date']
+        widgets = {
+            'start_date': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+            'end_date': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super(OfficeClosureRecordForm, self).__init__(*args, **kwargs)
+
+        # Check if instance has an existing record and format date/time fields
+        if self.instance and self.instance.pk:
+            for field in ['start_date', 'end_date']:
+                datetime_value = getattr(self.instance, field)
+                if datetime_value:
+                    formatted_value = datetime_value.strftime('%Y-%m-%dT%H:%M')
+                    self.fields[field].initial = formatted_value
+
+        # Add specific classes based on widget type
+        for field_name, field in self.fields.items():
+            if isinstance(field.widget, forms.CheckboxSelectMultiple):
+                # Style for the multiple checkbox field
+                field.widget.attrs['class'] = 'employee-checkbox space-y-2'
+            elif isinstance(field.widget, forms.CheckboxInput):
+                # Style for a single checkbox input
+                field.widget.attrs['class'] = 'mb-1 text-gray-900 rounded focus:ring-blue-100 focus:border-blue-100 dark:bg-gray-700 dark:border-gray-600 dark:focus:ring-blue-500 dark:focus:border-blue-500'
+            else:
+                # Apply `form-input` class to other input fields
+                field.widget.attrs['class'] = 'form-input border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 w-full'
+
 class UserDocumentForm(forms.ModelForm):
     class Meta:
         model = UserDocument

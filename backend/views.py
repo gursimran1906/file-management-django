@@ -3087,26 +3087,40 @@ def unallocated_emails(request):
 def allocate_emails(request):
     i = 0
     file_numbers = request.POST.getlist('FileNumber[]')
-    emails_ids = request.POST.getlist('email_ids[]')
+    email_ids = request.POST.getlist('email_ids[]')
     j = 0
+    error_count = 0
+    
     for file_number in file_numbers:
         
         if file_number != '':
-            file_number= file_number
-            email_id = emails_ids[i]
+            file_number = file_number
+            email_id = email_ids[i]
             email = MatterEmails.objects.filter(id=email_id).first()
-            file = WIP.objects.filter(file_number=file_number).first()
-            email.file_number = file
-            j = j + 1
-            email.fee_earner = file.fee_earner if file.fee_earner != None else None
-            email.save()
-        i = i+1
-
-                
             
-    messages.success(request, f'Successfully allocated {j} emails')
-   
+            # Check if file exists
+            file = WIP.objects.filter(file_number=file_number).first()
+            if not file:
+                error_count += 1
+                messages.error(request, f'File with file number {file_number} does not exist. Please choose a correct file number.')
+                i += 1
+                continue
+            
+            email.file_number = file
+            j += 1
+            email.fee_earner = file.fee_earner if file.fee_earner is not None else None
+            email.save()
+        
+        i += 1
+
+    if j > 0:
+        messages.success(request, f'Successfully allocated {j} emails')
+    
+    if error_count > 0:
+        messages.error(request, f'{error_count} file(s) were not found. Please check the file numbers.')
+
     return redirect('unallocated_emails')
+
 
 @login_required
 def download_cashier_data(request):
