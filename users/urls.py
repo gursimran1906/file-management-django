@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import login_view, logout_view, register_view, profile_page, add_holiday_request, lunch_start, lunch_out, clock_out
 from .views import deny_holiday_request, approve_holiday_request, add_sickness_record, holiday_records, sickness_records, calendar_events
-from .views import edit_holiday_record, add_document, delete_document, access_document
+from .views import edit_holiday_record, add_document, delete_document, access_document, add_office_closure
 
 
 urlpatterns = [
@@ -17,6 +17,7 @@ urlpatterns = [
     path('add_holiday_request/', add_holiday_request, name='add_holiday_request'),
     path('holiday/edit/<int:holiday_id>/', edit_holiday_record, name='edit_holiday_record'),
     path('holiday_records/', holiday_records, name='holiday_records'),
+    path('add_office_closure/', add_office_closure, name='add_office_closure'),
 
     path('add_sickness_record/', add_sickness_record, name='add_sickness_record'),
     path('sickness_records/', sickness_records, name='sickness_records'),

@@ -8,13 +8,16 @@ from django.urls import reverse
 from urllib.parse import unquote
 from .models import AttendanceRecord, CustomUser, HolidayRecord, SicknessRecord
 from django.utils import timezone
-from .forms import CustomUserCreationForm, HolidayRecordForm
+from .forms import CustomUserCreationForm, HolidayRecordForm, OfficeClosureRecordForm
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from datetime import datetime, time
-from datetime import timedelta
+
 import holidays
 from django.core.exceptions import ObjectDoesNotExist
+
+from django.http import JsonResponse
+from datetime import timedelta, datetime, time
+
 
 
 
@@ -60,10 +63,6 @@ def register_view(request):
         form = CustomUserCreationForm()
     return render(request, 'register.html', {'form': form})
 
-from datetime import timedelta, datetime, time
-import holidays
-import math
-from django.utils import timezone
 
 def calculate_business_days(start_date, end_date):
     # Define work hours
@@ -78,55 +77,51 @@ def calculate_business_days(start_date, end_date):
 
     # Adjust the start_date according to the specified rules
     if start_date.time() < work_start:  # Before 9:00 AM
-        # Set to today at 9:00 AM
         start_date = datetime.combine(start_date.date(), work_start, tzinfo=start_date.tzinfo)
     elif start_date.time() >= work_end:  # After 5:00 PM
         # Move to the next business day at 9:00 AM
         start_date = datetime.combine(start_date.date() + timedelta(days=1), work_start, tzinfo=start_date.tzinfo)
-        # Skip weekends
-        while start_date.weekday() >= 5:
+        while start_date.weekday() >= 5:  # Skip weekends
             start_date += timedelta(days=1)
 
     # Adjust end_date if it's outside work hours
     if end_date.time() > work_end:
-        # Set end_date to 5:00 PM on the same date
         end_date = datetime.combine(end_date.date(), work_end, tzinfo=end_date.tzinfo)
     elif end_date.time() < work_start:
-        # If the end time is before the start of work hours, set it to 5:00 PM on the previous workday
-        end_date = datetime.combine(end_date.date() - timedelta(days=1), work_end, tzinfo=end_date.tzinfo)
+        end_date = datetime.combine(end_date.date(), work_end, tzinfo=end_date.tzinfo)
         # Skip weekends
         while end_date.weekday() >= 5:
             end_date -= timedelta(days=1)
 
     # Create UK holiday list
     holiday_list = holidays.country_holidays('GB', subdiv='ENG')
-    
+   
     # Initialize the total hours counter
     total_hours = 0
     current_date = start_date
 
-    while current_date <= end_date:
+    while current_date.date() <= end_date.date():
         # Check if current date is a weekday and not a holiday
-        if current_date.weekday() < 5:
+        if current_date.weekday() < 5 and current_date.date() not in holiday_list:
             # Calculate workday start and end times for the current date
             day_start = datetime.combine(current_date.date(), work_start, tzinfo=current_date.tzinfo)
             day_end = datetime.combine(current_date.date(), work_end, tzinfo=current_date.tzinfo)
-            
+
             # Determine the actual start and end for counting within the working hours
             actual_start = max(current_date, day_start)
             actual_end = min(end_date, day_end)
-            
+
             # If within work hours, calculate the difference in hours
             if actual_start < actual_end:
                 hours_worked = (actual_end - actual_start).total_seconds() / 3600
                 total_hours += hours_worked
 
-        # Move to the next day
-        current_date += timedelta(days=1)
+        # Move to the next day at 9:00 AM
+        current_date = datetime.combine(current_date.date() + timedelta(days=1), work_start, tzinfo=current_date.tzinfo)
 
     # Convert hours to work days (8 hours = 1 work day)
     total_days = total_hours / 8
-    
+
     # Round total_days to the nearest 0.5
     total_days = math.ceil(total_days * 2) / 2
 
@@ -165,8 +160,52 @@ def profile_page(request):
         requests_with_total_days.append({
             'request': holiday_request,
             'total_days': total_days,
+            'is_bank_holiday': False
         })
+    
+    current_year = datetime.now().year
+
+    holiday_list = holidays.country_holidays('GB', subdiv='ENG', years=current_year)
+    bank_holiday_records = []
+    for holiday_date, holiday_name in holiday_list.items():
+        holiday_datetime = datetime(holiday_date.year, holiday_date.month, holiday_date.day)
+
+        record = {
+            "employee": request.user , 
+            "start_date": holiday_datetime,  
+            "end_date": holiday_datetime,   
+            "reason": holiday_name,
+            "type": 'Paid',  
+            "approved": True,
+            "checked_by": "Director",  # or assign actual checker instance if available
+            "checked_on": None,
+            "approved_by": "Director",  # or assign actual approver instance if available
+            "approved_on": None,
+             
+        }
+        bank_holiday_records.append({'request': record, 'total_days':1 , 'is_bank_holiday': True})
+    
+    requests_with_total_days = requests_with_total_days + bank_holiday_records
+    
+
+    
+    total_bank_holidays = round(Decimal(sum(1 for name in holiday_list.values())),2)
     total_paid_holidays_remaining = user.max_holidays_in_year - Decimal(total_paid_holidays)
+    total_paid_holidays_remaining = total_paid_holidays_remaining - total_bank_holidays
+    current_year = datetime.now().year
+    office_closure_holidays = HolidayRecord.objects.filter(
+        reason="Office Closure",
+        employee=request.user,
+        start_date__year=current_year
+    )
+    total_office_closure_holidays = 0
+    for holiday in office_closure_holidays:
+        total_days = calculate_business_days(holiday.start_date, holiday.end_date)
+        
+        total_office_closure_holidays = total_office_closure_holidays + total_days
+
+    total_paid_holidays = total_paid_holidays - total_office_closure_holidays
+    office_closure_form = OfficeClosureRecordForm()
     return render(request, 'profile_page.html', {'employees':employees,
                                                  'holiday_requests': requests_with_total_days,
                                                  'all_requests':all_requests,
@@ -174,7 +213,10 @@ def profile_page(request):
                                                  'attendance_records': attendance_records, 
                                                  'total_paid_holidays': total_paid_holidays, 
                                                  'total_unpaid_holidays': total_unpaid_holidays,
-                                                 'total_paid_holidays_remaining': total_paid_holidays_remaining})
+                                                 'total_paid_holidays_remaining': total_paid_holidays_remaining, 
+                                                 'total_bank_holidays': total_bank_holidays,
+                                                 'total_office_closure_holidays':total_office_closure_holidays, 
+                                                 'office_closure_form': office_closure_form})
 
 @login_required
 def holiday_records(request):
@@ -205,51 +247,46 @@ def sickness_records(request):
     sickness_records = SicknessRecord.objects.all().select_related('employee', 'created_by')
     return render(request, 'sickness_records.html', {'sickness_records': sickness_records})
 
-# views.py
-from django.http import JsonResponse
-from .models import HolidayRecord, SicknessRecord
-from datetime import timedelta
 
 @login_required
 def calendar_events(request):
     # Fetch holiday records
-        
-    holidays = HolidayRecord.objects.all()
+    
+    holiday_records = HolidayRecord.objects.all()
     if request.user.is_manager:
         sickness_records = SicknessRecord.objects.all()
     else:
         sickness_records = SicknessRecord.objects.filter(employee=request.user)
-
-    # Format data for FullCalendar
-    '''
-    Need colours for: 
-    1. Paid Approved
-    2. Unpaid Approved
-    3. Paid Pending
-    4. Unpaid Pending
-    5. Sickness Record
-    '''
     events = []
-    for holiday in holidays:
-        if holiday.checked_by != None and holiday.approved:
+    for holiday in holiday_records:
+        # Determine the leave type title based on user role
+        if request.user.is_manager:
+            leave_type = 'Annual Leave' if holiday.type == 'Paid' else 'Unpaid Leave'
+        else:
+            leave_type = 'Leave'  # Non-managers just see "Leave"
+        
+        # Approved holiday events
+        if holiday.checked_by is not None and holiday.approved:
             event = {
-                'title': f'{holiday.employee} - {'Annual Leave' if holiday.type == 'Paid' else 'Unpaid Leave'}',
+                'title': f'{holiday.employee} - {leave_type}',
                 'start': holiday.start_date,
                 'end': holiday.end_date,
                 'description': f'Type: {holiday.type}, Approved: {holiday.approved}',
-                'color': get_holiday_color(holiday),  
-            }
-            events.append(event)
-        if holiday.checked_by == None and holiday.approved == False:
-            event = {
-                'title': f'(APPROVAL PENDING) {holiday.employee} - {'Annual Leave' if holiday.type == 'Paid' else 'Unpaid Leave'}',
-                'start': holiday.start_date,
-                'end': holiday.end_date,
-                'description': f'Type: {holiday.type}, Approved: {holiday.approved}',
-                'color': get_holiday_color(holiday),  
+                'color': get_holiday_color(holiday,request.user.is_manager),  
             }
             events.append(event)
 
+        # Pending approval holiday events
+        elif holiday.checked_by is None and not holiday.approved:
+            event = {
+                'title': f'(APPROVAL PENDING) {holiday.employee} - {leave_type}',
+                'start': holiday.start_date,
+                'end': holiday.end_date,
+                'description': f'Type: {holiday.type}, Approved: {holiday.approved}',
+                'color': '#5cb85c',  
+            }
+            
+            events.append(event)
 
     for sickness in sickness_records:
         event = {
@@ -260,15 +297,34 @@ def calendar_events(request):
             'color': '#6f42c1'  
         }
         events.append(event)
+    current_year = timezone.now().year
+    holiday_list = holidays.country_holidays('GB', subdiv='ENG', years=range(current_year-5, current_year+5))
+    for date, name in holiday_list.items():
+    
+        event = {
+            'title': f'Bank Holiday - {name}',
+            'start': date.strftime('%Y-%m-%d'), 
+            'end': date.strftime('%Y-%m-%d'),    
+            'description': 'Type: Bank Holiday',
+            'color': '#80CBC4'  
+        }
+        events.append(event)
+
 
     return JsonResponse(events, safe=False)
 
-def get_holiday_color(holiday):
-    """ Determine color based on holiday type and approval status with eye-friendly colors. """
+def get_holiday_color(holiday, is_manager):
+    """Determine color based on holiday type and approval status with eye-friendly colors."""
     if holiday.approved:
-        return '#5cb85c' if holiday.type == 'Paid' else '#ffca66'  # Muted Green for Paid Approved, Soft Amber for Unpaid Approved
+        if is_manager:
+            return '#5cb85c' if holiday.type == 'Paid' else '#ffca66'  # Muted Green for Paid Approved, Soft Amber for Unpaid Approved
+        else:
+            return '#5cb85c'  # Same color for all users for approved holidays
     else:
-        return '#6699cc' if holiday.type == 'Paid' else '#ff9999'  # Muted Blue for Paid Pending, Soft Coral Red for Unpaid Pending
+        if is_manager:
+            return '#6699cc' if holiday.type == 'Paid' else '#ff9999'  # Muted Blue for Paid Pending, Soft Coral Red for Unpaid Pending
+        else:
+            return '#6699cc'  # Same color for all users for pending holidays
 
 @login_required
 def add_sickness_record(request):
@@ -363,6 +419,33 @@ def add_holiday_request(request):
         return redirect('profile_page')
 
     return redirect('profile_page')
+
+@login_required
+def add_office_closure(request):
+    if request.method == 'POST':
+        form = OfficeClosureRecordForm(request.POST)
+        if form.is_valid():
+            start_date = form.cleaned_data['start_date']
+            end_date = form.cleaned_data['end_date']
+            
+            for employee in form.cleaned_data['employees']:
+                HolidayRecord.objects.create(
+                    employee=employee,
+                    start_date=start_date,
+                    end_date=end_date,
+                    reason='Office Closure',
+                    type='Paid',
+                    approved=True, 
+                    approved_by=request.user,
+                    approved_on=timezone.now(),
+                    checked_by=request.user,
+                    checked_on=timezone.now()
+                )
+            messages.success(request, "Office Closure succesfully added for selected employees.")
+            return redirect('profile_page')
+
+    
+    return render(request, 'add_office_closure.html', {'form': form})
 
 @login_required
 def approve_holiday_request(request, id):
