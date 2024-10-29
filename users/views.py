@@ -1,25 +1,34 @@
 # myapp/views.py
 from decimal import Decimal
 import math
+import os
 from time import strftime
 from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.urls import reverse
 from urllib.parse import unquote
+
+from weasyprint import HTML
 from .models import AttendanceRecord, CustomUser, HolidayRecord, SicknessRecord
 from django.utils import timezone
 from .forms import CustomUserCreationForm, HolidayRecordForm, OfficeClosureRecordForm
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-
+from django.template.loader import render_to_string
 import holidays
 from django.core.exceptions import ObjectDoesNotExist
 
 from django.http import JsonResponse
-from datetime import timedelta, datetime, time
-
-
-
+from datetime import date, timedelta, datetime, time
+import csv
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
+from django.utils.dateparse import parse_datetime
+from .models import AttendanceRecord, HolidayRecord, SicknessRecord
+from django.views.decorators.http import require_POST
+from django.db.models import Q
+import tempfile
+import zipfile
 
 def login_view(request):
     if request.method == 'POST':
@@ -448,6 +457,90 @@ def add_office_closure(request):
     return render(request, 'add_office_closure.html', {'form': form})
 
 @login_required
+def add_holiday_request(request):
+    if request.method == 'POST':
+        start_date = request.POST.get('start_date')
+        end_date = request.POST.get('end_date')
+        reason = request.POST.get('reason', '')
+        holiday_type = request.POST.get('type')
+
+        # Convert dates from string to datetime
+        start_date_dt = datetime.fromisoformat(start_date)
+        end_date_dt = datetime.fromisoformat(end_date)
+
+        # Calculate the number of business days requested
+        num_days_requested = calculate_business_days(start_date_dt, end_date_dt)
+
+        user = request.user
+        max_holidays_in_year = user.max_holidays_in_year
+
+        # Determine the year of the requested holiday
+        request_year = start_date_dt.year
+
+        # Get all "Paid" holidays for the user within the requested year
+        paid_holidays_in_request_year = HolidayRecord.objects.filter(
+            employee=user,
+            type='Paid',
+            start_date__year=request_year, 
+            ).exclude(reason="Office Closure")
+
+        # Calculate the total number of paid holidays taken in that year
+        total_paid_holidays_taken = sum(
+            calculate_business_days(holiday.start_date, holiday.end_date)
+            for holiday in paid_holidays_in_request_year
+        )
+
+        # Retrieve office closures and bank holidays for the requested year
+        current_year = datetime.now().year
+        office_closures = HolidayRecord.objects.filter(
+            reason="Office Closure",
+            employee=request.user,
+            start_date__year=current_year
+        )
+        total_office_closure_holidays = 0
+        for holiday in office_closures:
+            total_days = calculate_business_days(holiday.start_date, holiday.end_date)
+            
+            total_office_closure_holidays = total_office_closure_holidays + total_days
+        
+        holiday_list = holidays.country_holidays('GB', subdiv='ENG', years=current_year)
+        total_bank_holidays = sum(1 for name in holiday_list.values())
+
+        non_working_days = total_office_closure_holidays + total_bank_holidays
+        max_holidays_adjusted = max_holidays_in_year - Decimal(non_working_days)
+
+        total_holidays_after_request = total_paid_holidays_taken + num_days_requested
+
+        # Check if the total number of paid holidays exceeds the adjusted max holidays
+        if total_holidays_after_request > max_holidays_adjusted and holiday_type == 'Paid':
+            exceeding_amount = Decimal(total_holidays_after_request) - max_holidays_adjusted
+            remaining_days = max_holidays_adjusted - Decimal(total_paid_holidays_taken)
+
+            messages.error(
+                request,
+                f"You cannot take these holidays as it will exceed your yearly allowance. "
+                f"You can request up to {remaining_days} more paid holiday days this year."
+            )
+        else:
+            try:
+                # Create the holiday request
+                holiday_request = HolidayRecord(
+                    employee=user,
+                    start_date=start_date,
+                    end_date=end_date,
+                    type=holiday_type,
+                    reason=reason,
+                )
+                holiday_request.save()
+
+                messages.success(request, 'Holiday request submitted successfully.')
+            except Exception as e:
+                messages.error(request, 'There was an error submitting your holiday request. Please try again.')
+
+        return redirect('profile_page')
+
+    return redirect('profile_page')
+@login_required
 def approve_holiday_request(request, id):
     if request.user.is_manager:
         holiday_request = get_object_or_404(HolidayRecord, id=id)
@@ -549,7 +642,6 @@ def clock_out(request):
     
     return redirect('user_dashboard')
 
-
 @login_required
 def edit_holiday_record(request, holiday_id):
     """Edit an existing holiday record."""
@@ -598,6 +690,196 @@ def edit_holiday_record(request, holiday_id):
     
     return render(request, 'edit_holiday.html', context)
 
+def export_to_csv(queryset, fieldnames, filename):
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    writer = csv.writer(response)
+    writer.writerow(fieldnames)
+    
+    for obj in queryset:
+        row = []
+        for field in fieldnames:
+            value = getattr(obj, field)
+            # Check if the value is a date or datetime field, and format it
+            if isinstance(value, datetime):
+                value = value.strftime('%d/%m/%Y %H:%M')
+            elif isinstance(value, date):
+                value = value.strftime('%d/%m/%Y')
+            row.append(value)
+        writer.writerow(row)
+    
+    return response
+
+def parse_custom_date(date_str):
+    return datetime.strptime(date_str, '%d/%m/%Y')
+
+def generate_csv_report(attendance, holidays, sickness, filename):
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    writer = csv.writer(response)
+    writer.writerow(['Employee', 'Date', 'Type', 'Details'])
+    
+    for record in attendance:
+        writer.writerow([
+            record.employee, 
+            record.date.strftime('%d/%m/%Y'), 
+            'Attendance', 
+            f'Clock In: {record.clock_in}, Clock Out: {record.clock_out}, Lunch: {record.lunch_in} - {record.lunch_out}'
+        ])
+        
+    for record in holidays:
+        writer.writerow([
+            record.employee, 
+            record.start_date.strftime('%d/%m/%Y'), 
+            'Holiday', 
+            f'Reason: {record.reason}, Approved: {"Yes" if record.approved else "No"}'
+        ])
+        
+    for record in sickness:
+        writer.writerow([
+            record.employee, 
+            record.start_date.strftime('%d/%m/%Y'), 
+            'Sickness', 
+            record.description
+        ])
+    
+    return response
+
+@login_required
+@require_POST
+def attendance_record_csv(request):
+    if not request.user.is_manager:
+        messages.error(request, "You do not have permission to download this data.")
+        return redirect('user_dashboard')  # Adjust 'dashboard' to your actual redirect path
+    
+    start_date = parse_custom_date(request.POST.get('start_date'))
+    end_date = parse_custom_date(request.POST.get('end_date'))
+    queryset = AttendanceRecord.objects.filter(
+        date__gte=start_date, date__lte=end_date
+    )
+    fieldnames = ['employee', 'date', 'clock_in', 'clock_out', 'lunch_in', 'lunch_out']
+    return export_to_csv(queryset, fieldnames, f'attendance_records_{timezone.now()}.csv')
+
+@login_required
+@require_POST
+def holiday_record_csv(request):
+    if not request.user.is_manager:
+        messages.error(request, "You do not have permission to download this data.")
+        return redirect('user_dashboard')  # Adjust 'dashboard' to your actual redirect path
+    
+    start_date = parse_custom_date(request.POST.get('start_date'))
+    end_date = parse_custom_date(request.POST.get('end_date'))
+    queryset = HolidayRecord.objects.filter(
+        start_date__gte=start_date, end_date__lte=end_date
+    )
+    fieldnames = ['employee', 'start_date', 'end_date', 'reason', 'type', 'approved', 'checked_by', 'checked_on', 'approved_by', 'approved_on', 'timestamp']
+    return export_to_csv(queryset, fieldnames, f'holiday_records_{timezone.now()}.csv')
+
+@login_required
+@require_POST
+def sickness_record_csv(request):
+    if not request.user.is_manager:
+        messages.error(request, "You do not have permission to download this data.")
+        return redirect('user_dashboard')  # Adjust 'dashboard' to your actual redirect path
+    
+    start_date = parse_custom_date(request.POST.get('start_date'))
+    end_date = parse_custom_date(request.POST.get('end_date'))
+    queryset = SicknessRecord.objects.filter(
+        start_date__gte=start_date, end_date__lte=end_date
+    )
+    fieldnames = ['employee', 'start_date', 'end_date', 'description', 'created_by', 'timestamp']
+    return export_to_csv(queryset, fieldnames, f'sickness_records_{timezone.now()}.csv')
+
+from django.http import HttpResponse
+from django.shortcuts import redirect
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.utils import timezone
+from datetime import datetime, timedelta, date
+from .models import CustomUser, AttendanceRecord, HolidayRecord, SicknessRecord
+from io import BytesIO
+from zipfile import ZipFile
+from django.template.loader import render_to_string
+from weasyprint import HTML
+
+@login_required
+def download_all_employee_reports(request):
+    try:
+        today = date.today()
+        month_year = request.POST.get('month_year')  # Format: YYYY-MM
+
+        # Parse month and year
+        month_year_date = datetime.strptime(month_year, '%Y-%m').date()
+        first_day_of_month = month_year_date.replace(day=1)
+        last_day_of_month = (
+            first_day_of_month + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+        # Get employees with attendance records in the specified month
+        employees_with_attendance = CustomUser.objects.filter(
+            attendancerecord__date__range=(first_day_of_month, last_day_of_month)
+        ).distinct()
+        
+        if not employees_with_attendance.exists():
+            messages.error(request, f'No employees have attendance records for {month_year_date.strftime("%B %Y")}.')
+            return redirect('user_dashboard')
+
+        mem_zip = BytesIO()
+
+        with ZipFile(mem_zip, mode="w") as zf:
+            invoices_failed = []
+            for employee in employees_with_attendance:
+                try:
+                    # Filter records for the employee for the specified month
+                    attendance_records = AttendanceRecord.objects.filter(
+                        employee=employee,
+                        date__range=(first_day_of_month, last_day_of_month)
+                    ).order_by('date')
+                    holiday_records = HolidayRecord.objects.filter(
+                        employee=employee,
+                        start_date__range=(first_day_of_month, last_day_of_month)
+                    )
+                    sickness_records = SicknessRecord.objects.filter(
+                        employee=employee,
+                        start_date__range=(first_day_of_month, last_day_of_month)
+                    )
+
+                    # Render the HTML template for the employee
+                    html_string = render_to_string('employee_payroll_report.html', {
+                        'employee': employee,
+                        'month': month_year_date.strftime("%B %Y"),
+                        'attendance': attendance_records,
+                        'holidays': holiday_records,
+                        'sickness': sickness_records,
+                        'attendance_count': attendance_records.count(),
+                        'holiday_count': holiday_records.count(),
+                        'sickness_count': sickness_records.count(),
+                    })
+
+                    # Generate PDF
+                    pdf_filename = f"{employee.username}_payroll_report.pdf"
+                    pdf_file = HTML(string=html_string).write_pdf()
+
+                    # Write PDF to zip
+                    zf.writestr(pdf_filename, pdf_file)
+
+                except Exception as e:
+                    invoices_failed.append(employee.username)
+                    messages.error(request, f'Error generating report for {employee.username}: {str(e)}')
+
+            if invoices_failed:
+                messages.error(request, f'Errors encountered for employees: {invoices_failed}')
+
+        # Prepare the response
+        mem_zip.seek(0)
+        response = HttpResponse(mem_zip.read(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="employee_reports_{month_year_date.strftime("%Y-%m")}.zip"'
+
+        return response
+
+    except Exception as e:
+        messages.error(request, f'An error was encountered. Please contact your administrators. Error: {str(e)}')
+
+    return redirect('user_dashboard')
 # views.py
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required

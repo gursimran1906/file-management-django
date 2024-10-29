@@ -1,226 +1,283 @@
-{% extends 'base.html' %} {% load utils %} 
-{% block title %}Holiday Records{% endblock %} {% block container %}
+{% extends 'base.html' %} {% load utils %} {% block title %}Holiday Records{% endblock %} {% block container %}
 
-<div class='grid md:grid-cols-3 gap-4 mt-2'>
-    <h1 class="div-container md:w-fit h-fit text-3xl font-medium">All Holiday Records</h1>
-    <div class=' div-container'>
-        <table class="table">
-            <thead>
-                <tr>
-                    <th colspan="2" class="text-lg text-black font-normal text-center">Selected Rows Totals</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr class='border-b text-black'>
-                    <th class='td' scope="row">Total Annual Leave:</th>
-                    <td class='td'><span id="totalOurCosts">0.00</span></td>
-                </tr>
-                <tr class='border-b text-black'>
-                    <th class='td' scope="row">Total Unpaid:</th>
-                    <td class='td'><span class="inline" id="totalVAT">0.00</span></td>
-                </tr>
-                
-            </tbody>
-        </table>
-    </div>
-    <div class='div-container   md:justify-self-end '>
-        <form method="POST" action="">
-            {% csrf_token %}
-            <h3 class='text-2xl mb-4 text-center'>Actions</h3>
-            <div class="flex flex-col gap-4">
-        
-                <div date-rangepicker datepicker-buttons datepicker-autoselect-today datepicker-format="dd/mm/yyyy" datepicker-title="Choose date range" class="flex items-center">
-                    <div class="relative">
-                        <div class="absolute inset-y-0 start-0 flex items-center ps-2 pointer-events-none">
-                            <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/>
-                            </svg>
-                        </div>
-                            <input name="start" type="text" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Select date start">
-                    </div>
-                    <span class="mx-4 text-gray-500">to</span>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 start-0 flex items-center ps-2 pointer-events-none">
-                            <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/>
-                            </svg>
-                        </div>
-                        <input name="end" type="text" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Select date end">
-                    </div>
-                </div>
-                <button class="btn-primary" type="submit" >Download Records as CSV</button>
-            </div>
-        </form>
-    </div>
-
-</div>
-  <div class="overflow-auto div-container mt-4">
-    <table id="holidayTable" class="min-w-full text-sm text-gray-800">
+<div class="grid md:grid-cols-3 gap-4 mt-2">
+  <h1 class="div-container md:w-fit h-fit text-3xl font-medium">
+    All Holiday Records
+  </h1>
+  <div class="div-container">
+    <table class="table">
       <thead>
         <tr>
-          <th class="text-left py-2 px-4 border-b border-gray-200">Employee</th>
-          <th class="text-left py-2 px-4 border-b border-gray-200">Type</th>
-          <th class="text-left py-2 px-4 border-b border-gray-200">Days</th>
-          <th class="text-left py-2 px-4 border-b border-gray-200">Start Date</th>
-          <th class="text-left py-2 px-4 border-b border-gray-200">End Date</th>
-          <th class="text-left py-2 px-4 border-b border-gray-200">Status</th>
-          <th class="text-left py-2 px-4 border-b border-gray-200">Reason</th>
-          <th class="text-left py-2 px-4 border-b border-gray-200">Action</th>
-
+          <th colspan="2" class="text-lg text-black font-normal text-center">
+            Selected Rows Totals
+          </th>
         </tr>
       </thead>
       <tbody>
-        {% for holiday in holiday_records %}
-        <tr>
-          <td class="py-2 px-4 border-b border-gray-200">{{ holiday.request.employee }}</td>
-          <td class="py-2 px-4 border-b border-gray-200">{{ holiday.request.type }}</td>
-          <td class="py-2 px-4 border-b border-gray-200">{{ holiday.total_days }}</td>
-          <td class="py-2 px-4 border-b border-gray-200">{{ holiday.request.start_date|date:"d/m/Y H:i" }}</td>
-          <td class="py-2 px-4 border-b border-gray-200">{{ holiday.request.end_date|date:"d/m/Y H:i" }}</td>
-          <td class="py-2 px-4 border-b border-gray-200">
-            {% if holiday.request.approved %}
-              <span class="badge-green">Approved</span>
-            {% elif holiday.request.checked_by %}
-              <span class="badge-red">Rejected</span>
-            {% else %}
-              <span class="badge-purple">Pending</span>
-            {% endif %}
-          </td>
-          <td class="py-2 px-4 border-b border-gray-200">{{ holiday.request.reason }}</td>
-          <td class="py-2 px-4 border-b border-gray-200"><a class="link" href="{% url 'edit_holiday_record' holiday.request.id %}">Edit</a></td>
-
+        <tr class="border-b text-black">
+          <th class="td" scope="row">Total Annual Leave:</th>
+          <td class="td"><span id="totalAnnualLeave">0.00</span></td>
         </tr>
-        {% empty %}
-        <tr>
-          <td colspan="6" class="py-4 text-center text-gray-500">No holiday records found.</td>
+        <tr class="border-b text-black">
+          <th class="td" scope="row">Total Unpaid Leave:</th>
+          <td class="td"><span id="totalUnpaidLeave">0.00</span></td>
         </tr>
-        {% endfor %}
       </tbody>
-      <tfoot>
-        <tr>
-          <th class="text-left py-2 px-4  ">Employee</th>
-          <th class="text-left py-2 px-4  ">Type</th>
-          <th class="text-left py-2 px-4 ">Days</th>
-
-          <th class="text-left py-2 px-4 ">Start Date</th>
-          <th class="text-left py-2 px-4 ">End Date</th>
-          <th class="text-left py-2 px-4 ">Status</th>
-          <th class="text-left py-2 px-4 ">Reason</th>
-        </tr>
-      </tfoot>
     </table>
   </div>
-
+  <div class="div-container md:justify-self-end">
+    <form method="POST" action="{% url 'holiday_record_csv'%}">
+      {% csrf_token %}
+      <h3 class="text-2xl mb-4 text-center">Actions</h3>
+      <div class="flex flex-col gap-4">
+        <div
+          date-rangepicker
+          datepicker-buttons
+          datepicker-autoselect-today
+          datepicker-format="dd/mm/yyyy"
+          datepicker-title="Choose date range"
+          class="flex items-center"
+        >
+          <div class="relative">
+            <div
+              class="absolute inset-y-0 start-0 flex items-center ps-2 pointer-events-none"
+            >
+              <svg
+                class="w-4 h-4 text-gray-500 dark:text-gray-400"
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"
+                />
+              </svg>
+            </div>
+            <input
+              name="start_date"
+              type="text"
+              class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+              placeholder="Select date start"
+            />
+          </div>
+          <span class="mx-4 text-gray-500">to</span>
+          <div class="relative">
+            <div
+              class="absolute inset-y-0 start-0 flex items-center ps-2 pointer-events-none"
+            >
+              <svg
+                class="w-4 h-4 text-gray-500 dark:text-gray-400"
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"
+                />
+              </svg>
+            </div>
+            <input
+              name="end_date"
+              type="text"
+              class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+              placeholder="Select date end"
+            />
+          </div>
+        </div>
+        <button class="btn-primary" type="submit">
+          Download Records as CSV
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+<div class="overflow-auto div-container mt-4">
+  <table id="holidayTable" class="min-w-full text-sm text-gray-800">
+    <thead>
+      <tr>
+        <th class="text-left py-2 px-4 border-b border-gray-200">Employee</th>
+        <th class="text-left py-2 px-4 border-b border-gray-200">Type</th>
+        <th class="text-left py-2 px-4 border-b border-gray-200">Days</th>
+        <th class="text-left py-2 px-4 border-b border-gray-200">Start Date</th>
+        <th class="text-left py-2 px-4 border-b border-gray-200">End Date</th>
+        <th class="text-left py-2 px-4 border-b border-gray-200">Status</th>
+        <th class="text-left py-2 px-4 border-b border-gray-200">Reason</th>
+        <th class="text-left py-2 px-4 border-b border-gray-200">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for holiday in holiday_records %}
+      <tr class="hover:bg-gray-50 cursor-pointer">
+        <td class="py-2 px-4 border-b border-gray-200">
+          {{ holiday.request.employee }}
+        </td>
+        <td class="py-2 px-4 border-b border-gray-200">
+          {{ holiday.request.type }}
+        </td>
+        <td class="py-2 px-4 border-b border-gray-200">
+          {{ holiday.total_days }}
+        </td>
+        <td class="py-2 px-4 border-b border-gray-200">
+          {{ holiday.request.start_date|date:"d/m/Y H:i" }}
+        </td>
+        <td class="py-2 px-4 border-b border-gray-200">
+          {{ holiday.request.end_date|date:"d/m/Y H:i" }}
+        </td>
+        <td class="py-2 px-4 border-b border-gray-200">
+          {% if holiday.request.approved %}
+          <span class="badge-green">Approved</span>
+          {% elif holiday.request.checked_by %}
+          <span class="badge-red">Rejected</span>
+          {% else %}
+          <span class="badge-purple">Pending</span>
+          {% endif %}
+        </td>
+        <td class="py-2 px-4 border-b border-gray-200">
+          {{ holiday.request.reason }}
+        </td>
+        <td class="py-2 px-4 border-b border-gray-200">
+          <a
+            class="link"
+            href="{% url 'edit_holiday_record' holiday.request.id %}"
+            >Edit</a
+          >
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="6" class="py-4 text-center text-gray-500">
+          No holiday records found.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th class="text-left py-2 px-4">Employee</th>
+        <th class="text-left py-2 px-4">Type</th>
+        <th class="text-left py-2 px-4">Days</th>
+        <th class="text-left py-2 px-4">Start Date</th>
+        <th class="text-left py-2 px-4">End Date</th>
+        <th class="text-left py-2 px-4">Status</th>
+        <th class="text-left py-2 px-4">Reason</th>
+        <th class="text-left py-2 px-4">Action</th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
 
 <script>
-  
+  $(document).ready(function () {
+    $.fn.dataTable.moment("DD/MM/YYYY");
 
-  $(document).ready(function() {
-        
-    $.fn.dataTable.moment('DD/MM/YYYY');
-    
-    var table = $('#holidayTable').DataTable({
-        
-        "ordering": true,
-        "responsive": true,
-        lengthMenu: [
-            [10, 25, 50, -1],
-            [10, 25, 50, 'All']
-        ],
-        pageLength: 10,
-
-
-
+    var table = $("#holidayTable").DataTable({
+      ordering: true,
+      responsive: true,
+      lengthMenu: [
+        [10, 25, 50, -1],
+        [10, 25, 50, "All"],
+      ],
+      pageLength: 10,
     });
-
-
 
     function updateTotals() {
+      var selectedRows = table.rows(".selected").data();
+      var totalAnnualLeave = 0;
+      var totalUnpaidLeave = 0;
 
-        var selectedRows = table.rows('.selected').data();
-        var totalOurCosts = 0;
-        var totalVAT = 0;
-        var totalCostsAndVat = 0;
-
-        // Calculate totals from selected rows
-        for (var i = 0; i < selectedRows.length; i++) {
-            totalOurCosts += parseFloat(selectedRows[i][5].replace('£', '').replace(',', ''));
-            totalVAT += parseFloat(selectedRows[i][6].replace('£', '').replace(',', ''));
-            totalCostsAndVat += parseFloat(selectedRows[i][7].replace('£', '').replace(',', ''));
+      for (var i = 0; i < selectedRows.length; i++) {
+        var leaveType = selectedRows[i][1];
+        var leaveDays = parseFloat(selectedRows[i][2]);
+        if (leaveType === "Paid") {
+          totalAnnualLeave += leaveDays;
+        } else if (leaveType === "Unpaid") {
+          totalUnpaidLeave += leaveDays;
         }
+      }
 
-        // Update the totals in the fixed box
-        $('#totalOurCosts').text('£' + totalOurCosts.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
-        $('#totalVAT').text('£' + totalVAT.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
-        $('#totalCostsAndVat').text('£' + totalCostsAndVat.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
-
+      $("#totalAnnualLeave").text(totalAnnualLeave.toFixed(2));
+      $("#totalUnpaidLeave").text(totalUnpaidLeave.toFixed(2));
     }
-    $('#holidayTable tbody').on('click', 'tr', function() {
-        $(this).toggleClass('selected');
-        updateTotals();
+
+    $("#holidayTable tbody").on("click", "tr", function () {
+      $(this).toggleClass("selected bg-slate-50");
+      updateTotals();
     });
 
-    table.on('draw', function() {
-        // var visibleRows = table.rows({
-        //     search: 'applied'
-        // }).indexes();
+    table.on("draw", function () {
+      var visibleRows = table.rows({ page: "current" }).indexes();
 
-        var visibleRows = table.rows({
-            page: 'current'
-        }).indexes();
-
-        table.rows().every(function(rowIdx) {
-            var rowNode = this.node();
-            var isVisible = visibleRows.indexOf(rowIdx) !== -1;
-            console.log(rowIdx, visibleRows.indexOf(rowIdx))
-            if (isVisible) {
-                $(rowNode).addClass('selected');
-            } else {
-                $(rowNode).removeClass('selected');
-            }
-        });
-        updateTotals();
-
+      table.rows().every(function (rowIdx) {
+        var rowNode = this.node();
+        var isVisible = visibleRows.indexOf(rowIdx) !== -1;
+        $(rowNode).toggleClass("selected bg-slate-50", isVisible);
+      });
+      updateTotals();
     });
 
-    $('#holidayTable tfoot th').each(function() {
-        var title = $(this).text();
-        $(this).html('<input class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" type="text" placeholder="Search ' + title + '" />');
-    });
+    table.on("draw", function () {
+      // var visibleRows = table.rows({
+      //     search: 'applied'
+      // }).indexes();
 
+      var visibleRows = table
+        .rows({
+          page: "current",
+        })
+        .indexes();
 
-    table.columns().every(function() {
-        var that = this;
-        $('input', this.footer()).on('keyup change', function() {
-            if (that.search() !== this.value) {
-                that
-                    .search(this.value)
-                    .draw();
-            }
-        });
-    });
-
-
-    $('#holidayTable th').hover(
-        function() {
-            $(this).css('cursor', 'pointer');
-        },
-        function() {
-            $(this).css('cursor', 'auto');
+      table.rows().every(function (rowIdx) {
+        var rowNode = this.node();
+        var isVisible = visibleRows.indexOf(rowIdx) !== -1;
+        if (isVisible) {
+          $(rowNode).addClass("selected bg-slate-50");
+        } else {
+          $(rowNode).removeClass("selected bg-slate-50");
         }
+      });
+      updateTotals();
+    });
+
+    $("#holidayTable tfoot th").each(function () {
+      var title = $(this).text();
+      $(this).html(
+        '<input class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" type="text" placeholder="Search ' +
+          title +
+          '" />'
+      );
+    });
+
+    table.columns().every(function () {
+      var that = this;
+      $("input", this.footer()).on("keyup change", function () {
+        if (that.search() !== this.value) {
+          that.search(this.value).draw();
+        }
+      });
+    });
+
+    $("#holidayTable th").hover(
+      function () {
+        $(this).css("cursor", "pointer");
+      },
+      function () {
+        $(this).css("cursor", "auto");
+      }
     );
 
-    table.on('order.dt', function() {
-        $('#holidayTable thead th').each(function() {
-            $(this).removeClass('asc desc');
-        });
+    table.on("order.dt", function () {
+      $("#holidayTable thead th").each(function () {
+        $(this).removeClass("asc desc");
+      });
 
-        var order = table.order();
-        if (order.length) {
-            var th = $('#holidayTable thead th:eq(' + order[0][0] + ')');
-            th.addClass(order[0][1]);
-        }
+      var order = table.order();
+      if (order.length) {
+        var th = $("#holidayTable thead th:eq(" + order[0][0] + ")");
+        th.addClass(order[0][1]);
+      }
     });
-});
+  });
 </script>
 {% endblock %}
