@@ -66,6 +66,7 @@
       </tbody>
     </table>
   </div>
+  
   <div class="div-container h-fit">
     <table class="table">
      
@@ -81,74 +82,106 @@
       </tbody>
     </table>
   </div>
-  <div class="div-container flex flex-col gap-2 md:justify-self-end h-fit">
-    <h3 class="text-2xl text-center">Actions</h3>
-    <div class="flex gap-2">
-      {% if request.user.is_manager %}
-      <a
-        id="dropdownDefaultButton"
-        data-dropdown-toggle="dropdown-actions"
-        class="text-black bg-white hover:bg-blue-600 hover:text-white focus:ring-4 focus:outline-none focus:ring-blue-300 rounded-lg border text-sm px-2 py-2 text-center inline-flex items-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
-        type="button"
+  {% if request.user.is_manager %}
+  <div class="flex flex-col gap-4">
+    <div class="div-container flex flex-col gap-2 md:justify-self-end h-fit">
+      <h3 class="text-2xl text-center">Actions</h3>
+      <div class="flex gap-2">
+        
+        <a
+          id="dropdownDefaultButton"
+          data-dropdown-toggle="dropdown-actions"
+          class="text-black bg-white cursor-pointer hover:bg-blue-600 hover:text-white focus:ring-4 focus:outline-none focus:ring-blue-300 rounded-lg border text-sm px-2 py-2 text-center inline-flex items-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
+          type="button"
+          >
+          View All
+          <svg
+            class="w-2.5 h-2.5 ms-3"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 10 6"
+          >
+            <path
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="m1 1 4 4 4-4"
+            />
+          </svg>
+        </a>
+        <div
+          id="dropdown-actions"
+          class="z-10 hidden border bg-white divide-y divide-gray-100 rounded-lg shadow w-44 dark:bg-gray-700"
+          >
+          <ul
+            class="py-2 text-sm text-gray-700 dark:text-gray-200 divide-y divide-gray-100"
+            aria-labelledby="dropdownDefaultButton"
+          >
+            <li>
+              <a
+                href="{% url 'holiday_records' %}"
+                target="_blank"
+                class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >Holiday Records</a
+              >
+            </li>
+            <li>
+              <a
+                href="{% url 'sickness_records'%}"
+                target="_blank"
+                class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >Sickness Records</a
+              >
+            </li>
+          </ul>
+        </div>
+        <button
+          class="btn btn-primary"
+          data-modal-target="office-closure-crud-modal" data-modal-toggle="office-closure-crud-modal"
         >
-        View All
-        <svg
-          class="w-2.5 h-2.5 ms-3"
-          aria-hidden="true"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 10 6"
+          Add Office Closure
+        </button>
+        <button
+          class="btn btn-primary"
+          data-modal-target="sickness-crud-modal" data-modal-toggle="sickness-crud-modal"
         >
-          <path
-            stroke="currentColor"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="m1 1 4 4 4-4"
-          />
-        </svg>
-      </a>
-      <div
-        id="dropdown-actions"
-        class="z-10 hidden border bg-white divide-y divide-gray-100 rounded-lg shadow w-44 dark:bg-gray-700"
-        >
-        <ul
-          class="py-2 text-sm text-gray-700 dark:text-gray-200 divide-y divide-gray-100"
-          aria-labelledby="dropdownDefaultButton"
-        >
-          <li>
-            <a
-              href="{% url 'holiday_records' %}"
-              target="_blank"
-              class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-              >Holiday Records</a
-            >
-          </li>
-          <li>
-            <a
-              href="{% url 'sickness_records'%}"
-              target="_blank"
-              class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-              >Sickness Records</a
-            >
-          </li>
-        </ul>
+          Add Sick Leave
+        </button>
+       
       </div>
-      <button
-        class="btn btn-primary"
-        data-modal-target="office-closure-crud-modal" data-modal-toggle="office-closure-crud-modal"
-      >
-        Add Office Closure
-      </button>
-      <button
-        class="btn btn-primary"
-        data-modal-target="sickness-crud-modal" data-modal-toggle="sickness-crud-modal"
-      >
-        Add Sick Leave
-      </button>
-      {% endif %}
+    </div>
+    <div class='div-container'>
+      <div class="flex flex-row gap-2 items-center mb-2 justify-center">
+        <h2 class="text-xl ">Download Payroll Reports</h2>
+        <a data-popover-target="payroll_reports">
+        <svg class="w-4 h-4 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+          <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 11h2v5m-2 0h4m-2.592-8.5h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+        </svg>
+  
+      </a>
+      <div id="payroll_reports" role="tooltip" class="absolute z-50 invisible inline-block w-72 text-sm transition-opacity duration-300 border rounded-lg shadow-sm opacity-0 text-gray-200 border-gray-600 bg-gray-800">
+        <div class="px-3 py-2 border-b rounded-t-lg border-gray-600 bg-gray-700 flex items-center">
+            
+            <h3 class="font-medium text-white">Payroll Reports</h3>
+        </div>
+        <div class="px-3 py-2 font-light text-gray-200">
+          <p>
+            This generates and downloads a zip file containing payroll reports for employees with attendance records in a specified month, including their attendance, holidays, and sickness data.
+        </p>
+        </div>
+        <div data-popper-arrow></div>
+      </div>
+      </div>
+      <form method="POST" action="{% url 'payroll_reports_zip' %}" class="flex flex-col gap-2">
+        {% csrf_token %}
+        <input class="form-input" type="month" name="month_year"></input>
+        <button class="btn-secondary text-xs" type="submit" >Download</button>
+      </form>
     </div>
   </div>
+  {% endif %}
 </div>
 
 <div id="holiday-crud-modal" tabindex="-1" aria-hidden="true" class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full">

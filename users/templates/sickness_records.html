@@ -6,7 +6,7 @@
     <h1 class="div-container md:w-fit h-fit text-3xl font-medium">All Sickness Records</h1>
    
     <div class='div-container   md:justify-self-end '>
-        <form method="POST" action="">
+        <form method="POST" action="{% url 'sickness_record_csv' %}">
             {% csrf_token %}
             <h3 class='text-2xl mb-4 text-center'>Actions</h3>
             <div class="flex flex-col gap-4">
@@ -18,7 +18,7 @@
                                 <path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/>
                             </svg>
                         </div>
-                            <input name="start" type="text" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Select date start">
+                            <input name="start_date" type="text" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Select date start">
                     </div>
                     <span class="mx-4 text-gray-500">to</span>
                     <div class="relative">
@@ -27,7 +27,7 @@
                                 <path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/>
                             </svg>
                         </div>
-                        <input name="end" type="text" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Select date end">
+                        <input name="end_date" type="text" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Select date end">
                     </div>
                 </div>
                 <button class="btn-primary" type="submit" >Download Records as CSV</button>
@@ -51,7 +51,7 @@
       </thead>
       <tbody>
         {% for record in sickness_records %}
-        <tr class="text-gray-800">
+        <tr class="text-gray-800 hover:bg-gray-50">
           <td class="py-2 px-4 border-b ">{{ record.employee }}</td>
           <td class="py-2 px-4 border-b ">{{ record.start_date|date:"d/m/Y H:i" }}</td>
           <td class="py-2 px-4 border-b ">
@@ -72,6 +72,17 @@
         </tr>
         {% endfor %}
       </tbody>
+      <tfoot>
+        <tr class="text-gray-800">
+          <th class="text-left py-2 px-4 border-b ">Employee</th>
+          <th class="text-left py-2 px-4 border-b">Start Date</th>
+          <th class="text-left py-2 px-4 border-b ">End Date</th>
+          <th class="text-left py-2 px-4 border-b ">Description</th>
+          <th class="text-left py-2 px-4 border-b ">Created By</th>
+          <th class="text-left py-2 px-4 border-b ">Timestamp</th>
+          <th class="text-left py-2 px-4 border-b ">Edit</th>
+        </tr>
+      </tfoot>
     </table>
   </div>
 
@@ -90,9 +101,7 @@
                 [10, 25, 50, 'All']
             ],
             pageLength: 10,
-    
-    
-    
+
         });
     
     
@@ -145,9 +154,13 @@
     
         });
     
-        $('#sicknessTable tfoot th').each(function() {
-            var title = $(this).text();
-            $(this).html('<input class="form-input" type="text" placeholder="Search ' + title + '" />');
+        $('#sicknessTable tfoot th').each(function () {
+        var title = $(this).text();
+        $(this).html(
+            '<input class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" type="text" placeholder="Search ' +
+            title +
+            '" />'
+        );
         });
     
     
