@@ -2278,7 +2278,10 @@ def get_all_financials(file_number):
         all_objects.append(obj)
 
     for slip in green_slips:
-        if slip.file_number_from.file_number == file_number:
+        if slip.file_number_from == slip.file_number_to:
+            type_obj = 'client_to_office_tfr'
+            desc = f"Client to Office Transfer"
+        elif slip.file_number_from.file_number == file_number:
             type_obj = 'money_out'
             desc = f"Transfer to {slip.file_number_to}"
         else:
@@ -2352,15 +2355,18 @@ def download_statement_account(request, file_number):
 
     writer = csv.writer(response)
 
-    writer.writerow(['', f'Client Name: {file.client1.name} Matter:{
-                    file.matter_description}[{file.file_number}]'])
+    writer.writerow(['', f'Client Name: {file.client1.name} Matter:{file.matter_description}[{file.file_number}]'])
     writer.writerow(['', f'Statement of Account'])
 
     writer.writerow([])
     writer.writerow(
         ['Date', 'Description', 'Money In', 'Money Out', 'Balance'])
     balance = 0
+    client_to_office_tfr_rows = 0
     for row in sorted_rows:
+        if row['type'] == 'client_to_office_tfr':
+            client_to_office_tfr_rows = client_to_office_tfr_rows + 1 
+            continue
         if row['type'] == 'money_out':
             balance = balance - row['amount']
         else:
@@ -2368,7 +2374,7 @@ def download_statement_account(request, file_number):
         writer.writerow([row['date'], row['desc'], row['amount'] if row['type'] ==
                         'money_in' else '', row['amount'] if row['type'] == 'money_out' else '', balance])
     writer.writerow([])
-    final_cell = len(sorted_rows) + 4
+    final_cell = (len(sorted_rows)-client_to_office_tfr_rows) + 4
     writer.writerow(
         ['', 'Total', f'=sum(c5:c{final_cell})', f'=sum(d5:d{final_cell})'])
     return response
@@ -2417,6 +2423,37 @@ def generate_ledgers_report(request, file_number):
     all_objects = get_all_financials(file_number)
     
     for row in all_objects:
+
+        if row['type'] == 'client_to_office_tfr':
+            client_balance -= row['amount']
+            client_amount = '-'+ str(row['amount'])
+            office_amount =  ''
+            html_content += f"""
+                <tr>
+                    <td>{row['date']}</td>
+                    <td>{row['desc']}</td>
+                    <td>{office_amount}</td>
+                    <td class="balance">{office_balance}</td>
+                    <td>{client_amount}</td>
+                    <td class="balance">{client_balance}</td>
+                </tr>
+             """
+
+            office_balance += row['amount']
+            client_amount = ''
+            office_amount =  str(row['amount'])
+
+            html_content += f"""
+                <tr>
+                    <td>{row['date']}</td>
+                    <td>{row['desc']}</td>
+                    <td>{office_amount}</td>
+                    <td class="balance">{office_balance}</td>
+                    <td>{client_amount}</td>
+                    <td class="balance">{client_balance}</td>
+                </tr>
+            """
+            continue
         
         if row['ledger'] == 'C':
             if row['type'] == 'money_out':
@@ -2448,6 +2485,7 @@ def generate_ledgers_report(request, file_number):
                     <td class="balance">{client_balance}</td>
                 </tr>
         """
+    
     html_content += f"""
                 <tr class="bg-body-tertiary">
                     <td></td>
