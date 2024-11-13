@@ -1615,6 +1615,8 @@ def finance_view(request, file_number):
             total_in = total_in + slip.amount
 
     for slip in green_slips:
+        if slip.file_number_from.file_number == slip.file_number_to.file_number:
+            continue
         if slip.file_number_from.file_number == file_number:
             total_out = total_out + slip.amount
 
@@ -4139,8 +4141,9 @@ def free30mins(request):
                 attendee_ids.append(attendee.id)
             
             matter_type_id = request.POST['matter_type']
-            matter_type = MatterType.objects.filter(pk=matter_type_id).first()
+            matter_type = MatterType.objects.filter(pk=matter_type_id).first() if matter_type_id != '' else None
             notes = request.POST['notes']
+ 
             date = request.POST['date']
             start_time = request.POST['start_time']
             finish_time = request.POST['finish_time']

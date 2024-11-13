@@ -66,7 +66,29 @@ class LastWorkAdmin(admin.ModelAdmin):
 
 @admin.register(PmtsSlips)
 class PmtsSlipsAdmin(admin.ModelAdmin):
-    list_display = ['id', 'file_number', 'ledger_account', 'mode_of_pmt', 'amount', 'is_money_out', 'pmt_person', 'description', 'date', 'amount_invoiced', 'amount_allocated', 'balance_left', 'created_by', 'timestamp']
+    # Display settings
+    list_display = [
+        'id', 'file_number', 'ledger_account', 'mode_of_pmt', 'amount', 
+        'is_money_out', 'pmt_person', 'description', 'date', 
+        'amount_invoiced', 'amount_allocated', 'balance_left', 
+        'created_by', 'timestamp'
+    ]
+    list_display_links = ['id', 'file_number']   
+
+    # Filtering options
+    list_filter = ['mode_of_pmt', 'is_money_out', 'created_by', 'date']  
+    search_fields = ['file_number', 'ledger_account', 'pmt_person']  
+    
+    # Ordering and date hierarchy
+    ordering = ['-timestamp']  
+    date_hierarchy = 'date'  
+
+    # Enable editing of the timestamp field
+    readonly_fields = []  
+
+    
+    # Adding save on top to avoid scrolling down to save for each edit
+    save_on_top = True
 
 @admin.register(LedgerAccountTransfers)
 class LedgerAccountTransfersAdmin(admin.ModelAdmin):
