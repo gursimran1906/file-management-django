@@ -3952,26 +3952,54 @@ def download_policy_pdf(request, policy_version_id):
 
 @login_required
 def invoices_list(request):
-    invoices = Invoices.objects.filter(state='F')
+    # Get start and end dates from GET parameters
+    start_date = request.GET.get('start_date')
+    
+
+    # Calculate current financial year if start and end are not provided
+    current_date = timezone.now()
+    if not start_date:
+        if current_date.month >= 11:  # November to October financial year
+            start_date = datetime(current_date.year, 11, 1)
+            end_date = datetime(current_date.year + 1, 10, 31)
+        else:
+            start_date = datetime(current_date.year - 1, 11, 1)
+            end_date = datetime(current_date.year, 10, 31)
+    else:
+        # Parse dates from GET parameters
+        try:
+            start_date = datetime.strptime(start_date, '%Y-%m')
+            end_date = start_date.replace(year=start_date.year + 1, month=10, day=31)
+
+        except ValueError:
+            messages.error(request, 'Invalid date format. Please use YYYY-MM-DD.')
+            return redirect('index')
+        
+    # Filter invoices by finalized state and date range
+    invoices = Invoices.objects.filter(state='F', date__range=[start_date, end_date])
+
     if request.user.is_manager:
         for invoice in invoices:
-
             our_costs = invoice.our_costs
-            costs = ast.literal_eval(our_costs) if type(our_costs) != type([]) else our_costs
-            total_cost_invoice = 0
-        
-            for i in range(len(costs)):
-                total_cost_invoice = total_cost_invoice + Decimal(costs[i])
+            # Convert to list if stored as a string
+            costs = ast.literal_eval(our_costs) if not isinstance(our_costs, list) else our_costs
+            total_cost_invoice = sum(Decimal(cost) for cost in costs)
             vat_inv = total_cost_invoice * Decimal(0.20)
-        
             total_cost_and_vat = round(total_cost_invoice + vat_inv, 2)
-            
+
+            # Update invoice attributes dynamically
             invoice.our_costs = total_cost_invoice
             invoice.vat = round(vat_inv, 2)
             invoice.total_cost_and_vat = total_cost_and_vat
-        return render(request, 'invoices_list.html', {'invoices':invoices})
+
+        # Render template with invoices and date range
+        return render(request, 'invoices_list.html', {
+            'invoices': invoices,
+            'start_date': start_date,
+            'end_date': end_date,
+        })
     else:
-        messages.error(request, 'You do not have right level of permissions.')
+        messages.error(request, 'You do not have the right level of permissions.')
         return redirect('index')
 
 @login_required

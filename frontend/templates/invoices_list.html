@@ -2,11 +2,22 @@
 {% block title %}Invoices{% endblock %} 
 {% block container %}
 {% load utils %}
-<style>
-    
-</style>
+
 <div class='grid md:grid-cols-3 gap-4 mt-2'>
-    <h1 class="div-container md:w-fit h-fit text-3xl font-medium">Invoices</h1>
+    <div class="div-container md:w-fit h-fit ">
+        <h1 class="text-3xl font-medium">Invoices</h1>
+        <form class="flex flex-col space-y-2 mt-4" method="GET">
+            
+            <select 
+                id="financialYear" 
+                name="start_date" 
+                class="form-input"
+            >
+                <!-- Options will be populated dynamically -->
+            </select>
+            <button class="btn-secondary mt-auto">Filter</button>
+        </form>
+    </div>
     <div class=' div-container'>
         <table class="table">
             <thead>
@@ -31,6 +42,8 @@
             </tbody>
         </table>
     </div>
+    
+    
     <div class='div-container   md:justify-self-end '>
         <form method="POST" action="{% url 'download_invoices' %}">
             {% csrf_token %}
@@ -62,6 +75,49 @@
     </div>
 
 </div>
+<script>
+// Function to get query parameters from the URL
+function getQueryParam(param) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(param);
+}
+
+const startDateParam = getQueryParam('start_date');
+let selectedFinancialYear = null;
+if (startDateParam) {
+    const startDate = new Date(startDateParam);
+        if (
+            startDate.getMonth() === 10 && // November (0-indexed)
+            startDate.getDate() === 1
+    ) {
+            endDateYear = startDate.getFullYear() + 1
+            selectedFinancialYear = `Nov ${startDate.getFullYear()} - Oct ${endDateYear}`;
+        }
+} else {
+    const currentYear = new Date().getFullYear();
+    const nextYear = currentYear + 1;
+    selectedFinancialYear = `Nov ${currentYear} - Oct ${nextYear}`;
+}
+
+// Populate the financial year dropdown and set the selected option
+const select = document.getElementById('financialYear');
+const currentYear = new Date().getFullYear();
+
+for (let i = currentYear - 5; i <= currentYear; i++) {
+    const startYear = i;
+    const endYear = i + 1;
+    const option = document.createElement('option');
+    option.value = `${startYear}-11`;
+    option.textContent = `Nov ${startYear} - Oct ${endYear}`;
+    
+    if (selectedFinancialYear === option.textContent) {
+        option.selected = true;
+    }
+
+    select.appendChild(option);
+}
+
+</script>
 <div class="div-container mt-4">
     <div class="overflow-auto">
         <table id="invoicesTable" class="table">
