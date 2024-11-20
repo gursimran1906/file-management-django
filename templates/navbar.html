@@ -162,7 +162,7 @@
         
        
       </div>
-    </nav>
+</nav>
 <aside
   id="logo-sidebar"
   class="fixed top-0 left-0 z-40 w-64 h-screen pt-20 transition-transform -translate-x-full bg-white border-r border-gray-200 sm:translate-x-0 dark:bg-gray-800 dark:border-gray-700"
@@ -175,7 +175,7 @@
       <li>
         <a
           href="{% url 'user_dashboard'%}"
-          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'user_dashboard' as dashboard_url %} {% if request.path == dashboard_url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'user_dashboard' as dashboard_url %} {% if request.path == dashboard_url %} bg-gray-100 font-medium {% endif %} dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
         >
          
           <svg  class="w-5 h-5 {% if request.path == dashboard_url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
@@ -189,7 +189,7 @@
       {% if file_number %}
         <li>
           <a href="{% url 'home' file_number %}"
-            class="flex items-center p-2 text-gray-900 rounded-lg {% url 'home' file_number as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+            class="flex items-center p-2 text-gray-900 rounded-lg {% url 'home' file_number as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
           >
           
             <svg  class="w-5 h-5 {% if request.path == url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
@@ -202,7 +202,7 @@
         </li>
         <li>
           <a href="{% url 'attendance_note_view' file_number %}"
-            class="flex items-center p-2 text-gray-900 rounded-lg {% url 'attendance_note_view' file_number as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+            class="flex items-center p-2 text-gray-900 rounded-lg {% url 'attendance_note_view' file_number as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
           >
           
             <svg  class="w-5 h-5 {% if request.path == url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
@@ -215,7 +215,7 @@
         </li>
         <li>
           <a href="{% url 'correspondence_view' file_number %}"
-            class="flex items-center p-2 text-gray-900 rounded-lg {% url 'correspondence_view' file_number as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+            class="flex items-center p-2 text-gray-900 rounded-lg {% url 'correspondence_view' file_number as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
           >
           
             <svg  class="w-5 h-5 {% if request.path == url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
@@ -228,7 +228,7 @@
         </li>
         <li>
           <a href="{% url 'finance_view' file_number %}"
-            class="flex items-center p-2 text-gray-900 rounded-lg {% url 'finance_view' file_number as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+            class="flex items-center p-2 text-gray-900 rounded-lg {% url 'finance_view' file_number as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
           >
           
             <svg  class="w-5 h-5 {% if request.path == url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
@@ -244,7 +244,7 @@
       <li>
         <a
           href="{% url 'new_file'%}"
-          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'new_file' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'new_file' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
         >
          
           <svg  class="w-5 h-5 {% if request.path == url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
@@ -258,7 +258,7 @@
       <li>
         <a
           href="{% url 'unallocated_emails'%}"
-          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'unallocated_emails' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'unallocated_emails' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
         >
          
           <svg  class="w-5 h-5 {% if request.path == url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
@@ -274,7 +274,7 @@
       <li>
         <a
           href="{% url 'free30mins'%}"
-          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'free30mins' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'free30mins' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
         >
          
           <svg  class="w-5 h-5 {% if request.path == url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
@@ -291,7 +291,7 @@
       <li>
         <a
           href="{% url 'undertakings'%}"
-          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'undertakings' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'undertakings' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
         >
          
           <svg  class="w-5 h-5 {% if request.path == url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
@@ -308,7 +308,7 @@
       <li>
         <a
           href="{% url 'invoices_list'%}"
-          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'invoices_list' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'invoices_list' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
         >
          
           <svg  class="w-5 h-5 {% if request.path == url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
@@ -321,7 +321,7 @@
       <li>
         <a
           href="{% url 'download_cashier_data'%}"
-          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'download_cashier_data' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'download_cashier_data' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
         >
          
           
@@ -343,7 +343,7 @@
         <li>
           <a
             href="{% url 'onboarding_documents' %}"
-            class="{% url 'onboarding_documents' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %}flex items-center p-2 text-gray-900 rounded-lg dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+            class="{% url 'onboarding_documents' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %}flex items-center p-2 text-gray-900 rounded-lg dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
           >
             <svg
               class="{% if request.path == url %} text-gray-900 {% endif %}w-5 h-5 text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
@@ -361,7 +361,7 @@
         <li>
           <a
             href="{% url 'policies_display' %}"
-            class="{% url 'policies_display' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %}flex items-center p-2 text-gray-900 rounded-lg dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+            class="{% url 'policies_display' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %}flex items-center p-2 text-gray-900 rounded-lg dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
           >
             <svg
               class="{% if request.path == url %} text-gray-900 {% endif %}w-5 h-5 text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
@@ -380,7 +380,7 @@
           <a
             target="_blank"
             href="https://docs.google.com/forms/d/e/1FAIpQLScViDnoujNv6mUoYpzU_OjDpoEKuKDXgTQl-AIRZ-OljkJpOw/viewform?usp=sf_link"
-            class="flex items-center p-2 text-gray-900 rounded-lg dark:text-white hover:font-medium hover:bg-gray-100 dark:hover:bg-gray-700 group"
+            class="flex items-center p-2 text-gray-900 rounded-lg dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
           >
             <svg
               class="w-5 h-5 text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
