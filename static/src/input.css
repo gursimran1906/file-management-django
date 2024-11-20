@@ -18,8 +18,10 @@
         @apply px-2 py-2;
     }
     .div-container {
-        @apply bg-white rounded-lg  p-4 border ;
-    }
+        @apply  box-border bg-white rounded-lg p-4 border overflow-y-auto; /* Tailwind utilities */
+       
+      }
+    
     .btn-primary {
       @apply text-center text-white bg-blue-600 text-sm hover:bg-blue-800 focus:ring-2 focus:ring-blue-300  rounded-lg px-2 py-2 dark:bg-blue-600 dark:hover:bg-blue-600 focus:outline-none dark:focus:ring-blue-800;
     }

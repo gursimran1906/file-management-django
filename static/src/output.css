@@ -668,11 +668,14 @@ video {
 }
 
 .div-container {
+  box-sizing: border-box;
+  overflow-y: auto;
   border-radius: 0.5rem;
   border-width: 1px;
   --tw-bg-opacity: 1;
   background-color: rgb(255 255 255 / var(--tw-bg-opacity));
   padding: 1rem;
+  /* Tailwind utilities */
 }
 
 .btn-primary {
@@ -1213,10 +1216,6 @@ video {
   margin-top: 0.25rem;
 }
 
-.mt-11 {
-  margin-top: 2.75rem;
-}
-
 .mt-2 {
   margin-top: 0.5rem;
 }
@@ -1227,6 +1226,10 @@ video {
 
 .mt-5 {
   margin-top: 1.25rem;
+}
+
+.mt-\[var\(--navbar-height\)\] {
+  margin-top: var(--navbar-height);
 }
 
 .mt-auto {
@@ -1277,6 +1280,10 @@ video {
   height: 50%;
 }
 
+.h-1\/4 {
+  height: 25%;
+}
+
 .h-1\/4-screen {
   height: 25vh;
 }
@@ -1307,6 +1314,10 @@ video {
 
 .h-5 {
   height: 1.25rem;
+}
+
+.h-5\/6 {
+  height: 83.333333%;
 }
 
 .h-6 {
@@ -2071,10 +2082,6 @@ video {
   padding-top: 1rem;
 }
 
-.pt-8 {
-  padding-top: 2rem;
-}
-
 .text-left {
   text-align: left;
 }
@@ -2706,10 +2713,6 @@ video {
 
   .md\:grid-cols-9 {
     grid-template-columns: repeat(9, minmax(0, 1fr));
-  }
-
-  .md\:grid-cols-4 {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .md\:flex-row {

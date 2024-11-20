@@ -3,175 +3,179 @@
 {% block container %}
 {% load utils %}
 
-<div class='grid md:grid-cols-3 gap-4 mt-2'>
-    <div class="div-container md:w-fit h-fit ">
-        <h1 class="text-3xl font-medium">Invoices</h1>
-        <form class="flex flex-col space-y-2 mt-4" method="GET">
-            
-            <select 
-                id="financialYear" 
-                name="start_date" 
-                class="form-input"
-            >
-                <!-- Options will be populated dynamically -->
-            </select>
-            <button class="btn-secondary mt-auto">Filter</button>
-        </form>
-    </div>
-    <div class=' div-container'>
-        <table class="table">
-            <thead>
-                <tr>
-                    <th colspan="2" class="text-lg text-black font-normal text-center">Selected Rows Totals</th>
 
-                </tr>
-            </thead>
-            <tbody>
-                <tr class='border-b text-black'>
-                    <th class='td' scope="row">Total Costs:</th>
-                    <td class='td'><span id="totalOurCosts">£0.00</span></td>
-                </tr>
-                <tr class='border-b text-black'>
-                    <th class='td' scope="row">Total VAT:</th>
-                    <td class='td'><span class="inline" id="totalVAT">£0.00</span></td>
-                </tr>
-                <tr class='border-b text-black'>
-                    <th class='td'scope="row">Total Cost and Vat:</th>
-                    <td class='td'><span class="inline" id="totalCostsAndVat">£0.00</span></td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    
-    
-    <div class='div-container   md:justify-self-end '>
-        <form method="POST" action="{% url 'download_invoices' %}">
-            {% csrf_token %}
-            <h3 class='text-2xl mb-4 text-center'>Actions</h3>
-            <div class="flex flex-col gap-4">
+
+
+<div class="h-full space-y-4">
+    <div class='h-1/4 grid md:grid-cols-3 gap-4 '>
+        <div class="div-container md:w-fit h-fit ">
+            <h1 class="text-3xl font-medium">Invoices</h1>
+            <form class="flex flex-col space-y-2 mt-4" method="GET">
+                
+                <select 
+                    id="financialYear" 
+                    name="start_date" 
+                    class="form-input"
+                >
+                    <!-- Options will be populated dynamically -->
+                </select>
+                <button class="btn-secondary mt-auto">Filter</button>
+            </form>
+        </div>
+        <div class=' div-container'>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th colspan="2" class="text-lg text-black font-normal text-center">Selected Rows Totals</th>
+
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class='border-b text-black'>
+                        <th class='td' scope="row">Total Costs:</th>
+                        <td class='td'><span id="totalOurCosts">£0.00</span></td>
+                    </tr>
+                    <tr class='border-b text-black'>
+                        <th class='td' scope="row">Total VAT:</th>
+                        <td class='td'><span class="inline" id="totalVAT">£0.00</span></td>
+                    </tr>
+                    <tr class='border-b text-black'>
+                        <th class='td'scope="row">Total Cost and Vat:</th>
+                        <td class='td'><span class="inline" id="totalCostsAndVat">£0.00</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
         
-                <div date-rangepicker datepicker-buttons datepicker-autoselect-today datepicker-format="dd/mm/yyyy" datepicker-title="Choose date range" class="flex items-center">
-                    <div class="relative">
-                        <div class="absolute inset-y-0 start-0 flex items-center ps-2 pointer-events-none">
-                            <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/>
-                            </svg>
+        
+        <div class='div-container   md:justify-self-end '>
+            <form method="POST" action="{% url 'download_invoices' %}">
+                {% csrf_token %}
+                <h3 class='text-2xl mb-4 text-center'>Actions</h3>
+                <div class="flex flex-col gap-4">
+            
+                    <div date-rangepicker datepicker-buttons datepicker-autoselect-today datepicker-format="dd/mm/yyyy" datepicker-title="Choose date range" class="flex items-center">
+                        <div class="relative">
+                            <div class="absolute inset-y-0 start-0 flex items-center ps-2 pointer-events-none">
+                                <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/>
+                                </svg>
+                            </div>
+                                <input name="start" type="text" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Select date start">
                         </div>
-                            <input name="start" type="text" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Select date start">
-                    </div>
-                    <span class="mx-4 text-gray-500">to</span>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 start-0 flex items-center ps-2 pointer-events-none">
-                            <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/>
-                            </svg>
+                        <span class="mx-4 text-gray-500">to</span>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 start-0 flex items-center ps-2 pointer-events-none">
+                                <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/>
+                                </svg>
+                            </div>
+                            <input name="end" type="text" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Select date end">
                         </div>
-                        <input name="end" type="text" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Select date end">
                     </div>
+                    <button class="btn-primary" type="submit" >Download Invoices as CSV</button>
                 </div>
-                <button class="btn-primary" type="submit" >Download Invoices as CSV</button>
-            </div>
-        </form>
-    </div>
+            </form>
+        </div>
 
+    </div>
+    <div class="h-3/4 div-container overflow-auto">
+        <div class="overflow-auto">
+            <table id="invoicesTable" class="table">
+                <thead>
+                    <tr class='border-b'>
+                        <th class="td">Invoice Number</th>
+                        <th class="td">Date</th>
+                        <th class="td">File Number</th>
+                        <th class="td">Settled</th>
+                        <th class="td">Fee Earner</th>
+                        <th class="td">Our Costs</th>
+                        <th class="td">VAT</th>
+                        <th class="td">Total Costs</th>
+                        <th class="td">Action</th>
+
+                    </tr>
+                </thead>
+                <tbody class='text-black'>
+                {% for invoice in invoices %}
+                <tr class="border-b cursor-pointer">
+
+                <td class="td border-e">{{invoice.invoice_number}}</td>
+                <td class="td">{{invoice.date|date:'d/m/Y'}}</td>
+                <td class="td">{{invoice.file_number.file_number}}</td>
+                <td class="td">{% if invoice.total_due_left <= 0 %}Yes{% else %}No (Due= £{{invoice.total_due_left}}){% endif %}</td>
+                <td class="td">{{invoice.file_number.fee_earner}}</td>
+                <td class="td">£{{invoice.our_costs}}</td>
+                <td class="td">£{{invoice.vat}}</td>
+                <td class="td">£{{invoice.total_cost_and_vat}}</td>
+                <td class="td"><a class='link ' href="{% url 'download_invoice' invoice.id %}">Download</a></td>
+                </tr>
+
+                {% endfor %}
+        
+                </tbody>
+                <tfoot>
+                    <tr>
+
+                        <th class="td">Invoice Number</th>
+                        <th class="td">Date</th>
+                        <th class="td">File Number</th>
+                        <th class="td">Settled</th>
+                        <th class="td">Fee Earner</th>
+                        <th class="td">Our Costs</th>
+                        <th class="td">VAT</th>
+                        <th class="td">Total Costs</th>
+                        <th class="td">Action</th>
+
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
 </div>
 <script>
-// Function to get query parameters from the URL
-function getQueryParam(param) {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get(param);
-}
-
-const startDateParam = getQueryParam('start_date');
-let selectedFinancialYear = null;
-if (startDateParam) {
-    const startDate = new Date(startDateParam);
-        if (
-            startDate.getMonth() === 10 && // November (0-indexed)
-            startDate.getDate() === 1
-    ) {
-            endDateYear = startDate.getFullYear() + 1
-            selectedFinancialYear = `Nov ${startDate.getFullYear()} - Oct ${endDateYear}`;
-        }
-} else {
-    const currentYear = new Date().getFullYear();
-    const nextYear = currentYear + 1;
-    selectedFinancialYear = `Nov ${currentYear} - Oct ${nextYear}`;
-}
-
-// Populate the financial year dropdown and set the selected option
-const select = document.getElementById('financialYear');
-const currentYear = new Date().getFullYear();
-
-for (let i = currentYear - 5; i <= currentYear; i++) {
-    const startYear = i;
-    const endYear = i + 1;
-    const option = document.createElement('option');
-    option.value = `${startYear}-11`;
-    option.textContent = `Nov ${startYear} - Oct ${endYear}`;
-    
-    if (selectedFinancialYear === option.textContent) {
-        option.selected = true;
+    // Function to get query parameters from the URL
+    function getQueryParam(param) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(param);
     }
-
-    select.appendChild(option);
-}
-
-</script>
-<div class="div-container mt-4">
-    <div class="overflow-auto">
-        <table id="invoicesTable" class="table">
-            <thead>
-                <tr class='border-b'>
-                    <th class="td">Invoice Number</th>
-                    <th class="td">Date</th>
-                    <th class="td">File Number</th>
-                    <th class="td">Settled</th>
-                    <th class="td">Fee Earner</th>
-                    <th class="td">Our Costs</th>
-                    <th class="td">VAT</th>
-                    <th class="td">Total Costs</th>
-                    <th class="td">Action</th>
-
-                </tr>
-            </thead>
-            <tbody class='text-black'>
-            {% for invoice in invoices %}
-            <tr class="border-b cursor-pointer">
-
-            <td class="td border-e">{{invoice.invoice_number}}</td>
-            <td class="td">{{invoice.date|date:'d/m/Y'}}</td>
-            <td class="td">{{invoice.file_number.file_number}}</td>
-            <td class="td">{% if invoice.total_due_left <= 0 %}Yes{% else %}No (Due= £{{invoice.total_due_left}}){% endif %}</td>
-            <td class="td">{{invoice.file_number.fee_earner}}</td>
-            <td class="td">£{{invoice.our_costs}}</td>
-            <td class="td">£{{invoice.vat}}</td>
-            <td class="td">£{{invoice.total_cost_and_vat}}</td>
-            <td class="td"><a class='link ' href="{% url 'download_invoice' invoice.id %}">Download</a></td>
-            </tr>
-
-            {% endfor %}
-       
-            </tbody>
-            <tfoot>
-                <tr>
-
-                    <th class="td">Invoice Number</th>
-                    <th class="td">Date</th>
-                    <th class="td">File Number</th>
-                    <th class="td">Settled</th>
-                    <th class="td">Fee Earner</th>
-                    <th class="td">Our Costs</th>
-                    <th class="td">VAT</th>
-                    <th class="td">Total Costs</th>
-                    <th class="td">Action</th>
-
-                </tr>
-            </tfoot>
-        </table>
-    </div>
-</div>
-
+    
+    const startDateParam = getQueryParam('start_date');
+    let selectedFinancialYear = null;
+    if (startDateParam) {
+        const startDate = new Date(startDateParam);
+            if (
+                startDate.getMonth() === 10 && // November (0-indexed)
+                startDate.getDate() === 1
+        ) {
+                endDateYear = startDate.getFullYear() + 1
+                selectedFinancialYear = `Nov ${startDate.getFullYear()} - Oct ${endDateYear}`;
+            }
+    } else {
+        const currentYear = new Date().getFullYear();
+        const nextYear = currentYear + 1;
+        selectedFinancialYear = `Nov ${currentYear} - Oct ${nextYear}`;
+    }
+    
+    // Populate the financial year dropdown and set the selected option
+    const select = document.getElementById('financialYear');
+    const currentYear = new Date().getFullYear();
+    
+    for (let i = currentYear - 5; i <= currentYear; i++) {
+        const startYear = i;
+        const endYear = i + 1;
+        const option = document.createElement('option');
+        option.value = `${startYear}-11`;
+        option.textContent = `Nov ${startYear} - Oct ${endYear}`;
+        
+        if (selectedFinancialYear === option.textContent) {
+            option.selected = true;
+        }
+    
+        select.appendChild(option);
+    }
+    
+    </script>
 <script>
     $(document).ready(function() {
         
