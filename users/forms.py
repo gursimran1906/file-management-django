@@ -1,5 +1,5 @@
 from django import forms
-from .models import CustomUser, HolidayRecord, UserDocument
+from .models import CPDTrainingLog, CustomUser, HolidayRecord, UserDocument
 from django.contrib.auth.forms import UserCreationForm
 
 class LoginForm(forms.Form):
@@ -59,7 +59,7 @@ class HolidayRecordForm(forms.ModelForm):
 
 class OfficeClosureRecordForm(forms.ModelForm):
     employees = forms.ModelMultipleChoiceField(
-        queryset=CustomUser.objects.all(),
+        queryset=CustomUser.objects.none(),
         widget=forms.CheckboxSelectMultiple,
         label="Select Employees"
     )
@@ -71,11 +71,11 @@ class OfficeClosureRecordForm(forms.ModelForm):
             'start_date': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
             'end_date': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
         }
-    
+
     def __init__(self, *args, **kwargs):
         super(OfficeClosureRecordForm, self).__init__(*args, **kwargs)
+        self.fields['employees'].queryset = CustomUser.objects.filter(is_active=True)
 
-        # Check if instance has an existing record and format date/time fields
         if self.instance and self.instance.pk:
             for field in ['start_date', 'end_date']:
                 datetime_value = getattr(self.instance, field)
@@ -83,19 +83,33 @@ class OfficeClosureRecordForm(forms.ModelForm):
                     formatted_value = datetime_value.strftime('%Y-%m-%dT%H:%M')
                     self.fields[field].initial = formatted_value
 
-        # Add specific classes based on widget type
         for field_name, field in self.fields.items():
             if isinstance(field.widget, forms.CheckboxSelectMultiple):
-                # Style for the multiple checkbox field
                 field.widget.attrs['class'] = 'employee-checkbox space-y-2'
             elif isinstance(field.widget, forms.CheckboxInput):
-                # Style for a single checkbox input
                 field.widget.attrs['class'] = 'mb-1 text-gray-900 rounded focus:ring-blue-100 focus:border-blue-100 dark:bg-gray-700 dark:border-gray-600 dark:focus:ring-blue-500 dark:focus:border-blue-500'
             else:
-                # Apply `form-input` class to other input fields
                 field.widget.attrs['class'] = 'form-input border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 w-full'
 
 class UserDocumentForm(forms.ModelForm):
     class Meta:
         model = UserDocument
         fields = ['document', 'employee', 'description']
+
+class CPDTrainingLogForm(forms.ModelForm):
+    class Meta:
+        model = CPDTrainingLog
+        fields = [
+            'user', 'course_title', 'delivered_by', 'delivery_of_course',
+            'date_completed', 'impact', 'certificate_provided'
+        ]
+        widgets = {
+            'date_completed': forms.DateInput(attrs={'type': 'date'}),
+        }
+    def __init__(self, *args, **kwargs):
+        super(CPDTrainingLogForm, self).__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            field.widget.attrs['class'] = 'form-input'
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs['class'] = ' mb-1 text-gray-900 rounded focus:ring-blue-100 focus:border-blue-100 dark:bg-gray-700 dark:border-gray-600 dark:focus:ring-blue-500 dark:focus:border-blue-500'
+

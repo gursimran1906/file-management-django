@@ -174,11 +174,80 @@
         <div data-popper-arrow></div>
       </div>
       </div>
-      <form method="POST" action="{% url 'payroll_reports_zip' %}" class="flex flex-col gap-2">
+      <form method="POST" action="{% url 'payroll_reports_zip' %}" class="flex flex-col gap-2" id="payrollReportForm">
         {% csrf_token %}
         <input class="form-input" type="month" name="month_year"></input>
         <button class="btn-secondary text-xs" type="submit" >Download</button>
+        
       </form>
+      <script>
+        // Target the specific form by its ID
+        const form = document.getElementById('payrollReportForm');
+      
+        if (form) {
+          form.addEventListener('submit', async function(event) {
+            event.preventDefault(); // Prevent the default form submission
+      
+            const link = form.querySelector('button'); // Select the button element to update state
+            const formData = new FormData(form); // Get the form data
+      
+            // Update the button text to "Downloading" and disable it
+            link.textContent = 'Downloading...';
+            link.classList.add('btn-primary');
+            link.classList.add('animate-pulse');
+            link.classList.remove('btn-secondary');
+            link.style.pointerEvents = 'none';
+      
+            try {
+              // Send the form data using fetch
+              const response = await fetch(form.action, {
+                method: 'POST',
+                body: formData, // Send the form data in the request
+                headers: {
+                  'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, // CSRF token
+                },
+              });
+      
+              if (!response.ok) {
+                throw new Error('Download failed');
+              }
+      
+              // If the response is a file, handle the download
+              const blob = await response.blob();
+              const blobUrl = URL.createObjectURL(blob);
+              const tempLink = document.createElement('a');
+              tempLink.href = blobUrl;
+      
+              // Create a timestamp for the filename (UK date format)
+              const now = new Date();
+              const timestamp = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+              tempLink.download = `payroll_report_${timestamp}.zip`; // Modify the file extension as needed
+      
+              // Trigger the download
+              document.body.appendChild(tempLink);
+              tempLink.click();
+              document.body.removeChild(tempLink);
+              URL.revokeObjectURL(blobUrl);
+      
+              // Update button state to "Downloaded"
+              link.textContent = 'Downloaded';
+              link.classList.remove('animate-pulse');
+            } catch (error) {
+              console.error('Download error:', error);
+      
+              // Update button state to "Error"
+              link.textContent = 'Error';
+              link.classList.remove('downloading');
+              link.classList.add('error');
+            } finally {
+              // Re-enable the button
+              link.style.pointerEvents = 'auto';
+            }
+          });
+        }
+      </script>
+      
+      
     </div>
   </div>
   {% endif %}
@@ -402,6 +471,7 @@
   </div>
 </div> 
 
+{% include 'add_cpd.html' %}
 <!-- FullCalendar CSS and JS -->
 <script src="
 https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
@@ -457,6 +527,112 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
     </table>
   </div>
   {% endif %} {% endif %}
+  <div class="grid md:grid-cols-2 h-1/2 gap-4">
+      <div class="div-container">
+          <!-- User and Week Controls -->
+          <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              
+              <h2 class="text-lg font-semibold text-gray-800 pb-2 text-center">Weekly Work</h2>
+              
+              <!-- Week Navigation -->
+              <div class="flex items-center gap-2">
+                  <button id="prev-week" class="btn-secondary text-xs">&laquo;</button>
+                  <p id="current-week" class="text-sm font-medium text-gray-700">Nov 20 - Nov 26, 2024</p>
+                  <button id="next-week" class="btn-secondary text-xs">&raquo;</button>
+              </div>
+          </div>
+      
+          <!-- Report Data -->
+          <div id="report-container" class="">
+              <canvas id="weekly-chart" class=""></canvas>
+          </div>
+      </div>
+      <div class="div-container h-full">
+        <h2 class="text-lg font-semibold text-gray-800 pb-2 text-center">Policies</h2>
+        <canvas id="policies-chart"  ></canvas>
+    </div>
+    
+    </style>
+    <script>
+      function fetchPoliciesData(userId) {
+          fetch(`/policies_read_per_user?user_id=${userId}`)
+              .then(response => response.json())
+              .then(data => {
+                  if (data.error) {
+                      console.error(data.error);
+                      return;
+                  }
+  
+                  // Calculate percentages
+                  const totalPolicies = data.total_policies || 1; // Prevent division by zero
+                  const policiesRead = data.latest_versions_read || 0;
+                  const policiesReadPercentage = Math.round((policiesRead / totalPolicies) * 100);
+                  const policiesUnreadPercentage = 100 - policiesReadPercentage;
+  
+                  // Draw the chart after data is fetched
+                  drawChart(policiesReadPercentage, policiesUnreadPercentage);
+              })
+              .catch(error => {
+                  console.error("Error fetching policies data:", error);
+              });
+      }
+  
+      function drawChart(policiesReadPercentage, policiesUnreadPercentage) {
+          // Data for the chart
+          const policiesData = {
+              labels: ["Read", "Not Read"],
+              datasets: [
+                  {
+                      label: "Policies Status",
+                      data: [policiesReadPercentage, policiesUnreadPercentage],
+                      backgroundColor: [
+                          "rgba(75, 192, 192, 0.7)", // Color for "Read"
+                          "rgba(255, 99, 132, 0.7)", // Color for "Not Read"
+                      ],
+                      borderColor: [
+                          "rgba(75, 192, 192, 1)", // Border for "Read"
+                          "rgba(255, 99, 132, 1)", // Border for "Not Read"
+                      ],
+                      borderWidth: 1,
+                  },
+              ],
+          };
+  
+          // Configuration for the chart
+          const config = {
+              type: "pie",
+              data: policiesData,
+              options: {
+                  responsive: true,
+                  aspectRatio: 2,
+                  plugins: {
+                      tooltip: {
+                          callbacks: {
+                              label: function (tooltipItem) {
+                                  const label = policiesData.labels[tooltipItem.dataIndex];
+                                  const value = policiesData.datasets[0].data[tooltipItem.dataIndex];
+                                  return `${label}: ${value}%`;
+                              },
+                          },
+                      },
+                  },
+              },
+          };
+  
+          // Get the canvas context and draw the chart
+          const ctx = document.getElementById("policies-chart").getContext("2d");
+          new Chart(ctx, config);
+      }
+  
+      // Fetch the data and draw the chart
+      fetchPoliciesData({{request.user.id}});
+  </script>
+
+  </div>
+  
+  
+ 
+  
 
   <div class="grid md:grid-cols-2 h-1/2 gap-4">
     <div class="div-container overflow-auto">
@@ -610,7 +786,60 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
       <div id="calendar"></div>
     </div>
   </div>
+  <div class="grid grid-cols-1 h-1/2 gap-4">
+  <div class="div-container ">
+    <div class="flex flex-row justify-between">
+      <h3 class="text-2xl mb-4">CPD Records</h3>
+      <div>
+        <button class="btn btn-primary" data-modal-target="cpd-crud-modal" data-modal-toggle="cpd-crud-modal">
+          Add CPD
+        </button>
+      </div>
+      </div>
+    <div class='overflow-auto mt-2 rounded border'>
+      <table id="cpd-table" class="table">
+        <thead class="bg-gray-100 text-xs cursor-pointer">
+            <tr class="border-b">
+                <th class="p-2  text-gray-600 text-sm">User</th>
+                <th class="p-2  text-gray-600 text-sm">Title</th>
+                <th class="p-2  text-gray-600 text-sm">By</th>
+                <th class="p-2  text-gray-600 text-sm">Method</th>
+                <th class="p-2  text-gray-600 text-sm">Completed</th>
+                <th class="p-2  text-gray-600 text-sm">Impact</th>
+                <th class="p-2  text-gray-600 text-sm">Certificate</th>
+                <th class="p-2  text-gray-600 text-sm">Created At</th>
+                <th class="p-2  text-gray-600 text-sm">Updated At</th>
+                <th class="p-2  text-gray-600 text-sm">Link</th>
+
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in cpds %}
+            <tr class="hover:bg-gray-50 {% if forloop.last != True %} border-b {% endif %}">
+                <td class="p-2 ">{{ log.user.username }}</td>
+                <td class="p-2 ">{{ log.course_title }}</td>
+                <td class="p-2 ">{{ log.delivered_by }}</td>
+                <td class="p-2 ">{{ log.get_delivery_of_course_display }}</td>
+                <td class="p-2 ">{{ log.date_completed|date:'d/m/Y' }}</td>
+                <td class="p-2 ">{{ log.impact }}</td>
+                <td class="p-2  {% if log.certificate_provided %}text-green-600{% else %}text-red-600{% endif %}">
+                    {% if log.certificate_provided %}Yes{% else %}No{% endif %}
+                </td>
+                <td class="p-2 ">{{ log.created_at|date:'d/m/Y H:i' }}</td>
+                <td class="p-2 ">{{ log.updated_at|date:'d/m/Y H:i' }}</td>
+                <td class="p-2 ">
+                  <a class="link" href="{% url 'edit_cpd' log.id %}">Edit</a>
+                </td>
+
+            </tr>
+            {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
+</div>
+
 <style>
   /* Basic responsiveness for calendar dimensions */
   .calendar-wrapper {
@@ -664,6 +893,160 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
   }
 </style>
 
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+      const userSelect = document.getElementById("user-select");
+      const prevWeekBtn = document.getElementById("prev-week");
+      const nextWeekBtn = document.getElementById("next-week");
+      const currentWeekText = document.getElementById("current-week");
+      const chartCanvas = document.getElementById("weekly-chart");
+
+      let currentUser = {{request.user.id}};
+      let currentWeekStart = new Date();
+      let day = currentWeekStart.getDay();
+      let diff = (day === 0 ? -6 : 1) - day;
+
+      // Set the date to the start of the week (Monday)
+      currentWeekStart.setDate(currentWeekStart.getDate() + diff);
+      currentWeekStart.setHours(0, 0, 0, 0);
+
+      let chart; // Chart.js instance
+
+      // Helper function to format dates
+      function formatDate(date) {
+          return date.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+          });
+      }
+
+      // Initialize or update the chart
+
+      function updateChart(data, limit) {
+        const labels = data.map(item => item.date);
+        const billedData = data.map(item => item.billed_minutes);
+        const unbilledData = data.map(item => item.non_billed_minutes);
+
+        if (chart) {
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = billedData;
+            chart.data.datasets[1].data = unbilledData;
+            chart.options.plugins.annotation.annotations.limit.value = limit;
+            chart.update();
+        } else {
+            chart = new Chart(chartCanvas, {
+                type: "bar",
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: "Billed Minutes",
+                            data: billedData,
+                            backgroundColor: "rgba(75, 192, 192, 0.7)",
+                            stack: "Stack 0",
+                        },
+                        {
+                            label: "Unbilled Minutes",
+                            data: unbilledData,
+                            backgroundColor: "rgba(255, 99, 132, 0.7)",
+                            stack: "Stack 0",
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        tooltip: {
+                            mode: "index",
+                            intersect: false,
+                        },
+                        annotation: {
+                            annotations: {
+                                limit: {
+                                    type: "line",
+                                    yMin: limit,
+                                    yMax: limit,
+                                    borderColor: "red",
+                                    borderWidth: 2,
+                                    borderDash: [5, 5], // Dashed line style
+                                    label: {
+                                        content: "450",
+                                        enabled: true,
+                                        position: "end",
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                            grid: {
+                                display: false, // Remove gridlines
+                            },
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            grid: {
+                                display: true, // Remove gridlines
+                            },
+                        },
+                    },
+                },
+            });
+        }
+      }
+
+      // Fetch report data and update the chart
+      function fetchReportData(userId, weekStart) {
+          const formattedWeekStart = weekStart.toISOString().split("T")[0];
+          fetch(`/user_weekly_report?user=${userId}&week_start=${formattedWeekStart}`, {
+              method: "GET",
+              headers: { "Content-Type": "application/json" },
+          })
+              .then(response => response.json())
+              .then(data => {
+                  if (!data || data.length === 0) {
+                      chartCanvas.style.display = "none";
+                      return;
+                  }
+                  chartCanvas.style.display = "block";
+                  const limit = 2400; // Example limit in minutes (40 hours per week)
+                  updateChart(data, limit);
+              })
+              .catch(error => {
+                  console.error("Failed to fetch data:", error);
+              });
+      }
+
+      // Update the week display
+      function updateWeekDisplay() {
+          const endWeek = new Date(currentWeekStart);
+          endWeek.setDate(endWeek.getDate() + 4);
+          currentWeekText.textContent = `${formatDate(currentWeekStart)} - ${formatDate(endWeek)}`;
+      }
+
+
+      // Event: Previous Week
+      prevWeekBtn.addEventListener("click", function () {
+          currentWeekStart.setDate(currentWeekStart.getDate() - 7);
+          updateWeekDisplay();
+          fetchReportData(currentUser, currentWeekStart);
+      });
+
+      // Event: Next Week
+      nextWeekBtn.addEventListener("click", function () {
+          currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+          updateWeekDisplay();
+          fetchReportData(currentUser, currentWeekStart);
+      });
+
+      // Initialize
+      updateWeekDisplay();
+      fetchReportData(currentUser, currentWeekStart);
+  });
+</script>
 <script>
   $(document).ready(function () {
     function initializeCalendar() {

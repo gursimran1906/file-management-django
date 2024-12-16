@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% load utils %} 
+{% block title %}Holiday Records{% endblock %} 
+{% block container %}
+
+<div class="div-container">
+   
+    <div class="">
+        
+        <div class="flex">
+            <h3 class="text-lg font-semibold text-gray-900">
+                Edit CPD Record
+            </h3>
+        </div>
+        <form method="POST" action="{% url 'edit_cpd' cpd.id %}" class="space-y-4">
+          {% csrf_token %}
+          
+            {{ form.as_p }}
+          <div class="flex items-center">
+            <button type="submit" class="btn-primary w-full">Update</button>
+          </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

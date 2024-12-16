@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
-from django.db.models import Q, Q, F, OuterRef, Subquery, Max, CharField, Exists
+from django.db.models import Q, Q, F, OuterRef, Subquery, Max, CharField, Exists, Count
 from django.db.models.functions import Cast
 from .models import WIP, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring
@@ -11,9 +11,9 @@ from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, Ledge
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm
 from .utils import create_modification
 from django.utils import timezone
-from users.models import CustomUser
+from users.models import CPDTrainingLog, CustomUser
 from django.contrib import messages
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.template.loader import render_to_string
 from weasyprint import HTML
 from django.utils.safestring import mark_safe
@@ -192,7 +192,7 @@ def user_dashboard(request):
     matter=OuterRef('pk')
     ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
 
-    # Filter files based on the latest risk assessment date
+    
     risk_assessments_due = unique_wips.annotate(
         latest_assessment_date=Subquery(latest_assessment_subquery)
     ).filter(
@@ -1555,12 +1555,12 @@ def finance_view(request, file_number):
         total_cash_allocated_slips = 0
         if invoice.cash_allocated_slips.exists():
             for slip in invoice.cash_allocated_slips.all():
-                if isinstance(slip.amount_invoiced, str):
-                    amount_invoiced = json.loads(slip.amount_invoiced)
-                elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
-                    amount_invoiced = json.loads(slip.amount_invoiced.decode('utf-8'))
-                elif isinstance(slip.amount_invoiced, dict):
-                    amount_invoiced = slip.amount_invoiced
+                if isinstance(slip.amount_allocated, str):
+                    amount_invoiced = json.loads(slip.amount_allocated)
+                elif isinstance(slip.amount_allocated, (bytes, bytearray)):
+                    amount_invoiced = json.loads(slip.amount_allocated.decode('utf-8'))
+                elif isinstance(slip.amount_allocated, dict):
+                    amount_invoiced = slip.amount_allocated
                 else:
                     raise ValueError("Unsupported type for slip.amount_invoiced")
                 
@@ -4401,4 +4401,253 @@ def edit_undertaking(request, id):
         'wips': wips,
     }
     return render(request, 'forms/edit_undertaking.html', context)
+
+
+
+@login_required
+def management_reports(request):
+    users = CustomUser.objects.filter(is_active=True).order_by('username')
+
+    twelve_months_ago = timezone.now() - relativedelta(months=11)
+    aml_checks_due_client1 = WIP.objects.filter(
+        Q(file_status__status='Open') & 
+        Q(client1__date_of_last_aml__lte=twelve_months_ago) 
+        ).annotate(
+            client_id=F('client1__id'),
+            client_name=F('client1__name'),
+            date_of_last_aml=F('client1__date_of_last_aml')
+        ).values('client_id', 'client_name', 'date_of_last_aml')
+
+    aml_checks_due_client2 = WIP.objects.filter(
+        Q(file_status__status='Open') & 
+        Q(client2__date_of_last_aml__lte=twelve_months_ago) 
+        ).annotate(
+            client_id=F('client2__id'),
+            client_name=F('client2__name'),
+            date_of_last_aml=F('client2__date_of_last_aml')
+        ).values('client_id', 'client_name', 'date_of_last_aml')
+
+    
+    client1_results = list(aml_checks_due_client1)
+    client2_results = list(aml_checks_due_client2)
+
+    unique_clients = {}
+    for result in client1_results + client2_results:
+        unique_clients[result['client_id']] = {
+            'client_name': result['client_name'],
+            'date_of_last_aml': result['date_of_last_aml']
+        }
+
+    unique_aml_checks_due = [
+        {'client_id': client_id, 'client_name': data['client_name'], 'date_of_last_aml': data['date_of_last_aml']}
+        for client_id, data in unique_clients.items()
+    ]
+    unique_aml_checks_due = sorted(unique_aml_checks_due, key=lambda x: x['client_name'])
+
+    latest_assessment_subquery = RiskAssessment.objects.filter(
+        matter=OuterRef('pk')
+    ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
+
+    risk_assessments_due = WIP.objects.annotate(
+        latest_assessment_date=Subquery(latest_assessment_subquery)
+    ).filter(
+        Q(file_status__status='Open') &
+        (Q(latest_assessment_date__lte=twelve_months_ago) | Q(latest_assessment_date__isnull=True))
+    )
+    cpds = CPDTrainingLog.objects.all()
+    return render(request, 'management_reports.html', {'users':users, 
+                                                       'aml_checks_due':unique_aml_checks_due,
+                                                       'risk_assessments_due':risk_assessments_due,
+                                                       'cpds':cpds})
+
+def calculate_minutes_for_date(user, date):
+    billed_minutes = 0
+    non_billed_minutes = 0
+
+    # Free 30-Minute Meetings (Non-Billed)
+    free_30_mins = Free30Mins.objects.filter(fee_earner=user, date=date)
+    for meeting in free_30_mins:
+        duration = (datetime.combine(date, meeting.finish_time) -
+                    datetime.combine(date, meeting.start_time)).seconds / 60  # Convert to minutes
+        non_billed_minutes += duration
+
+    # Matter Emails (Billed)
+    matter_emails = MatterEmails.objects.filter(fee_earner=user, time__date=date)
+    for email in matter_emails:
+        billed_minutes += (email.units or 0) * 6  # Assuming 1 unit = 6 minutes
+
+    # Attendance Notes
+    attendance_notes = MatterAttendanceNotes.objects.filter(person_attended=user, date=date)
+    for note in attendance_notes:
+        duration = (datetime.combine(date, note.finish_time) -
+                    datetime.combine(date, note.start_time)).seconds / 60  # Convert to minutes
+        if note.is_charged:
+            billed_minutes += duration
+        else:
+            non_billed_minutes += duration
+
+    # Total minutes in a day
+    total_minutes = 7.5 * 60  # 7.5 hours in minutes
+    missing_minutes = max(0, total_minutes - (billed_minutes + non_billed_minutes))
+
+    return {
+        "billed_minutes": round(billed_minutes),
+        "non_billed_minutes": round(non_billed_minutes),
+        "missing_minutes": round(missing_minutes),
+    }
+
+def calculate_weekly_report(user, start_date):
+    weekly_report = []
+    for i in range(7):  # Iterate through the week
+        date = start_date + timedelta(days=i)
+        # Skip Saturdays and Sundays
+        if date.weekday() in [5, 6]:
+            continue
+        daily_data = calculate_minutes_for_date(user, date)
+        weekly_report.append({
+            "date": date.strftime("%a, %d/%m/%Y "),
+            **daily_data,
+        })
+    return weekly_report
+
+@login_required
+def weekly_report_view(request):
+    user_id = request.GET.get("user")
+    week_start = request.GET.get("week_start")
+
+    if not user_id or not week_start:
+        return JsonResponse({"error": "Invalid parameters"}, status=400)
+
+    try:
+        user = CustomUser.objects.get(id=user_id)
+        week_start_date = datetime.strptime(week_start, "%Y-%m-%d").date()
+        data = calculate_weekly_report(user, week_start_date)
+        return JsonResponse(data, safe=False)
+    except CustomUser.DoesNotExist:
+        return JsonResponse({"error": "User not found"}, status=404)
+    
+@login_required
+def policies_read_per_user(request):
+    user_id = request.GET.get("user_id")
+    
+    if not user_id:
+        return JsonResponse({"error": "User ID is required"}, status=400)
+    
+    try:
+        user = CustomUser.objects.get(id=user_id)
+    except CustomUser.DoesNotExist:
+        return JsonResponse({"error": "User not found"}, status=404)
+    
+    # Total number of policies
+    total_policies = Policy.objects.count()
+    
+    # Get the latest version of each policy
+    latest_versions = PolicyVersion.objects.annotate(
+        max_version=Max('policy__versions__version_number')
+    ).filter(version_number=F('max_version'))
+
+    # IDs of latest policy versions
+    latest_version_ids = latest_versions.values_list('id', flat=True)
+    
+    # Policies read by the user (matching the latest versions)
+    read_policy_ids = PoliciesRead.objects.filter(
+        read_by=user,
+        policy_version_id__in=latest_version_ids
+    ).values_list('policy_id', flat=True).distinct()
+    
+    # Count of latest versions read
+    latest_versions_read_count = read_policy_ids.count()
+    
+    # Get unread policies
+    unread_policies = Policy.objects.filter(~Q(id__in=read_policy_ids))
+    
+    # Prepare unread policies descriptions
+    unread_policies_descriptions = list(unread_policies.values('id', 'description'))
+    
+    # Response
+    return JsonResponse({
+        "user": user.username,
+        "total_policies": total_policies,
+        "latest_versions_read": latest_versions_read_count,
+        "policies_unread": total_policies - latest_versions_read_count,
+        "unread_policies": unread_policies_descriptions
+    })
+
+@login_required
+def download_aml_checks_due(request):
+    twelve_months_ago = timezone.now() - relativedelta(months=11)
+    aml_checks_due_client1 = WIP.objects.filter(
+        Q(file_status__status='Open') & 
+        Q(client1__date_of_last_aml__lte=twelve_months_ago) 
+        ).annotate(
+            client_id=F('client1__id'),
+            client_name=F('client1__name'),
+            date_of_last_aml=F('client1__date_of_last_aml')
+        ).values('client_id', 'client_name', 'date_of_last_aml')
+
+    aml_checks_due_client2 = WIP.objects.filter(
+        Q(file_status__status='Open') & 
+        Q(client2__date_of_last_aml__lte=twelve_months_ago) 
+        ).annotate(
+            client_id=F('client2__id'),
+            client_name=F('client2__name'),
+            date_of_last_aml=F('client2__date_of_last_aml')
+        ).values('client_id', 'client_name', 'date_of_last_aml')
+
+    
+    client1_results = list(aml_checks_due_client1)
+    client2_results = list(aml_checks_due_client2)
+
+    unique_clients = {}
+    for result in client1_results + client2_results:
+        unique_clients[result['client_id']] = {
+            'client_name': result['client_name'],
+            'date_of_last_aml': result['date_of_last_aml']
+        }
+
+    unique_aml_checks_due = [
+        {'client_id': client_id, 'client_name': data['client_name'], 'date_of_last_aml': data['date_of_last_aml']}
+        for client_id, data in unique_clients.items()
+    ]
+    unique_aml_checks_due = sorted(unique_aml_checks_due, key=lambda x: x['client_name'])
+   
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="aml_checks_due_{timezone.now()}.csv"'
+
+    writer = csv.writer(response)
+    
+    writer.writerow(['AML Checks Due'])
+    writer.writerow([ 'Client Name', 'Date of Last AML Check'])
+    
+    for client in unique_aml_checks_due:
+        writer.writerow([client['client_name'], client['date_of_last_aml']])
+
+    return response
+
+@login_required
+def download_risk_assessments_due(request):
+    twelve_months_ago = timezone.now() - relativedelta(months=11)
+    latest_assessment_subquery = RiskAssessment.objects.filter(
+        matter=OuterRef('pk')
+    ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
+
+    risk_assessments_due = WIP.objects.annotate(
+        latest_assessment_date=Subquery(latest_assessment_subquery)
+    ).filter(
+        Q(file_status__status='Open') &
+        (Q(latest_assessment_date__lte=twelve_months_ago) | Q(latest_assessment_date__isnull=True))
+    )
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="risk_assessments_due_{timezone.now()}.csv"'
+
+    writer = csv.writer(response)
+    
+    writer.writerow(['Risk Assessments Due'])
+    writer.writerow([ 'File Number', 'Matter Desc','Client 1', 'Client 2' 'Date of Last AML Check'])
+    
+    for assessment in risk_assessments_due:
+        writer.writerow([assessment.file_number, assessment.matter_description, assessment.client1.name, assessment.client2.name if assessment.client2 else '', assessment.latest_assessment_date])
+
+    return response
 

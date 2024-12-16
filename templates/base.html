@@ -193,6 +193,72 @@
 
 
     </script>
+    <script>
+      async function handleDownload(event) {
+        event.preventDefault(); // Prevent default link behavior
+    
+        const link = event.target; // Get the clicked link
+        const downloadUrl = link.href; // Get the Django-generated URL from the href attribute
+    
+        // Update link state to "Downloading"
+        link.textContent = 'Downloading...';
+        link.classList.add('btn-primary');
+        link.classList.remove('btn-secondary');
+        link.style.pointerEvents = 'none'; // Disable further clicks during download
+    
+        try {
+          // Fetch the file using the Django URL
+          const response = await fetch(downloadUrl);
+    
+          if (!response.ok) {
+            throw new Error('Download failed');
+          }
+    
+          const contentDisposition = response.headers.get('Content-Disposition');
+          let fileName = 'downloaded_file.csv'; // Default filename
+    
+          // If Content-Disposition header is present, extract the filename
+          if (contentDisposition && contentDisposition.includes('attachment')) {
+            const fileNameMatch = contentDisposition.match(/filename="([^"]+)"/);
+            if (fileNameMatch && fileNameMatch[1]) {
+              fileName = fileNameMatch[1];
+            }
+          }
+    
+          // Convert the response to a Blob
+          const blob = await response.blob();
+    
+          // Create a temporary download link
+          const blobUrl = URL.createObjectURL(blob);
+          const tempLink = document.createElement('a');
+          tempLink.href = blobUrl;
+          
+          // Trigger the download with the extracted filename
+          tempLink.download = fileName;
+    
+          document.body.appendChild(tempLink);
+          tempLink.click();
+          document.body.removeChild(tempLink);
+          URL.revokeObjectURL(blobUrl);
+    
+          // Update link state to "Downloaded"
+          link.textContent = 'Downloaded';
+          link.classList.add('downloaded');
+        } catch (error) {
+          console.error('Download error:', error);
+    
+          // Update link state to "Error"
+          link.textContent = 'Error';
+          link.classList.remove('downloading');
+          link.classList.add('error');
+        } finally {
+          // Re-enable the link
+          link.style.pointerEvents = 'auto';
+        }
+      }
+    </script>
+    
+    
     <style>
       :root {
         --navbar-height: 64px; /* Default value for fallback */

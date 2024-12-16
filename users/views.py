@@ -9,9 +9,9 @@ from django.urls import reverse
 from urllib.parse import unquote
 
 from weasyprint import HTML
-from .models import AttendanceRecord, CustomUser, HolidayRecord, SicknessRecord
+from .models import AttendanceRecord, CPDTrainingLog, CustomUser, HolidayRecord, SicknessRecord
 from django.utils import timezone
-from .forms import CustomUserCreationForm, HolidayRecordForm, OfficeClosureRecordForm
+from .forms import CPDTrainingLogForm, CustomUserCreationForm, HolidayRecordForm, OfficeClosureRecordForm
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.template.loader import render_to_string
@@ -138,6 +138,7 @@ def calculate_business_days(start_date, end_date):
 
 @login_required
 def profile_page(request):
+    users = CustomUser.objects.filter(is_active=True).order_by('username')
     employees = CustomUser.objects.filter(is_active=True)
     user = request.user
     current_year = timezone.now().year
@@ -215,6 +216,8 @@ def profile_page(request):
 
     total_paid_holidays = total_paid_holidays - total_office_closure_holidays
     office_closure_form = OfficeClosureRecordForm()
+    cpd_form = CPDTrainingLogForm()
+    cpds = CPDTrainingLog.objects.filter(user=user).order_by('-date_completed')
     return render(request, 'profile_page.html', {'employees':employees,
                                                  'holiday_requests': requests_with_total_days,
                                                  'all_requests':all_requests,
@@ -225,7 +228,10 @@ def profile_page(request):
                                                  'total_paid_holidays_remaining': total_paid_holidays_remaining, 
                                                  'total_bank_holidays': total_bank_holidays,
                                                  'total_office_closure_holidays':total_office_closure_holidays, 
-                                                 'office_closure_form': office_closure_form})
+                                                 'office_closure_form': office_closure_form,
+                                                 'cpd_form':cpd_form, 
+                                                 'cpds': cpds,
+                                                 'users':users})
 
 @login_required
 def holiday_records(request):
@@ -915,3 +921,26 @@ def delete_document(request, uuid):
 def access_document(request, uuid):
     user_document = get_object_or_404(UserDocument, uuid=uuid)
     return render(request, 'access_document.html', {'document': user_document})
+
+def add_cpd_training_log(request):
+    if request.method == 'POST':
+        form = CPDTrainingLogForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'CPD Log successfully created.')
+            return redirect('profile_page')  
+
+    return render(request, 'add_cpd_training_log.html', {'form': form})
+
+
+def edit_cpd_training_log(request, pk):
+    cpd_training_log = get_object_or_404(CPDTrainingLog, pk=pk)
+    if request.method == 'POST':
+        form = CPDTrainingLogForm(request.POST, instance=cpd_training_log)
+        if form.is_valid():
+            form.save()
+            return redirect('profile_page')  
+    else:
+        form = CPDTrainingLogForm(instance=cpd_training_log)
+
+    return render(request, 'edit_cpd.html', {'form': form, 'cpd': cpd_training_log})
