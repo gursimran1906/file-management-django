@@ -19,5 +19,5 @@ services:
         soft: 2000000
         hard: 2000000
       stack:
-        soft: unlimited
-        hard: unlimited
+        soft: 65536
+        hard: 65536
