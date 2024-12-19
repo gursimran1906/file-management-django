@@ -20,8 +20,7 @@ WORKDIR /app
 COPY . /app
 RUN chmod +x /app/entrypoint.sh
 
-# Set ulimit for core dumps (if needed)
-RUN ulimit -c unlimited
+RUN echo "ulimit -s unlimited" >> /etc/profile.d/ulimit.sh
 
 ENV PYTHONUNBUFFERED 1
 ENTRYPOINT [ "/app/entrypoint.sh" ]
