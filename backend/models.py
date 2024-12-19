@@ -526,7 +526,7 @@ class MatterAttendanceNotes(models.Model):
     finish_time = models.TimeField()
     subject_line = models.CharField(max_length=255)
     content = QuillField()
-    is_charged = models.BooleanField(null=True, default=True)
+    is_charged = models.BooleanField(default=True)
     person_attended = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, null=True)
     date = models.DateField()

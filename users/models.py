@@ -74,3 +74,23 @@ class UserDocument(models.Model):
     description = models.TextField()
     added_by=models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='added_by')
     timestamp=models.DateTimeField(auto_now_add=True)
+
+class CPDTrainingLog(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    user = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
+    course_title = models.TextField()
+    delivered_by = models.TextField()
+    DELIVERY_METHOD_CHOICES = [
+        ('in_person', 'In-person'),
+        ('online', 'Online'),
+    ]
+    delivery_of_course = models.CharField(max_length=20, choices=DELIVERY_METHOD_CHOICES)
+    date_completed = models.DateField()
+    impact = models.TextField()
+    certificate_provided = models.BooleanField()
+    created_at = models.DateTimeField(auto_now_add=True) 
+    updated_at = models.DateTimeField(auto_now=True) 
+
+    def __str__(self):
+        return self.course_title
+    

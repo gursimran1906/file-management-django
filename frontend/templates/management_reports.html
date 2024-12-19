@@ -1,0 +1,443 @@
+{% extends 'base.html' %}
+{% load humanize %}
+{% load utils %}
+{% block title %}Management Reports{% endblock %}
+{% block container_class %}container {% endblock %}
+{% block container %}
+<div class="space-y-4">
+    <!-- Page Title -->
+    <div class="div-container">
+        <h1 class="text-3xl font-bold text-gray-800">Management Reports</h1>
+        <p class="text-sm text-gray-500 mt-2">Monitor key metrics and statuses</p>
+    </div>
+
+    <!-- Work Per User Report -->
+    <div class="div-container">
+        <!-- User and Week Controls -->
+        <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between ">
+            <!-- User Dropdown -->
+            <div>
+                <select id="user-select" class="form-input">
+                    
+                {% for user in users %}
+                <option value="{{user.id}}">{{user.username}}</option>
+
+                {% endfor %}
+                </select>
+            </div>
+            <h2 class="text-lg font-semibold text-gray-800  pb-2 text-center">Weekly Work per user</h2>
+            
+            <!-- Week Navigation -->
+            <div class="flex items-center gap-2 ">
+                <button id="prev-week" class="btn-secondary text-xs">
+                    &laquo;
+                </button>
+                <p id="current-week" class="text-sm font-medium text-gray-700">Nov 20 - Nov 26, 2024</p>
+                <button id="next-week" class="btn-secondary text-xs">
+                    &raquo;
+                </button>
+            </div>
+        </div>
+    
+        <!-- Report Data -->
+        <div id="report-container" class="mt-6">
+            <!-- Placeholder for Report Table -->
+            <div class="bg-gray-50 p-4 rounded-lg shadow">
+                <p class="text-center text-gray-500">Select a user or navigate to a week to load the data.</p>
+            </div>
+        </div>
+        <hr class="my-4">
+        <div class="h-2 bg-gray-200 rounded-full">
+            <div id="policies-progress-bar" class="h-2 bg-green-500 rounded-full" style="width: 0%;"></div>
+        </div>
+        <div class="flex flex-row gap-2 mt-2 text-sm">
+            <p class=" text-gray-700">
+                <span id="policies-read-percentage" class="font-bold">0%</span> Policies Read
+            </p>
+            <p class="text-gray-700">
+                <span id="policies-not-read-percentage" class="font-bold">100%</span> 
+                <a class="text-blue-600 border-dotted border-b border-blue-600 cursor-pointer" data-popover-target="unread_policies_popover" data-popover-placement="right">
+                    Unread Policies
+                </a>
+            </p>
+        </div>
+        
+    
+        <!-- Popover Content -->
+        <div id="unread_policies_popover" role="tooltip" class="absolute z-50 invisible inline-block w-72 text-sm transition-opacity duration-300 border rounded-lg shadow-sm opacity-0 text-gray-200 border-gray-600 bg-gray-800">
+            <div class="px-3 py-2 border-b rounded-t-lg border-gray-600 bg-gray-700 flex items-center">
+                
+                <h3 class="font-medium text-white">Unread Policies</h3>
+            </div>
+            <div class="px-3 py-2 font-light text-gray-200">
+            
+            <ul id='unread-policies-list'>
+                
+            </ul>
+            </div>
+            <div data-popper-arrow></div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- AML Checks Pending -->
+        <div class="div-container  max-h-[300px] overflow-auto">
+            <div class="flex flex-row justify-between mb-2">
+                <h2 class="text-lg text-gray-800 font-bold">AML Checks Due</h2>
+                <div>
+                    <a href="{% url 'download_aml_checks_due' %}" 
+                        class="btn-secondary text-xs" 
+                        onclick="handleDownload(event)">Download All</a>
+                </div>
+            </div>
+            <table class="min-w-full table-auto">
+                <thead>
+                    <tr class="border-b">
+                        <th class="py-2 text-left text-sm font-medium text-gray-600">Client Name</th>
+                        <th class="py-2 text-left text-sm font-medium text-gray-600">Date of Last AML</th>
+                    </tr>
+                </thead>
+                <tbody class="overflow-y-auto" >
+                    {% for check in aml_checks_due %}
+                    <tr class="border-b">
+                        <td class="py-2 text-sm">{{ check.client_name }}</td>
+                        <td class=" py-2 text-sm">{{ check.date_of_last_aml|date:'d/m/Y' }}</td>
+                    </tr>
+                    {% endfor %}
+                    
+                </tbody>
+            </table>
+        </div>
+    
+        <!-- Risk Assessments Due -->
+        <div class="div-container max-h-[300px] overflow-auto">
+            <div class="flex flex-row justify-between mb-2">
+                <h2 class="text-lg text-gray-800 font-bold">Risk Assessments Due</h2>
+                <div>
+                    
+                    <a href="{% url 'download_risk_assessments_due' %}" 
+                        class="btn-secondary text-xs" 
+                        onclick="handleDownload(event)">Download All</a>
+                </div>
+            </div>
+            <table class="min-w-full table-auto">
+                <thead>
+                    <tr class="border-b">
+                        <th class="py-2 text-left text-sm font-medium text-gray-600">Risk Assessment</th>
+                        <th class="py-2 text-left text-sm font-medium text-gray-600">Last</th>
+                    </tr>
+                </thead>
+                <tbody class="overflow-y-auto" >
+                    {% for assessment in risk_assessments_due %}
+                    <tr class="border-b">
+                        <td class="py-2 text-sm"><a href="{% url 'home' assessment.file_number %}" class="link">{{assessment.file_number}}</a></td>
+                        <td class="py-2 text-sm font-bold">{{ assessment.due_diligence_date|date:"d/m/y" }}</td>
+                    </tr>
+                    {% endfor %}
+                    
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- CPD Training Logs -->
+    <div class="div-container">
+        <h2 class="text-xl font-semibold text-gray-700 pb-2 ">CPD Training Logs</h2>
+        
+        <table id="cpd-table" class="w-full mt-4 text-left text-sm rounded-lg">
+            <thead class="bg-gray-100 text-xs cursor-pointer">
+                <tr>
+                    <th class="p-2 border-b border-gray-200 text-gray-600 text-sm">User</th>
+                    <th class="p-2 border-b border-gray-200 text-gray-600 text-sm">Title</th>
+                    <th class="p-2 border-b border-gray-200 text-gray-600 text-sm">By</th>
+                    <th class="p-2 border-b border-gray-200 text-gray-600 text-sm">Method</th>
+                    <th class="p-2 border-b border-gray-200 text-gray-600 text-sm">Completed</th>
+                    <th class="p-2 border-b border-gray-200 text-gray-600 text-sm">Impact</th>
+                    <th class="p-2 border-b border-gray-200 text-gray-600 text-sm">Certificate</th>
+                    <th class="p-2 border-b border-gray-200 text-gray-600 text-sm">Created At</th>
+                    <th class="p-2 border-b border-gray-200 text-gray-600 text-sm">Updated At</th>
+                    <th class="p-2 border-b border-gray-200 text-gray-600 text-sm">Link</th>
+
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in cpds %}
+                <tr class="hover:bg-gray-50">
+                    <td class="p-2 border-b border-gray-200">{{ log.user.username }}</td>
+                    <td class="p-2 border-b border-gray-200">{{ log.course_title }}</td>
+                    <td class="p-2 border-b border-gray-200">{{ log.delivered_by }}</td>
+                    <td class="p-2 border-b border-gray-200">{{ log.get_delivery_of_course_display }}</td>
+                    <td class="p-2 border-b border-gray-200">{{ log.date_completed|date:'d/m/Y' }}</td>
+                    <td class="p-2 border-b border-gray-200">{{ log.impact }}</td>
+                    <td class="p-2 border-b border-gray-200 {% if log.certificate_provided %}text-green-600{% else %}text-red-600{% endif %}">
+                        {% if log.certificate_provided %}Yes{% else %}No{% endif %}
+                    </td>
+                    <td class="p-2 border-b border-gray-200">{{ log.created_at|date:'d/m/Y H:i' }}</td>
+                    <td class="p-2 border-b border-gray-200">{{ log.updated_at|date:'d/m/Y H:i' }}</td>
+                    <td class="p-2 border-b border-gray-200"><a class="link" href="{% url 'edit_cpd' log.id %}">Edit</a></td>
+
+                </tr>
+                {% endfor %}
+            </tbody>
+            <!-- Footer row for search input -->
+            <tfoot>
+                <tr>
+                    <th class="p-2 border-b border-gray-200 text-sm">
+                        <input type="text" class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" id="filter-user" placeholder="Search User">
+                    </th>
+                    <th class="p-2 border-b border-gray-200 text-sm">
+                        <input type="text" class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" id="filter-course" placeholder="Search Course Title">
+                    </th>
+                    <th class="p-2 border-b border-gray-200 text-sm">
+                        <input type="text" class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" id="filter-delivered-by" placeholder="Search Delivered By">
+                    </th>
+                    <th class="p-2 border-b border-gray-200 text-sm">
+                        <input type="text" class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" id="filter-method" placeholder="Search Delivery Method">
+                    </th>
+                    <th class="p-2 border-b border-gray-200 text-sm">
+                        <input type="text" class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" id="filter-date" placeholder="Search Date Completed">
+                    </th>
+                    <th class="p-2 border-b border-gray-200 text-sm">
+                        <input type="text" class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" id="filter-impact" placeholder="Search Impact">
+                    </th>
+                    <th class="p-2 border-b border-gray-200 text-sm">
+                        <input type="text" class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" id="filter-certificate" placeholder="Search Certificate Provided">
+                    </th>
+                    <th class="p-2 border-b border-gray-200 text-sm">
+                        <input type="text" class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" id="filter-created" placeholder="Search Created At">
+                    </th>
+                    <th class="p-2 border-b border-gray-200 text-sm">
+                        <input type="text" class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" id="filter-updated" placeholder="Search Updated At">
+                    </th>
+                    <th class="p-2 border-b border-gray-200 text-sm">
+                        <input type="text" class="w-full px-2 py-2 rounded-lg border border-gray-100 focus:ring-1 focus:ring-inset focus:ring-gray-600 placeholder:italic placeholder:text-gray-400 placeholder:font-light text-light" id="filter-updated" placeholder="Link">
+                    </th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+</div>
+
+<script>
+    $.fn.dataTable.moment('DD/MM/YYYY');
+    $.fn.dataTable.moment('DD/MM/YYYY H:mm');
+    var table = $('#cpd-table').DataTable({
+        
+        "ordering": true,
+        "responsive": true,
+        lengthMenu: [
+            [10, 25, 50, -1],
+            [10, 25, 50, 'All']
+        ],
+        pageLength: 10,
+    });
+
+    table.on('order.dt', function() {
+        $('#cpd-table thead th').each(function() {
+            $(this).removeClass('asc desc');
+        });
+
+        var order = table.order();
+        if (order.length) {
+            var th = $('#cpd-table thead th:eq(' + order[0][0] + ')');
+            th.addClass(order[0][1]);
+        }
+    });
+    
+</script>
+
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const userSelect = document.getElementById("user-select");
+        const prevWeekBtn = document.getElementById("prev-week");
+        const nextWeekBtn = document.getElementById("next-week");
+        const currentWeekText = document.getElementById("current-week");
+        const reportContainer = document.getElementById("report-container");
+    
+        let currentUser = userSelect.value;
+        let currentWeekStart = new Date(); 
+        let day = currentWeekStart.getDay(); 
+        let diff = (day === 0 ? -6 : 1) - day; 
+
+        // Set the date to the start of the week (Monday)
+        currentWeekStart.setDate(currentWeekStart.getDate() + diff);
+
+        // Reset time to the beginning of the day (optional)
+        currentWeekStart.setHours(0, 0, 0, 0);
+
+        // Helper function to format dates
+        function formatDate(date) {
+            return date.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+            });
+        }
+    
+        // Function to fetch report data (AJAX simulation)
+        function fetchReportData(userId, weekStart) {
+            // Convert weekStart to a string format (YYYY-MM-DD) for backend
+            const formattedWeekStart = weekStart.toISOString().split("T")[0];
+        
+            // Simulate an AJAX request using fetch
+            fetch(`/user_weekly_report?user=${userId}&week_start=${formattedWeekStart}`, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            })
+                .then((response) => {
+                    if (!response.ok) {
+                        throw new Error("Failed to fetch data");
+                    }
+                    return response.json(); // Parse the JSON response
+                })
+                .then((data) => {
+                    // Clear existing content in report container
+                    reportContainer.innerHTML = "";
+        
+                    // Check if data is empty
+                    if (!data || data.length === 0) {
+                        reportContainer.innerHTML = `
+                            <div class="text-center text-gray-500">
+                                No data available for the selected user and week.
+                            </div>
+                        `;
+                        return;
+                    }
+        
+                    // Build the report table dynamically
+                    let tableHtml = `
+                    <div class='overflow-auto mt-2 rounded border'>
+                        <table class="table">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Date</th>
+                                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Billed Minutes</th>
+                                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Non-Billed Minutes</th>
+                                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Missing Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+        
+                    // Loop through the data to create table rows
+                    data.forEach((day) => {
+                        tableHtml += `
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-4 py-2 text-sm text-gray-800 border-b">${day.date}</td>
+                                <td class="px-4 py-2 text-sm text-gray-800 border-b">${day.billed_minutes}</td>
+                                <td class="px-4 py-2 text-sm text-gray-800 border-b">${day.non_billed_minutes}</td>
+                                <td class="px-4 py-2 text-sm ${day.missing_time ? 'text-red-600 font-semibold' : 'text-gray-500'} border-b">
+                                    ${day.missing_minutes ? day.missing_minutes : 'None'}
+                                </td>
+                            </tr>
+                        `;
+                    });
+        
+                    tableHtml += "</tbody></table></div>";
+                    reportContainer.innerHTML = tableHtml;
+                })
+                .catch((error) => {
+                    // Handle errors (e.g., network issues)
+                    reportContainer.innerHTML = `
+                        <div class="text-center text-red-600">
+                            Failed to load data: ${error.message}
+                        </div>
+                    `;
+                });
+        }
+        
+        // Update the week display
+        function updateWeekDisplay() {
+            const endWeek = new Date(currentWeekStart);
+            endWeek.setDate(endWeek.getDate() + 4);
+            currentWeekText.textContent = `${formatDate(currentWeekStart)} - ${formatDate(endWeek)}`;
+        }
+        
+        
+        function fetchPoliciesData(userId) {
+            fetch(`/policies_read_per_user?user_id=${userId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error(data.error);
+                        return;
+                    }
+        
+                    // Calculate percentages
+                    const totalPolicies = data.total_policies || 1; // Prevent division by zero
+                    const policiesRead = data.latest_versions_read || 0;
+                    const readPercentage = Math.round((policiesRead / totalPolicies) * 100);
+                    const notReadPercentage = 100 - readPercentage;
+        
+                    // Update the text
+                    document.getElementById('policies-read-percentage').textContent = `${readPercentage}%`;
+                    document.getElementById('policies-not-read-percentage').textContent = `${notReadPercentage}%`;
+                    
+                    // Animate the progress bar
+                    const progressBar = document.getElementById('policies-progress-bar');
+                    if (readPercentage < 100) {
+                        progressBar.classList.remove('bg-green-500');
+                        progressBar.classList.add('bg-red-500');
+                    } else {
+                        progressBar.classList.remove('bg-red-500');
+                        progressBar.classList.add('bg-green-500');
+                    }
+                    progressBar.style.transition = 'width 1s ease-in-out';
+                    progressBar.style.width = `${readPercentage}%`;
+
+                    const unreadPolicies = data.unread_policies;
+
+                    // Update the popover with unread policies
+                    const unreadPoliciesList = document.getElementById('unread-policies-list');
+                    unreadPoliciesList.innerHTML = ""; // Clear existing list
+
+                    if (unreadPolicies && unreadPolicies.length > 0) {
+                        unreadPolicies.forEach(policy => {
+                            const listItem = document.createElement('li');
+                            listItem.textContent = policy.description;
+                            listItem.classList.add('text-gray-100');
+                            unreadPoliciesList.appendChild(listItem);
+                        });
+                    } else {
+                        unreadPoliciesList.innerHTML = "<li class='text-gray-100'>No unread policies</li>";
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching policies data:", error);
+                });
+        }
+
+        
+       
+        // Event: Change User
+        userSelect.addEventListener("change", function () {
+            currentUser = this.value;
+            fetchReportData(currentUser, currentWeekStart);
+            fetchPoliciesData(currentUser);
+        });
+    
+        // Event: Previous Week
+        prevWeekBtn.addEventListener("click", function () {
+            currentWeekStart.setDate(currentWeekStart.getDate() - 7);
+            updateWeekDisplay();
+            fetchReportData(currentUser, currentWeekStart);
+        });
+    
+        // Event: Next Week
+        nextWeekBtn.addEventListener("click", function () {
+            currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+            updateWeekDisplay();
+            fetchReportData(currentUser, currentWeekStart);
+        });
+    
+        // Initialize
+        updateWeekDisplay();
+        fetchPoliciesData(userSelect.value)
+        fetchReportData(userSelect.value, currentWeekStart)
+    });
+</script>
+    
+{% endblock %}

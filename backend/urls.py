@@ -1,13 +1,13 @@
 from django.urls import path
 
-from .views import display_data_index_page, display_data_home_page, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work
+from .views import display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work
 from .views import attendance_note_view, add_attendance_note, download_attendance_note, edit_attendance_note, correspondence_view, add_letter, edit_letter, download_sowc
 from .views import finance_view, add_blue_slip, add_pink_slip, add_green_slip, edit_pmts_slip, download_pmts_slip, edit_green_slip, download_green_slip, add_invoice
 from .views import allocate_monies, download_statement_account, download_invoice, edit_invoice, download_estate_accounts, unallocated_emails, allocate_emails
 from .views import download_cashier_data, edit_file, edit_client, edit_authorised_party,download_file_logs, download_frontsheet, generate_ledgers_report, user_dashboard, download_risk_assessment
 from .views import add_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring
 from .views import edit_ongoing_monitoring, download_document, onboarding_documents_display, edit_otherside, free30mins, download_free30mins, edit_free30mins
-from .views import undertakings, edit_undertaking, add_policy, edit_policy, download_policy_pdf
+from .views import undertakings, edit_undertaking, add_policy, edit_policy, download_policy_pdf, management_reports, weekly_report_view, policies_read_per_user
 
 urlpatterns = [
     path('dashboard/', user_dashboard, name='user_dashboard'),
@@ -100,4 +100,10 @@ urlpatterns = [
     path('undertakings/',undertakings, name='undertakings' ),
     path('undertakings/edit/<int:id>/', edit_undertaking, name='edit_undertaking'),
 
+    path('management_reports/',management_reports, name='management_reports'),
+    path('user_weekly_report/',weekly_report_view, name='user_weekly_report'),
+    path('policies_read_per_user/',policies_read_per_user, name='policies_read_per_user'),
+
+    path('download_aml_checks_due',download_aml_checks_due, name='download_aml_checks_due'),
+    path('download_risk_assessments_due',download_risk_assessments_due,name='download_risk_assessments_due')
 ]

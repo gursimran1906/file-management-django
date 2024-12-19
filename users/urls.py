@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import login_view, logout_view, register_view, profile_page, add_holiday_request, lunch_start, lunch_out, clock_out
+from .views import add_cpd_training_log, edit_cpd_training_log, login_view, logout_view, register_view, profile_page, add_holiday_request, lunch_start, lunch_out, clock_out
 from .views import deny_holiday_request, approve_holiday_request, add_sickness_record, holiday_records, sickness_records, calendar_events
 from .views import edit_holiday_record, add_document, delete_document, access_document, add_office_closure, holiday_record_csv, attendance_record_csv, sickness_record_csv
 from .views import download_all_employee_reports
@@ -33,8 +33,10 @@ urlpatterns = [
     path('download/attendance/', attendance_record_csv, name='attendance_record_csv'),
     path('download/holiday/',holiday_record_csv, name='holiday_record_csv'),
     path('download/sickness/', sickness_record_csv, name='sickness_record_csv'),
-    path('download/payroll-data',download_all_employee_reports, name='payroll_reports_zip' )
+    path('download/payroll-data',download_all_employee_reports, name='payroll_reports_zip' ),
 
+    path('cpd/add/', add_cpd_training_log, name='add_cpd'),
+    path('cpd/edit/<int:pk>/', edit_cpd_training_log, name='edit_cpd'),
 
     # Other URL patterns
 ]
