@@ -1,9 +1,11 @@
+version: '3.7'  # Make sure you're using a version that supports ulimits
+
 services:
   web:
     build: .
     restart: always
     command: gunicorn filemanagementDjango.wsgi:application --bind 0.0.0.0:8000 --workers 3
-#    command: python3 manage.py runserver 0.0.0.0:8000
+    # command: python3 manage.py runserver 0.0.0.0:8000
     env_file:
       - /etc/environment
     expose:
@@ -12,3 +14,10 @@ services:
       - "8000:8000"
     volumes:
       - ./media:/app/media
+    ulimits:
+      nofile:
+        soft: 2000000
+        hard: 2000000
+      stack:
+        soft: unlimited
+        hard: unlimited
