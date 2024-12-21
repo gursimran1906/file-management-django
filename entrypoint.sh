@@ -23,25 +23,30 @@ exec "$@"
 EOF
 chmod +x /entrypoint-cron.sh
 
-# Update CRON_PATH in crontab
-echo "SHELL=/bin/sh
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-CRON_PATH=/entrypoint-cron.sh" > /etc/cron.d/crontab
+# Remove any existing crontab
+echo "Removing existing crontab..."
+python manage.py crontab remove
 
 # Add crontab
-echo 'Adding crontab...'
+echo "Adding crontab..."
 python manage.py crontab add
 
-# Give execution rights on the cron job
-chmod 0644 /etc/cron.d/crontab
-
-# Apply cron job
-crontab /etc/cron.d/crontab
+# Make sure crontab is owned by root and has correct permissions
+touch /var/spool/cron/crontabs/root
+chmod 600 /var/spool/cron/crontabs/root
+chown root:crontab /var/spool/cron/crontabs/root
 
 # Start cron service in the background
-echo 'Starting crond...'
-cron -f &
+echo "Starting crond..."
+cron
 
+# Verify crontab was added
+echo "Verifying crontab..."
+crontab -l
+python manage.py crontab show
+
+# Follow the logs (this helps in debugging)
+tail -f /app/email_sorting/email_job.log /app/email_sorting/remove_log.log &
 
 # Execute the command passed to the container
 exec "$@"
