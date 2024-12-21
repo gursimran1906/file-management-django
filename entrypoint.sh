@@ -4,24 +4,7 @@
 echo 'Running migrations...'
 python manage.py migrate
 
-# Create environment file for cron
-env | while read -r line; do
-    # Escape any single quotes in the value
-    escaped_line=$(echo "$line" | sed "s/'/'\\\\''/g")
-    echo "export '$escaped_line'" >> /etc/environment
-done
-
-# Ensure cron has access to environment variables
-printenv | grep -v "no_proxy" > /etc/default/cron
-
-# Create a script that sources environment for cron jobs
-cat <<'EOF' > /entrypoint-cron.sh
-#!/bin/sh
-set -e
-source /etc/environment
-exec "$@"
-EOF
-chmod +x /entrypoint-cron.sh
+printenv > /etc/environment
 
 # Remove any existing crontab
 echo "Removing existing crontab..."
@@ -44,9 +27,6 @@ cron
 echo "Verifying crontab..."
 crontab -l
 python manage.py crontab show
-
-# Follow the logs (this helps in debugging)
-tail -f /app/email_sorting/email_job.log /app/email_sorting/remove_log.log &
 
 # Execute the command passed to the container
 exec "$@"
