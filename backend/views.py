@@ -3531,7 +3531,7 @@ def download_frontsheet(request, file_number):
         ap1_relationship = ''
 
     if file.authorised_party2:
-        ap1_name = file.authorised_party2.name
+        ap2_name = file.authorised_party2.name
         ap2_addr = f'{file.authorised_party2.address_line1}, {file.authorised_party2.address_line2},<br>{
             file.authorised_party2.county}, {file.authorised_party2.postcode}'
         ap2_email = file.authorised_party2.email
