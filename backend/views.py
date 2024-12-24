@@ -4559,7 +4559,7 @@ def policies_read_per_user(request):
     latest_versions_read_count = read_policy_ids.count()
     
     # Get unread policies
-    unread_policies = Policy.objects.filter(~Q(id__in=read_policy_ids))
+    unread_policies = Policy.objects.filter(~Q(id__in=read_policy_ids)).order_by('description')
     
     # Prepare unread policies descriptions
     unread_policies_descriptions = list(unread_policies.values('id', 'description'))

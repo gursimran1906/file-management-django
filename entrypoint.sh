@@ -6,9 +6,6 @@ python manage.py migrate
 
 printenv > /etc/environment
 
-# Remove any existing crontab
-echo "Removing existing crontab..."
-python manage.py crontab remove
 
 # Add crontab
 echo "Adding crontab..."

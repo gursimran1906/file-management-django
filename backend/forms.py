@@ -343,7 +343,8 @@ class Free30MinsForm(forms.ModelForm):
         super(Free30MinsForm, self).__init__(*args, **kwargs)
         self.fields['date'].initial = timezone.localdate()
         for field_name, field in self.fields.items():
-            field.widget.attrs['class'] = 'form-input'
+            if field_name not in ['notes']:
+                field.widget.attrs['class'] = 'form-input'
 
 class Free30MinsAttendeesForm(forms.ModelForm):
     class Meta:
