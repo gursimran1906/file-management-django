@@ -123,7 +123,8 @@ class AttendanceNoteForm(forms.ModelForm):
         super(AttendanceNoteForm, self).__init__(*args, **kwargs)
         self.fields['date'].initial = timezone.localdate()
         for field_name, field in self.fields.items():
-            field.widget.attrs['class'] = 'form-input'
+            if field_name not in ['content', 'is_charged']:
+                field.widget.attrs['class'] = 'form-input'
 
 class LetterForm(forms.ModelForm):
     class Meta:
