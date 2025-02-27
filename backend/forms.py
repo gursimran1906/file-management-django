@@ -430,4 +430,13 @@ class PolicyForm(forms.ModelForm):
             field.widget.attrs['class'] = 'form-input'
 
 
+class MemoForm(forms.ModelForm):
+    class Meta:
+        model = Memo
+        fields = ['content', 'date', 'is_final']
+    def __init__(self, *args, **kwargs):
+        super(MemoForm, self).__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+                if field_name not in ['content', 'is_charged']:
+                    field.widget.attrs['class'] = 'form-input'
 

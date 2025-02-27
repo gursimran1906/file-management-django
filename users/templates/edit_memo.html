@@ -9,10 +9,10 @@
         
         <div class="flex">
             <h3 class="text-lg font-semibold text-gray-900">
-                Edit CPD Record
+                Edit Memo
             </h3>
         </div>
-        <form method="POST" action="{% url 'edit_cpd' cpd.id %}" class="space-y-4">
+        <form method="POST" action="" class="space-y-4">
           {% csrf_token %}
           
             {{ form.as_p }}

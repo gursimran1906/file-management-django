@@ -19,7 +19,7 @@
 # admin.site.register(MatterAttendanceNotes)
 # admin.site.register(Modifications)
 from django.contrib import admin
-from .models import (Modifications, ClientContactDetails, AuthorisedParties, OthersideDetails,
+from .models import (Memo, Modifications, ClientContactDetails, AuthorisedParties, OthersideDetails,
                      FileLocation, FileStatus, MatterType, WIP, NextWork, LastWork, PmtsSlips,
                      LedgerAccountTransfers, Policy, PolicyVersion, TempSlips, Invoices, MatterEmails, MatterLetters,
                      MatterAttendanceNotes, RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees, Undertaking)
@@ -266,3 +266,15 @@ class PolicyVersionAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False  # Disable editing PolicyVersion from admin
+    
+@admin.register(Memo)
+class MemoAdmin(admin.ModelAdmin):
+    list_display = ('id', 'date', 'is_final', 'created_by', 'timestamp')
+    list_filter = ('is_final', 'date', 'created_by')
+    search_fields = ('content', 'created_by__username')
+    ordering = ('-timestamp',)
+    readonly_fields = ('timestamp',)
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        return queryset.select_related('created_by')

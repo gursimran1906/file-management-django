@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work
+from .views import add_memo, delete_memo, display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, edit_memo, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work, read_memo
 from .views import attendance_note_view, add_attendance_note, download_attendance_note, edit_attendance_note, correspondence_view, add_letter, edit_letter, download_sowc
 from .views import finance_view, add_blue_slip, add_pink_slip, add_green_slip, edit_pmts_slip, download_pmts_slip, edit_green_slip, download_green_slip, add_invoice
 from .views import allocate_monies, download_statement_account, download_invoice, edit_invoice, download_estate_accounts, unallocated_emails, allocate_emails
@@ -105,5 +105,10 @@ urlpatterns = [
     path('policies_read_per_user/',policies_read_per_user, name='policies_read_per_user'),
 
     path('download_aml_checks_due',download_aml_checks_due, name='download_aml_checks_due'),
-    path('download_risk_assessments_due',download_risk_assessments_due,name='download_risk_assessments_due')
+    path('download_risk_assessments_due',download_risk_assessments_due,name='download_risk_assessments_due'),
+
+    path('memos/add/', add_memo, name='add_memo'),
+    path('memos/<int:memo_id>/edit/', edit_memo, name='edit_memo'),
+    path('memos/<int:memo_id>/delete/', delete_memo, name='delete_memo'),
+    path('memos/<int:memo_id>/read/', read_memo, name='read_memo'),
 ]

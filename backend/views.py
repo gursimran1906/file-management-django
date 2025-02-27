@@ -2,11 +2,11 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.db.models import Q, Q, F, OuterRef, Subquery, Max, CharField, Exists, Count
 from django.db.models.functions import Cast
-from .models import WIP, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties
+from .models import WIP, Memo, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
 from .models import Undertaking, Policy, PolicyVersion
-from .forms import OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
+from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
 from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm,OtherSideForm
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm
 from .utils import create_modification
@@ -300,6 +300,8 @@ def display_data_home_page(request, file_number):
                 if ongoing_monitorings.exists():
                     if ongoing_monitorings[0].date_due_diligence_conducted <= eleven_months_ago:
                         eleven_months_since_last_risk_assessment = True
+                    else:
+                        eleven_months_since_last_risk_assessment = False
                 else:
                     eleven_months_since_last_risk_assessment = True
             else:
@@ -4651,3 +4653,50 @@ def download_risk_assessments_due(request):
 
     return response
 
+@login_required
+def add_memo(request):
+    if request.method == 'POST':
+        form = MemoForm(request.POST)
+        if form.is_valid():
+            memo = form.save(commit=False)
+            memo.created_by = request.user
+            memo.save()
+            messages.success(request, 'Memo successfully added.')
+            
+        else:
+            messages.error(request, 'There was an error adding the memo. Please check the form and try again.')
+            
+    return redirect('profile_page')
+
+@login_required
+def edit_memo(request, memo_id):
+    memo = get_object_or_404(Memo, id=memo_id)
+    if request.method == 'POST':
+        form = MemoForm(request.POST, instance=memo)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Memo successfully updated.')
+            return redirect('profile_page')
+        else:
+            messages.error(request, 'There was an error updating the memo. Please check the form and try again.')
+    else:
+        form = MemoForm(instance=memo)
+    return render(request, 'edit_memo.html', {'form': form})
+
+@login_required
+def delete_memo(request, memo_id):
+    memo = get_object_or_404(Memo, id=memo_id)
+    if request.method == 'POST':
+        memo.delete()
+        messages.success(request, 'Memo successfully deleted.')
+        return redirect('profile_page')
+    else:
+        messages.warning(request, 'Are you sure you want to delete this memo?')
+    return render(request, 'confirm_delete.html', {'memo': memo})
+
+@login_required
+def read_memo(request, memo_id):
+    memo = get_object_or_404(Memo, id=memo_id)
+    PoliciesRead.objects.get_or_create(memo=memo, read_by=request.user)
+    messages.success(request, 'Memo marked as read.')
+    return redirect('profile_page')

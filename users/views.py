@@ -9,6 +9,9 @@ from django.urls import reverse
 from urllib.parse import unquote
 
 from weasyprint import HTML
+
+from backend.forms import MemoForm
+from backend.models import Memo
 from .models import AttendanceRecord, CPDTrainingLog, CustomUser, HolidayRecord, SicknessRecord
 from django.utils import timezone
 from .forms import CPDTrainingLogForm, CustomUserCreationForm, HolidayRecordForm, OfficeClosureRecordForm
@@ -218,6 +221,12 @@ def profile_page(request):
     office_closure_form = OfficeClosureRecordForm()
     cpd_form = CPDTrainingLogForm()
     cpds = CPDTrainingLog.objects.filter(user=user).order_by('-date_completed')
+    memo_form = MemoForm()
+    if request.user.is_manager:
+        memos = Memo.objects.all().order_by('-date')
+    else:
+        memos = Memo.objects.filter(is_final=True).order_by('-date')
+
     return render(request, 'profile_page.html', {'employees':employees,
                                                  'holiday_requests': requests_with_total_days,
                                                  'all_requests':all_requests,
@@ -231,6 +240,8 @@ def profile_page(request):
                                                  'office_closure_form': office_closure_form,
                                                  'cpd_form':cpd_form, 
                                                  'cpds': cpds,
+                                                 'memo_form':memo_form,
+                                                 'memos':memos,
                                                  'users':users})
 
 @login_required
