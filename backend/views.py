@@ -3493,7 +3493,7 @@ def download_file_logs(request, file_number):
 @login_required
 def download_frontsheet(request, file_number):
     file = WIP.objects.get(file_number=file_number)
-    page_style = '@page { margin-top: 2pt; margin-bottom:0; font-size:7pt !important; size: A4;}'
+    page_style = '@page { margin-top: 24pt; margin-bottom:0; font-size:7pt !important; size: A4;}'
     title = f"Frontsheet - {file_number}"
 
     if file.client2:
@@ -4450,12 +4450,24 @@ def management_reports(request):
         matter=OuterRef('pk')
     ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
 
+    
+    recent_monitoring_exists = OngoingMonitoring.objects.filter(
+        file_number=OuterRef('pk'),
+        date_due_diligence_conducted__gte=twelve_months_ago
+    )
+
+    # Final queryset
     risk_assessments_due = WIP.objects.annotate(
         latest_assessment_date=Subquery(latest_assessment_subquery)
     ).filter(
         Q(file_status__status='Open') &
-        (Q(latest_assessment_date__lte=twelve_months_ago) | Q(latest_assessment_date__isnull=True))
-    )
+        (
+            Q(latest_assessment_date__lte=twelve_months_ago) |
+            Q(latest_assessment_date__isnull=True)
+        )
+    ).exclude(
+        Exists(recent_monitoring_exists)
+    ).order_by('file_number')
     cpds = CPDTrainingLog.objects.all()
     return render(request, 'management_reports.html', {'users':users, 
                                                        'aml_checks_due':unique_aml_checks_due,
