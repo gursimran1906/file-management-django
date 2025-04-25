@@ -4645,12 +4645,24 @@ def download_risk_assessments_due(request):
         matter=OuterRef('pk')
     ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
 
+    
+    recent_monitoring_exists = OngoingMonitoring.objects.filter(
+        file_number=OuterRef('pk'),
+        date_due_diligence_conducted__gte=twelve_months_ago
+    )
+
+    # Final queryset
     risk_assessments_due = WIP.objects.annotate(
         latest_assessment_date=Subquery(latest_assessment_subquery)
     ).filter(
         Q(file_status__status='Open') &
-        (Q(latest_assessment_date__lte=twelve_months_ago) | Q(latest_assessment_date__isnull=True))
-    )
+        (
+            Q(latest_assessment_date__lte=twelve_months_ago) |
+            Q(latest_assessment_date__isnull=True)
+        )
+    ).exclude(
+        Exists(recent_monitoring_exists)
+    ).order_by('file_number')
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="risk_assessments_due_{timezone.now()}.csv"'
