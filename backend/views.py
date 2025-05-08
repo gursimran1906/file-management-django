@@ -2724,7 +2724,10 @@ def edit_invoice(request, id):
             file_number=invoice.file_number).order_by('date')
 
         green_slips_objs = LedgerAccountTransfers.objects.filter(
-            Q(file_number_from=invoice.file_number.id) | Q(file_number_to=invoice.file_number.id)).order_by('date')
+            Q(file_number_from=invoice.file_number.id) | Q(file_number_to=invoice.file_number.id)
+        ).exclude(
+            file_number_from=F('file_number_to')
+        ).order_by('date')
 
         disbs_ids = list(invoice.disbs_ids.values_list('id', flat=True))
 
