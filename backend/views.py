@@ -11,7 +11,7 @@ from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, Ledge
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm
 from .utils import create_modification
 from django.utils import timezone
-from users.models import CPDTrainingLog, CustomUser
+from users.models import CPDTrainingLog, CustomUser, HolidayRecord
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
 from django.template.loader import render_to_string
@@ -170,6 +170,18 @@ def user_dashboard(request):
     user = CustomUser.objects.get(username=request.user)
     user_next_works = NextWork.objects.filter(Q(person=user) & Q(completed=False)).order_by('date')
     user_last_works = LastWork.objects.filter(person=user).order_by('-date')
+    # Check if user is manager and show pending holiday requests
+    if user.is_manager:
+        pending_holiday_requests = HolidayRecord.objects.filter(
+            approved=False
+        ).count()
+        
+        if pending_holiday_requests > 0:
+            if pending_holiday_requests == 1:
+                messages.info(request, f'You have {pending_holiday_requests} holiday request pending your approval.')
+            else:
+                messages.info(request, f'You have {pending_holiday_requests} holiday requests pending your approval.')
+    
     now = timezone.now()
     # Collect unique WIP objects from user_next_works and user_last_works
     next_work_wips = user_next_works.values_list('file_number', flat=True)
