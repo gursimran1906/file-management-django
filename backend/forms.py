@@ -427,7 +427,8 @@ class PolicyForm(forms.ModelForm):
             if latest_version:
                 self.fields['content'].initial = latest_version.content
         for field_name, field in self.fields.items():
-            field.widget.attrs['class'] = 'form-input'
+            if field_name != 'content':
+                field.widget.attrs['class'] = 'form-input'
 
 
 class MemoForm(forms.ModelForm):
