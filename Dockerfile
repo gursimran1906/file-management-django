@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     libcairo2 \
     libcairo2-dev \
-    libpango1.0-0 \
+    libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libjpeg62-turbo-dev \
     libpng-dev \
