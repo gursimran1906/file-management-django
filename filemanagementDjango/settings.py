@@ -104,10 +104,7 @@ DATABASES = {
         'USER': os.getenv('DB_USER', 'gb'),    
         'PASSWORD': os.getenv('DB_USER_PASS', 'Mango@ANP290!'),    
         'HOST': os.getenv('DB_HOST', 'localhost'),    
-        'PORT': os.getenv('DB_PORT','5432'),    
-        'OPTIONS': {
-            'sslmode': 'require', 
-        },         
+        'PORT': os.getenv('DB_PORT','5432'),           
     }
 }
 
