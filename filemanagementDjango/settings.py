@@ -28,6 +28,9 @@ SECRET_KEY = 'django-insecure-3b1_t+z*dfo81p)$x=wa7uygt)x0%-6n+h3fhlkrg@xkuzq=7s
 DEBUG = os.getenv('DEBUG','False'), 
 
 ALLOWED_HOSTS = ['*']
+CSRF_TRUSTED_ORIGINS = [
+    'https://wip.anp.softwarised.com',
+]
 
 LOGIN_URL = '/login/'
 
