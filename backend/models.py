@@ -635,3 +635,57 @@ class Free30Mins(models.Model):
                                    related_name='free30_mins_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
+
+class Bundle(models.Model):
+    """Model to represent a document bundle"""
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=255)
+    file_number = models.ForeignKey(WIP, on_delete=models.CASCADE, null=True, blank=True)
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_finalized = models.BooleanField(default=False)
+    final_pdf = models.FileField(upload_to='bundles/', null=True, blank=True)
+    
+    def __str__(self):
+        return f"{self.name} - {self.file_number}"
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class BundleSection(models.Model):
+    """Model to represent sections within a bundle"""
+    id = models.AutoField(primary_key=True)
+    bundle = models.ForeignKey(Bundle, on_delete=models.CASCADE, related_name='sections')
+    heading = models.CharField(max_length=255)
+    order = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.bundle.name} - {self.heading}"
+
+    class Meta:
+        ordering = ['order']
+        unique_together = ('bundle', 'order')
+
+
+class BundleDocument(models.Model):
+    """Model to represent documents within bundle sections"""
+    id = models.AutoField(primary_key=True)
+    section = models.ForeignKey(BundleSection, on_delete=models.CASCADE, related_name='documents')
+    file = models.FileField(upload_to='bundle_documents/')
+    description = models.CharField(max_length=500)
+    date = models.DateField(null=True, blank=True)
+    order = models.PositiveIntegerField()
+    page_start = models.PositiveIntegerField(null=True, blank=True)
+    page_end = models.PositiveIntegerField(null=True, blank=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.description} - {self.section.heading}"
+
+    class Meta:
+        ordering = ['order']
+        unique_together = ('section', 'order')
+

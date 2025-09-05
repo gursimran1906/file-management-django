@@ -303,6 +303,18 @@
           <span class="ms-3">Undertakings</span>
         </a>
       </li>
+      <li>
+        <a
+          href="{% url 'bundle_create'%}"
+          class="flex items-center p-2 text-gray-900 rounded-lg {% url 'bundle_create' as url %} {% if request.path == url %} bg-gray-100 font-medium {% endif %} dark:text-white  hover:bg-gray-100 dark:hover:bg-gray-700 group"
+        >
+          <svg class="w-5 h-5 {% if request.path == url %} text-gray-900 {% endif %} text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white"
+          aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12V7.914a1 1 0 0 1 .293-.707l3.914-3.914A1 1 0 0 1 9.914 3H18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-4m5-13v4a1 1 0 0 1-1 1H5m0 6h9m0 0-2-2m2 2-2 2"/>
+          </svg>
+          <span class="ms-3">Document Bundles</span>
+        </a>
+      </li>
       {% if request.user.is_manager %}
       <hr>
       <li>

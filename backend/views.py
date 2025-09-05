@@ -5,9 +5,9 @@ from django.db.models.functions import Cast
 from .models import WIP, Memo, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
-from .models import Undertaking, Policy, PolicyVersion
+from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
-from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm,OtherSideForm
+from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm
 from .utils import create_modification
 from django.utils import timezone
@@ -36,6 +36,10 @@ from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, Http404
 from django.conf import settings
 import os
+import PyPDF2
+from io import BytesIO
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
 
 
 @login_required
@@ -46,10 +50,11 @@ def display_data_index_page(request):
         show_archived = 'showArchived' in request.POST
 
         file_status_field_name = 'file_status__status'
-        
+
         if show_archived:
             file_status_list = ['Open', 'Archived']
-            filter_factor = Q(**{f"{file_status_field_name}__in": file_status_list})
+            filter_factor = Q(
+                **{f"{file_status_field_name}__in": file_status_list})
         elif search_by == 'ToBeClosed':
             file_status = 'To Be Closed'
             filter_factor = Q(**{file_status_field_name: file_status})
@@ -65,7 +70,8 @@ def display_data_index_page(request):
                 print('DC')
                 filter_factor &= Q(fee_earner=None)
             else:
-                filter_factor &= Q(fee_earner__username__icontains=val_to_search)
+                filter_factor &= Q(
+                    fee_earner__username__icontains=val_to_search)
         else:
             filter_factor &= Q(file_number__icontains=val_to_search)
 
@@ -100,6 +106,7 @@ def display_data_index_page(request):
 
     return render(request, 'index.html')
 
+
 @login_required
 def download_search_report(request):
     if 'valToSearch' in request.POST:
@@ -108,10 +115,11 @@ def download_search_report(request):
         show_archived = 'showArchived' in request.POST
 
         file_status_field_name = 'file_status__status'
-        
+
         if show_archived:
             file_status_list = ['Open', 'Archived']
-            filter_factor = Q(**{f"{file_status_field_name}__in": file_status_list})
+            filter_factor = Q(
+                **{f"{file_status_field_name}__in": file_status_list})
         elif search_by == 'ToBeClosed':
             file_status = 'To Be Closed'
             filter_factor = Q(**{file_status_field_name: file_status})
@@ -154,69 +162,72 @@ def download_search_report(request):
             'data': data,
             'user': request.user
         }
-    
+
         html_string = render_to_string(
             'download_templates/search_report.html', context)
 
-        
         pdf_file = HTML(string=html_string).write_pdf()
 
         response = HttpResponse(pdf_file, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="search_report_{search_by}+{val_to_search}.pdf"'
         return response
 
+
 @login_required
 def user_dashboard(request):
     user = CustomUser.objects.get(username=request.user)
-    user_next_works = NextWork.objects.filter(Q(person=user) & Q(completed=False)).order_by('date')
+    user_next_works = NextWork.objects.filter(
+        Q(person=user) & Q(completed=False)).order_by('date')
     user_last_works = LastWork.objects.filter(person=user).order_by('-date')
     # Check if user is manager and show pending holiday requests
     if user.is_manager:
         pending_holiday_requests = HolidayRecord.objects.filter(
             approved=False
         ).count()
-        
+
         if pending_holiday_requests > 0:
             if pending_holiday_requests == 1:
-                messages.info(request, f'You have {pending_holiday_requests} holiday request pending your approval.')
+                messages.info(
+                    request, f'You have {pending_holiday_requests} holiday request pending your approval.')
             else:
-                messages.info(request, f'You have {pending_holiday_requests} holiday requests pending your approval.')
-    
+                messages.info(
+                    request, f'You have {pending_holiday_requests} holiday requests pending your approval.')
+
     now = timezone.now()
     # Collect unique WIP objects from user_next_works and user_last_works
     next_work_wips = user_next_works.values_list('file_number', flat=True)
     last_work_wips = user_last_works.values_list('file_number', flat=True)
 
-    fee_earner_files = WIP.objects.filter(Q(fee_earner=user) & Q(file_status__status='Open'))
+    fee_earner_files = WIP.objects.filter(
+        Q(fee_earner=user) & Q(file_status__status='Open'))
 
     next_work_wips_set = set(next_work_wips)
     last_work_wips_set = set(last_work_wips)
 
     # Perform union of sets and combine with fee_earner_files
     combined_wips_set = next_work_wips_set.union(last_work_wips_set)
-    unique_wips = WIP.objects.filter(id__in=combined_wips_set) | fee_earner_files
+    unique_wips = WIP.objects.filter(
+        id__in=combined_wips_set) | fee_earner_files
 
-    
     # Calculate the date 11 months ago
     eleven_months_ago = timezone.now() - relativedelta(months=11)
-    
+
     latest_assessment_subquery = RiskAssessment.objects.filter(
-    matter=OuterRef('pk')
+        matter=OuterRef('pk')
     ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
 
-    
     risk_assessments_due = unique_wips.annotate(
         latest_assessment_date=Subquery(latest_assessment_subquery)
     ).filter(
         Q(file_status__status='Open') &
-        (Q(latest_assessment_date__lte=eleven_months_ago) | Q(latest_assessment_date__isnull=True))
+        (Q(latest_assessment_date__lte=eleven_months_ago)
+         | Q(latest_assessment_date__isnull=True))
     )
-    
-    
+
     aml_checks_due_client1 = unique_wips.filter(
-    Q(file_status__status='Open') & 
-    Q(client1__date_of_last_aml__lte=eleven_months_ago) &
-    Q(fee_earner=user)
+        Q(file_status__status='Open') &
+        Q(client1__date_of_last_aml__lte=eleven_months_ago) &
+        Q(fee_earner=user)
     ).annotate(
         client_id=F('client1__id'),
         client_name=F('client1__name'),
@@ -225,7 +236,7 @@ def user_dashboard(request):
 
     # Filter WIPs where AML checks are due for client2
     aml_checks_due_client2 = unique_wips.filter(
-        Q(file_status__status='Open') & 
+        Q(file_status__status='Open') &
         Q(client2__date_of_last_aml__lte=eleven_months_ago) &
         Q(fee_earner=user)
     ).annotate(
@@ -248,12 +259,15 @@ def user_dashboard(request):
 
     # Convert the dictionary back to a list of dictionaries
     unique_aml_checks_due = [
-        {'client_id': client_id, 'client_name': data['client_name'], 'date_of_last_aml': data['date_of_last_aml']}
+        {'client_id': client_id,
+            'client_name': data['client_name'], 'date_of_last_aml': data['date_of_last_aml']}
         for client_id, data in unique_clients.items()
     ]
-    unique_aml_checks_due = sorted(unique_aml_checks_due, key=lambda x: x['date_of_last_aml'])
+    unique_aml_checks_due = sorted(
+        unique_aml_checks_due, key=lambda x: x['date_of_last_aml'])
     # Filter for unsettled invoices
-    last_100_emails = MatterEmails.objects.filter(fee_earner=user).order_by('-time')[:100]
+    last_100_emails = MatterEmails.objects.filter(
+        fee_earner=user).order_by('-time')[:100]
 
     unsettled_invoices = Invoices.objects.filter(
         file_number__in=unique_wips,
@@ -277,18 +291,19 @@ def user_dashboard(request):
     ).filter(is_read=False).exists()
 
     context = {
-        'now':now,
+        'now': now,
         'user_next_works': user_next_works,
         'user_last_works': user_last_works,
         'risk_assessments_due_files': risk_assessments_due,
         'aml_checks_due': unique_aml_checks_due,
         'unsettled_invoices': unsettled_invoices,
         'last_100_emails': last_100_emails,
-        'files':unique_wips,
+        'files': unique_wips,
         'unread_policies_exist': unread_policies_exist,
     }
 
     return render(request, 'dashboard.html', context)
+
 
 @login_required
 def display_data_home_page(request, file_number):
@@ -301,10 +316,11 @@ def display_data_home_page(request, file_number):
         last_work = LastWork.objects.filter(
             file_number=matter).order_by('-date')
         last_work_form = LastWorkFormWithoutFileNumber()
-        ongoing_monitorings = OngoingMonitoring.objects.filter(file_number=matter.id).order_by('-timestamp')
+        ongoing_monitorings = OngoingMonitoring.objects.filter(
+            file_number=matter.id).order_by('-timestamp')
         risk_assessment = RiskAssessment.objects.filter(
             matter=matter
-            ).order_by('-due_diligence_date')
+        ).order_by('-due_diligence_date')
         eleven_months_ago = (timezone.now() - relativedelta(months=11)).date()
         if risk_assessment.exists():
             risk_assessment = risk_assessment[0]
@@ -322,18 +338,20 @@ def display_data_home_page(request, file_number):
             risk_assessment = ""
             eleven_months_since_last_risk_assessment = False
         if matter.file_status.status == 'Archived':
-            messages.error(request,"ARCHIVED MATTER. Please note this matter is archived.")
+            messages.error(
+                request, "ARCHIVED MATTER. Please note this matter is archived.")
         return render(request, 'home.html', {'matter': matter,
-                                             'undertakings':undertakings,
-                                             'file_number':file_number,
+                                             'undertakings': undertakings,
+                                             'file_number': file_number,
                                              'next_work_form': next_work_form, 'next_work': next_work,
                                              'last_work': last_work, 'last_work_form': last_work_form,
-                                             'ongoing_monitorings':ongoing_monitorings,
-                                             'risk_assessment':risk_assessment, 'eleven_months_since_last_risk_assessment':eleven_months_since_last_risk_assessment,
+                                             'ongoing_monitorings': ongoing_monitorings,
+                                             'risk_assessment': risk_assessment, 'eleven_months_since_last_risk_assessment': eleven_months_since_last_risk_assessment,
                                              'logs': get_file_logs(file_number)})
     except WIP.DoesNotExist:
         messages.error(request, 'Matter file not found')
         return render(request, 'home.html', {'error': 'Matter file not found'})
+
 
 def get_file_logs(file_number):
     file = WIP.objects.filter(file_number=file_number).first()
@@ -600,40 +618,41 @@ def get_file_logs(file_number):
     if risk_assessment:
         logs.append({'timestamp': risk_assessment.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                     'desc': f'Risk Assessment completed',
-                    'user': risk_assessment.due_diligence_signed_by,
-                    'type': 'risk_assessment'})
+                     'user': risk_assessment.due_diligence_signed_by,
+                     'type': 'risk_assessment'})
         modifications = Modifications.objects.filter(
-                Q(content_type=ContentType.objects.get_for_model(risk_assessment)) &
-                Q(object_id=risk_assessment.id)
-            )
+            Q(content_type=ContentType.objects.get_for_model(risk_assessment)) &
+            Q(object_id=risk_assessment.id)
+        )
         for modification in modifications:
             logs.append({
-                    'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                    'desc': f'Risk Assessment modification. Changes = {modification.changes}',
-                    'user': modification.modified_by.username if modification.modified_by else None,
-                    'type': 'risk_assessment'
-                })
+                'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
+                'desc': f'Risk Assessment modification. Changes = {modification.changes}',
+                'user': modification.modified_by.username if modification.modified_by else None,
+                'type': 'risk_assessment'
+            })
     ongoing_monitoring = OngoingMonitoring.objects.filter(file_number=file.id)
     for obj in ongoing_monitoring:
-        logs.append({'timestamp':obj.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
+        logs.append({'timestamp': obj.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                      'desc': f'Ongoing Monitoring done.',
-                     'user':obj.created_by,
+                     'user': obj.created_by,
                      'type': 'ongoing_monitoring'})
         modifications = Modifications.objects.filter(
-                Q(content_type=ContentType.objects.get_for_model(obj)) &
-                Q(object_id=obj.id)
-            )
+            Q(content_type=ContentType.objects.get_for_model(obj)) &
+            Q(object_id=obj.id)
+        )
         for modification in modifications:
             logs.append({
-                    'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                    'desc': f'Ongoing Monitoring modification. Changes = {modification.changes}',
-                    'user': modification.modified_by.username if modification.modified_by else None,
-                    'type': 'ongoing_monitoring'
-                })
+                'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
+                'desc': f'Ongoing Monitoring modification. Changes = {modification.changes}',
+                'user': modification.modified_by.username if modification.modified_by else None,
+                'type': 'ongoing_monitoring'
+            })
     sorted_logs = sorted(logs, key=lambda x: datetime.strptime(
         x['timestamp'], '%d/%m/%Y %H:%M:%S'), reverse=True)
 
     return sorted_logs
+
 
 def add_new_client(request_post_copy, client_prefix, user):
     name = request_post_copy[f'ClientName{client_prefix}']
@@ -648,7 +667,7 @@ def add_new_client(request_post_copy, client_prefix, user):
     contact_number = request_post_copy[f'Client{client_prefix}ContactNumber']
     date_of_last_aml = request_post_copy[f'Client{client_prefix}AMLCheckDate']
     id_verified = f'IDVer{client_prefix}' in request_post_copy
-    
+
     client_contact = ClientContactDetails(
         name=name,
         dob=dob if dob != '' else None,
@@ -668,6 +687,7 @@ def add_new_client(request_post_copy, client_prefix, user):
 
     return client_contact.id
 
+
 def add_new_authorised_party(request_post_copy, ap_prefix, user):
     name = request_post_copy[f'APName{ap_prefix}']
     relationship_to_client = request_post_copy[f'AP{ap_prefix}RelationshipToC']
@@ -679,7 +699,7 @@ def add_new_authorised_party(request_post_copy, ap_prefix, user):
     contact_number = request_post_copy[f'AP{ap_prefix}ContactNumber']
     id_check = f'AP{ap_prefix}IDCheck' in request_post_copy
     date_of_id_check = request_post_copy[f'AP{ap_prefix}IDCheckDate']
-    
+
     try:
         authorised_party = AuthorisedParties(
             name=name,
@@ -700,6 +720,7 @@ def add_new_authorised_party(request_post_copy, ap_prefix, user):
     authorised_party.save()
 
     return authorised_party.id
+
 
 def add_new_otherside_details(request_post_copy, user):
 
@@ -731,6 +752,7 @@ def add_new_otherside_details(request_post_copy, user):
     # Return the ID of the newly added OthersideDetails
     return otherside_details.id
 
+
 def preprocess_form_data(post_data):
     post_copy = post_data.copy()
 
@@ -742,11 +764,13 @@ def preprocess_form_data(post_data):
 
     return post_copy
 
+
 def update_checkbox_values(data, *fields):
     for field in fields:
         data[field] = field in data
 
     return data
+
 
 def get_standard_data():
     fee_earners = CustomUser.objects.filter(is_matter_fee_earner=True)
@@ -768,6 +792,7 @@ def get_standard_data():
     }
 
     return form_data
+
 
 @login_required
 def open_new_file_page(request):
@@ -800,9 +825,9 @@ def open_new_file_page(request):
                 request_post_copy, 'terms_of_engagement_client1', 'terms_of_engagement_client2')
             update_checkbox_values(
                 request_post_copy, 'ncba_client1', 'ncba_client2')
-            
+
             request_post_copy['created_by'] = request.user
-            
+
             form = OpenFileForm(request_post_copy)
             if form.is_valid():
                 instance = form.save()
@@ -822,18 +847,20 @@ def open_new_file_page(request):
     else:
         return render(request, 'open_file.html', {'form_data': form_data})
 
+
 @login_required
 def add_risk_assessment(request, file_number):
     try:
         matter = WIP.objects.get(file_number=file_number)
     except WIP.DoesNotExist:
-        messages.error(request, 'Matter with the given file number does not exist.')
+        messages.error(
+            request, 'Matter with the given file number does not exist.')
         return redirect('index')
     if request.method == 'POST':
         post_data = request.POST.copy()
-        
+
         form = RiskAssessmentForm(post_data)
-        
+
         if form.is_valid():
             risk_assessment = form.save()
             messages.success(request, 'Risk Assessment successfully added.')
@@ -845,10 +872,10 @@ def add_risk_assessment(request, file_number):
             messages.error(request, error_message)
     else:
 
-        form = RiskAssessmentForm(initial={'matter':matter.id})
+        form = RiskAssessmentForm(initial={'matter': matter.id})
 
-    
-    return render(request, 'risk_assessment.html', {'form': form, 'file_number':file_number, 'title':'Add'})
+    return render(request, 'risk_assessment.html', {'form': form, 'file_number': file_number, 'title': 'Add'})
+
 
 @login_required
 def edit_client(request, id):
@@ -889,6 +916,7 @@ def edit_client(request, id):
         form = ClientForm(instance=client)
     return render(request, 'edit_models.html', {'form': form, 'title': 'Client Information'})
 
+
 @login_required
 def edit_authorised_party(request, id):
     ap = AuthorisedParties.objects.get(id=id)
@@ -923,6 +951,7 @@ def edit_authorised_party(request, id):
     else:
         form = AuthorisedPartyForm(instance=ap)
     return render(request, 'edit_models.html', {'form': form, 'title': 'Authorised Party Information'})
+
 
 @login_required
 def edit_otherside(request, id):
@@ -959,6 +988,7 @@ def edit_otherside(request, id):
         form = OtherSideForm(instance=os)
     return render(request, 'edit_models.html', {'form': form, 'title': 'Other Side Details'})
 
+
 @login_required
 def edit_file(request, file_number):
     file = WIP.objects.filter(file_number=file_number).first()
@@ -966,18 +996,17 @@ def edit_file(request, file_number):
 
     if request.method == 'POST':
         try:
-            
+
             request_post_copy = preprocess_form_data(request.POST)
-            
 
             if request_post_copy['client2'] == '-1':
                 request_post_copy['client2'] = add_new_client(
                     request_post_copy, 2, request.user)
-            
+
             if request_post_copy['authorised_party1'] == '-1':
                 request_post_copy['authorised_party1'] = add_new_authorised_party(
                     request_post_copy, 1, request.user)
-            
+
             if request_post_copy['authorised_party2'] == '-1':
                 request_post_copy['authorised_party2'] = add_new_authorised_party(
                     request_post_copy, 2, request.user)
@@ -989,7 +1018,7 @@ def edit_file(request, file_number):
                 request_post_copy, 'terms_of_engagement_client1', 'terms_of_engagement_client2')
             update_checkbox_values(
                 request_post_copy, 'ncba_client1', 'ncba_client2')
-            
+
             request_post_copy['created_by'] = file.created_by
 
             form = OpenFileForm(request_post_copy, instance=file)
@@ -1034,10 +1063,10 @@ def edit_file(request, file_number):
     else:
 
         form = OpenFileForm(instance=file)
-        
 
     return render(request, 'edit_file.html', {'form': form, 'form_data': form_data,
                                               'file_number': file_number})
+
 
 @login_required
 def add_new_work_file(request, file_number):
@@ -1060,6 +1089,7 @@ def add_new_work_file(request, file_number):
         messages.error(request, 'Invalid request method.')
     return redirect('home', file_number=file_number)
 
+
 @login_required
 def edit_next_work(request, id):
     # Fetch the NextWork instance
@@ -1073,7 +1103,7 @@ def edit_next_work(request, id):
             changed_fields = form.changed_data
             changes = {}
             for field in changed_fields:
-                
+
                 changes[field] = {
                     'old_value': str(getattr(duplicate_obj, field)),
                     'new_value': None
@@ -1081,12 +1111,14 @@ def edit_next_work(request, id):
             form.save()
 
             for field in changed_fields:
-                
+
                 if field == 'completed':
                     if getattr(nextwork_instance, field):
-                        link = reverse('attendance_note_view', args=[nextwork_instance.file_number.file_number])
+                        link = reverse('attendance_note_view', args=[
+                                       nextwork_instance.file_number.file_number])
                         add_attendance_note_link = f"<a href='{link}' class='link'>add an attendance note</a>"
-                        messages.info(request, mark_safe(f'Please remember to {add_attendance_note_link} for work just completed.'))
+                        messages.info(request, mark_safe(
+                            f'Please remember to {add_attendance_note_link} for work just completed.'))
                 changes[field]['new_value'] = str(
                     getattr(nextwork_instance, field))
 
@@ -1107,7 +1139,8 @@ def edit_next_work(request, id):
         form = NextWorkForm(instance=nextwork_instance)
 
     # Render the template with the form
-    return render(request, 'edit_models.html', {'form': form, 'title': 'Next Work','file_number':nextwork_instance.file_number.file_number})
+    return render(request, 'edit_models.html', {'form': form, 'title': 'Next Work', 'file_number': nextwork_instance.file_number.file_number})
+
 
 @login_required
 def add_last_work_file(request, file_number):
@@ -1121,7 +1154,8 @@ def add_last_work_file(request, file_number):
             form.save()
             link = reverse('attendance_note_view', args=[file_number])
             add_attendance_note_link = f"<a href='{link}' class='link '>add an attendance note</a>"
-            messages.info(request, mark_safe(f'Please remember to {add_attendance_note_link} for work just added.'))
+            messages.info(request, mark_safe(
+                f'Please remember to {add_attendance_note_link} for work just added.'))
             messages.success(request, 'Last work successfully added.')
             return redirect('home', file_number=file_number)
         else:
@@ -1132,6 +1166,7 @@ def add_last_work_file(request, file_number):
     else:
         messages.error(request, 'Invalid request method.')
     return redirect('home', file_number=file_number)
+
 
 @login_required
 def edit_last_work(request, id):
@@ -1170,7 +1205,8 @@ def edit_last_work(request, id):
         form = LastWorkForm(instance=lastwork_instance)
 
     # Render the template with the form
-    return render(request, 'edit_models.html', {'form': form, 'title': 'Last Work','file_number':lastwork_instance.file_number.file_number})
+    return render(request, 'edit_models.html', {'form': form, 'title': 'Last Work', 'file_number': lastwork_instance.file_number.file_number})
+
 
 @login_required
 def attendance_note_view(request, file_number):
@@ -1179,6 +1215,7 @@ def attendance_note_view(request, file_number):
     attendance_notes = MatterAttendanceNotes.objects.filter(
         file_number=file_number_id).order_by('-date')
     return render(request, 'attendance_notes.html', {'form': form, 'file_number': file_number, 'attendance_notes': attendance_notes})
+
 
 @login_required
 def add_attendance_note(request, file_number):
@@ -1202,6 +1239,7 @@ def add_attendance_note(request, file_number):
         messages.error(request, 'Invalid request method.')
 
     return redirect(attendance_note_view, file_number=file_number)
+
 
 @login_required
 def download_attendance_note(request, id):
@@ -1229,6 +1267,7 @@ def download_attendance_note(request, id):
     pdf_file = HTML(string=html_string).write_pdf()
 
     return HttpResponse(pdf_file, content_type='application/pdf')
+
 
 @login_required
 def edit_attendance_note(request, id):
@@ -1277,7 +1316,8 @@ def edit_attendance_note(request, id):
     else:
         form = AttendanceNoteForm(instance=attendance_note_instance)
 
-    return render(request, 'edit_models.html', {'form': form, 'title': 'Attendance Note','file_number':attendance_note_instance.file_number.file_number})
+    return render(request, 'edit_models.html', {'form': form, 'title': 'Attendance Note', 'file_number': attendance_note_instance.file_number.file_number})
+
 
 @login_required
 def correspondence_view(request, file_number):
@@ -1289,6 +1329,7 @@ def correspondence_view(request, file_number):
         file_number=file_number_id).order_by('-date')
     return render(request, 'correspondence.html', {'letter_form': letter_form, 'file_number': file_number,
                                                    'emails': emails, 'letters': letters})
+
 
 @login_required
 def add_letter(request, file_number):
@@ -1311,6 +1352,7 @@ def add_letter(request, file_number):
         messages.error(request, 'Invalid request method.')
 
     return redirect('correspondence_view', file_number=file_number)
+
 
 @login_required
 def edit_letter(request, id):
@@ -1348,7 +1390,8 @@ def edit_letter(request, id):
     else:
         form = LetterForm(instance=letter_instance)
 
-    return render(request, 'edit_models.html', {'form': form, 'title': 'Letter', 'file_number':letter_instance.file_number.file_number})
+    return render(request, 'edit_models.html', {'form': form, 'title': 'Letter', 'file_number': letter_instance.file_number.file_number})
+
 
 @login_required
 def download_sowc(request, file_number):
@@ -1371,21 +1414,24 @@ def download_sowc(request, file_number):
         desc = f"Attendance Note - {note.subject_line} from {note.start_time.strftime(
             '%I:%M %p')} to {note.finish_time.strftime('%I:%M %p')}"
         units = note.unit
-        amount = ((note.person_attended.hourly_rate.hourly_amount/10) * units) if note.person_attended != None else ((note.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
+        amount = ((note.person_attended.hourly_rate.hourly_amount/10) * units) if note.person_attended != None else (
+            (note.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
 
     for email in emails:
-        
+
         date = email.time.date().strftime('%d/%m/%Y')
-        time = email.time.astimezone(timezone.get_current_timezone()).time().strftime('%H:%M')
+        time = email.time.astimezone(
+            timezone.get_current_timezone()).time().strftime('%H:%M')
         fee_earner = email.fee_earner.username if email.fee_earner != None else ''
         receiver = json.loads(email.receiver)
         sender = json.loads(email.sender)
         to_or_from = f"Email to {receiver[0]['emailAddress']['name']}" if email.is_sent else f"Perusal of email from {sender['emailAddress']['name']}"
         desc = to_or_from + f" @ {time}"
         units = email.units
-        amount = ((email.fee_earner.hourly_rate.hourly_amount/10) * units) if email.fee_earner != None else ((email.file_number.fee_earner.hourly_rate.hourly_amount/10)* units)
+        amount = ((email.fee_earner.hourly_rate.hourly_amount/10) * units) if email.fee_earner != None else (
+            (email.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
 
@@ -1396,7 +1442,8 @@ def download_sowc(request, file_number):
         to_or_from = f'Letter to {letter.to_or_from}' if letter.sent else f'Letter from {letter.to_or_from}'
         desc = f'{to_or_from} - {letter.subject_line}'
         units = 1
-        amount = ((letter.person_attended.hourly_rate.hourly_amount/10) * units) if letter.person_attended != None else ((letter.file_number.fee_earner.hourly_rate.hourly_amount/10)* units)
+        amount = ((letter.person_attended.hourly_rate.hourly_amount/10) * units) if letter.person_attended != None else (
+            (letter.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
 
@@ -1430,7 +1477,8 @@ def download_sowc(request, file_number):
     for fee_earner in distinct_fee_earners:
         user = CustomUser.objects.filter(username=fee_earner).first()
         if user != None:
-            writer.writerow(['', '', f'({user.first_name} {user.last_name}) {user.username} rate GBP{user.hourly_rate.hourly_amount} + VAT per hour, 6 minutes = 1 unit '])
+            writer.writerow(
+                ['', '', f'({user.first_name} {user.last_name}) {user.username} rate GBP{user.hourly_rate.hourly_amount} + VAT per hour, 6 minutes = 1 unit '])
     writer.writerow([])
     writer.writerow(['Date', 'Fee Earner', 'Description', 'Unit(s)', 'Amount'])
     for row in sorted_rows:
@@ -1447,6 +1495,7 @@ def download_sowc(request, file_number):
                     f'=sum(E{total_cost_row}:E{total_cost_row+1})'])
 
     return response
+
 
 @login_required
 def finance_view(request, file_number):
@@ -1495,11 +1544,13 @@ def finance_view(request, file_number):
                 if isinstance(slip.amount_invoiced, str):
                     amount_invoiced = json.loads(slip.amount_invoiced)
                 elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
-                    amount_invoiced = json.loads(slip.amount_invoiced.decode('utf-8'))
+                    amount_invoiced = json.loads(
+                        slip.amount_invoiced.decode('utf-8'))
                 elif isinstance(slip.amount_invoiced, dict):
                     amount_invoiced = slip.amount_invoiced
                 else:
-                    raise ValueError("Unsupported type for slip.amount_invoiced")
+                    raise ValueError(
+                        "Unsupported type for slip.amount_invoiced")
 
                 date = slip.date.strftime('%d/%m/%Y')
                 amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
@@ -1507,7 +1558,7 @@ def finance_view(request, file_number):
                 blue_slips_display = blue_slips_display + \
                     f"Payment from {slip.pmt_person} of <b>£{amt}</b> on <b>{date}</b><br>"
             blue_slips_display = blue_slips_display + \
-                f"<b>Total Blue Slips:</b> £{round(total_blue_slips,2)}<br>"
+                f"<b>Total Blue Slips:</b> £{round(total_blue_slips, 2)}<br>"
         else:
             blue_slips_display = blue_slips_display + "No Blue Slips Attached"
 
@@ -1544,11 +1595,13 @@ def finance_view(request, file_number):
                     if isinstance(slip.amount_invoiced_to, str):
                         amount_invoiced = json.loads(slip.amount_invoiced_to)
                     elif isinstance(slip.amount_invoiced_to, (bytes, bytearray)):
-                        amount_invoiced = json.loads(slip.amount_invoiced_to.decode('utf-8'))
+                        amount_invoiced = json.loads(
+                            slip.amount_invoiced_to.decode('utf-8'))
                     elif isinstance(slip.amount_invoiced_to, dict):
                         amount_invoiced = slip.amount_invoiced_to
                     else:
-                        raise ValueError("Unsupported type for slip.amount_invoiced_to")
+                        raise ValueError(
+                            "Unsupported type for slip.amount_invoiced_to")
 
                     date = slip.date.strftime('%d/%m/%Y')
                     amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
@@ -1563,8 +1616,6 @@ def finance_view(request, file_number):
             green_slips_display = green_slips_display + "No Green Slips Attached"
         green_slips_display = green_slips_display + "</div>"
 
-        
-        
         cash_allocated_slips_display = "<div class='mt-2'><h5 class='text-xl font-medium' >Blue Slips attached (after invoice creation)</h5>"
         total_cash_allocated_slips = 0
         if invoice.cash_allocated_slips.exists():
@@ -1572,34 +1623,39 @@ def finance_view(request, file_number):
                 if isinstance(slip.amount_allocated, str):
                     amount_invoiced = json.loads(slip.amount_allocated)
                 elif isinstance(slip.amount_allocated, (bytes, bytearray)):
-                    amount_invoiced = json.loads(slip.amount_allocated.decode('utf-8'))
+                    amount_invoiced = json.loads(
+                        slip.amount_allocated.decode('utf-8'))
                 elif isinstance(slip.amount_allocated, dict):
                     amount_invoiced = slip.amount_allocated
                 else:
-                    raise ValueError("Unsupported type for slip.amount_invoiced")
-                
+                    raise ValueError(
+                        "Unsupported type for slip.amount_invoiced")
+
                 date = slip.date.strftime('%d/%m/%Y')
                 invoice_id_str = f'{invoice.id}'
                 if invoice_id_str in amount_invoiced:
                     amt = amount_invoiced[invoice_id_str]
-                    total_cash_allocated_slips = total_cash_allocated_slips + Decimal(amt)
+                    total_cash_allocated_slips = total_cash_allocated_slips + \
+                        Decimal(amt)
                     cash_allocated_slips_display = cash_allocated_slips_display + \
                         f"Payment from {slip.pmt_person} of <b>£{amt}</b> on <b>{date}</b><br>"
-                
+
             cash_allocated_slips_display = cash_allocated_slips_display + \
                 f"<b>Total Allocated Slips:</b> £{total_cash_allocated_slips}<br>"
         else:
-            cash_allocated_slips_display = cash_allocated_slips_display + "No Slips Attached After Invoice Creation"
+            cash_allocated_slips_display = cash_allocated_slips_display + \
+                "No Slips Attached After Invoice Creation"
 
         cash_allocated_slips_display = cash_allocated_slips_display + "</div>"
 
-        balance = (total_cost_and_vat + total_pink_slips) - total_green_slips - (total_blue_slips + total_cash_allocated_slips)
+        balance = (total_cost_and_vat + total_pink_slips) - \
+            total_green_slips - (total_blue_slips + total_cash_allocated_slips)
 
         if balance >= 0:
-            total_due_display = f"<div><b>Total Due: </b> £{round(balance,2)}<br></div>"
+            total_due_display = f"<div><b>Total Due: </b> £{round(balance, 2)}<br></div>"
         else:
             balance = balance * -1
-            total_due_display = f"<div><b>Balance remaining on account:</b> £{round(balance,2)}<br></div>"
+            total_due_display = f"<div><b>Balance remaining on account:</b> £{round(balance, 2)}<br></div>"
 
         data = {'id': invoice.id,
                 'state': invoice.state,
@@ -1651,6 +1707,7 @@ def finance_view(request, file_number):
                                              'pmts_form': pmts_form, 'green_slip_form': green_slips_form,
                                              'green_slips': green_slips, 'invoices': invoices_data})
 
+
 @login_required
 def add_pink_slip(request, file_number):
     if request.method == 'POST':
@@ -1674,6 +1731,7 @@ def add_pink_slip(request, file_number):
         messages.error(request, 'Invalid request method.')
 
     return redirect('finance_view', file_number=file_number)
+
 
 @login_required
 def add_blue_slip(request, file_number):
@@ -1699,6 +1757,7 @@ def add_blue_slip(request, file_number):
 
     return redirect('finance_view', file_number=file_number)
 
+
 @login_required
 def add_green_slip(request, file_number):
     if request.method == 'POST':
@@ -1723,6 +1782,7 @@ def add_green_slip(request, file_number):
         messages.error(request, 'Invalid request method.')
 
     return redirect('finance_view', file_number=file_number)
+
 
 @login_required
 def edit_pmts_slip(request, id):
@@ -1762,7 +1822,8 @@ def edit_pmts_slip(request, id):
     else:
         form = PmtsForm(instance=pmt_instance)
 
-    return render(request, 'edit_models.html', {'form': form, 'title': 'Slip','file_number':pmt_instance.file_number.file_number})
+    return render(request, 'edit_models.html', {'form': form, 'title': 'Slip', 'file_number': pmt_instance.file_number.file_number})
+
 
 @login_required
 def download_pmts_slip(request, id):
@@ -1776,6 +1837,7 @@ def download_pmts_slip(request, id):
     pdf_file = HTML(string=html_string).write_pdf()
 
     return HttpResponse(pdf_file, content_type='application/pdf')
+
 
 @login_required
 def edit_green_slip(request, id):
@@ -1815,6 +1877,7 @@ def edit_green_slip(request, id):
 
     return render(request, 'edit_models.html', {'form': form, 'title': 'Edit Green Slip', 'file_number': pmt_instance.file_number_from.file_number})
 
+
 @login_required
 def download_green_slip(request, id):
     slip = get_object_or_404(LedgerAccountTransfers, id=id)
@@ -1827,6 +1890,7 @@ def download_green_slip(request, id):
     pdf_file = HTML(string=html_string).write_pdf()
 
     return HttpResponse(pdf_file, content_type='application/pdf')
+
 
 @login_required
 def add_invoice(request, file_number):
@@ -1946,6 +2010,7 @@ def add_invoice(request, file_number):
 
     return redirect('finance_view', file_number=file_number)
 
+
 @login_required
 def allocate_monies(request):
     if request.method == 'POST':
@@ -1960,20 +2025,17 @@ def allocate_monies(request):
         due_left = invoice.total_due_left
         balance = due_left - Decimal(amt_to_allocate)
 
-        
-
         already_allocated = json.loads(
             slip.amount_allocated) if slip.amount_allocated != {} else {}
         already_allocated.update({str(invoice.id): str(amt_to_allocate)})
         slip.amount_allocated = json.dumps(already_allocated)
 
-        slip.balance_left = Decimal(amt_to_allocate)- invoice.total_due_left
+        slip.balance_left = Decimal(amt_to_allocate) - invoice.total_due_left
         invoice.cash_allocated_slips.add(slip.id)
         if balance <= 0:
             invoice.total_due_left = 0
         else:
             invoice.total_due_left = balance
-        
 
         changes = {'prev_total_due_left': str(due_left),
                    'after_total_due_left': str(invoice.total_due_left),
@@ -1991,6 +2053,7 @@ def allocate_monies(request):
             request, f"£{amt_to_allocate} successfully allocated to Invoice {invoice_num}.")
 
     return redirect('finance_view', invoice.file_number.file_number)
+
 
 @login_required
 def download_invoice(request, id):
@@ -2022,7 +2085,7 @@ def download_invoice(request, id):
         {invoice.file_number.client1.address_line2}<br>
         {invoice.file_number.client1.county}, {invoice.file_number.client1.postcode}
         </div>"""
-    if invoice.file_number.client2 :
+    if invoice.file_number.client2:
         file_details_display = file_details_display + f"""
             <div class="border-start ps-4">{invoice.file_number.client2.name}<br>
             {invoice.file_number.client2.address_line1}<br>
@@ -2120,7 +2183,8 @@ def download_invoice(request, id):
             if isinstance(slip.amount_invoiced, str):
                 amount_invoiced = json.loads(slip.amount_invoiced)
             elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
-                amount_invoiced = json.loads(slip.amount_invoiced.decode('utf-8'))
+                amount_invoiced = json.loads(
+                    slip.amount_invoiced.decode('utf-8'))
             elif isinstance(slip.amount_invoiced, dict):
                 amount_invoiced = slip.amount_invoiced
             else:
@@ -2248,16 +2312,16 @@ def download_invoice(request, id):
             """
 
     html = render_to_string('download_templates/invoice.html', {'invoice_number': invoice.invoice_number,
-                                                               'style': style,
-                                                               'state': mark_safe(state),
-                                                               'file_details_display': mark_safe(file_details_display),
-                                                               'desc_and_cost_display': mark_safe(desc_and_cost_display),
-                                                               'pink_slips_display': mark_safe(pink_slips_display),
-                                                               'blue_slips_display': mark_safe(blue_slips_display),
-                                                               'green_slips_display': mark_safe(green_slips_display),
-                                                               'total_due_display': mark_safe(total_due_display),
-                                                               'bank_details': mark_safe(bank_details),
-                                                               'footer': mark_safe(footer)})
+                                                                'style': style,
+                                                                'state': mark_safe(state),
+                                                                'file_details_display': mark_safe(file_details_display),
+                                                                'desc_and_cost_display': mark_safe(desc_and_cost_display),
+                                                                'pink_slips_display': mark_safe(pink_slips_display),
+                                                                'blue_slips_display': mark_safe(blue_slips_display),
+                                                                'green_slips_display': mark_safe(green_slips_display),
+                                                                'total_due_display': mark_safe(total_due_display),
+                                                                'bank_details': mark_safe(bank_details),
+                                                                'footer': mark_safe(footer)})
 
     pdf_file = HTML(
         string=html, base_url=request.build_absolute_uri()).write_pdf()
@@ -2267,8 +2331,9 @@ def download_invoice(request, id):
         invoice.file_number.client1.name} ({invoice.file_number.matter_description}).pdf"'
     return response
 
+
 def get_all_financials(file_number):
-    file = get_object_or_404(WIP,file_number=file_number)
+    file = get_object_or_404(WIP, file_number=file_number)
 
     slips = PmtsSlips.objects.filter(file_number=file.id)
     green_slips = LedgerAccountTransfers.objects.filter(
@@ -2350,10 +2415,10 @@ def get_all_financials(file_number):
     sorted_rows = sort_rows(all_objects)
     return sorted_rows
 
+
 @login_required
 def download_statement_account(request, file_number):
     file = WIP.objects.filter(file_number=file_number).first()
-    
 
     """
     Date | Desc | Money in | Money Out | Balance
@@ -2369,7 +2434,8 @@ def download_statement_account(request, file_number):
 
     writer = csv.writer(response)
 
-    writer.writerow(['', f'Client Name: {file.client1.name} Matter:{file.matter_description}[{file.file_number}]'])
+    writer.writerow(
+        ['', f'Client Name: {file.client1.name} Matter:{file.matter_description}[{file.file_number}]'])
     writer.writerow(['', f'Statement of Account'])
 
     writer.writerow([])
@@ -2379,7 +2445,7 @@ def download_statement_account(request, file_number):
     client_to_office_tfr_rows = 0
     for row in sorted_rows:
         if row['type'] == 'client_to_office_tfr':
-            client_to_office_tfr_rows = client_to_office_tfr_rows + 1 
+            client_to_office_tfr_rows = client_to_office_tfr_rows + 1
             continue
         if row['type'] == 'money_out':
             balance = balance - row['amount']
@@ -2393,9 +2459,10 @@ def download_statement_account(request, file_number):
         ['', 'Total', f'=sum(c5:c{final_cell})', f'=sum(d5:d{final_cell})'])
     return response
 
+
 @login_required
 def generate_ledgers_report(request, file_number):
-    file = get_object_or_404(WIP,file_number=file_number)
+    file = get_object_or_404(WIP, file_number=file_number)
     html_content = f"""
     <html>
         <head>
@@ -2435,13 +2502,13 @@ def generate_ledgers_report(request, file_number):
     office_balance = 0
     client_balance = 0
     all_objects = get_all_financials(file_number)
-    
+
     for row in all_objects:
 
         if row['type'] == 'client_to_office_tfr':
             client_balance -= row['amount']
-            client_amount = '-'+ str(row['amount'])
-            office_amount =  ''
+            client_amount = '-' + str(row['amount'])
+            office_amount = ''
             html_content += f"""
                 <tr>
                     <td>{row['date']}</td>
@@ -2455,7 +2522,7 @@ def generate_ledgers_report(request, file_number):
 
             office_balance += row['amount']
             client_amount = ''
-            office_amount =  str(row['amount'])
+            office_amount = str(row['amount'])
 
             html_content += f"""
                 <tr>
@@ -2468,11 +2535,11 @@ def generate_ledgers_report(request, file_number):
                 </tr>
             """
             continue
-        
+
         if row['ledger'] == 'C':
             if row['type'] == 'money_out':
                 client_balance -= row['amount']
-                client_amount = '-'+ str(row['amount'])
+                client_amount = '-' + str(row['amount'])
                 office_amount = ''
             else:
                 client_balance += row['amount']
@@ -2482,13 +2549,12 @@ def generate_ledgers_report(request, file_number):
             if row['type'] == 'money_out':
                 office_balance -= row['amount']
                 client_amount = ''
-                office_amount = '-'+ str(row['amount'])
+                office_amount = '-' + str(row['amount'])
             else:
                 office_balance += row['amount']
                 client_amount = ''
                 office_amount = str(row['amount'])
-        
-       
+
         html_content += f"""
                 <tr>
                     <td>{row['date']}</td>
@@ -2499,7 +2565,7 @@ def generate_ledgers_report(request, file_number):
                     <td class="balance">{client_balance}</td>
                 </tr>
         """
-    
+
     html_content += f"""
                 <tr class="bg-body-tertiary">
                     <td></td>
@@ -2515,16 +2581,18 @@ def generate_ledgers_report(request, file_number):
         </body>
     </html>
     """
-    
+
     now_time = datetime.now().strftime("%d_%m_%Y_%H_%M")
     file_name = f"Ledger_Printout_{file_number}_{now_time}.pdf"
-    
-    pdf_file = HTML(string=html_content, base_url=request.build_absolute_uri()).write_pdf()
+
+    pdf_file = HTML(string=html_content,
+                    base_url=request.build_absolute_uri()).write_pdf()
 
     response = HttpResponse(pdf_file, content_type='application/pdf')
-    
+
     response['Content-Disposition'] = f'attachment; filename="{file_name}'
     return response
+
 
 @login_required
 def edit_invoice(request, id):
@@ -2549,7 +2617,7 @@ def edit_invoice(request, id):
             invoice.by_post = True
 
         desc = request.POST['description']
-        invoice.description = desc 
+        invoice.description = desc
         date = request.POST['date']
         invoice.date = date
         our_costs_desc = request.POST.getlist('our_costs_desc[]')
@@ -2584,7 +2652,8 @@ def edit_invoice(request, id):
             if isinstance(slip.amount_invoiced, str):
                 amount_invoiced = json.loads(slip.amount_invoiced)
             elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
-                amount_invoiced = json.loads(slip.amount_invoiced.decode('utf-8'))
+                amount_invoiced = json.loads(
+                    slip.amount_invoiced.decode('utf-8'))
             elif isinstance(slip.amount_invoiced, dict):
                 amount_invoiced = slip.amount_invoiced
             else:
@@ -2736,7 +2805,8 @@ def edit_invoice(request, id):
             file_number=invoice.file_number).order_by('date')
 
         green_slips_objs = LedgerAccountTransfers.objects.filter(
-            Q(file_number_from=invoice.file_number.id) | Q(file_number_to=invoice.file_number.id)
+            Q(file_number_from=invoice.file_number.id) | Q(
+                file_number_to=invoice.file_number.id)
         ).exclude(
             file_number_from=F('file_number_to')
         ).order_by('date')
@@ -2781,12 +2851,14 @@ def edit_invoice(request, id):
                 if isinstance(slip.amount_invoiced, str):
                     amount_invoiced = json.loads(slip.amount_invoiced)
                 elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
-                    amount_invoiced = json.loads(slip.amount_invoiced.decode('utf-8'))
+                    amount_invoiced = json.loads(
+                        slip.amount_invoiced.decode('utf-8'))
                 elif isinstance(slip.amount_invoiced, dict):
                     amount_invoiced = slip.amount_invoiced
                 else:
-                    raise ValueError("Unsupported type for slip.amount_invoiced")
-                
+                    raise ValueError(
+                        "Unsupported type for slip.amount_invoiced")
+
                 if slip.id in moa_ids:
                     amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
                 else:
@@ -2854,6 +2926,7 @@ def edit_invoice(request, id):
 
         }
         return render(request, 'edit_invoice.html', context)
+
 
 @login_required
 def download_estate_accounts(request, file_number):
@@ -3092,7 +3165,8 @@ def download_estate_accounts(request, file_number):
 @login_required
 def unallocated_emails(request):
 
-    unallocated_emails_obj = MatterEmails.objects.filter(file_number=None).order_by('time').only()
+    unallocated_emails_obj = MatterEmails.objects.filter(
+        file_number=None).order_by('time').only()
     i = 0
     rows = []
 
@@ -3105,7 +3179,8 @@ def unallocated_emails(request):
                     <option value=''></option>
                     <option value="XXXXXXXXXX">To be deleted</option>
                 """
-        options = [f'<option value="{file.file_number}">{file.file_number}</option>' for file in files]
+        options = [
+            f'<option value="{file.file_number}">{file.file_number}</option>' for file in files]
         select += ''.join(options)
 
         select = select + """</datalist>
@@ -3140,6 +3215,7 @@ def unallocated_emails(request):
 
     return render(request, 'unallocated_emails.html', context=context)
 
+
 @login_required
 def allocate_emails(request):
     i = 0
@@ -3147,34 +3223,36 @@ def allocate_emails(request):
     email_ids = request.POST.getlist('email_ids[]')
     j = 0
     error_count = 0
-    
+
     for file_number in file_numbers:
-        
+
         if file_number != '':
             file_number = file_number
             email_id = email_ids[i]
             email = MatterEmails.objects.filter(id=email_id).first()
-            
+
             # Check if file exists
             file = WIP.objects.filter(file_number=file_number).first()
             if not file:
                 error_count += 1
-                messages.error(request, f'File with file number {file_number} does not exist. Please choose a correct file number.')
+                messages.error(
+                    request, f'File with file number {file_number} does not exist. Please choose a correct file number.')
                 i += 1
                 continue
-            
+
             email.file_number = file
             j += 1
             email.fee_earner = file.fee_earner if file.fee_earner is not None else None
             email.save()
-        
+
         i += 1
 
     if j > 0:
         messages.success(request, f'Successfully allocated {j} emails')
-    
+
     if error_count > 0:
-        messages.error(request, f'{error_count} file(s) were not found. Please check the file numbers.')
+        messages.error(
+            request, f'{error_count} file(s) were not found. Please check the file numbers.')
 
     return redirect('unallocated_emails')
 
@@ -3206,7 +3284,8 @@ def download_cashier_data(request):
                             <td></td>
                             <td></td>
                         """
-        invoices = Invoices.objects.filter(Q(date__range=(start_date, end_date)) & Q(state='F')).order_by('invoice_number')
+        invoices = Invoices.objects.filter(
+            Q(date__range=(start_date, end_date)) & Q(state='F')).order_by('invoice_number')
         slips = PmtsSlips.objects.filter(
             timestamp__range=(start_date, end_date)).order_by('date')
         green_slips = LedgerAccountTransfers.objects.filter(
@@ -3393,7 +3472,7 @@ def download_cashier_data(request):
                 </thead>
                 <tbody>
         """
-        
+
         for slip in green_slips:
             green_slips_table = green_slips_table + f"""
             <tr>
@@ -3505,6 +3584,7 @@ def download_file_logs(request, file_number):
         file_number}_{request.user}_{datetime.now().strftime('%d/%m/%Y %I:%M %p.pdf"')}'
     return response
 
+
 @login_required
 def download_frontsheet(request, file_number):
     file = WIP.objects.get(file_number=file_number)
@@ -3580,7 +3660,7 @@ def download_frontsheet(request, file_number):
         other_side_solicitors_email = ''
     undertakings = ''
     undertakings_obj = Undertaking.objects.filter(file_number=file)
-    
+
     for undertaking in undertakings_obj:
         if undertaking.date_discharged:
             undertakings += f'''<li><s>{undertaking.description} to {undertaking.given_to} by {undertaking.given_by}</s>
@@ -3781,9 +3861,10 @@ def download_frontsheet(request, file_number):
         file_number}_{request.user}_{datetime.now().strftime('%d/%m/%Y %I:%M %p.pdf"')}'
     return response
 
+
 @login_required
-def download_risk_assessment(request,id):
-    risk_assessment = get_object_or_404(RiskAssessment,pk=id)
+def download_risk_assessment(request, id):
+    risk_assessment = get_object_or_404(RiskAssessment, pk=id)
     html_string = render_to_string(
         'download_templates/risk_assessment.html', {"obj": risk_assessment})
 
@@ -3793,22 +3874,25 @@ def download_risk_assessment(request,id):
     response['Content-Disposition'] = f'attachment; filename="risk_assessment_{risk_assessment.matter.file_number}_{id}.pdf"'
     return response
 
+
 @login_required
 def add_ongoing_monitoring(request, file_number):
     try:
         matter = WIP.objects.get(file_number=file_number)
     except WIP.DoesNotExist:
-        messages.error(request, 'Matter with the given file number does not exist.')
+        messages.error(
+            request, 'Matter with the given file number does not exist.')
         return redirect('index')
     if request.method == 'POST':
         post_data = request.POST.copy()
         post_data['created_by'] = request.user
         post_data['file_number'] = matter.id
         form = OngoingMonitoringForm(post_data)
-        
+
         if form.is_valid():
             ongoing_monitoring = form.save()
-            messages.success(request, 'Ongoing Monitoring successfully recorded.')
+            messages.success(
+                request, 'Ongoing Monitoring successfully recorded.')
             return redirect('home', ongoing_monitoring.file_number.file_number)
         else:
             error_message = 'Form is not valid. Please correct the errors:'
@@ -3817,7 +3901,8 @@ def add_ongoing_monitoring(request, file_number):
             messages.error(request, error_message)
     else:
         form = OngoingMonitoringForm()
-        return render(request, 'ongoing_monitoring.html', {'form':form, 'file_number': file_number, 'title':'Add'})
+        return render(request, 'ongoing_monitoring.html', {'form': form, 'file_number': file_number, 'title': 'Add'})
+
 
 @login_required
 def policies_display(request):
@@ -3836,7 +3921,8 @@ def policies_display(request):
         )
     ).order_by('description')
 
-    policies_read = PoliciesRead.objects.filter(read_by=request.user).order_by('-timestamp')
+    policies_read = PoliciesRead.objects.filter(
+        read_by=request.user).order_by('-timestamp')
     any_unread = policies.filter(is_read=False).exists()
     context = {
         'policies': policies,
@@ -3844,7 +3930,7 @@ def policies_display(request):
         'all_read': not any_unread
 
     }
-    
+
     return render(request, 'policies/policies_home.html', context)
 
 
@@ -3852,20 +3938,21 @@ def policies_display(request):
 def policy_read(request, policy_id):
     policy = get_object_or_404(Policy, pk=policy_id)
 
-    
     latest_version = policy.versions.order_by('-version_number').first()
 
-    
     if not latest_version:
-        messages.error(request, f"No versions available for policy '{policy.description}'.")
+        messages.error(
+            request, f"No versions available for policy '{policy.description}'.")
         return redirect('policies_display')
 
     try:
-        PoliciesRead.objects.create(policy=policy, policy_version=latest_version, read_by=request.user)
-        messages.success(request, f'Successfully marked the latest version of "{policy.description}" as read.')
+        PoliciesRead.objects.create(
+            policy=policy, policy_version=latest_version, read_by=request.user)
+        messages.success(
+            request, f'Successfully marked the latest version of "{policy.description}" as read.')
     except Exception as e:
         messages.error(request, f"An error occurred: {str(e)}")
-    
+
     return redirect('policies_display')
 
 
@@ -3874,7 +3961,7 @@ def add_policy(request):
     if not request.user.is_manager:
         messages.error(request, "You do not have permission to add policies.")
         return redirect('policies_display')
-    
+
     if request.method == 'POST':
         form = PolicyForm(request.POST)
         if form.is_valid():
@@ -3890,12 +3977,14 @@ def add_policy(request):
                 messages.success(request, "Policy added successfully.")
                 return redirect('policies_display')
             except Exception as e:
-                messages.error(request, f"An error occurred while adding the policy: {str(e)}")
+                messages.error(
+                    request, f"An error occurred while adding the policy: {str(e)}")
         else:
-            messages.error(request, "There were errors in the form. Please correct them and try again.")
+            messages.error(
+                request, "There were errors in the form. Please correct them and try again.")
     else:
         form = PolicyForm()
-    
+
     return render(request, 'policies/add_policy.html', {'form': form})
 
 
@@ -3906,19 +3995,20 @@ def edit_policy(request, policy_id):
     if not request.user.is_manager:
         messages.error(request, "You do not have permission to edit policies.")
         return redirect('policies_display')
-    
+
     if request.method == 'POST':
         form = PolicyForm(request.POST, instance=policy)
         if form.is_valid():
             try:
-                
+
                 new_content = form.cleaned_data['content']
-                latest_version = policy.versions.order_by('-version_number').first()
-                
+                latest_version = policy.versions.order_by(
+                    '-version_number').first()
+
                 if latest_version is None or latest_version.content != new_content:
                     # Determine new version number
                     version_number = latest_version.version_number + 1 if latest_version else 1
-                    
+
                     # Create a new PolicyVersion with the updated content
                     PolicyVersion.objects.create(
                         policy=policy,
@@ -3927,17 +4017,19 @@ def edit_policy(request, policy_id):
                         changes_by=request.user,
                         timestamp=timezone.now()
                     )
-                
+
                 form.save()
                 messages.success(request, "Policy edited successfully.")
                 return redirect('policies_display')
             except Exception as e:
-                messages.error(request, f"An error occurred while editing the policy: {str(e)}")
+                messages.error(
+                    request, f"An error occurred while editing the policy: {str(e)}")
         else:
-            messages.error(request, "There were errors in the form. Please correct them and try again.")
+            messages.error(
+                request, "There were errors in the form. Please correct them and try again.")
     else:
         form = PolicyForm(instance=policy)
-    
+
     return render(request, 'policies/edit_policy.html', {'form': form, 'policy': policy})
 
 
@@ -3945,25 +4037,25 @@ def edit_policy(request, policy_id):
 def download_policy_pdf(request, policy_version_id):
     #
     policy_version = get_object_or_404(PolicyVersion, id=policy_version_id)
-    
+
     try:
         html_string = render_to_string('download_templates/policy_pdf.html', {
             'policy_version': policy_version
         })
-        
+
         # Create the PDF using WeasyPrint
         html = HTML(string=html_string)
         pdf = html.write_pdf()
 
-       
         response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="Policy_{policy_version.policy.id}_Version_{policy_version.version_number}.pdf"'
-        
+
         return response
-    
+
     except Exception as e:
         print(e)
-        messages.error(request, f"An error occurred while generating the PDF: {str(e)}")
+        messages.error(
+            request, f"An error occurred while generating the PDF: {str(e)}")
         return redirect('policies_display')
 
 
@@ -3971,7 +4063,6 @@ def download_policy_pdf(request, policy_version_id):
 def invoices_list(request):
     # Get start and end dates from GET parameters
     start_date = request.GET.get('start_date')
-    
 
     # Calculate current financial year if start and end are not provided
     current_date = timezone.now()
@@ -3986,20 +4077,24 @@ def invoices_list(request):
         # Parse dates from GET parameters
         try:
             start_date = datetime.strptime(start_date, '%Y-%m')
-            end_date = start_date.replace(year=start_date.year + 1, month=10, day=31)
+            end_date = start_date.replace(
+                year=start_date.year + 1, month=10, day=31)
 
         except ValueError:
-            messages.error(request, 'Invalid date format. Please use YYYY-MM-DD.')
+            messages.error(
+                request, 'Invalid date format. Please use YYYY-MM-DD.')
             return redirect('index')
-        
+
     # Filter invoices by finalized state and date range
-    invoices = Invoices.objects.filter(state='F', date__range=[start_date, end_date])
+    invoices = Invoices.objects.filter(
+        state='F', date__range=[start_date, end_date])
 
     if request.user.is_manager:
         for invoice in invoices:
             our_costs = invoice.our_costs
             # Convert to list if stored as a string
-            costs = ast.literal_eval(our_costs) if not isinstance(our_costs, list) else our_costs
+            costs = ast.literal_eval(our_costs) if not isinstance(
+                our_costs, list) else our_costs
             total_cost_invoice = sum(Decimal(cost) for cost in costs)
             vat_inv = total_cost_invoice * Decimal(0.20)
             total_cost_and_vat = round(total_cost_invoice + vat_inv, 2)
@@ -4016,49 +4111,54 @@ def invoices_list(request):
             'end_date': end_date,
         })
     else:
-        messages.error(request, 'You do not have the right level of permissions.')
+        messages.error(
+            request, 'You do not have the right level of permissions.')
         return redirect('index')
+
 
 @login_required
 def download_invoices(request):
 
-    if request.method == 'POST' and request.user.is_manager :
-        
-        start_date_str =  request.POST['start']
+    if request.method == 'POST' and request.user.is_manager:
+
+        start_date_str = request.POST['start']
         end_date_str = request.POST['end']
         start_date = datetime.strptime(start_date_str, '%d/%m/%Y')
         end_date = datetime.strptime(end_date_str, '%d/%m/%Y')
-        
-        
-        invoices = Invoices.objects.filter(state='F',date__range=[start_date, end_date])
-        
+
+        invoices = Invoices.objects.filter(
+            state='F', date__range=[start_date, end_date])
+
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="Invoices_from_{start_date_str}_to_{end_date_str}.csv"'
 
         writer = csv.writer(response)
 
-        writer.writerow(['', f'Invoices from {start_date_str} to {end_date_str}'])
+        writer.writerow(
+            ['', f'Invoices from {start_date_str} to {end_date_str}'])
 
         writer.writerow([])
-        writer.writerow(['Invoice Number', 'Matter Type' ,'Date','File Number','Our Costs', 'VAT', 'Total Costs and VAT'])
+        writer.writerow(['Invoice Number', 'Matter Type', 'Date',
+                        'File Number', 'Our Costs', 'VAT', 'Total Costs and VAT'])
 
-      
         for invoice in invoices:
             our_costs = invoice.our_costs
-            costs = ast.literal_eval(our_costs) if type(our_costs) != type([]) else our_costs
+            costs = ast.literal_eval(our_costs) if type(
+                our_costs) != type([]) else our_costs
             total_cost_invoice = 0
-        
+
             for i in range(len(costs)):
                 total_cost_invoice = total_cost_invoice + Decimal(costs[i])
             vat_inv = total_cost_invoice * Decimal(0.20)
-        
+
             total_cost_and_vat = round(total_cost_invoice + vat_inv, 2)
-            
-            
-            writer.writerow([f'{invoice.invoice_number}',f'{invoice.file_number.matter_type.type}',f'{invoice.date.strftime("%d/%m/%Y")}',f'{invoice.file_number.file_number}',f'{total_cost_invoice}', f'{vat_inv}', f'{total_cost_and_vat}'])
+
+            writer.writerow([f'{invoice.invoice_number}', f'{invoice.file_number.matter_type.type}', f'{invoice.date.strftime("%d/%m/%Y")}',
+                            f'{invoice.file_number.file_number}', f'{total_cost_invoice}', f'{vat_inv}', f'{total_cost_and_vat}'])
 
         return response
-    
+
+
 @login_required
 def edit_risk_assessment(request, id):
     try:
@@ -4080,7 +4180,8 @@ def edit_risk_assessment(request, id):
             form.save()
 
             for field in changed_fields:
-                changes[field]['new_value'] = str(getattr(risk_assesssment, field))
+                changes[field]['new_value'] = str(
+                    getattr(risk_assesssment, field))
 
             create_modification(
                 user=request.user,
@@ -4096,8 +4197,9 @@ def edit_risk_assessment(request, id):
             messages.error(request, error_message)
     else:
         form = RiskAssessmentForm(instance=risk_assesssment)
-    
-    return render(request, 'risk_assessment.html', {'form':form, 'file_number':risk_assesssment.matter.file_number,'title':'Edit'})
+
+    return render(request, 'risk_assessment.html', {'form': form, 'file_number': risk_assesssment.matter.file_number, 'title': 'Edit'})
+
 
 @login_required
 def edit_ongoing_monitoring(request, id):
@@ -4123,14 +4225,16 @@ def edit_ongoing_monitoring(request, id):
             form.save()
 
             for field in changed_fields:
-                changes[field]['new_value'] = str(getattr(ongoing_monitoring, field))
+                changes[field]['new_value'] = str(
+                    getattr(ongoing_monitoring, field))
 
             create_modification(
                 user=request.user,
                 modified_obj=ongoing_monitoring,
                 changes=changes
             )
-            messages.success(request, 'Successfully updated Ongoing Monitoring.')
+            messages.success(
+                request, 'Successfully updated Ongoing Monitoring.')
             return redirect('home', ongoing_monitoring.file_number.file_number)
         else:
             error_message = 'Form is not valid. Please correct the errors:'
@@ -4139,12 +4243,13 @@ def edit_ongoing_monitoring(request, id):
             messages.error(request, error_message)
     else:
         form = OngoingMonitoringForm(instance=ongoing_monitoring)
-    
-    return render(request, 'ongoing_monitoring.html', {'form':form, 'file_number': ongoing_monitoring.file_number.file_number, 'title':'Edit'})
+
+    return render(request, 'ongoing_monitoring.html', {'form': form, 'file_number': ongoing_monitoring.file_number.file_number, 'title': 'Edit'})
+
 
 @login_required
-def download_ongoing_monitoring(request,id):
-    obj = get_object_or_404(OngoingMonitoring,pk=id)
+def download_ongoing_monitoring(request, id):
+    obj = get_object_or_404(OngoingMonitoring, pk=id)
     html_string = render_to_string(
         'download_templates/ongoing_monitoring.html', {"obj": obj})
 
@@ -4153,6 +4258,7 @@ def download_ongoing_monitoring(request,id):
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="ongoing_monitoring_{obj.file_number.file_number}_{id}.pdf"'
     return response
+
 
 @login_required
 def onboarding_documents_display(request):
@@ -4166,11 +4272,12 @@ def onboarding_documents_display(request):
         response['Content-Disposition'] = f'attachment; filename="{file}_document.pdf"'
         return response
     else:
-        return render(request,'onboarding_documents.html')
+        return render(request, 'onboarding_documents.html')
+
 
 @login_required
 def download_document(request):
-    
+
     file_name = 'pep_questionnaire.doc'
     file_dir = 'files'
     file_path = None
@@ -4183,22 +4290,24 @@ def download_document(request):
             break
 
     if file_path and os.path.exists(file_path):
-        response = FileResponse(open(file_path, 'rb'), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        response = FileResponse(open(
+            file_path, 'rb'), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         response['Content-Disposition'] = f'attachment; filename={file_name}'
         return response
     else:
         raise Http404("File does not exist")
-    
+
+
 def free30mins(request):
     free_30mins_meetings = Free30Mins.objects.all().order_by('-date')
     free30_mins_form = Free30MinsForm()
     free30_mins_attendees_form = Free30MinsAttendeesForm()
-    
+
     if request.method == 'POST':
         try:
             number_of_attendees = int(request.POST['number_of_attendees'])
             attendee_ids = []
-            
+
             for i in range(number_of_attendees):
                 index = f'{i}_' if i > 0 else ''
                 name = request.POST[f'{index}name']
@@ -4222,11 +4331,12 @@ def free30mins(request):
                 )
                 attendee.save()
                 attendee_ids.append(attendee.id)
-            
+
             matter_type_id = request.POST['matter_type']
-            matter_type = MatterType.objects.filter(pk=matter_type_id).first() if matter_type_id != '' else None
+            matter_type = MatterType.objects.filter(
+                pk=matter_type_id).first() if matter_type_id != '' else None
             notes = request.POST['notes']
- 
+
             date = request.POST['date']
             start_time = request.POST['start_time']
             finish_time = request.POST['finish_time']
@@ -4243,43 +4353,49 @@ def free30mins(request):
                 fee_earner=fee_earner,
                 created_by=created_by
             )
-            
+
             # Assign attendees to the meeting
             free_30_mins.attendees.set(attendee_ids)
-            
+
             free_30_mins.save()
             messages.success(request, "Meeting successfully created.")
             return redirect('free30mins')
-        
+
         except Exception as e:
             messages.error(request, f"An error occurred: {e}")
-    
+
     return render(request, 'free_30mins.html', {
         'free30_mins_form': free30_mins_form,
         'free30_mins_attendees_form': free30_mins_attendees_form,
         'meetings': free_30mins_meetings
     })
 
+
 def download_free30mins(request, id):
     obj = Free30Mins.objects.filter(id=id).first()
 
     obj_dict = {
         'id': obj.id,
-        'matter_type': obj.matter_type.type if obj.matter_type else None,  # Adjust attribute if needed
-        'notes': mark_safe(obj.notes.html),  # Assuming QuillField stores HTML content
+        # Adjust attribute if needed
+        'matter_type': obj.matter_type.type if obj.matter_type else None,
+        # Assuming QuillField stores HTML content
+        'notes': mark_safe(obj.notes.html),
         'date': obj.date,
         'start_time': obj.start_time,
         'finish_time': obj.finish_time,
-        'attendees': [attendee.name for attendee in obj.attendees.all()],  # Adjust attribute if needed
+        # Adjust attribute if needed
+        'attendees': [attendee.name for attendee in obj.attendees.all()],
         'fee_earner': obj.fee_earner.username if obj.fee_earner else None,
         'created_by': obj.created_by.username if obj.created_by else None,
         'timestamp': obj.timestamp,
     }
 
-    html_string = render_to_string('download_templates/free_30mins.html', obj_dict)
+    html_string = render_to_string(
+        'download_templates/free_30mins.html', obj_dict)
     pdf_file = HTML(string=html_string).write_pdf()
 
     return HttpResponse(pdf_file, content_type='application/pdf')
+
 
 def edit_free30mins(request, id):
     instance = get_object_or_404(Free30Mins, pk=id)
@@ -4329,28 +4445,31 @@ def edit_free30mins(request, id):
 
     return render(request, 'edit_models.html', {'form': form, 'title': 'Free 30 Mins'})
 
+
 @login_required
 def undertakings(request):
     # If the request is a POST (form submission), process the form data
     if request.method == 'POST':
         request_post_copy = request.POST.copy()
-    
-        file = WIP.objects.filter(file_number=request_post_copy.get('file_number')).first().id
+
+        file = WIP.objects.filter(
+            file_number=request_post_copy.get('file_number')).first().id
         request_post_copy['file_number'] = file
-        form = UndertakingForm(request_post_copy, request.FILES)  
+        form = UndertakingForm(request_post_copy, request.FILES)
         if form.is_valid():
             undertaking = form.save(commit=False)
-            
+
             # Automatically assign fields that are not user inputs
-            undertaking.created_by = request.user  
-            undertaking.date_discharged = None  
-            undertaking.discharged_proof = None  
-            undertaking.discharged_by = None 
+            undertaking.created_by = request.user
+            undertaking.date_discharged = None
+            undertaking.discharged_proof = None
+            undertaking.discharged_by = None
 
             # Save the undertaking object
             undertaking.save()
 
-            messages.success(request, "Undertaking has been successfully created.")
+            messages.success(
+                request, "Undertaking has been successfully created.")
             return redirect('undertakings')
         else:
             # Iterate through form errors and display them
@@ -4367,7 +4486,8 @@ def undertakings(request):
 
     undertakings_pending = undertakings.filter(date_discharged=None).count()
 
-    return render(request, 'undertakings.html', {'form': form, 'undertakings': undertakings, 'undertakings_pending':undertakings_pending})
+    return render(request, 'undertakings.html', {'form': form, 'undertakings': undertakings, 'undertakings_pending': undertakings_pending})
+
 
 @login_required
 def edit_undertaking(request, id):
@@ -4420,31 +4540,29 @@ def edit_undertaking(request, id):
     return render(request, 'forms/edit_undertaking.html', context)
 
 
-
 @login_required
 def management_reports(request):
     users = CustomUser.objects.filter(is_active=True).order_by('username')
 
     twelve_months_ago = timezone.now() - relativedelta(months=11)
     aml_checks_due_client1 = WIP.objects.filter(
-        Q(file_status__status='Open') & 
-        Q(client1__date_of_last_aml__lte=twelve_months_ago) 
-        ).annotate(
-            client_id=F('client1__id'),
-            client_name=F('client1__name'),
-            date_of_last_aml=F('client1__date_of_last_aml')
-        ).values('client_id', 'client_name', 'date_of_last_aml')
+        Q(file_status__status='Open') &
+        Q(client1__date_of_last_aml__lte=twelve_months_ago)
+    ).annotate(
+        client_id=F('client1__id'),
+        client_name=F('client1__name'),
+        date_of_last_aml=F('client1__date_of_last_aml')
+    ).values('client_id', 'client_name', 'date_of_last_aml')
 
     aml_checks_due_client2 = WIP.objects.filter(
-        Q(file_status__status='Open') & 
-        Q(client2__date_of_last_aml__lte=twelve_months_ago) 
-        ).annotate(
-            client_id=F('client2__id'),
-            client_name=F('client2__name'),
-            date_of_last_aml=F('client2__date_of_last_aml')
-        ).values('client_id', 'client_name', 'date_of_last_aml')
+        Q(file_status__status='Open') &
+        Q(client2__date_of_last_aml__lte=twelve_months_ago)
+    ).annotate(
+        client_id=F('client2__id'),
+        client_name=F('client2__name'),
+        date_of_last_aml=F('client2__date_of_last_aml')
+    ).values('client_id', 'client_name', 'date_of_last_aml')
 
-    
     client1_results = list(aml_checks_due_client1)
     client2_results = list(aml_checks_due_client2)
 
@@ -4456,16 +4574,17 @@ def management_reports(request):
         }
 
     unique_aml_checks_due = [
-        {'client_id': client_id, 'client_name': data['client_name'], 'date_of_last_aml': data['date_of_last_aml']}
+        {'client_id': client_id,
+            'client_name': data['client_name'], 'date_of_last_aml': data['date_of_last_aml']}
         for client_id, data in unique_clients.items()
     ]
-    unique_aml_checks_due = sorted(unique_aml_checks_due, key=lambda x: x['client_name'])
+    unique_aml_checks_due = sorted(
+        unique_aml_checks_due, key=lambda x: x['client_name'])
 
     latest_assessment_subquery = RiskAssessment.objects.filter(
         matter=OuterRef('pk')
     ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
 
-    
     recent_monitoring_exists = OngoingMonitoring.objects.filter(
         file_number=OuterRef('pk'),
         date_due_diligence_conducted__gte=twelve_months_ago
@@ -4484,10 +4603,11 @@ def management_reports(request):
         Exists(recent_monitoring_exists)
     ).order_by('file_number')
     cpds = CPDTrainingLog.objects.all()
-    return render(request, 'management_reports.html', {'users':users, 
-                                                       'aml_checks_due':unique_aml_checks_due,
-                                                       'risk_assessments_due':risk_assessments_due,
-                                                       'cpds':cpds})
+    return render(request, 'management_reports.html', {'users': users,
+                                                       'aml_checks_due': unique_aml_checks_due,
+                                                       'risk_assessments_due': risk_assessments_due,
+                                                       'cpds': cpds})
+
 
 def calculate_minutes_for_date(user, date):
     billed_minutes = 0
@@ -4497,19 +4617,23 @@ def calculate_minutes_for_date(user, date):
     free_30_mins = Free30Mins.objects.filter(fee_earner=user, date=date)
     for meeting in free_30_mins:
         duration = (datetime.combine(date, meeting.finish_time) -
-                    datetime.combine(date, meeting.start_time)).seconds / 60  # Convert to minutes
+                    # Convert to minutes
+                    datetime.combine(date, meeting.start_time)).seconds / 60
         non_billed_minutes += duration
 
     # Matter Emails (Billed)
-    matter_emails = MatterEmails.objects.filter(fee_earner=user, time__date=date)
+    matter_emails = MatterEmails.objects.filter(
+        fee_earner=user, time__date=date)
     for email in matter_emails:
         billed_minutes += (email.units or 0) * 6  # Assuming 1 unit = 6 minutes
 
     # Attendance Notes
-    attendance_notes = MatterAttendanceNotes.objects.filter(person_attended=user, date=date)
+    attendance_notes = MatterAttendanceNotes.objects.filter(
+        person_attended=user, date=date)
     for note in attendance_notes:
         duration = (datetime.combine(date, note.finish_time) -
-                    datetime.combine(date, note.start_time)).seconds / 60  # Convert to minutes
+                    # Convert to minutes
+                    datetime.combine(date, note.start_time)).seconds / 60
         if note.is_charged:
             billed_minutes += duration
         else:
@@ -4517,13 +4641,15 @@ def calculate_minutes_for_date(user, date):
 
     # Total minutes in a day
     total_minutes = 7.5 * 60  # 7.5 hours in minutes
-    missing_minutes = max(0, total_minutes - (billed_minutes + non_billed_minutes))
+    missing_minutes = max(
+        0, total_minutes - (billed_minutes + non_billed_minutes))
 
     return {
         "billed_minutes": round(billed_minutes),
         "non_billed_minutes": round(non_billed_minutes),
         "missing_minutes": round(missing_minutes),
     }
+
 
 def calculate_weekly_report(user, start_date):
     weekly_report = []
@@ -4538,6 +4664,7 @@ def calculate_weekly_report(user, start_date):
             **daily_data,
         })
     return weekly_report
+
 
 @login_required
 def weekly_report_view(request):
@@ -4554,22 +4681,23 @@ def weekly_report_view(request):
         return JsonResponse(data, safe=False)
     except CustomUser.DoesNotExist:
         return JsonResponse({"error": "User not found"}, status=404)
-    
+
+
 @login_required
 def policies_read_per_user(request):
     user_id = request.GET.get("user_id")
-    
+
     if not user_id:
         return JsonResponse({"error": "User ID is required"}, status=400)
-    
+
     try:
         user = CustomUser.objects.get(id=user_id)
     except CustomUser.DoesNotExist:
         return JsonResponse({"error": "User not found"}, status=404)
-    
+
     # Total number of policies
     total_policies = Policy.objects.count()
-    
+
     # Get the latest version of each policy
     latest_versions = PolicyVersion.objects.annotate(
         max_version=Max('policy__versions__version_number')
@@ -4577,22 +4705,24 @@ def policies_read_per_user(request):
 
     # IDs of latest policy versions
     latest_version_ids = latest_versions.values_list('id', flat=True)
-    
+
     # Policies read by the user (matching the latest versions)
     read_policy_ids = PoliciesRead.objects.filter(
         read_by=user,
         policy_version_id__in=latest_version_ids
     ).values_list('policy_id', flat=True).distinct()
-    
+
     # Count of latest versions read
     latest_versions_read_count = read_policy_ids.count()
-    
+
     # Get unread policies
-    unread_policies = Policy.objects.filter(~Q(id__in=read_policy_ids)).order_by('description')
-    
+    unread_policies = Policy.objects.filter(
+        ~Q(id__in=read_policy_ids)).order_by('description')
+
     # Prepare unread policies descriptions
-    unread_policies_descriptions = list(unread_policies.values('id', 'description'))
-    
+    unread_policies_descriptions = list(
+        unread_policies.values('id', 'description'))
+
     # Response
     return JsonResponse({
         "user": user.username,
@@ -4602,28 +4732,28 @@ def policies_read_per_user(request):
         "unread_policies": unread_policies_descriptions
     })
 
+
 @login_required
 def download_aml_checks_due(request):
     twelve_months_ago = timezone.now() - relativedelta(months=11)
     aml_checks_due_client1 = WIP.objects.filter(
-        Q(file_status__status='Open') & 
-        Q(client1__date_of_last_aml__lte=twelve_months_ago) 
-        ).annotate(
-            client_id=F('client1__id'),
-            client_name=F('client1__name'),
-            date_of_last_aml=F('client1__date_of_last_aml')
-        ).values('client_id', 'client_name', 'date_of_last_aml')
+        Q(file_status__status='Open') &
+        Q(client1__date_of_last_aml__lte=twelve_months_ago)
+    ).annotate(
+        client_id=F('client1__id'),
+        client_name=F('client1__name'),
+        date_of_last_aml=F('client1__date_of_last_aml')
+    ).values('client_id', 'client_name', 'date_of_last_aml')
 
     aml_checks_due_client2 = WIP.objects.filter(
-        Q(file_status__status='Open') & 
-        Q(client2__date_of_last_aml__lte=twelve_months_ago) 
-        ).annotate(
-            client_id=F('client2__id'),
-            client_name=F('client2__name'),
-            date_of_last_aml=F('client2__date_of_last_aml')
-        ).values('client_id', 'client_name', 'date_of_last_aml')
+        Q(file_status__status='Open') &
+        Q(client2__date_of_last_aml__lte=twelve_months_ago)
+    ).annotate(
+        client_id=F('client2__id'),
+        client_name=F('client2__name'),
+        date_of_last_aml=F('client2__date_of_last_aml')
+    ).values('client_id', 'client_name', 'date_of_last_aml')
 
-    
     client1_results = list(aml_checks_due_client1)
     client2_results = list(aml_checks_due_client2)
 
@@ -4635,23 +4765,26 @@ def download_aml_checks_due(request):
         }
 
     unique_aml_checks_due = [
-        {'client_id': client_id, 'client_name': data['client_name'], 'date_of_last_aml': data['date_of_last_aml']}
+        {'client_id': client_id,
+            'client_name': data['client_name'], 'date_of_last_aml': data['date_of_last_aml']}
         for client_id, data in unique_clients.items()
     ]
-    unique_aml_checks_due = sorted(unique_aml_checks_due, key=lambda x: x['client_name'])
-   
+    unique_aml_checks_due = sorted(
+        unique_aml_checks_due, key=lambda x: x['client_name'])
+
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="aml_checks_due_{timezone.now()}.csv"'
 
     writer = csv.writer(response)
-    
+
     writer.writerow(['AML Checks Due'])
-    writer.writerow([ 'Client Name', 'Date of Last AML Check'])
-    
+    writer.writerow(['Client Name', 'Date of Last AML Check'])
+
     for client in unique_aml_checks_due:
         writer.writerow([client['client_name'], client['date_of_last_aml']])
 
     return response
+
 
 @login_required
 def download_risk_assessments_due(request):
@@ -4660,7 +4793,6 @@ def download_risk_assessments_due(request):
         matter=OuterRef('pk')
     ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
 
-    
     recent_monitoring_exists = OngoingMonitoring.objects.filter(
         file_number=OuterRef('pk'),
         date_due_diligence_conducted__gte=twelve_months_ago
@@ -4683,14 +4815,17 @@ def download_risk_assessments_due(request):
     response['Content-Disposition'] = f'attachment; filename="risk_assessments_due_{timezone.now()}.csv"'
 
     writer = csv.writer(response)
-    
+
     writer.writerow(['Risk Assessments Due'])
-    writer.writerow([ 'File Number', 'Matter Desc','Client 1', 'Client 2' 'Date of Last AML Check'])
-    
+    writer.writerow(['File Number', 'Matter Desc', 'Client 1',
+                    'Client 2' 'Date of Last AML Check'])
+
     for assessment in risk_assessments_due:
-        writer.writerow([assessment.file_number, assessment.matter_description, assessment.client1.name, assessment.client2.name if assessment.client2 else '', assessment.latest_assessment_date])
+        writer.writerow([assessment.file_number, assessment.matter_description, assessment.client1.name,
+                        assessment.client2.name if assessment.client2 else '', assessment.latest_assessment_date])
 
     return response
+
 
 @login_required
 def add_memo(request):
@@ -4701,11 +4836,13 @@ def add_memo(request):
             memo.created_by = request.user
             memo.save()
             messages.success(request, 'Memo successfully added.')
-            
+
         else:
-            messages.error(request, 'There was an error adding the memo. Please check the form and try again.')
-            
+            messages.error(
+                request, 'There was an error adding the memo. Please check the form and try again.')
+
     return redirect('profile_page')
+
 
 @login_required
 def edit_memo(request, memo_id):
@@ -4717,10 +4854,12 @@ def edit_memo(request, memo_id):
             messages.success(request, 'Memo successfully updated.')
             return redirect('profile_page')
         else:
-            messages.error(request, 'There was an error updating the memo. Please check the form and try again.')
+            messages.error(
+                request, 'There was an error updating the memo. Please check the form and try again.')
     else:
         form = MemoForm(instance=memo)
     return render(request, 'edit_memo.html', {'form': form})
+
 
 @login_required
 def delete_memo(request, memo_id):
@@ -4733,9 +4872,568 @@ def delete_memo(request, memo_id):
         messages.warning(request, 'Are you sure you want to delete this memo?')
     return render(request, 'confirm_delete.html', {'memo': memo})
 
+
 @login_required
 def read_memo(request, memo_id):
     memo = get_object_or_404(Memo, id=memo_id)
     PoliciesRead.objects.get_or_create(memo=memo, read_by=request.user)
     messages.success(request, 'Memo marked as read.')
     return redirect('profile_page')
+
+
+# Bundle Views
+@login_required
+def bundle_create(request, file_number=None):
+    """Create a new bundle or show existing bundles"""
+    if request.method == 'POST':
+        bundle_name = request.POST.get('bundle_name')
+        file_number_str = request.POST.get('file_number', file_number)
+
+        if not bundle_name:
+            if request.headers.get('Content-Type') == 'application/json' or 'application/json' in request.headers.get('Accept', ''):
+                return JsonResponse({'error': 'Bundle name is required.'}, status=400)
+            messages.error(request, 'Bundle name is required.')
+            return redirect('bundle_create')
+
+        # Find the file if file_number is provided
+        wip_file = None
+        if file_number_str:
+            try:
+                wip_file = WIP.objects.get(file_number=file_number_str)
+            except WIP.DoesNotExist:
+                if request.headers.get('Content-Type') == 'application/json' or 'application/json' in request.headers.get('Accept', ''):
+                    return JsonResponse({'error': f'File {file_number_str} not found.'}, status=400)
+                messages.error(request, f'File {file_number_str} not found.')
+                return redirect('bundle_create')
+
+        # Create the bundle
+        bundle = Bundle.objects.create(
+            name=bundle_name,
+            file_number=wip_file,
+            created_by=request.user
+        )
+
+        # Return JSON response for AJAX requests
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type.startswith('multipart/form-data'):
+            return JsonResponse({
+                'success': True,
+                'bundle_id': bundle.id,
+                'message': f'Bundle "{bundle_name}" created successfully.'
+            })
+
+        messages.success(
+            request, f'Bundle "{bundle_name}" created successfully.')
+        return redirect('bundle_edit', bundle_id=bundle.id)
+
+    # Get existing bundles for the user
+    bundles = Bundle.objects.filter(
+        created_by=request.user).order_by('-created_at')
+
+    # Get available files for dropdown
+    files = WIP.objects.filter(
+        file_status__status='Open').order_by('file_number')
+
+    context = {
+        'bundles': bundles,
+        'files': files,
+        'file_number': file_number
+    }
+    return render(request, 'bundle_create.html', context)
+
+
+@login_required
+def bundle_edit(request, bundle_id):
+    """Edit bundle - manage sections and documents"""
+    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+
+    if bundle.is_finalized:
+        messages.warning(
+            request, 'This bundle has been finalized and cannot be edited.')
+        return redirect('bundle_view', bundle_id=bundle.id)
+
+    sections = bundle.sections.all().order_by('order')
+
+    context = {
+        'bundle': bundle,
+        'sections': sections
+    }
+    return render(request, 'bundle_edit.html', context)
+
+
+@login_required
+def bundle_section_add(request, bundle_id):
+    """Add a new section to the bundle"""
+    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+
+    if bundle.is_finalized:
+        return JsonResponse({'error': 'Bundle is finalized'}, status=400)
+
+    if request.method == 'POST':
+        heading = request.POST.get('heading')
+
+        if not heading:
+            return JsonResponse({'error': 'Section heading is required'}, status=400)
+
+        # Get the next order number
+        last_section = bundle.sections.order_by('-order').first()
+        next_order = (last_section.order + 1) if last_section else 1
+
+        section = BundleSection.objects.create(
+            bundle=bundle,
+            heading=heading,
+            order=next_order
+        )
+
+        return JsonResponse({
+            'success': True,
+            'section_id': section.id,
+            'section': {
+                'id': section.id,
+                'heading': section.heading,
+                'order': section.order
+            }
+        })
+
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+@login_required
+def bundle_section_delete(request, section_id):
+    """Delete a bundle section"""
+    section = get_object_or_404(
+        BundleSection, id=section_id, bundle__created_by=request.user)
+
+    if section.bundle.is_finalized:
+        return JsonResponse({'error': 'Bundle is finalized'}, status=400)
+
+    if request.method == 'POST':
+        section.delete()
+        return JsonResponse({'success': True})
+
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+@login_required
+def bundle_section_reorder(request, bundle_id):
+    """Reorder sections in the bundle"""
+    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+
+    if bundle.is_finalized:
+        return JsonResponse({'error': 'Bundle is finalized'}, status=400)
+
+    if request.method == 'POST':
+        section_orders = request.POST.getlist('section_orders[]')
+
+        for i, section_id in enumerate(section_orders):
+            BundleSection.objects.filter(
+                id=section_id,
+                bundle=bundle
+            ).update(order=i + 1)
+
+        return JsonResponse({'success': True})
+
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+@login_required
+def bundle_document_upload(request, section_id):
+    """Upload a document to a section"""
+    section = get_object_or_404(
+        BundleSection, id=section_id, bundle__created_by=request.user)
+
+    if section.bundle.is_finalized:
+        return JsonResponse({'error': 'Bundle is finalized'}, status=400)
+
+    if request.method == 'POST':
+        files = request.FILES.getlist('files[]')
+        descriptions = request.POST.getlist('descriptions[]')
+        dates = request.POST.getlist('dates[]')
+
+        if not files:
+            return JsonResponse({'error': 'No files uploaded'}, status=400)
+
+        uploaded_docs = []
+
+        for i, file in enumerate(files):
+            description = descriptions[i] if i < len(descriptions) else ''
+            date_str = dates[i] if i < len(dates) and dates[i] else None
+
+            if not description:
+                return JsonResponse({'error': f'Description required for file {file.name}'}, status=400)
+
+            # Parse date
+            doc_date = None
+            if date_str:
+                try:
+                    doc_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    return JsonResponse({'error': f'Invalid date format for {file.name}'}, status=400)
+
+            # Get next order
+            last_doc = section.documents.order_by('-order').first()
+            next_order = (last_doc.order + 1) if last_doc else 1
+
+            # Create document
+            document = BundleDocument.objects.create(
+                section=section,
+                file=file,
+                description=description,
+                date=doc_date,
+                order=next_order
+            )
+
+            uploaded_docs.append({
+                'id': document.id,
+                'description': document.description,
+                'date': document.date.strftime('%Y-%m-%d') if document.date else '',
+                'filename': document.file.name,
+                'order': document.order
+            })
+
+        return JsonResponse({
+            'success': True,
+            'documents': uploaded_docs
+        })
+
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+@login_required
+def bundle_document_delete(request, document_id):
+    """Delete a bundle document"""
+    document = get_object_or_404(
+        BundleDocument, id=document_id, section__bundle__created_by=request.user)
+
+    if document.section.bundle.is_finalized:
+        return JsonResponse({'error': 'Bundle is finalized'}, status=400)
+
+    if request.method == 'POST':
+        # Delete the file
+        if document.file:
+            try:
+                default_storage.delete(document.file.name)
+            except:
+                pass  # File might not exist
+
+        document.delete()
+        return JsonResponse({'success': True})
+
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+@login_required
+def bundle_document_reorder(request, section_id):
+    """Reorder documents within a section"""
+    section = get_object_or_404(
+        BundleSection, id=section_id, bundle__created_by=request.user)
+
+    if section.bundle.is_finalized:
+        return JsonResponse({'error': 'Bundle is finalized'}, status=400)
+
+    if request.method == 'POST':
+        document_orders = request.POST.getlist('document_orders[]')
+
+        for i, document_id in enumerate(document_orders):
+            BundleDocument.objects.filter(
+                id=document_id,
+                section=section
+            ).update(order=i + 1)
+
+        return JsonResponse({'success': True})
+
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+@login_required
+def bundle_generate(request, bundle_id):
+    """Generate the final PDF bundle"""
+    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+
+    if request.method == 'POST':
+        try:
+            # Generate the bundle PDF
+            pdf_content = _generate_bundle_pdf(bundle)
+
+            # Save the PDF
+            filename = f"bundle_{bundle.id}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            bundle.final_pdf.save(filename, ContentFile(pdf_content))
+            bundle.is_finalized = True
+            bundle.save()
+
+            messages.success(request, 'Bundle generated successfully!')
+            return redirect('bundle_view', bundle_id=bundle.id)
+
+        except Exception as e:
+            messages.error(request, f'Error generating bundle: {str(e)}')
+            return redirect('bundle_edit', bundle_id=bundle.id)
+
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+@login_required
+def bundle_view(request, bundle_id):
+    """View a finalized bundle"""
+    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    sections = bundle.sections.all().order_by('order')
+
+    # Calculate total documents
+    total_docs = sum(section.documents.count() for section in sections)
+
+    context = {
+        'bundle': bundle,
+        'sections': sections,
+        'total_docs': total_docs
+    }
+    return render(request, 'bundle_view.html', context)
+
+
+@login_required
+def bundle_download(request, bundle_id):
+    """Download the final bundle PDF"""
+    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+
+    if not bundle.is_finalized or not bundle.final_pdf:
+        messages.error(request, 'Bundle has not been generated yet.')
+        return redirect('bundle_edit', bundle_id=bundle.id)
+
+    response = FileResponse(
+        bundle.final_pdf.open('rb'),
+        content_type='application/pdf'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{bundle.name}.pdf"'
+    return response
+
+
+def _generate_bundle_pdf(bundle):
+    """Generate the final PDF bundle with index and pagination"""
+    from PyPDF2 import PdfWriter, PdfReader
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import A4
+    import tempfile
+
+    # Collect all documents with their page information
+    documents_info = []
+    current_page = 1
+
+    # First, create the index (we'll know page numbers after processing docs)
+    sections = bundle.sections.all().order_by('order')
+
+    # Process documents to get page counts
+    temp_pdfs = []
+    for section in sections:
+        documents = section.documents.all().order_by('order')
+        for document in documents:
+            try:
+                # Read the uploaded PDF
+                with document.file.open('rb') as pdf_file:
+                    reader = PdfReader(pdf_file)
+                    page_count = len(reader.pages)
+
+                    # Store document info
+                    page_start = current_page + 1  # +1 because index will be page 1
+                    page_end = page_start + page_count - 1
+
+                    documents_info.append({
+                        'section': section.heading,
+                        'description': document.description,
+                        'date': document.date.strftime('%d/%m/%Y') if document.date else '',
+                        'page_start': page_start,
+                        'page_end': page_end,
+                        'file_path': document.file.path
+                    })
+
+                    current_page += page_count
+
+            except Exception as e:
+                print(f"Error processing document {document.id}: {e}")
+                continue
+
+    # Generate index HTML and convert to PDF
+    index_html = _generate_index_html(bundle, documents_info)
+
+    # Create temporary file for index PDF
+    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as index_temp:
+        index_pdf_content = HTML(string=index_html).write_pdf()
+        index_temp.write(index_pdf_content)
+        index_temp.flush()
+        temp_pdfs.append(index_temp.name)
+
+    # Create final PDF writer
+    writer = PdfWriter()
+    page_number = 1
+
+    # Add index page
+    with open(temp_pdfs[0], 'rb') as index_file:
+        index_reader = PdfReader(index_file)
+        for page in index_reader.pages:
+            # Add page number to index
+            page_with_number = _add_page_number(page, page_number)
+            writer.add_page(page_with_number)
+            page_number += 1
+
+    # Add documents with page numbers
+    for doc_info in documents_info:
+        try:
+            with open(doc_info['file_path'], 'rb') as doc_file:
+                doc_reader = PdfReader(doc_file)
+                for page in doc_reader.pages:
+                    # Add page number to each page
+                    page_with_number = _add_page_number(page, page_number)
+                    writer.add_page(page_with_number)
+                    page_number += 1
+        except Exception as e:
+            print(f"Error adding document pages: {e}")
+            continue
+
+    # Write to bytes
+    output_buffer = BytesIO()
+    writer.write(output_buffer)
+    pdf_content = output_buffer.getvalue()
+    output_buffer.close()
+
+    # Clean up temporary files
+    for temp_file in temp_pdfs:
+        try:
+            os.unlink(temp_file)
+        except:
+            pass
+
+    return pdf_content
+
+
+def _generate_index_html(bundle, documents_info):
+    """Generate HTML for the index page"""
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Bundle Index - {bundle.name}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 40px; }}
+            h1 {{ text-align: center; margin-bottom: 30px; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+            th, td {{ padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }}
+            th {{ background-color: #f5f5f5; font-weight: bold; }}
+            .page-range {{ text-align: center; }}
+            .section-header {{ font-weight: bold; background-color: #e9e9e9; }}
+        </style>
+    </head>
+    <body>
+        <h1>Bundle Index: {bundle.name}</h1>
+        {f"<p><strong>File Number:</strong> {bundle.file_number.file_number}</p>" if bundle.file_number else ""}
+        <p><strong>Generated on:</strong> {timezone.now().strftime('%d/%m/%Y at %H:%M')}</p>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Sr No.</th>
+                    <th>Description</th>
+                    <th>Date</th>
+                    <th>Page Range</th>
+                </tr>
+            </thead>
+            <tbody>
+    """
+
+    current_section = None
+    sr_no = 1
+
+    for doc in documents_info:
+        if current_section != doc['section']:
+            # Add section header
+            html += f"""
+                <tr class="section-header">
+                    <td colspan="4">{doc['section']}</td>
+                </tr>
+            """
+            current_section = doc['section']
+
+        # Add document row
+        page_range = f"{doc['page_start']}-{doc['page_end']}" if doc['page_start'] != doc['page_end'] else str(
+            doc['page_start'])
+        html += f"""
+            <tr>
+                <td>{sr_no}</td>
+                <td>{doc['description']}</td>
+                <td>{doc['date']}</td>
+                <td class="page-range">{page_range}</td>
+            </tr>
+        """
+        sr_no += 1
+
+    html += """
+            </tbody>
+        </table>
+    </body>
+    </html>
+    """
+
+    return html
+
+
+def _add_page_number(page, page_number):
+    """Add page number to bottom-right of PDF page"""
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import A4
+    import tempfile
+
+    # Create a temporary PDF with just the page number
+    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+        temp_canvas = canvas.Canvas(temp_file.name, pagesize=A4)
+
+        # Add page number at bottom-right (bold, size 40, black)
+        temp_canvas.setFont("Helvetica-Bold", 40)
+        temp_canvas.setFillColorRGB(0, 0, 0)  # Black
+
+        # Position at bottom-right (A4 size: 595 x 842 points)
+        x_position = 545  # Right margin
+        y_position = 30   # Bottom margin
+
+        temp_canvas.drawRightString(x_position, y_position, str(page_number))
+        temp_canvas.save()
+
+        # Merge with original page
+        with open(temp_file.name, 'rb') as number_file:
+            number_reader = PdfReader(number_file)
+            number_page = number_reader.pages[0]
+
+            # Merge the page number onto the original page
+            page.merge_page(number_page)
+
+        # Clean up
+        os.unlink(temp_file.name)
+
+    return page
+
+
+@login_required
+def bundle_delete(request, bundle_id):
+    """Delete a bundle"""
+    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+
+    if request.method == 'POST':
+        # Delete all associated files
+        for section in bundle.sections.all():
+            for document in section.documents.all():
+                if document.file:
+                    try:
+                        default_storage.delete(document.file.name)
+                    except:
+                        pass
+
+        # Delete final PDF if exists
+        if bundle.final_pdf:
+            try:
+                default_storage.delete(bundle.final_pdf.name)
+            except:
+                pass
+
+        bundle_name = bundle.name
+        bundle.delete()
+
+        messages.success(
+            request, f'Bundle "{bundle_name}" deleted successfully.')
+        return redirect('bundle_create')
+
+    return JsonResponse({'error': 'Invalid request'}, status=400)

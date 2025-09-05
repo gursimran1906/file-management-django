@@ -134,3 +134,5 @@ yarg==0.1.10
 yarl==1.18.3
 zipp==3.21.0
 zopfli==0.2.3.post1
+PyPDF2==3.0.1
+reportlab==4.4.3

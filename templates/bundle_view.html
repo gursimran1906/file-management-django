@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% block title %}Bundle - {{ bundle.name }}{% endblock %}
+{% load utils %}
+{% block container_class %}container{% endblock %}
+{% block container %}
+
+<div class='grid grid-cols-1 mt-2'>
+    <h1 class='div-container w-fit text-3xl font-medium'>
+        Bundle: {{ bundle.name }}
+        {% if bundle.file_number %}
+            <span class="text-xl text-gray-600">({{ bundle.file_number.file_number }})</span>
+        {% endif %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 ml-3">
+            Finalized
+        </span>
+    </h1>
+</div>
+
+<div class='mt-4 div-container'>
+    <div class="flex flex-wrap gap-4 justify-between items-center">
+        <div class="flex gap-2">
+            <a href="{% url 'bundle_create' %}" class="btn-secondary">Back to Bundles</a>
+        </div>
+        <div class="flex gap-2">
+            <a href="{% url 'bundle_download' bundle.id %}" class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded">📥 Download PDF</a>
+        </div>
+    </div>
+</div>
+
+<div class='mt-6'>
+    <h2 class='text-xl font-medium mb-4'>Bundle Contents</h2>
+    
+    {% if sections %}
+        <div class="space-y-6">
+            {% for section in sections %}
+                <div class="div-container border-l-4 border-blue-500">
+                    <div class="section-header p-4 bg-gray-50 rounded mb-4">
+                        <h3 class="text-lg font-medium">{{ section.heading }}</h3>
+                        <p class="text-sm text-gray-600 mt-1">{{ section.documents.count }} document{{ section.documents.count|pluralize }}</p>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        {% if section.documents.all %}
+                            {% for document in section.documents.all %}
+                                <div class="border border-gray-200 p-4 rounded bg-white">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <div class="font-medium">{{ document.description }}</div>
+                                            <div class="text-sm text-gray-500 mt-1">
+                                                {% if document.date %}<span class="mr-3">📅 {{ document.date|date:"d/m/Y" }}</span>{% endif %}
+                                                <span class="mr-3">📄 {{ document.file.name|basename }}</span>
+                                                {% if document.page_start and document.page_end %}<span class="text-blue-600">📖 Pages {{ document.page_start }}{% if document.page_start != document.page_end %}-{{ document.page_end }}{% endif %}</span>{% endif %}
+                                            </div>
+                                        </div>
+                                        <div class="text-sm text-gray-400">#{{ forloop.counter }}</div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center py-8 text-gray-400 border-2 border-dashed border-gray-300 rounded">
+                                No documents in this section
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="text-center py-12 text-gray-500">
+            <div class="text-lg mb-2">No sections in this bundle</div>
+        </div>
+    {% endif %}
+</div>
+
+<div class='mt-6 div-container'>
+    <h3 class="text-lg font-medium mb-4">Bundle Statistics</h3>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="text-center p-4 bg-blue-50 rounded">
+            <div class="text-2xl font-bold text-blue-600">{{ sections.count }}</div>
+            <div class="text-sm text-blue-800">Section{{ sections.count|pluralize }}</div>
+        </div>
+        <div class="text-center p-4 bg-green-50 rounded">
+            <div class="text-2xl font-bold text-green-600">{{ total_docs }}</div>
+            <div class="text-sm text-green-800">Document{{ total_docs|pluralize }}</div>
+        </div>
+        <div class="text-center p-4 bg-purple-50 rounded">
+            <div class="text-2xl font-bold text-purple-600">
+                {% if bundle.final_pdf %}{{ bundle.final_pdf.size|filesizeformat }}{% else %}N/A{% endif %}
+            </div>
+            <div class="text-sm text-purple-800">File Size</div>
+        </div>
+        <div class="text-center p-4 bg-orange-50 rounded">
+            <div class="text-2xl font-bold text-orange-600">PDF</div>
+            <div class="text-sm text-orange-800">Format</div>
+        </div>
+    </div>
+</div>
+
+{% if bundle.final_pdf %}
+<div class='mt-4 div-container'>
+    <div class="bg-green-50 border border-green-200 rounded p-4">
+        <div class="flex items-center">
+            <div class="text-green-600 mr-3">✅</div>
+            <div>
+                <h4 class="text-green-800 font-medium">Bundle Generated Successfully</h4>
+                <p class="text-green-700 text-sm mt-1">
+                    The final PDF bundle has been generated and is ready for download. 
+                    This bundle includes an index page with hyperlinks and page numbers on all pages.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,283 @@
+{% extends 'base.html' %}
+{% block title %}Edit Bundle - {{ bundle.name }}{% endblock %}
+{% load utils %}
+{% block container_class %}container{% endblock %}
+{% block container %}
+
+<div class='grid grid-cols-1 mt-2'>
+    <h1 class='div-container w-fit text-3xl font-medium'>
+        Edit Bundle: {{ bundle.name }}
+        {% if bundle.file_number %}
+            <span class="text-xl text-gray-600">({{ bundle.file_number.file_number }})</span>
+        {% endif %}
+    </h1>
+</div>
+
+<!-- Bundle Actions -->
+<div class='mt-4 div-container'>
+    <div class="flex flex-wrap gap-4 justify-between items-center">
+        <div class="flex gap-2">
+            <button onclick="addSection()" class="btn-primary">+ Add Section</button>
+            <a href="{% url 'bundle_create' %}" class="btn-secondary">Back to Bundles</a>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="generateBundle()" class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded">
+                🎯 Generate Bundle
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Bundle Sections -->
+<div class='mt-6'>
+    <div id="sections-container" class="space-y-6">
+        {% for section in sections %}
+            <div class="section-card div-container border-l-4 border-blue-500" data-section-id="{{ section.id }}">
+                <div class="section-header flex items-center justify-between mb-4 p-4 bg-gray-50 rounded cursor-move">
+                    <div class="flex items-center">
+                        <span class="drag-handle text-gray-400 mr-3">⋮⋮</span>
+                        <h3 class="text-lg font-medium">{{ section.heading }}</h3>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="uploadDocuments({{ section.id }})" class="text-blue-600 hover:text-blue-800">📎 Upload</button>
+                        <button onclick="deleteSection({{ section.id }})" class="text-red-600 hover:text-red-800">🗑️ Delete</button>
+                    </div>
+                </div>
+                
+                <div class="documents-container" data-section-id="{{ section.id }}">
+                    {% if section.documents.all %}
+                        {% for document in section.documents.all %}
+                            <div class="document-item border border-gray-200 p-4 mb-3 rounded cursor-move bg-white hover:bg-gray-50" data-document-id="{{ document.id }}">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center">
+                                        <span class="document-drag-handle text-gray-400 mr-3">⋮⋮</span>
+                                        <div>
+                                            <div class="font-medium">{{ document.description }}</div>
+                                            <div class="text-sm text-gray-500">
+                                                {% if document.date %}{{ document.date|date:"d/m/Y" }} • {% endif %}
+                                                {{ document.file.name|basename }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button onclick="deleteDocument({{ document.id }})" class="text-red-600 hover:text-red-800">🗑️</button>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="document-placeholder text-center py-8 text-gray-400 border-2 border-dashed border-gray-300 rounded">
+                            No documents uploaded yet. Click "Upload" to add documents to this section.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% empty %}
+            <div class="text-center py-12 text-gray-500">
+                <div class="text-lg mb-2">No sections added yet</div>
+                <div>Click "Add Section" to start building your bundle</div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Include Sortable.js for drag and drop -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+<!-- Drag and Drop Styles -->
+<style>
+.sortable-ghost {
+    opacity: 0.4;
+    background: #e3f2fd !important;
+}
+
+.sortable-chosen {
+    cursor: grabbing !important;
+}
+
+.drag-handle:hover {
+    color: #2563eb !important;
+    cursor: grab;
+}
+
+.document-drag-handle:hover {
+    color: #2563eb !important;
+    cursor: grab;
+}
+
+.section-header {
+    cursor: grab;
+}
+
+.section-header:active {
+    cursor: grabbing;
+}
+
+.document-item {
+    transition: all 0.2s ease;
+}
+
+.document-item:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+</style>
+
+<script>
+// Initialize drag and drop when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    initializeSortable();
+});
+
+function initializeSortable() {
+    // Sortable for sections
+    const sectionsContainer = document.getElementById('sections-container');
+    if (sectionsContainer) {
+        new Sortable(sectionsContainer, {
+            handle: '.section-header',
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            dragClass: 'sortable-drag',
+            onEnd: function(evt) {
+                updateSectionOrder();
+            }
+        });
+    }
+    
+    // Sortable for documents within each section
+    document.querySelectorAll('.documents-container').forEach(container => {
+        new Sortable(container, {
+            handle: '.document-drag-handle',
+            animation: 150,
+            group: 'documents',
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            dragClass: 'sortable-drag',
+            onEnd: function(evt) {
+                updateDocumentOrder(evt.to.dataset.sectionId);
+            }
+        });
+    });
+}
+
+function updateSectionOrder() {
+    const sectionIds = Array.from(document.querySelectorAll('.section-card')).map(el => el.dataset.sectionId);
+    
+    fetch(`/bundle/{{ bundle.id }}/section/reorder/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCsrfToken(),
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            'section_orders[]': sectionIds
+        })
+    });
+}
+
+function updateDocumentOrder(sectionId) {
+    const container = document.querySelector(`[data-section-id="${sectionId}"]`);
+    const documentIds = Array.from(container.querySelectorAll('.document-item')).map(el => el.dataset.documentId);
+    
+    fetch(`/bundle/section/${sectionId}/document/reorder/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCsrfToken(),
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            'document_orders[]': documentIds
+        })
+    });
+}
+
+function addSection() {
+    const heading = prompt('Enter section heading:');
+    if (heading) {
+        fetch(`/bundle/{{ bundle.id }}/section/add/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({'heading': heading})
+        }).then(() => location.reload());
+    }
+}
+
+function deleteSection(sectionId) {
+    if (confirm('Delete this section and all its documents?')) {
+        fetch(`/bundle/section/${sectionId}/delete/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrfToken()}
+        }).then(() => location.reload());
+    }
+}
+
+function uploadDocuments(sectionId) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = '.pdf';
+    input.onchange = function() {
+        const files = Array.from(this.files);
+        if (files.length > 0) {
+            const formData = new FormData();
+            files.forEach(file => {
+                const description = prompt(`Description for ${file.name}:`);
+                if (description) {
+                    formData.append('files[]', file);
+                    formData.append('descriptions[]', description);
+                    formData.append('dates[]', '');
+                }
+            });
+            
+            if (formData.has('files[]')) {
+                fetch(`/bundle/section/${sectionId}/document/upload/`, {
+                    method: 'POST',
+                    headers: {'X-CSRFToken': getCsrfToken()},
+                    body: formData
+                }).then(() => location.reload());
+            }
+        }
+    };
+    input.click();
+}
+
+function deleteDocument(documentId) {
+    if (confirm('Delete this document?')) {
+        fetch(`/bundle/document/${documentId}/delete/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrfToken()}
+        }).then(() => location.reload());
+    }
+}
+
+function generateBundle() {
+    if (confirm('Generate the final PDF bundle? This will finalize the bundle.')) {
+        fetch(`/bundle/{{ bundle.id }}/generate/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrfToken()}
+        }).then(response => {
+            if (response.redirected) {
+                window.location.href = response.url;
+            } else {
+                return response.json();
+            }
+        }).then(data => {
+            if (data && data.error) {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
+}
+
+function getCsrfToken() {
+    const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (csrfInput) {
+        return csrfInput.value;
+    }
+    return '{{ csrf_token }}';
+}
+</script>
+
+{% endblock %}
