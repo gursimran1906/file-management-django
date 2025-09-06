@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import add_memo, delete_memo, display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, edit_memo, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work, read_memo
+from .views import add_memo, delete_memo, display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, edit_memo, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work, read_memo, update_task_status, load_initial_tasks, load_more_tasks, get_files, get_users, create_task
 from .views import attendance_note_view, add_attendance_note, download_attendance_note, edit_attendance_note, correspondence_view, add_letter, edit_letter, download_sowc
 from .views import finance_view, add_blue_slip, add_pink_slip, add_green_slip, edit_pmts_slip, download_pmts_slip, edit_green_slip, download_green_slip, add_invoice
 from .views import allocate_monies, download_statement_account, download_invoice, edit_invoice, download_estate_accounts, unallocated_emails, allocate_emails
@@ -174,4 +174,14 @@ urlpatterns = [
          bundle_document_delete, name='bundle_document_delete'),
     path('bundle/section/<int:section_id>/document/reorder/',
          bundle_document_reorder, name='bundle_document_reorder'),
+
+    # Kanban Board AJAX endpoints
+    path('update-task-status/', update_task_status, name='update_task_status'),
+    path('load-initial-tasks/', load_initial_tasks, name='load_initial_tasks'),
+    path('load-more-tasks/', load_more_tasks, name='load_more_tasks'),
+
+    # API endpoints for modal
+    path('api/get-files/', get_files, name='get_files'),
+    path('api/get-users/', get_users, name='get_users'),
+    path('api/create-task/', create_task, name='create_task'),
 ]

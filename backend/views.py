@@ -15,11 +15,12 @@ from users.models import CPDTrainingLog, CustomUser, HolidayRecord
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
 from django.template.loader import render_to_string
+from django.views.decorators.http import require_POST
+import json
 from weasyprint import HTML
 from django.utils.safestring import mark_safe
 from django.contrib.contenttypes.models import ContentType
 import csv
-import json
 from datetime import datetime, timedelta, time
 from dateutil.relativedelta import relativedelta
 import copy
@@ -179,6 +180,12 @@ def user_dashboard(request):
     user_next_works = NextWork.objects.filter(
         Q(person=user) & Q(completed=False)).order_by('date')
     user_last_works = LastWork.objects.filter(person=user).order_by('-date')
+
+    # Check if user has pending tasks (for cookie logic)
+    has_pending_tasks = NextWork.objects.filter(
+        person=user,
+        status__in=['to_do', 'in_progress']
+    ).exists()
     # Check if user is manager and show pending holiday requests
     if user.is_manager:
         pending_holiday_requests = HolidayRecord.objects.filter(
@@ -300,9 +307,335 @@ def user_dashboard(request):
         'last_100_emails': last_100_emails,
         'files': unique_wips,
         'unread_policies_exist': unread_policies_exist,
+        'has_pending_tasks': has_pending_tasks,
     }
 
     return render(request, 'dashboard.html', context)
+
+
+@login_required
+@require_POST
+def update_task_status(request):
+    """Update task status via AJAX"""
+    try:
+        data = json.loads(request.body)
+        task_id = data.get('task_id')
+        new_status = data.get('status')
+
+        if not task_id or not new_status:
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing task_id or status'
+            })
+
+        task = get_object_or_404(NextWork, id=task_id, person=request.user)
+        task.status = new_status
+        task.save()
+
+        return JsonResponse({'success': True})
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@login_required
+@require_POST
+def load_initial_tasks(request):
+    """Load initial tasks for all statuses via AJAX"""
+    try:
+        data = json.loads(request.body)
+        count = data.get('count', 3)  # Default to 3 tasks per status
+        filter_created_by_me = data.get('filter_created_by_me', False)
+
+        task_data = {}
+        total_counts = {}
+
+        # Base query filters
+        base_filter_nextwork = {'created_by': request.user} if filter_created_by_me else {
+            'person': request.user}
+        base_filter_lastwork = {'created_by': request.user} if filter_created_by_me else {
+            'person': request.user}
+
+        # Load To Do tasks with smart ordering (urgency priority, then due date)
+        to_do_tasks = NextWork.objects.filter(
+            **base_filter_nextwork,
+            status='to_do'
+        ).select_related('person', 'created_by', 'file_number').extra(
+            select={
+                'urgency_order': "CASE urgency WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END"
+            }
+        ).order_by('urgency_order', 'date')
+
+        total_counts['to_do'] = to_do_tasks.count()
+        to_do_limited = to_do_tasks[:count]
+
+        task_data['to_do'] = []
+        for task in to_do_limited:
+            task_data['to_do'].append({
+                'id': task.id,
+                'file_number': task.file_number.file_number if task.file_number else '',
+                'task': task.task[:80] + '...' if task.task and len(task.task) > 80 else task.task,
+                'date': task.date.isoformat() if task.date else None,
+                'urgency': task.urgency,
+                'assigned_to': task.person.get_full_name() if task.person else 'Unassigned',
+                'created_by': task.created_by.get_full_name() if task.created_by else 'Unknown',
+                'is_created_by_me': task.created_by == request.user if task.created_by else False,
+            })
+
+        # Load In Progress tasks with smart ordering (urgency priority, then due date)
+        in_progress_tasks = NextWork.objects.filter(
+            **base_filter_nextwork,
+            status='in_progress'
+        ).select_related('person', 'created_by', 'file_number').extra(
+            select={
+                'urgency_order': "CASE urgency WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END"
+            }
+        ).order_by('urgency_order', 'date')
+
+        total_counts['in_progress'] = in_progress_tasks.count()
+        in_progress_limited = in_progress_tasks[:count]
+
+        task_data['in_progress'] = []
+        for task in in_progress_limited:
+            task_data['in_progress'].append({
+                'id': task.id,
+                'file_number': task.file_number.file_number if task.file_number else '',
+                'task': task.task[:80] + '...' if task.task and len(task.task) > 80 else task.task,
+                'date': task.date.isoformat() if task.date else None,
+                'urgency': task.urgency,
+                'assigned_to': task.person.get_full_name() if task.person else 'Unassigned',
+                'created_by': task.created_by.get_full_name() if task.created_by else 'Unknown',
+                'is_created_by_me': task.created_by == request.user if task.created_by else False,
+            })
+
+        # Load Completed tasks (last 7 days)
+        completed_tasks = LastWork.objects.filter(
+            **base_filter_lastwork,
+            timestamp__gte=timezone.now() - timezone.timedelta(days=7)
+        ).select_related('person', 'created_by', 'file_number').order_by('-timestamp')
+
+        total_counts['completed'] = completed_tasks.count()
+        completed_limited = completed_tasks[:count]
+
+        task_data['completed'] = []
+        for task in completed_limited:
+            task_data['completed'].append({
+                'id': task.id,
+                'file_number': task.file_number.file_number if task.file_number else '',
+                'task': task.task[:80] + '...' if task.task and len(task.task) > 80 else task.task,
+                'date': task.date.isoformat() if task.date else None,
+                'timestamp': task.timestamp.isoformat(),
+                'assigned_to': task.person.get_full_name() if task.person else 'Unassigned',
+                'created_by': task.created_by.get_full_name() if task.created_by else 'Unknown',
+                'is_created_by_me': task.created_by == request.user if task.created_by else False,
+            })
+
+        return JsonResponse({
+            'success': True,
+            'tasks': task_data,
+            'total_counts': total_counts,
+            'loaded_count': count,
+            'filter_applied': filter_created_by_me
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@login_required
+@require_POST
+def load_more_tasks(request):
+    """Load more tasks for a specific status via AJAX"""
+    try:
+        data = json.loads(request.body)
+        status = data.get('status')
+        offset = data.get('offset', 0)
+        count = data.get('count', 3)
+        filter_created_by_me = data.get('filter_created_by_me', False)
+
+        if not status:
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing status'
+            })
+
+        tasks_data = []
+        total_count = 0
+
+        # Base query filters
+        base_filter_nextwork = {'created_by': request.user} if filter_created_by_me else {
+            'person': request.user}
+        base_filter_lastwork = {'created_by': request.user} if filter_created_by_me else {
+            'person': request.user}
+
+        if status in ['to_do', 'in_progress']:
+            all_tasks = NextWork.objects.filter(
+                **base_filter_nextwork,
+                status=status
+            ).select_related('person', 'created_by', 'file_number').extra(
+                select={
+                    'urgency_order': "CASE urgency WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END"
+                }
+            ).order_by('urgency_order', 'date')
+
+            total_count = all_tasks.count()
+            tasks = all_tasks[offset:offset + count]
+
+            for task in tasks:
+                tasks_data.append({
+                    'id': task.id,
+                    'file_number': task.file_number.file_number if task.file_number else '',
+                    'task': task.task[:80] + '...' if task.task and len(task.task) > 80 else task.task,
+                    'date': task.date.isoformat() if task.date else None,
+                    'urgency': task.urgency,
+                    'assigned_to': task.person.get_full_name() if task.person else 'Unassigned',
+                    'created_by': task.created_by.get_full_name() if task.created_by else 'Unknown',
+                    'is_created_by_me': task.created_by == request.user if task.created_by else False,
+                })
+
+        elif status == 'completed':
+            # For completed tasks, we show from LastWork
+            all_tasks = LastWork.objects.filter(
+                **base_filter_lastwork,
+                timestamp__gte=timezone.now() - timezone.timedelta(days=7)
+            ).select_related('person', 'created_by', 'file_number').order_by('-timestamp')
+
+            total_count = all_tasks.count()
+            tasks = all_tasks[offset:offset + count]
+
+            for task in tasks:
+                tasks_data.append({
+                    'id': task.id,
+                    'file_number': task.file_number.file_number if task.file_number else '',
+                    'task': task.task[:80] + '...' if task.task and len(task.task) > 80 else task.task,
+                    'date': task.date.isoformat() if task.date else None,
+                    'timestamp': task.timestamp.isoformat(),
+                    'assigned_to': task.person.get_full_name() if task.person else 'Unassigned',
+                    'created_by': task.created_by.get_full_name() if task.created_by else 'Unknown',
+                    'is_created_by_me': task.created_by == request.user if task.created_by else False,
+                })
+
+        has_more = (offset + count) < total_count
+
+        return JsonResponse({
+            'success': True,
+            'tasks': tasks_data,
+            'has_more': has_more,
+            'total_count': total_count,
+            'loaded_count': len(tasks_data)
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@login_required
+def get_files(request):
+    """Get list of files for modal dropdown"""
+    try:
+        files = WIP.objects.filter(
+            file_status__status='Open'
+        ).values('id', 'file_number', 'matter_description').order_by('file_number')
+
+        files_data = []
+        for file in files:
+            files_data.append({
+                'id': file['id'],
+                'file_number': file['file_number'],
+                'description': file['matter_description'] or 'No description',
+                'display_text': f"{file['file_number']} - {file['matter_description'] or 'No description'}"
+            })
+
+        return JsonResponse({
+            'success': True,
+            'files': files_data
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@login_required
+def get_users(request):
+    """Get list of users for modal dropdown"""
+    try:
+        users = CustomUser.objects.all().values('id', 'first_name', 'last_name')
+
+        users_data = []
+        for user in users:
+            name = f"{user['first_name']} {user['last_name']}".strip()
+            if not name:
+                name = f"User {user['id']}"
+            users_data.append({
+                'id': user['id'],
+                'name': name
+            })
+
+        return JsonResponse({
+            'success': True,
+            'users': users_data
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@login_required
+@require_POST
+def create_task(request):
+    """Create a new NextWork task"""
+    try:
+        data = json.loads(request.body)
+
+        # Create new NextWork instance
+        task = NextWork(
+            file_number_id=data.get('file_number'),
+            person_id=data.get('person'),
+            task=data.get('task'),
+            date=data.get('date') if data.get('date') else None,
+            urgency=data.get('urgency', 'medium'),
+            status=data.get('status', 'to_do'),
+            created_by=request.user
+        )
+        task.save()
+
+        return JsonResponse({
+            'success': True,
+            'task_id': task.id
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
 
 
 @login_required

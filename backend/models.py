@@ -7,9 +7,9 @@ from math import ceil
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 
+
 def get_sentinel_user():
     return get_user_model().objects.get_or_create(username="deleted")[0]
-
 
 
 class Modifications(models.Model):
@@ -152,7 +152,7 @@ class WIP(models.Model):
     ncba_client2 = models.BooleanField(null=True, blank=True)
     date_of_ncba_sent = models.DateField(null=True, blank=True)
     date_of_ncba_rcvd = models.DateField(null=True, blank=True)
-    
+
     funding = models.CharField(max_length=3)
     authorised_party1 = models.ForeignKey(
         AuthorisedParties, on_delete=models.SET_NULL, related_name='auth_party1_wip', null=True, blank=True)
@@ -160,7 +160,7 @@ class WIP(models.Model):
         AuthorisedParties, on_delete=models.SET_NULL, related_name='auth_party2_wip', null=True, blank=True)
 
     key_information = models.TextField(null=True, blank=True)
-    
+
     comments = models.TextField(null=True, blank=True)
     created_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, related_name='wip_created_by', null=True, blank=True)
@@ -172,6 +172,19 @@ class WIP(models.Model):
 
 
 class NextWork(models.Model):
+    STATUS_CHOICES = [
+        ('to_do', 'To Do'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+    ]
+
+    URGENCY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('urgent', 'Urgent'),
+    ]
+
     id = models.AutoField(primary_key=True)
     file_number = models.ForeignKey(WIP, on_delete=models.SET_NULL, null=True)
     person = models.ForeignKey(
@@ -179,19 +192,39 @@ class NextWork(models.Model):
     task = models.TextField(null=True, blank=True)
     date = models.DateField(null=True, blank=True)
     completed = models.BooleanField(default=False, null=True)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='to_do')
+    urgency = models.CharField(
+        max_length=10, choices=URGENCY_CHOICES, default='medium')
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
                                    related_name='next_work_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
+        # Sync completed field with status
+        if self.status == 'completed':
+            self.completed = True
+        else:
+            self.completed = False
+
         super().save(*args, **kwargs)
-        if self.completed:
-            LastWork.objects.create(
+
+        # Create LastWork entry when task is completed
+        if self.completed and self.status == 'completed':
+            # Check if LastWork entry already exists to avoid duplicates
+            if not LastWork.objects.filter(
                 file_number=self.file_number,
                 person=self.person,
                 task=self.task,
                 date=self.date
-            )
+            ).exists():
+                LastWork.objects.create(
+                    file_number=self.file_number,
+                    person=self.person,
+                    task=self.task,
+                    date=self.date,
+                    created_by=self.created_by
+                )
 
 
 class LastWork(models.Model):
@@ -306,6 +339,7 @@ class Invoices(models.Model):
         CustomUser, on_delete=models.SET_NULL, related_name='invoice_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
+
 class RiskAssessment(models.Model):
     RISK_LEVEL_CHOICES = [
         ('Low', 'Low'),
@@ -314,23 +348,23 @@ class RiskAssessment(models.Model):
     ]
 
     DUE_DILIGENCE_LEVEL_CHOICES = [
-        ('Enhanced','Enhanced'),
-        ('Standard','Standard'),
-  
+        ('Enhanced', 'Enhanced'),
+        ('Standard', 'Standard'),
+
     ]
 
     BOOLEAN_CHOICES_WITH_NA = [
-        ('N/A','N/A'),
+        ('N/A', 'N/A'),
         ('Yes', 'Yes'),
-        ('No', 'No'),   
+        ('No', 'No'),
     ]
 
     BOOLEAN_CHOICES = [
         ('Yes', 'Yes'),
-        ('No', 'No')  
+        ('No', 'No')
     ]
-    
-    matter = models.ForeignKey(WIP,on_delete=models.SET_NULL, null=True)
+
+    matter = models.ForeignKey(WIP, on_delete=models.SET_NULL, null=True)
     """ We already have some of these fields in Client and can add few others like dob, occupation
     client_name = models.CharField(max_length=255)
     client_address = models.TextField()
@@ -338,33 +372,48 @@ class RiskAssessment(models.Model):
     client_occupation = models.CharField(max_length=100)
     """
     client_source_of_funds = models.CharField(max_length=255)
-    
-    
-    unusual_client = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    client_concerns = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    third_party_authority = models.CharField(max_length=10, choices=BOOLEAN_CHOICES_WITH_NA, default="N/A")
-    concerns_about_parties = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    designated_person_entity = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
+
+    unusual_client = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    client_concerns = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    third_party_authority = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES_WITH_NA, default="N/A")
+    concerns_about_parties = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    designated_person_entity = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
     issues_identified_client_risks_sec = models.TextField()
 
     '''
     Try google auto address for client_location
     '''
-    client_location = models.CharField(max_length=100) 
-    location_of_instruction_concerns = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    make_sense_location_of_instructions = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    overseas_elements = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No") # Are there overseas elements? If yes, provide details below e.g. overseas beneficiary, contracts for overseas entities
+    client_location = models.CharField(max_length=100)
+    location_of_instruction_concerns = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    make_sense_location_of_instructions = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    # Are there overseas elements? If yes, provide details below e.g. overseas beneficiary, contracts for overseas entities
+    overseas_elements = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
     issues_identified_jurisdiction_risks_sec = models.TextField()
-    
-    meeting_in_person = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No") # Will we meet the client in person?  
+
+    # Will we meet the client in person?
+    meeting_in_person = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
     who_they_are = models.TextField()
 
     due_diligence_review = models.TextField()
-    adverse_media = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    adverse_media = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
 
-    beneficial_owners_details = models.TextField()#Please provide details of beneficial owners, shareholders/ controllers including percentages of shareholdings
-    ultimate_beneficial_owners = models.TextField()#Please provide details of steps taken to identify and verify ultimate beneficial owners
-    reportable_discrepancies = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")#Have you identified any reportable discrepancies?
+    # Please provide details of beneficial owners, shareholders/ controllers including percentages of shareholdings
+    beneficial_owners_details = models.TextField()
+    # Please provide details of steps taken to identify and verify ultimate beneficial owners
+    ultimate_beneficial_owners = models.TextField()
+    # Have you identified any reportable discrepancies?
+    reportable_discrepancies = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
 
     # Matter risks
     """
@@ -382,28 +431,41 @@ class RiskAssessment(models.Model):
     financial position? e.g. it makes sense for the client to instruct us on this transaction?
 
     """
-    matter_description = models.TextField() #Description of work and transaction value
-    matter_transaction_value = models.DecimalField(max_digits=15, decimal_places=2) 
-    usual_work = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    complex_structure = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    cash_intensive_industry = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    high_risk_industry = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    proliferation_financing = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    other_risks = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    transactional_matter = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    movement_of_funds_assets = models.CharField(max_length=10, choices=BOOLEAN_CHOICES_WITH_NA, default="N/A")
-    receiving_funds_from_overseas = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    receiving_funds_from_third_parties = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    consistent_with_client_profile = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    matter_description = models.TextField()  # Description of work and transaction value
+    matter_transaction_value = models.DecimalField(
+        max_digits=15, decimal_places=2)
+    usual_work = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    complex_structure = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    cash_intensive_industry = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    high_risk_industry = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    proliferation_financing = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    other_risks = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    transactional_matter = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    movement_of_funds_assets = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES_WITH_NA, default="N/A")
+    receiving_funds_from_overseas = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    receiving_funds_from_third_parties = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    consistent_with_client_profile = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
     issues_identified_matter_risks_sec = models.TextField()
-
 
     """Questionnaires
     Have you/Client completed and signed our PEP questionnaire?
     Have you/Client completed and signed our source of funds of questionnaire?
     """
-    is_pep_questionnaire_completed = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    is_source_of_funds_questionnaire_completed = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    is_pep_questionnaire_completed = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    is_source_of_funds_questionnaire_completed = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
     """
     Product/ service risk 
     Based on the client’s profile, does it make sense for the client to instruct us             
@@ -414,7 +476,8 @@ class RiskAssessment(models.Model):
 
     """
     # Product/ service risk
-    makes_sense_for_client = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    makes_sense_for_client = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
     product_service_risk_details = models.TextField()
 
     """
@@ -432,35 +495,52 @@ class RiskAssessment(models.Model):
     Does the transaction lack an apparent economic or legal purpose?                             
     Are there any other factors that could indicate a higher risk of money laundering or terrorist financing?
     """
-    complex_structure_or_unusual = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    higher_risk_sector = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    cash_intensive_business_activity = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    high_risk_third_country_or_jurisdiction = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    politically_exposed_person = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    financial_sanctions = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    country_subject_to_sanctions = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    unusual_complex_transaction = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    unusual_pattern_of_transactions = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    lack_of_economic_or_legal_purpose = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
-    other_high_risk_factors = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    complex_structure_or_unusual = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    higher_risk_sector = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    cash_intensive_business_activity = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    high_risk_third_country_or_jurisdiction = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    politically_exposed_person = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    financial_sanctions = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    country_subject_to_sanctions = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    unusual_complex_transaction = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    unusual_pattern_of_transactions = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    lack_of_economic_or_legal_purpose = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    other_high_risk_factors = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
     escalated_date = models.DateField(null=True, blank=True)
     issues_identified_enhanced_due_dilligence = models.TextField()
 
     # Risk level and justification
-    client_risk_level = models.CharField(max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
-    matter_risk_level = models.CharField(max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
+    client_risk_level = models.CharField(
+        max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
+    matter_risk_level = models.CharField(
+        max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
 
-
-    evidence_of_source_of_wealth = models.BooleanField(default=False, null=True, blank=True)
-    source_of_wealth_correspondence = models.BooleanField(default=False,  null=True, blank=True)
+    evidence_of_source_of_wealth = models.BooleanField(
+        default=False, null=True, blank=True)
+    source_of_wealth_correspondence = models.BooleanField(
+        default=False,  null=True, blank=True)
 
     # Due Diligence
-    customer_due_diligence_level = models.CharField(max_length=10, choices=DUE_DILIGENCE_LEVEL_CHOICES, default="Standard")
+    customer_due_diligence_level = models.CharField(
+        max_length=10, choices=DUE_DILIGENCE_LEVEL_CHOICES, default="Standard")
     due_diligence_date = models.DateField()
-    due_diligence_signed_by = models.ForeignKey(CustomUser,on_delete=models.SET_NULL, null=True)
+    due_diligence_signed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True)
 
-    timestamp=models.DateTimeField(auto_now_add=True)
-    
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+
 class OngoingMonitoring(models.Model):
     RISK_LEVEL_CHOICES = [
         ('Low', 'Low'),
@@ -469,22 +549,28 @@ class OngoingMonitoring(models.Model):
     ]
     BOOLEAN_CHOICES = [
         ('Yes', 'Yes'),
-        ('No', 'No')  
+        ('No', 'No')
     ]
-    
+
     id = models.AutoField(primary_key=True)
     file_number = models.ForeignKey(WIP, on_delete=models.SET_NULL, null=True)
     how_was_monitioring_of_risks_coducted = models.TextField()
-    any_changes_discovered = models.CharField(max_length=10, choices=BOOLEAN_CHOICES, default='Yes')
+    any_changes_discovered = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default='Yes')
     details_of_changes = models.TextField(null=True, blank=True)
 
-    updated_risk_level_matter = models.CharField(max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
-    updated_risk_level_client = models.CharField(max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
+    updated_risk_level_matter = models.CharField(
+        max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
+    updated_risk_level_client = models.CharField(
+        max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
     how_it_will_be_monitored = models.TextField()
     date_due_diligence_conducted = models.DateField()
-    signed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
-    created_by = models.ForeignKey(CustomUser,related_name='created_by', on_delete=models.SET_NULL, null=True)
+    signed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True)
+    created_by = models.ForeignKey(
+        CustomUser, related_name='created_by', on_delete=models.SET_NULL, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+
 
 class MatterEmails(models.Model):
     id = models.AutoField(primary_key=True)
@@ -505,6 +591,7 @@ class MatterEmails(models.Model):
     def __str__(self):
         return (f'ID: {str(self.id)}, File Number: {self.file_number}')
 
+
 class MatterLetters(models.Model):
     id = models.AutoField(primary_key=True)
     file_number = models.ForeignKey(WIP, on_delete=models.SET_NULL, null=True)
@@ -518,6 +605,7 @@ class MatterLetters(models.Model):
     created_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, related_name='letter_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+
 
 class MatterAttendanceNotes(models.Model):
     id = models.AutoField(primary_key=True)
@@ -536,54 +624,65 @@ class MatterAttendanceNotes(models.Model):
 
     timestamp = models.DateTimeField(auto_now_add=True)
 
+
 class Policy(models.Model):
     id = models.AutoField(primary_key=True)
     description = models.TextField()
 
     def latest_version(self):
         return self.versions.order_by('-version_number').first()
-    
+
     def __str__(self):
         return self.description
 
+
 class PolicyVersion(models.Model):
     id = models.AutoField(primary_key=True)
-    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, related_name='versions')
+    policy = models.ForeignKey(
+        Policy, on_delete=models.CASCADE, related_name='versions')
     content = QuillField()
     version_number = models.PositiveIntegerField()
-    changes_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    changes_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ('policy', 'version_number')
 
-    
-
     def __str__(self):
         return f"Version {self.version_number} of {self.policy.description}"
 
+
 class PoliciesRead(models.Model):
     id = models.AutoField(primary_key=True)
-    policy = models.ForeignKey(Policy, on_delete=models.SET_NULL, null=True, blank=True, related_name='policies')
-    policy_version = models.ForeignKey(PolicyVersion, on_delete=models.SET_NULL, null=True, blank=True, related_name='read_versions')
-    read_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, related_name='read_by', null=True, blank=True)
+    policy = models.ForeignKey(
+        Policy, on_delete=models.SET_NULL, null=True, blank=True, related_name='policies')
+    policy_version = models.ForeignKey(
+        PolicyVersion, on_delete=models.SET_NULL, null=True, blank=True, related_name='read_versions')
+    read_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, related_name='read_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.read_by} read {self.policy} (Version {self.policy_version.version_number})"
+
 
 class Memo(models.Model):
     id = models.AutoField(primary_key=True)
     content = QuillField()
     date = models.DateField()
     is_final = models.BooleanField(default=False)
-    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+
 
 class MemoRead(models.Model):
     id = models.AutoField(primary_key=True)
-    memo = models.ForeignKey(Memo, on_delete=models.SET_NULL, null=True, blank=True, related_name='memo')
-    read_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, related_name='memo_read_by', null=True, blank=True)
+    memo = models.ForeignKey(
+        Memo, on_delete=models.SET_NULL, null=True, blank=True, related_name='memo')
+    read_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
+                                related_name='memo_read_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -593,17 +692,22 @@ class MemoRead(models.Model):
 def undertaking_file_upload_path(instance, filename):
     return f'undertakings/{instance.file_number.file_number}/{filename}'
 
+
 class Undertaking(models.Model):
     id = models.AutoField(primary_key=True)
     file_number = models.ForeignKey(WIP, on_delete=models.SET_NULL, null=True)
     date_given = models.DateField()
     given_to = models.TextField()
     description = models.TextField()
-    given_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, related_name='undertaking_given_by', null=True, blank=True)
-    document_given_on = models.FileField(upload_to=undertaking_file_upload_path)
+    given_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
+                                 related_name='undertaking_given_by', null=True, blank=True)
+    document_given_on = models.FileField(
+        upload_to=undertaking_file_upload_path)
     date_discharged = models.DateField(null=True, blank=True)
-    discharged_proof = models.FileField(upload_to=undertaking_file_upload_path, null=True, blank=True)
-    discharged_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    discharged_proof = models.FileField(
+        upload_to=undertaking_file_upload_path, null=True, blank=True)
+    discharged_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
                                    related_name='undertaking_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
@@ -621,9 +725,11 @@ class Free30MinsAttendees(models.Model):
                                    related_name='free30_mins_attendees_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
+
 class Free30Mins(models.Model):
     id = models.AutoField(primary_key=True)
-    matter_type = models.ForeignKey(MatterType, on_delete=models.SET_NULL, null=True, blank=True)
+    matter_type = models.ForeignKey(
+        MatterType, on_delete=models.SET_NULL, null=True, blank=True)
     notes = QuillField()
     date = models.DateField()
     start_time = models.TimeField()
@@ -640,13 +746,15 @@ class Bundle(models.Model):
     """Model to represent a document bundle"""
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=255)
-    file_number = models.ForeignKey(WIP, on_delete=models.CASCADE, null=True, blank=True)
-    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    file_number = models.ForeignKey(
+        WIP, on_delete=models.CASCADE, null=True, blank=True)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_finalized = models.BooleanField(default=False)
     final_pdf = models.FileField(upload_to='bundles/', null=True, blank=True)
-    
+
     def __str__(self):
         return f"{self.name} - {self.file_number}"
 
@@ -657,11 +765,12 @@ class Bundle(models.Model):
 class BundleSection(models.Model):
     """Model to represent sections within a bundle"""
     id = models.AutoField(primary_key=True)
-    bundle = models.ForeignKey(Bundle, on_delete=models.CASCADE, related_name='sections')
+    bundle = models.ForeignKey(
+        Bundle, on_delete=models.CASCADE, related_name='sections')
     heading = models.CharField(max_length=255)
     order = models.PositiveIntegerField()
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     def __str__(self):
         return f"{self.bundle.name} - {self.heading}"
 
@@ -673,7 +782,8 @@ class BundleSection(models.Model):
 class BundleDocument(models.Model):
     """Model to represent documents within bundle sections"""
     id = models.AutoField(primary_key=True)
-    section = models.ForeignKey(BundleSection, on_delete=models.CASCADE, related_name='documents')
+    section = models.ForeignKey(
+        BundleSection, on_delete=models.CASCADE, related_name='documents')
     file = models.FileField(upload_to='bundle_documents/')
     description = models.CharField(max_length=500)
     date = models.DateField(null=True, blank=True)
@@ -681,11 +791,10 @@ class BundleDocument(models.Model):
     page_start = models.PositiveIntegerField(null=True, blank=True)
     page_end = models.PositiveIntegerField(null=True, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
-    
+
     def __str__(self):
         return f"{self.description} - {self.section.heading}"
 
     class Meta:
         ordering = ['order']
         unique_together = ('section', 'order')
-
