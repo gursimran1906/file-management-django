@@ -25,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-3b1_t+z*dfo81p)$x=wa7uygt)x0%-6n+h3fhlkrg@xkuzq=7s'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG','False'), 
+DEBUG = os.getenv('DEBUG', 'False'),
 
 ALLOWED_HOSTS = ['*']
 CSRF_TRUSTED_ORIGINS = [
@@ -76,7 +76,7 @@ TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [os.path.join(BASE_DIR, 'templates')],
-         
+
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -90,7 +90,6 @@ TEMPLATES = [
 ]
 
 
-
 WSGI_APPLICATION = 'filemanagementDjango.wsgi.application'
 
 
@@ -98,24 +97,24 @@ WSGI_APPLICATION = 'filemanagementDjango.wsgi.application'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
 
-       
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'wip'),        
-        'USER': os.getenv('DB_USER', 'gb'),    
-        'PASSWORD': os.getenv('DB_USER_PASS', 'Mango@ANP290!'),    
-        'HOST': os.getenv('DB_HOST', 'localhost'),    
-        'PORT': os.getenv('DB_PORT','5432'),  
+        'NAME': os.getenv('DB_NAME', 'wip'),
+        'USER': os.getenv('DB_USER', 'gb'),
+        'PASSWORD': os.getenv('DB_USER_PASS', 'Mango@ANP290!'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
         'OPTIONS': {
             'sslmode': 'prefer',
         }
-         
+
     }
 }
 
 # Check if PostgreSQL is available on the specified port
+
+
 def is_postgresql_available(host, port):
     try:
         # Attempt to create a socket connection
@@ -123,6 +122,7 @@ def is_postgresql_available(host, port):
             return True
     except OSError:
         return False
+
 
 # Check if PostgreSQL is available
 if is_postgresql_available(DATABASES['default']['HOST'], DATABASES['default']['PORT']):
@@ -168,7 +168,7 @@ USE_I18N = True
 
 USE_TZ = True
 
-DATE_INPUT_FORMATS = ('%d-%m-%Y','%Y-%m-%d')
+DATE_INPUT_FORMATS = ('%d-%m-%Y', '%Y-%m-%d')
 
 DATE_FORMAT = '%d/%m/%Y'
 
@@ -195,10 +195,11 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-
 CRONJOBS = [
-    ('*/15 * * * *', 'email_sorting.utils.get_emails_and_store','>>'+str(BASE_DIR)+'/email_sorting/email_job.log 2>&1'),
-    ('* * 15 * *', 'email_sorting.utils.remove_log_file','>>'+str(BASE_DIR)+'/email_sorting/remove_log.log 2>&1')
+    ('*/15 * * * *', 'email_sorting.utils.get_emails_and_store',
+     '>>'+str(BASE_DIR)+'/email_sorting/email_job.log 2>&1'),
+    ('* * 15 * *', 'email_sorting.utils.remove_log_file',
+     '>>'+str(BASE_DIR)+'/email_sorting/remove_log.log 2>&1')
 ]
 
 QUILL_CONFIGS = {
@@ -215,9 +216,9 @@ QUILL_CONFIGS = {
                     {'color': []},
                     {'background': []},
                 ],
-                
-                [{'list': 'ordered'}, {'list': 'bullet'}],  
-         
+
+                [{'list': 'ordered'}, {'list': 'bullet'}],
+
             ]
         }
     }

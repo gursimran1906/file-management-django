@@ -328,7 +328,10 @@ def update_task_status(request):
                 'error': 'Missing task_id or status'
             })
 
-        task = get_object_or_404(NextWork, id=task_id, person=request.user)
+        # Allow both the assigned person and the creator to update the task
+        task = get_object_or_404(NextWork,
+                                 id=task_id,
+                                 Q(person=request.user) | Q(created_by=request.user))
         task.status = new_status
         task.save()
 
