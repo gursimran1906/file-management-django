@@ -1,4 +1,12 @@
 # myapp/views.py
+from .forms import UserDocumentForm
+from .models import UserDocument
+from django.shortcuts import render, redirect, get_object_or_404
+from zipfile import ZipFile
+from io import BytesIO
+from .models import CustomUser, AttendanceRecord, HolidayRecord, SicknessRecord
+from datetime import datetime, timedelta, date
+from django.shortcuts import redirect
 from decimal import Decimal
 import math
 import os
@@ -33,15 +41,17 @@ from django.db.models import Q
 import tempfile
 import zipfile
 
+
 def login_view(request):
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
         user = authenticate(request, username=username, password=password)
         if user is not None:
-            login(request,user)
+            login(request, user)
             today = timezone.now().date()
-            attendance_record = AttendanceRecord.objects.filter(employee=user, date=today).first()
+            attendance_record = AttendanceRecord.objects.filter(
+                employee=user, date=today).first()
             if attendance_record is None:
                 AttendanceRecord.objects.create(
                     employee=user,
@@ -49,19 +59,22 @@ def login_view(request):
                     clock_in=timezone.now()
                 )
             next_param = request.GET.get('next', '')
-            next_page = unquote(next_param) if next_param else reverse('user_dashboard')
+            next_page = unquote(next_param) if next_param else reverse(
+                'user_dashboard')
             return redirect(next_page)
         else:
-            
+
             return render(request, 'login.html', {'error_message': 'Invalid login credentials, Please check username or password'})
     else:
         return render(request, 'login.html')
-    
+
+
 def logout_view(request):
     user = request.user.username
     logout(request)
     log_out_msg = 'Successfully Logged ' + str(user) + ' out!!'
     return render(request, 'login.html', {'message': log_out_msg})
+
 
 @login_required
 def register_view(request):
@@ -89,25 +102,29 @@ def calculate_business_days(start_date, end_date):
 
     # Adjust the start_date according to the specified rules
     if start_date.time() < work_start:  # Before 9:00 AM
-        start_date = datetime.combine(start_date.date(), work_start, tzinfo=start_date.tzinfo)
+        start_date = datetime.combine(
+            start_date.date(), work_start, tzinfo=start_date.tzinfo)
     elif start_date.time() >= work_end:  # After 5:00 PM
         # Move to the next business day at 9:00 AM
-        start_date = datetime.combine(start_date.date() + timedelta(days=1), work_start, tzinfo=start_date.tzinfo)
+        start_date = datetime.combine(
+            start_date.date() + timedelta(days=1), work_start, tzinfo=start_date.tzinfo)
         while start_date.weekday() >= 5:  # Skip weekends
             start_date += timedelta(days=1)
 
     # Adjust end_date if it's outside work hours
     if end_date.time() > work_end:
-        end_date = datetime.combine(end_date.date(), work_end, tzinfo=end_date.tzinfo)
+        end_date = datetime.combine(
+            end_date.date(), work_end, tzinfo=end_date.tzinfo)
     elif end_date.time() < work_start:
-        end_date = datetime.combine(end_date.date(), work_end, tzinfo=end_date.tzinfo)
+        end_date = datetime.combine(
+            end_date.date(), work_end, tzinfo=end_date.tzinfo)
         # Skip weekends
         while end_date.weekday() >= 5:
             end_date -= timedelta(days=1)
 
     # Create UK holiday list
     holiday_list = holidays.country_holidays('GB', subdiv='ENG')
-   
+
     # Initialize the total hours counter
     total_hours = 0
     current_date = start_date
@@ -116,8 +133,10 @@ def calculate_business_days(start_date, end_date):
         # Check if current date is a weekday and not a holiday
         if current_date.weekday() < 5 and current_date.date() not in holiday_list:
             # Calculate workday start and end times for the current date
-            day_start = datetime.combine(current_date.date(), work_start, tzinfo=current_date.tzinfo)
-            day_end = datetime.combine(current_date.date(), work_end, tzinfo=current_date.tzinfo)
+            day_start = datetime.combine(
+                current_date.date(), work_start, tzinfo=current_date.tzinfo)
+            day_end = datetime.combine(
+                current_date.date(), work_end, tzinfo=current_date.tzinfo)
 
             # Determine the actual start and end for counting within the working hours
             actual_start = max(current_date, day_start)
@@ -125,11 +144,13 @@ def calculate_business_days(start_date, end_date):
 
             # If within work hours, calculate the difference in hours
             if actual_start < actual_end:
-                hours_worked = (actual_end - actual_start).total_seconds() / 3600
+                hours_worked = (
+                    actual_end - actual_start).total_seconds() / 3600
                 total_hours += hours_worked
 
         # Move to the next day at 9:00 AM
-        current_date = datetime.combine(current_date.date() + timedelta(days=1), work_start, tzinfo=current_date.tzinfo)
+        current_date = datetime.combine(current_date.date(
+        ) + timedelta(days=1), work_start, tzinfo=current_date.tzinfo)
 
     # Convert hours to work days (8 hours = 1 work day)
     total_days = total_hours / 8
@@ -139,22 +160,25 @@ def calculate_business_days(start_date, end_date):
 
     return total_days
 
+
 @login_required
 def profile_page(request):
     users = CustomUser.objects.filter(is_active=True).order_by('username')
     employees = CustomUser.objects.filter(is_active=True)
     user = request.user
     current_year = timezone.now().year
-   
+
     holiday_requests = HolidayRecord.objects.filter(
         employee=user
     ).order_by('-timestamp')
     if request.user.is_manager:
         all_requests = HolidayRecord.objects.filter(checked_by=None)
     else:
-        all_requests=None
-    attendance_records = AttendanceRecord.objects.filter(employee=user).order_by('-date')
-    sickness_records = SicknessRecord.objects.filter(employee=user).order_by('-start_date')
+        all_requests = None
+    attendance_records = AttendanceRecord.objects.filter(
+        employee=user).order_by('-date')
+    sickness_records = SicknessRecord.objects.filter(
+        employee=user).order_by('-start_date')
     requests_with_total_days = []
     total_paid_holidays = 0
     total_unpaid_holidays = 0
@@ -166,7 +190,7 @@ def profile_page(request):
             total_days = calculate_business_days(start_date, end_date)
             if start_date.year == current_year:
                 if holiday_request.type == 'Paid':
-                    total_paid_holidays  = total_paid_holidays + total_days
+                    total_paid_holidays = total_paid_holidays + total_days
                 else:
                     total_unpaid_holidays = total_unpaid_holidays + total_days
 
@@ -175,35 +199,38 @@ def profile_page(request):
             'total_days': total_days,
             'is_bank_holiday': False
         })
-    
+
     current_year = datetime.now().year
 
-    holiday_list = holidays.country_holidays('GB', subdiv='ENG', years=current_year)
+    holiday_list = holidays.country_holidays(
+        'GB', subdiv='ENG', years=current_year)
     bank_holiday_records = []
     for holiday_date, holiday_name in holiday_list.items():
-        holiday_datetime = datetime(holiday_date.year, holiday_date.month, holiday_date.day)
+        holiday_datetime = datetime(
+            holiday_date.year, holiday_date.month, holiday_date.day)
 
         record = {
-            "employee": request.user , 
-            "start_date": holiday_datetime,  
-            "end_date": holiday_datetime,   
+            "employee": request.user,
+            "start_date": holiday_datetime,
+            "end_date": holiday_datetime,
             "reason": holiday_name,
-            "type": 'Paid',  
+            "type": 'Paid',
             "approved": True,
             "checked_by": "Director",  # or assign actual checker instance if available
             "checked_on": None,
             "approved_by": "Director",  # or assign actual approver instance if available
             "approved_on": None,
-             
-        }
-        bank_holiday_records.append({'request': record, 'total_days':1 , 'is_bank_holiday': True})
-    
-    requests_with_total_days = requests_with_total_days + bank_holiday_records
-    
 
-    
-    total_bank_holidays = round(Decimal(sum(1 for name in holiday_list.values())),2)
-    total_paid_holidays_remaining = user.max_holidays_in_year - Decimal(total_paid_holidays)
+        }
+        bank_holiday_records.append(
+            {'request': record, 'total_days': 1, 'is_bank_holiday': True})
+
+    requests_with_total_days = requests_with_total_days + bank_holiday_records
+
+    total_bank_holidays = round(
+        Decimal(sum(1 for name in holiday_list.values())), 2)
+    total_paid_holidays_remaining = user.max_holidays_in_year - \
+        Decimal(total_paid_holidays)
     total_paid_holidays_remaining = total_paid_holidays_remaining - total_bank_holidays
     current_year = datetime.now().year
     office_closure_holidays = HolidayRecord.objects.filter(
@@ -213,8 +240,9 @@ def profile_page(request):
     )
     total_office_closure_holidays = 0
     for holiday in office_closure_holidays:
-        total_days = calculate_business_days(holiday.start_date, holiday.end_date)
-        
+        total_days = calculate_business_days(
+            holiday.start_date, holiday.end_date)
+
         total_office_closure_holidays = total_office_closure_holidays + total_days
 
     total_paid_holidays = total_paid_holidays - total_office_closure_holidays
@@ -227,27 +255,29 @@ def profile_page(request):
     else:
         memos = Memo.objects.filter(is_final=True).order_by('-date')
 
-    return render(request, 'profile_page.html', {'employees':employees,
+    return render(request, 'profile_page.html', {'employees': employees,
                                                  'holiday_requests': requests_with_total_days,
-                                                 'all_requests':all_requests,
-                                                 'sickness_records':sickness_records,
-                                                 'attendance_records': attendance_records, 
-                                                 'total_paid_holidays': total_paid_holidays, 
+                                                 'all_requests': all_requests,
+                                                 'sickness_records': sickness_records,
+                                                 'attendance_records': attendance_records,
+                                                 'total_paid_holidays': total_paid_holidays,
                                                  'total_unpaid_holidays': total_unpaid_holidays,
-                                                 'total_paid_holidays_remaining': total_paid_holidays_remaining, 
+                                                 'total_paid_holidays_remaining': total_paid_holidays_remaining,
                                                  'total_bank_holidays': total_bank_holidays,
-                                                 'total_office_closure_holidays':total_office_closure_holidays, 
+                                                 'total_office_closure_holidays': total_office_closure_holidays,
                                                  'office_closure_form': office_closure_form,
-                                                 'cpd_form':cpd_form, 
+                                                 'cpd_form': cpd_form,
                                                  'cpds': cpds,
-                                                 'memo_form':memo_form,
-                                                 'memos':memos,
-                                                 'users':users})
+                                                 'memo_form': memo_form,
+                                                 'memos': memos,
+                                                 'users': users})
+
 
 @login_required
 def holiday_records(request):
     if request.user.is_manager != True:
-        messages.error(request,'You do not have right permissions to access the page.')
+        messages.error(
+            request, 'You do not have right permissions to access the page.')
         return redirect('user_dashboard')
     requests_with_total_days = []
     current_year = timezone.now().year
@@ -265,19 +295,22 @@ def holiday_records(request):
         })
     return render(request, 'holiday_records.html', {'holiday_records': requests_with_total_days})
 
+
 @login_required
 def sickness_records(request):
     if request.user.is_manager != True:
-        messages.error(request,'You do not have right permissions to access the page.')
+        messages.error(
+            request, 'You do not have right permissions to access the page.')
         return redirect('user_dashboard')
-    sickness_records = SicknessRecord.objects.all().select_related('employee', 'created_by')
+    sickness_records = SicknessRecord.objects.all(
+    ).select_related('employee', 'created_by')
     return render(request, 'sickness_records.html', {'sickness_records': sickness_records})
 
 
 @login_required
 def calendar_events(request):
     # Fetch holiday records
-    
+
     holiday_records = HolidayRecord.objects.all()
     if request.user.is_manager:
         sickness_records = SicknessRecord.objects.all()
@@ -290,7 +323,7 @@ def calendar_events(request):
             leave_type = 'Annual Leave' if holiday.type == 'Paid' else 'Unpaid Leave'
         else:
             leave_type = 'Leave'  # Non-managers just see "Leave"
-        
+
         # Approved holiday events
         if holiday.checked_by is not None and holiday.approved:
             event = {
@@ -298,7 +331,7 @@ def calendar_events(request):
                 'start': holiday.start_date,
                 'end': holiday.end_date,
                 'description': f'Type: {holiday.type}, Approved: {holiday.approved}',
-                'color': get_holiday_color(holiday,request.user.is_manager),  
+                'color': get_holiday_color(holiday, request.user.is_manager),
             }
             events.append(event)
 
@@ -309,9 +342,9 @@ def calendar_events(request):
                 'start': holiday.start_date,
                 'end': holiday.end_date,
                 'description': f'Type: {holiday.type}, Approved: {holiday.approved}',
-                'color': '#5cb85c',  
+                'color': '#5cb85c',
             }
-            
+
             events.append(event)
 
     for sickness in sickness_records:
@@ -320,54 +353,59 @@ def calendar_events(request):
             'start': sickness.start_date,
             'end': sickness.end_date,
             'description': sickness.description,
-            'color': '#6f42c1'  
+            'color': '#6f42c1'
         }
         events.append(event)
     current_year = timezone.now().year
-    holiday_list = holidays.country_holidays('GB', subdiv='ENG', years=range(current_year-5, current_year+5))
+    holiday_list = holidays.country_holidays(
+        'GB', subdiv='ENG', years=range(current_year-5, current_year+5))
     for date, name in holiday_list.items():
-    
+
         event = {
             'title': f'Bank Holiday - {name}',
-            'start': date.strftime('%Y-%m-%d'), 
-            'end': date.strftime('%Y-%m-%d'),    
+            'start': date.strftime('%Y-%m-%d'),
+            'end': date.strftime('%Y-%m-%d'),
             'description': 'Type: Bank Holiday',
-            'color': '#80CBC4'  
+            'color': '#80CBC4'
         }
         events.append(event)
 
-
     return JsonResponse(events, safe=False)
+
 
 def get_holiday_color(holiday, is_manager):
     """Determine color based on holiday type and approval status with eye-friendly colors."""
     if holiday.approved:
         if is_manager:
-            return '#5cb85c' if holiday.type == 'Paid' else '#ffca66'  # Muted Green for Paid Approved, Soft Amber for Unpaid Approved
+            # Muted Green for Paid Approved, Soft Amber for Unpaid Approved
+            return '#5cb85c' if holiday.type == 'Paid' else '#ffca66'
         else:
             return '#5cb85c'  # Same color for all users for approved holidays
     else:
         if is_manager:
-            return '#6699cc' if holiday.type == 'Paid' else '#ff9999'  # Muted Blue for Paid Pending, Soft Coral Red for Unpaid Pending
+            # Muted Blue for Paid Pending, Soft Coral Red for Unpaid Pending
+            return '#6699cc' if holiday.type == 'Paid' else '#ff9999'
         else:
             return '#6699cc'  # Same color for all users for pending holidays
+
 
 @login_required
 def add_sickness_record(request):
     if not request.user.is_manager:
-        messages.error(request, "You do not have permission to add a sickness record.")
+        messages.error(
+            request, "You do not have permission to add a sickness record.")
         return redirect('profile_page')
-    
+
     if request.method == 'POST':
         start_date = request.POST.get('start_date')
         end_date = request.POST.get('end_date')
         employee_id = request.POST.get('employee')
         description = request.POST.get('description', '')
-        
+
         try:
             # Attempt to retrieve the employee by ID
             employee_user = CustomUser.objects.get(id=employee_id)
-            
+
             # Create the sickness record
             SicknessRecord.objects.create(
                 start_date=start_date,
@@ -377,13 +415,15 @@ def add_sickness_record(request):
                 created_by=request.user,
             )
             messages.success(request, "Sickness record added successfully.")
-        
+
         except ObjectDoesNotExist:
             messages.error(request, "The specified employee does not exist.")
         except Exception as e:
-            messages.error(request, f"An error occurred while adding the sickness record: {str(e)}")
+            messages.error(
+                request, f"An error occurred while adding the sickness record: {str(e)}")
 
     return redirect('profile_page')
+
 
 @login_required
 def add_holiday_request(request):
@@ -398,21 +438,22 @@ def add_holiday_request(request):
         end_date_dt = datetime.fromisoformat(end_date)
 
         # Calculate the number of business days requested
-        num_days_requested = calculate_business_days(start_date_dt, end_date_dt)
+        num_days_requested = calculate_business_days(
+            start_date_dt, end_date_dt)
 
         user = request.user
         max_holidays_in_year = user.max_holidays_in_year
 
         # Determine the year of the requested holiday
         request_year = start_date_dt.year
-        
+
         # Get all "Paid" holidays for the user within the requested year
         paid_holidays_in_request_year = HolidayRecord.objects.filter(
             employee=user,
             type='Paid',
             start_date__year=request_year
         )
-        
+
         # Calculate the total number of paid holidays taken in that year
         total_paid_holidays_taken = sum(
             calculate_business_days(holiday.start_date, holiday.end_date)
@@ -425,7 +466,8 @@ def add_holiday_request(request):
         # Check if the total number of paid holidays exceeds the user's maximum allowed holidays
         if total_holidays_after_request > max_holidays_in_year and holiday_type == 'Paid':
             exceeding_amount = total_holidays_after_request - max_holidays_in_year
-            messages.error(request, f'You have requested {num_days_requested} business days in {request_year}, but this exceeds your yearly limit of {max_holidays_in_year} paid holidays by {exceeding_amount} days.')
+            messages.error(
+                request, f'You have requested {num_days_requested} business days in {request_year}, but this exceeds your yearly limit of {max_holidays_in_year} paid holidays by {exceeding_amount} days.')
         else:
             try:
                 # Create the holiday request
@@ -438,13 +480,16 @@ def add_holiday_request(request):
                 )
                 holiday_request.save()
 
-                messages.success(request, 'Holiday request submitted successfully.')
+                messages.success(
+                    request, 'Holiday request submitted successfully.')
             except Exception as e:
-                messages.error(request, 'There was an error submitting your holiday request. Please try again.')
+                messages.error(
+                    request, 'There was an error submitting your holiday request. Please try again.')
 
         return redirect('profile_page')
 
     return redirect('profile_page')
+
 
 @login_required
 def add_office_closure(request):
@@ -453,7 +498,7 @@ def add_office_closure(request):
         if form.is_valid():
             start_date = form.cleaned_data['start_date']
             end_date = form.cleaned_data['end_date']
-            
+
             for employee in form.cleaned_data['employees']:
                 HolidayRecord.objects.create(
                     employee=employee,
@@ -461,17 +506,18 @@ def add_office_closure(request):
                     end_date=end_date,
                     reason='Office Closure',
                     type='Paid',
-                    approved=True, 
+                    approved=True,
                     approved_by=request.user,
                     approved_on=timezone.now(),
                     checked_by=request.user,
                     checked_on=timezone.now()
                 )
-            messages.success(request, "Office Closure succesfully added for selected employees.")
+            messages.success(
+                request, "Office Closure succesfully added for selected employees.")
             return redirect('profile_page')
 
-    
     return render(request, 'add_office_closure.html', {'form': form})
+
 
 @login_required
 def add_holiday_request(request):
@@ -486,7 +532,8 @@ def add_holiday_request(request):
         end_date_dt = datetime.fromisoformat(end_date)
 
         # Calculate the number of business days requested
-        num_days_requested = calculate_business_days(start_date_dt, end_date_dt)
+        num_days_requested = calculate_business_days(
+            start_date_dt, end_date_dt)
 
         user = request.user
         max_holidays_in_year = user.max_holidays_in_year
@@ -498,8 +545,8 @@ def add_holiday_request(request):
         paid_holidays_in_request_year = HolidayRecord.objects.filter(
             employee=user,
             type='Paid',
-            start_date__year=request_year, 
-            ).exclude(reason="Office Closure")
+            start_date__year=request_year,
+        ).exclude(reason="Office Closure")
 
         # Calculate the total number of paid holidays taken in that year
         total_paid_holidays_taken = sum(
@@ -516,22 +563,27 @@ def add_holiday_request(request):
         )
         total_office_closure_holidays = 0
         for holiday in office_closures:
-            total_days = calculate_business_days(holiday.start_date, holiday.end_date)
-            
+            total_days = calculate_business_days(
+                holiday.start_date, holiday.end_date)
+
             total_office_closure_holidays = total_office_closure_holidays + total_days
-        
-        holiday_list = holidays.country_holidays('GB', subdiv='ENG', years=current_year)
+
+        holiday_list = holidays.country_holidays(
+            'GB', subdiv='ENG', years=current_year)
         total_bank_holidays = sum(1 for name in holiday_list.values())
 
         non_working_days = total_office_closure_holidays + total_bank_holidays
-        max_holidays_adjusted = max_holidays_in_year - Decimal(non_working_days)
+        max_holidays_adjusted = max_holidays_in_year - \
+            Decimal(non_working_days)
 
         total_holidays_after_request = total_paid_holidays_taken + num_days_requested
 
         # Check if the total number of paid holidays exceeds the adjusted max holidays
         if total_holidays_after_request > max_holidays_adjusted and holiday_type == 'Paid':
-            exceeding_amount = Decimal(total_holidays_after_request) - max_holidays_adjusted
-            remaining_days = max_holidays_adjusted - Decimal(total_paid_holidays_taken)
+            exceeding_amount = Decimal(
+                total_holidays_after_request) - max_holidays_adjusted
+            remaining_days = max_holidays_adjusted - \
+                Decimal(total_paid_holidays_taken)
 
             messages.error(
                 request,
@@ -550,13 +602,17 @@ def add_holiday_request(request):
                 )
                 holiday_request.save()
 
-                messages.success(request, 'Holiday request submitted successfully.')
+                messages.success(
+                    request, 'Holiday request submitted successfully.')
             except Exception as e:
-                messages.error(request, 'There was an error submitting your holiday request. Please try again.')
+                messages.error(
+                    request, 'There was an error submitting your holiday request. Please try again.')
 
         return redirect('profile_page')
 
     return redirect('profile_page')
+
+
 @login_required
 def approve_holiday_request(request, id):
     if request.user.is_manager:
@@ -571,8 +627,9 @@ def approve_holiday_request(request, id):
         messages.error('You do not have right permissions.')
     return redirect('profile_page')
 
+
 @login_required
-def deny_holiday_request(request,id):
+def deny_holiday_request(request, id):
     if request.user.is_manager:
         holiday_request = get_object_or_404(HolidayRecord, id=id)
         holiday_request.approved = False
@@ -583,94 +640,107 @@ def deny_holiday_request(request,id):
         messages.error('You do not have right permissions.')
     return redirect('profile_page')
 
+
 @login_required
 def lunch_start(request):
     current_time = timezone.now()
     try:
-        attendance_record = AttendanceRecord.objects.get(employee=request.user, date=current_time.date())
-        
+        attendance_record = AttendanceRecord.objects.get(
+            employee=request.user, date=current_time.date())
+
         # Check if lunch has already started
         if attendance_record.lunch_in:
             messages.error(
-                request, 
+                request,
                 f'Your lunch break has already started at {attendance_record.lunch_in.astimezone(timezone.get_current_timezone()).strftime("%I:%M %p")}. '
                 'Please inform your manager if this is incorrect.'
             )
         else:
             attendance_record.lunch_in = current_time
             attendance_record.save()
-            messages.success(request, f'Your lunch break started at {current_time.astimezone(timezone.get_current_timezone()).strftime("%I:%M %p")}.')
-    
+            messages.success(
+                request, f'Your lunch break started at {current_time.astimezone(timezone.get_current_timezone()).strftime("%I:%M %p")}.')
+
     except AttendanceRecord.DoesNotExist:
         messages.error(request, 'Attendance record not found for today.')
     except Exception as e:
         messages.error(request, f'An error occurred: {e}')
-    
+
     return redirect('user_dashboard')
+
 
 @login_required
 def lunch_out(request):
     current_time = timezone.now()
     try:
-        attendance_record = AttendanceRecord.objects.get(employee=request.user, date=current_time.date())
-        
+        attendance_record = AttendanceRecord.objects.get(
+            employee=request.user, date=current_time.date())
+
         # Check if lunch has already ended
         if attendance_record.lunch_out:
             messages.error(
-                request, 
+                request,
                 f'Your lunch break has already ended at {attendance_record.lunch_out.astimezone(timezone.get_current_timezone()).strftime("%I:%M %p")}. '
                 'Please inform your manager if this is incorrect.'
             )
         elif not attendance_record.lunch_in:
-            messages.error(request, 'You need to start lunch before ending it.')
+            messages.error(
+                request, 'You need to start lunch before ending it.')
         else:
             attendance_record.lunch_out = current_time
             attendance_record.save()
-            messages.success(request, f'Your lunch break ended at {current_time.astimezone(timezone.get_current_timezone()).strftime("%I:%M %p")}.')
-    
+            messages.success(
+                request, f'Your lunch break ended at {current_time.astimezone(timezone.get_current_timezone()).strftime("%I:%M %p")}.')
+
     except AttendanceRecord.DoesNotExist:
         messages.error(request, 'Attendance record not found for today.')
     except Exception as e:
         messages.error(request, f'An error occurred: {e}')
-    
+
     return redirect('user_dashboard')
+
 
 @login_required
 def clock_out(request):
     current_time = timezone.now()
     try:
-        attendance_record = AttendanceRecord.objects.get(employee=request.user, date=current_time.date())
-        
+        attendance_record = AttendanceRecord.objects.get(
+            employee=request.user, date=current_time.date())
+
         if attendance_record.clock_out:
             messages.error(
-                request, 
+                request,
                 f'You have already clocked out at {attendance_record.clock_out.astimezone(timezone.get_current_timezone()).strftime("%I:%M %p")}. '
                 'Please inform your manager if this is incorrect.'
             )
         else:
             attendance_record.clock_out = current_time
             attendance_record.save()
-            messages.success(request, f'You have clocked out at {current_time.astimezone(timezone.get_current_timezone()).strftime("%I:%M %p")}.')
-            
+            messages.success(
+                request, f'You have clocked out at {current_time.astimezone(timezone.get_current_timezone()).strftime("%I:%M %p")}.')
+
     except AttendanceRecord.DoesNotExist:
         messages.error(request, 'Attendance record not found for today.')
     except Exception as e:
         messages.error(request, f'An error occurred: {e}')
-    
+
     return redirect('user_dashboard')
+
 
 @login_required
 def edit_holiday_record(request, holiday_id):
     """Edit an existing holiday record."""
     holiday = get_object_or_404(HolidayRecord, id=holiday_id)
-    
+
     # Check if user has access to edit the record
     if not request.user.is_manager:
         if holiday.employee != request.user:
-            messages.error(request, 'You do not have the right to access this page.')
+            messages.error(
+                request, 'You do not have the right to access this page.')
             return redirect('profile_page')
         if holiday.checked_by is not None:
-            messages.error(request, 'Please contact your manager to edit the record.')
+            messages.error(
+                request, 'Please contact your manager to edit the record.')
             return redirect('profile_page')
 
     # Handle POST request with form submission
@@ -678,41 +748,42 @@ def edit_holiday_record(request, holiday_id):
         form = HolidayRecordForm(request.POST, instance=holiday)
         if form.is_valid():
             updated_holiday = form.save(commit=False)
-            
+
             # If the user is a manager, update approval fields
             if request.user.is_manager:
                 updated_holiday.approved = request.POST.get('approved') == 'on'
                 updated_holiday.checked_by = request.user
                 updated_holiday.checked_on = timezone.now()
-                
+
                 if updated_holiday.approved:
                     updated_holiday.approved_by = request.user
                     updated_holiday.approved_on = timezone.now()
-                    
+
             updated_holiday.save()
             messages.success(request, 'Holiday record updated successfully.')
             return redirect('profile_page')
         else:
             messages.error(request, 'Please correct the errors below.')
-    
+
     # If GET request, pre-populate the form with the current holiday record
     else:
         form = HolidayRecordForm(instance=holiday)
-    
+
     # Prepare context for rendering the form
     context = {
         'holiday': holiday,
         'form': form,
     }
-    
+
     return render(request, 'edit_holiday.html', context)
+
 
 def export_to_csv(queryset, fieldnames, filename):
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     writer = csv.writer(response)
     writer.writerow(fieldnames)
-    
+
     for obj in queryset:
         row = []
         for field in fieldnames:
@@ -724,100 +795,131 @@ def export_to_csv(queryset, fieldnames, filename):
                 value = value.strftime('%d/%m/%Y')
             row.append(value)
         writer.writerow(row)
-    
+
     return response
+
 
 def parse_custom_date(date_str):
     return datetime.strptime(date_str, '%d/%m/%Y')
+
 
 def generate_csv_report(attendance, holidays, sickness, filename):
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     writer = csv.writer(response)
     writer.writerow(['Employee', 'Date', 'Type', 'Details'])
-    
+
     for record in attendance:
         writer.writerow([
-            record.employee, 
-            record.date.strftime('%d/%m/%Y'), 
-            'Attendance', 
+            record.employee,
+            record.date.strftime('%d/%m/%Y'),
+            'Attendance',
             f'Clock In: {record.clock_in}, Clock Out: {record.clock_out}, Lunch: {record.lunch_in} - {record.lunch_out}'
         ])
-        
+
     for record in holidays:
         writer.writerow([
-            record.employee, 
-            record.start_date.strftime('%d/%m/%Y'), 
-            'Holiday', 
+            record.employee,
+            record.start_date.strftime('%d/%m/%Y'),
+            'Holiday',
             f'Reason: {record.reason}, Approved: {"Yes" if record.approved else "No"}'
         ])
-        
+
     for record in sickness:
         writer.writerow([
-            record.employee, 
-            record.start_date.strftime('%d/%m/%Y'), 
-            'Sickness', 
+            record.employee,
+            record.start_date.strftime('%d/%m/%Y'),
+            'Sickness',
             record.description
         ])
-    
+
     return response
+
 
 @login_required
 @require_POST
 def attendance_record_csv(request):
     if not request.user.is_manager:
-        messages.error(request, "You do not have permission to download this data.")
-        return redirect('user_dashboard')  # Adjust 'dashboard' to your actual redirect path
-    
+        messages.error(
+            request, "You do not have permission to download this data.")
+        # Adjust 'dashboard' to your actual redirect path
+        return redirect('user_dashboard')
+
     start_date = parse_custom_date(request.POST.get('start_date'))
     end_date = parse_custom_date(request.POST.get('end_date'))
     queryset = AttendanceRecord.objects.filter(
         date__gte=start_date, date__lte=end_date
     )
-    fieldnames = ['employee', 'date', 'clock_in', 'clock_out', 'lunch_in', 'lunch_out']
+    fieldnames = ['employee', 'date', 'clock_in',
+                  'clock_out', 'lunch_in', 'lunch_out']
     return export_to_csv(queryset, fieldnames, f'attendance_records_{timezone.now()}.csv')
+
 
 @login_required
 @require_POST
 def holiday_record_csv(request):
     if not request.user.is_manager:
-        messages.error(request, "You do not have permission to download this data.")
-        return redirect('user_dashboard')  # Adjust 'dashboard' to your actual redirect path
-    
+        messages.error(
+            request, "You do not have permission to download this data.")
+        # Adjust 'dashboard' to your actual redirect path
+        return redirect('user_dashboard')
+
     start_date = parse_custom_date(request.POST.get('start_date'))
     end_date = parse_custom_date(request.POST.get('end_date'))
     queryset = HolidayRecord.objects.filter(
         start_date__gte=start_date, end_date__lte=end_date
     )
-    fieldnames = ['employee', 'start_date', 'end_date', 'reason', 'type', 'approved', 'checked_by', 'checked_on', 'approved_by', 'approved_on', 'timestamp']
-    return export_to_csv(queryset, fieldnames, f'holiday_records_{timezone.now()}.csv')
+
+    # Create a custom CSV export with total holiday days calculation
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="holiday_records_{timezone.now()}.csv"'
+    writer = csv.writer(response)
+
+    # Write header with the new total_holiday_days column
+    fieldnames = ['employee', 'start_date', 'end_date', 'total_holiday_days', 'reason', 'type',
+                  'approved', 'checked_by', 'checked_on', 'approved_by', 'approved_on', 'timestamp']
+    writer.writerow(fieldnames)
+
+    # Write data rows with calculated total holiday days
+    for obj in queryset:
+        # Calculate total working days using the existing function
+        total_days = calculate_business_days(obj.start_date, obj.end_date)
+
+        row = []
+        for field in fieldnames:
+            if field == 'total_holiday_days':
+                value = total_days
+            else:
+                value = getattr(obj, field)
+                # Check if the value is a date or datetime field, and format it
+                if isinstance(value, datetime):
+                    value = value.strftime('%d/%m/%Y %H:%M')
+                elif isinstance(value, date):
+                    value = value.strftime('%d/%m/%Y')
+            row.append(value)
+        writer.writerow(row)
+
+    return response
+
 
 @login_required
 @require_POST
 def sickness_record_csv(request):
     if not request.user.is_manager:
-        messages.error(request, "You do not have permission to download this data.")
-        return redirect('user_dashboard')  # Adjust 'dashboard' to your actual redirect path
-    
+        messages.error(
+            request, "You do not have permission to download this data.")
+        # Adjust 'dashboard' to your actual redirect path
+        return redirect('user_dashboard')
+
     start_date = parse_custom_date(request.POST.get('start_date'))
     end_date = parse_custom_date(request.POST.get('end_date'))
     queryset = SicknessRecord.objects.filter(
         start_date__gte=start_date, end_date__lte=end_date
     )
-    fieldnames = ['employee', 'start_date', 'end_date', 'description', 'created_by', 'timestamp']
+    fieldnames = ['employee', 'start_date', 'end_date',
+                  'description', 'created_by', 'timestamp']
     return export_to_csv(queryset, fieldnames, f'sickness_records_{timezone.now()}.csv')
 
-from django.http import HttpResponse
-from django.shortcuts import redirect
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.utils import timezone
-from datetime import datetime, timedelta, date
-from .models import CustomUser, AttendanceRecord, HolidayRecord, SicknessRecord
-from io import BytesIO
-from zipfile import ZipFile
-from django.template.loader import render_to_string
-from weasyprint import HTML
 
 @login_required
 def download_all_employee_reports(request):
@@ -833,11 +935,13 @@ def download_all_employee_reports(request):
 
         # Get employees with attendance records in the specified month
         employees_with_attendance = CustomUser.objects.filter(
-            attendancerecord__date__range=(first_day_of_month, last_day_of_month)
+            attendancerecord__date__range=(
+                first_day_of_month, last_day_of_month)
         ).distinct()
-        
+
         if not employees_with_attendance.exists():
-            messages.error(request, f'No employees have attendance records for {month_year_date.strftime("%B %Y")}.')
+            messages.error(
+                request, f'No employees have attendance records for {month_year_date.strftime("%B %Y")}.')
             return redirect('user_dashboard')
 
         mem_zip = BytesIO()
@@ -853,11 +957,13 @@ def download_all_employee_reports(request):
                     ).order_by('date')
                     holiday_records = HolidayRecord.objects.filter(
                         employee=employee,
-                        start_date__range=(first_day_of_month, last_day_of_month)
+                        start_date__range=(
+                            first_day_of_month, last_day_of_month)
                     )
                     sickness_records = SicknessRecord.objects.filter(
                         employee=employee,
-                        start_date__range=(first_day_of_month, last_day_of_month)
+                        start_date__range=(
+                            first_day_of_month, last_day_of_month)
                     )
 
                     # Render the HTML template for the employee
@@ -881,30 +987,32 @@ def download_all_employee_reports(request):
 
                 except Exception as e:
                     invoices_failed.append(employee.username)
-                    messages.error(request, f'Error generating report for {employee.username}: {str(e)}')
+                    messages.error(
+                        request, f'Error generating report for {employee.username}: {str(e)}')
 
             if invoices_failed:
-                messages.error(request, f'Errors encountered for employees: {invoices_failed}')
+                messages.error(
+                    request, f'Errors encountered for employees: {invoices_failed}')
 
         # Prepare the response
         mem_zip.seek(0)
         response = HttpResponse(mem_zip.read(), content_type='application/zip')
-        response['Content-Disposition'] = f'attachment; filename="employee_reports_{month_year_date.strftime("%Y-%m")}.zip"'
+        response[
+            'Content-Disposition'] = f'attachment; filename="employee_reports_{month_year_date.strftime("%Y-%m")}.zip"'
 
         return response
 
     except Exception as e:
-        messages.error(request, f'An error was encountered. Please contact your administrators. Error: {str(e)}')
+        messages.error(
+            request, f'An error was encountered. Please contact your administrators. Error: {str(e)}')
 
     return redirect('user_dashboard')
+
 # views.py
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required
-from django.urls import reverse
-from .models import UserDocument
-from .forms import UserDocumentForm
 
 # View to add a new document
+
+
 @login_required
 def add_document(request):
     if request.method == 'POST':
@@ -919,6 +1027,8 @@ def add_document(request):
     return render(request, 'add_document.html', {'form': form})
 
 # View to delete a document
+
+
 @login_required
 def delete_document(request, uuid):
     user_document = get_object_or_404(UserDocument, uuid=uuid)
@@ -928,10 +1038,13 @@ def delete_document(request, uuid):
     return render(request, 'delete_document.html', {'document': user_document})
 
 # View to access a document
+
+
 @login_required
 def access_document(request, uuid):
     user_document = get_object_or_404(UserDocument, uuid=uuid)
     return render(request, 'access_document.html', {'document': user_document})
+
 
 def add_cpd_training_log(request):
     if request.method == 'POST':
@@ -939,7 +1052,7 @@ def add_cpd_training_log(request):
         if form.is_valid():
             form.save()
             messages.success(request, 'CPD Log successfully created.')
-            return redirect('profile_page')  
+            return redirect('profile_page')
 
     return render(request, 'add_cpd_training_log.html', {'form': form})
 
@@ -950,7 +1063,7 @@ def edit_cpd_training_log(request, pk):
         form = CPDTrainingLogForm(request.POST, instance=cpd_training_log)
         if form.is_valid():
             form.save()
-            return redirect('profile_page')  
+            return redirect('profile_page')
     else:
         form = CPDTrainingLogForm(instance=cpd_training_log)
 
