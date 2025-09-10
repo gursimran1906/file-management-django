@@ -354,8 +354,11 @@ def load_initial_tasks(request):
     """Load initial tasks for all statuses via AJAX"""
     try:
         data = json.loads(request.body)
-        count = data.get('count', 3)  # Default to 3 tasks per status
+        count = data.get('count', 5)  # Default to 5 tasks per status
         filter_created_by_me = data.get('filter_created_by_me', False)
+
+        # Handle "all" case - when count is "all", we don't limit the queryset
+        show_all = count == 'all'
 
         task_data = {}
         total_counts = {}
@@ -377,7 +380,7 @@ def load_initial_tasks(request):
         ).order_by('urgency_order', 'date')
 
         total_counts['to_do'] = to_do_tasks.count()
-        to_do_limited = to_do_tasks[:count]
+        to_do_limited = to_do_tasks if show_all else to_do_tasks[:count]
 
         task_data['to_do'] = []
         for task in to_do_limited:
@@ -386,6 +389,7 @@ def load_initial_tasks(request):
                 'file_number': task.file_number.file_number if task.file_number else '',
                 'task': task.task[:80] + '...' if task.task and len(task.task) > 80 else task.task,
                 'date': task.date.isoformat() if task.date else None,
+                'timestamp': task.timestamp.isoformat(),
                 'urgency': task.urgency,
                 'assigned_to': task.person.get_full_name() if task.person else 'Unassigned',
                 'created_by': task.created_by.get_full_name() if task.created_by else 'Unknown',
@@ -403,7 +407,7 @@ def load_initial_tasks(request):
         ).order_by('urgency_order', 'date')
 
         total_counts['in_progress'] = in_progress_tasks.count()
-        in_progress_limited = in_progress_tasks[:count]
+        in_progress_limited = in_progress_tasks if show_all else in_progress_tasks[:count]
 
         task_data['in_progress'] = []
         for task in in_progress_limited:
@@ -412,6 +416,7 @@ def load_initial_tasks(request):
                 'file_number': task.file_number.file_number if task.file_number else '',
                 'task': task.task[:80] + '...' if task.task and len(task.task) > 80 else task.task,
                 'date': task.date.isoformat() if task.date else None,
+                'timestamp': task.timestamp.isoformat(),
                 'urgency': task.urgency,
                 'assigned_to': task.person.get_full_name() if task.person else 'Unassigned',
                 'created_by': task.created_by.get_full_name() if task.created_by else 'Unknown',
@@ -425,7 +430,7 @@ def load_initial_tasks(request):
         ).select_related('person', 'created_by', 'file_number').order_by('-timestamp')
 
         total_counts['completed'] = completed_tasks.count()
-        completed_limited = completed_tasks[:count]
+        completed_limited = completed_tasks if show_all else completed_tasks[:count]
 
         task_data['completed'] = []
         for task in completed_limited:
@@ -505,6 +510,7 @@ def load_more_tasks(request):
                     'file_number': task.file_number.file_number if task.file_number else '',
                     'task': task.task[:80] + '...' if task.task and len(task.task) > 80 else task.task,
                     'date': task.date.isoformat() if task.date else None,
+                    'timestamp': task.timestamp.isoformat(),
                     'urgency': task.urgency,
                     'assigned_to': task.person.get_full_name() if task.person else 'Unassigned',
                     'created_by': task.created_by.get_full_name() if task.created_by else 'Unknown',

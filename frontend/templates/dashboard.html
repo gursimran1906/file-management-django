@@ -6,18 +6,31 @@
      <div class="flex items-center gap-4">
        <h2 class="text-2xl font-semibold text-gray-800">Task Board</h2>
        
-       <!-- Filter Toggle -->
-       <div class="flex items-center gap-2">
-         <label class="relative inline-flex items-center cursor-pointer">
-           <input 
-             type="checkbox" 
-             class="sr-only peer" 
-             id="filter-created-by-me"
-           >
-           <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-         </label>
-         <span class="text-sm text-gray-600">Show only tasks I created</span>
-       </div>
+      <!-- Filter Toggle -->
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input 
+              type="checkbox" 
+              class="sr-only peer" 
+              id="filter-created-by-me"
+            >
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+          </label>
+          <span class="text-sm text-gray-600">Show only tasks I created</span>
+        </div>
+        
+        <!-- Task Limit Filter -->
+        <div class="flex items-center gap-2">
+          <label for="task-limit" class="text-sm text-gray-600">Show:</label>
+          <select id="task-limit" class="text-sm border border-gray-300 rounded-md px-3 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="5" selected>5 tasks</option>
+            <option value="10">10 tasks</option>
+            <option value="20">20 tasks</option>
+            <option value="all">All tasks</option>
+          </select>
+        </div>
+      </div>
      </div>
 
      <div class="flex items-center gap-2">
@@ -520,6 +533,7 @@
         const toggleText = document.getElementById('toggle-text');
         const toggleIcon = document.getElementById('toggle-icon');
         const filterToggle = document.getElementById('filter-created-by-me');
+        const taskLimitSelect = document.getElementById('task-limit');
 
         // Modal elements
         const addTaskBtn = document.getElementById('add-task-btn');
@@ -572,6 +586,7 @@
 
         // Filter state
         let currentFilterState = false;
+        let currentTaskLimit = 5;
 
         // Cookie functions
         function setCookie(name, value, days) {
@@ -696,6 +711,17 @@
             loadInitialTasks();
         });
 
+        // Task limit dropdown event listener
+        taskLimitSelect.addEventListener('change', function() {
+            currentTaskLimit = this.value === 'all' ? 'all' : parseInt(this.value);
+            // Clear all containers and reload tasks
+            Object.keys(containers).forEach(status => {
+                containers[status].innerHTML = '';
+                loadedTasks[status] = 0;
+            });
+            loadInitialTasks();
+        });
+
         // Task status update functionality
         document.addEventListener('click', function(e) {
             if (e.target.classList.contains('task-status-btn')) {
@@ -720,7 +746,7 @@
                     'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
                 },
                 body: JSON.stringify({
-                    count: 5,
+                    count: currentTaskLimit,
                     filter_created_by_me: currentFilterState
                 })
             })
@@ -742,8 +768,8 @@
                         // Render tasks
                         renderTasks(status, tasks);
 
-                        // Add load more button if needed
-                        if (total > tasks.length) {
+                        // Add load more button if needed (but not when showing all tasks)
+                        if (currentTaskLimit !== 'all' && total > tasks.length) {
                             addLoadMoreButton(status);
                         }
                     });
@@ -890,8 +916,8 @@
                     // Update loaded count
                     loadedTasks[status] += data.tasks.length;
 
-                    // Add load more button if there are more tasks
-                    if (data.has_more) {
+                    // Add load more button if there are more tasks (but not when showing all tasks)
+                    if (currentTaskLimit !== 'all' && data.has_more) {
                         addLoadMoreButton(status);
                     }
                 }
@@ -939,7 +965,7 @@
                             ${getUrgencyBadge(task.urgency)}
                         </div>
                         <span class="text-sm text-gray-500 whitespace-nowrap ml-2">
-                            ${task.date ? formatDate(task.date) : ''}
+                            ${task.timestamp ? formatDate(task.timestamp) : ''}
                         </span>
                     </div>
                     <p class="text-sm text-gray-600 mb-3">${task.task}</p>
