@@ -1,0 +1,808 @@
+{% extends 'base.html' %}
+{% load humanize %}
+{% load utils %}
+{% block title %}Management Task Review{% endblock %}
+{% block container_class %}container {% endblock %}
+{% block container %}
+<div class="space-y-6">
+    <!-- Page Title -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">Management Task Review</h1>
+                <p class="text-sm text-gray-500 mt-2">Comprehensive task management and analytics dashboard</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <button id="export-btn" class="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors duration-200">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Export Data
+                </button>
+                <button id="refresh-btn" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors duration-200">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="w-1 h-8 bg-blue-500 rounded-full"></div>
+            <h2 class="text-xl font-semibold text-gray-800">Filters & Search</h2>
+        </div>
+        <form method="GET" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- User Selection -->
+                <div class="space-y-3">
+                    <label for="users" class="block text-sm font-semibold text-gray-700">Select Users</label>
+                    <div class="relative">
+                        <select name="users" id="users" multiple 
+                                class="w-full h-auto px-4 py-3 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none cursor-pointer">
+                            {% for user in users %}
+                            <option value="{{ user.id }}" {% if user.id|stringformat:"s" in selected_user_ids %}selected{% endif %}
+                                    class="py-2 px-3 hover:bg-blue-50">
+                                {{ user.first_name }} {{ user.last_name }} ({{ user.username }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 flex items-center gap-1">
+                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                        </svg>
+                        Hold Ctrl/Cmd to select multiple users
+                    </p>
+                </div>
+
+                <!-- Date Range -->
+                <div class="space-y-3">
+                    <label for="start_date" class="block text-sm font-semibold text-gray-700">Start Date</label>
+                    <div class="relative">
+                        <input type="date" name="start_date" id="start_date" value="{{ start_date }}" 
+                               class="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200">
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-3">
+                    <label for="end_date" class="block text-sm font-semibold text-gray-700">End Date</label>
+                    <div class="relative">
+                        <input type="date" name="end_date" id="end_date" value="{{ end_date }}" 
+                               class="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200">
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex gap-3 pt-4 border-t border-gray-100">
+                <button type="submit" 
+                        class="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                    Apply Filters
+                </button>
+                <a href="{% url 'management_task_review' %}" 
+                   class="inline-flex items-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-200 focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors duration-200">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Clear Filters
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Summary Statistics -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center hover:shadow-md transition-shadow duration-200">
+            <div class="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-lg mx-auto mb-3">
+                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2"></path>
+                </svg>
+            </div>
+            <div class="text-3xl font-bold text-gray-900 mb-1">{{ task_stats.total_tasks }}</div>
+            <div class="text-sm font-medium text-gray-600">Total Tasks</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center hover:shadow-md transition-shadow duration-200">
+            <div class="flex items-center justify-center w-12 h-12 bg-green-100 rounded-lg mx-auto mb-3">
+                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+            </div>
+            <div class="text-3xl font-bold text-gray-900 mb-1">{{ task_stats.completed_tasks }}</div>
+            <div class="text-sm font-medium text-gray-600">Completed</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center hover:shadow-md transition-shadow duration-200">
+            <div class="flex items-center justify-center w-12 h-12 bg-yellow-100 rounded-lg mx-auto mb-3">
+                <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+            </div>
+            <div class="text-3xl font-bold text-gray-900 mb-1">{{ task_stats.in_progress_tasks }}</div>
+            <div class="text-sm font-medium text-gray-600">In Progress</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center hover:shadow-md transition-shadow duration-200">
+            <div class="flex items-center justify-center w-12 h-12 bg-red-100 rounded-lg mx-auto mb-3">
+                <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                </svg>
+            </div>
+            <div class="text-3xl font-bold text-gray-900 mb-1">{{ task_stats.to_do_tasks }}</div>
+            <div class="text-sm font-medium text-gray-600">To Do</div>
+        </div>
+    </div>
+
+    <!-- Completion Rate -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="w-1 h-8 bg-green-500 rounded-full"></div>
+            <h3 class="text-xl font-semibold text-gray-800">Overall Completion Rate</h3>
+        </div>
+        <div class="flex items-center gap-6">
+            <div class="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
+                <div class="bg-gradient-to-r from-green-500 to-green-600 h-6 rounded-full transition-all duration-500 ease-out flex items-center justify-end pr-3" 
+                     style="width: {{ task_stats.completion_rate }}%">
+                    <span class="text-xs font-semibold text-white">{{ task_stats.completion_rate }}%</span>
+                </div>
+            </div>
+            <div class="text-right">
+                <div class="text-3xl font-bold text-gray-900">{{ task_stats.completion_rate }}%</div>
+                <div class="text-sm text-gray-600">Completion Rate</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Toggle -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
+            <div class="flex items-center gap-3">
+                <div class="w-1 h-8 bg-purple-500 rounded-full"></div>
+                <h2 class="text-xl font-semibold text-gray-800">Task Analysis</h2>
+            </div>
+            <div class="flex gap-2 bg-gray-100 p-1 rounded-lg">
+                <button id="table-view-btn" 
+                        class="px-4 py-2 text-sm font-semibold rounded-md transition-colors duration-200 bg-white text-gray-900 shadow-sm">
+                    <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0V4a1 1 0 011-1h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1z"></path>
+                    </svg>
+                    Table View
+                </button>
+                <button id="chart-view-btn" 
+                        class="px-4 py-2 text-sm font-semibold rounded-md transition-colors duration-200 text-gray-600 hover:text-gray-900">
+                    <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    Line Graph
+                </button>
+            </div>
+        </div>
+
+        <!-- Enhanced DataTables View -->
+        <div id="table-view" class="space-y-6">
+            <!-- Quick Stats Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-4 text-white">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-blue-100 text-sm">Total Tasks</p>
+                            <p class="text-2xl font-bold">{{ task_stats.total_tasks }}</p>
+                        </div>
+                        <svg class="w-8 h-8 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2"></path>
+                        </svg>
+                    </div>
+                </div>
+                <div class="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-4 text-white">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-green-100 text-sm">Completed</p>
+                            <p class="text-2xl font-bold">{{ task_stats.completed_tasks }}</p>
+                        </div>
+                        <svg class="w-8 h-8 text-green-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    </div>
+                </div>
+                <div class="bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-lg p-4 text-white">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-yellow-100 text-sm">In Progress</p>
+                            <p class="text-2xl font-bold">{{ task_stats.in_progress_tasks }}</p>
+                        </div>
+                        <svg class="w-8 h-8 text-yellow-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                </div>
+                <div class="bg-gradient-to-r from-red-500 to-red-600 rounded-lg p-4 text-white">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-red-100 text-sm">To Do</p>
+                            <p class="text-2xl font-bold">{{ task_stats.to_do_tasks }}</p>
+                        </div>
+                        <svg class="w-8 h-8 text-red-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Enhanced Tasks DataTable -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center gap-3">
+                        <div class="w-1 h-8 bg-indigo-500 rounded-full"></div>
+                        <h3 class="text-xl font-semibold text-gray-800">Task Management Dashboard</h3>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="bulk-actions-btn" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200">
+                            <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"></path>
+                            </svg>
+                            Bulk Actions
+                        </button>
+                        <button id="add-task-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">
+                            <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            Add Task
+                        </button>
+                    </div>
+                </div>
+
+                <!-- DataTable -->
+                <div class="overflow-x-auto">
+                    <table id="tasksTable" class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <input type="checkbox" id="selectAll" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File Number</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task Description</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Urgency</th>
+                                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+                                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for task in all_tasks %}
+                            <tr class="hover:bg-gray-50 transition-colors duration-150">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <input type="checkbox" class="task-checkbox rounded border-gray-300 text-blue-600 focus:ring-blue-500" value="{{ task.id }}">
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <a href="{% url 'home' task.file_number.file_number %}" 
+                                       class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors duration-200">
+                                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                        </svg>
+                                        {{ task.file_number.file_number }}
+                                    </a>
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-900 max-w-xs">
+                                    <div class="truncate" title="{{ task.task }}">{{ task.task }}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0 h-8 w-8">
+                                            <div class="h-8 w-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center">
+                                                <span class="text-xs font-semibold text-white">
+                                                    {{ task.person.first_name|first }}{{ task.person.last_name|first }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="ml-3">
+                                            <div class="text-sm font-medium text-gray-900">
+                                                {{ task.person.first_name }} {{ task.person.last_name }}
+                                            </div>
+                                            <div class="text-sm text-gray-500">{{ task.person.username }}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-center">
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
+                                        {% if task.status == 'completed' %}bg-green-100 text-green-800
+                                        {% elif task.status == 'in_progress' %}bg-yellow-100 text-yellow-800
+                                        {% else %}bg-red-100 text-red-800{% endif %}">
+                                        {% if task.status == 'completed' %}
+                                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                            </svg>
+                                        {% elif task.status == 'in_progress' %}
+                                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                            </svg>
+                                        {% else %}
+                                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                                            </svg>
+                                        {% endif %}
+                                        {{ task.get_status_display }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-center">
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
+                                        {% if task.urgency == 'urgent' %}bg-red-100 text-red-800
+                                        {% elif task.urgency == 'high' %}bg-orange-100 text-orange-800
+                                        {% elif task.urgency == 'medium' %}bg-yellow-100 text-yellow-800
+                                        {% else %}bg-blue-100 text-blue-800{% endif %}">
+                                        {% if task.urgency == 'urgent' %}
+                                            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                            </svg>
+                                        {% elif task.urgency == 'high' %}
+                                            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                            </svg>
+                                        {% endif %}
+                                        {{ task.get_urgency_display }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
+                                    {% if task.date %}
+                                        <span class="font-medium">{{ task.date|date:"M d, Y" }}</span>
+                                    {% else %}
+                                        <span class="text-gray-400 italic">No due date</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
+                                    {{ task.timestamp|date:"M d, Y H:i" }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-center">
+                                    <div class="flex items-center justify-center gap-2">
+                                        <button class="text-blue-600 hover:text-blue-800" title="Edit Task">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                            </svg>
+                                        </button>
+                                        <button class="text-red-600 hover:text-red-800" title="Delete Task">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="9" class="px-6 py-12 text-center">
+                                    <div class="flex flex-col items-center">
+                                        <svg class="w-12 h-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2"></path>
+                                        </svg>
+                                        <p class="text-sm text-gray-500">No tasks found for the selected criteria</p>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart View -->
+        <div id="chart-view" class="hidden">
+            <div class="bg-gradient-to-br from-gray-50 to-white p-8 rounded-xl border border-gray-200">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-1 h-8 bg-gradient-to-b from-blue-500 to-purple-600 rounded-full"></div>
+                    <h3 class="text-lg font-semibold text-gray-800">Task Trends Over Time</h3>
+                </div>
+                <div class="relative h-96">
+                    <canvas id="taskChart" class="w-full h-full"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Urgency Breakdown -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="w-1 h-8 bg-gradient-to-b from-red-500 to-orange-500 rounded-full"></div>
+            <h3 class="text-xl font-semibold text-gray-800">Tasks by Urgency</h3>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 text-center hover:shadow-md transition-shadow duration-200">
+                <div class="flex items-center justify-center w-12 h-12 bg-red-200 rounded-lg mx-auto mb-3">
+                    <svg class="w-6 h-6 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                    </svg>
+                </div>
+                <div class="text-3xl font-bold text-red-700 mb-1">{{ urgency_stats.urgent }}</div>
+                <div class="text-sm font-semibold text-red-600">Urgent</div>
+            </div>
+            <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6 text-center hover:shadow-md transition-shadow duration-200">
+                <div class="flex items-center justify-center w-12 h-12 bg-orange-200 rounded-lg mx-auto mb-3">
+                    <svg class="w-6 h-6 text-orange-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                    </svg>
+                </div>
+                <div class="text-3xl font-bold text-orange-700 mb-1">{{ urgency_stats.high }}</div>
+                <div class="text-sm font-semibold text-orange-600">High</div>
+            </div>
+            <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl p-6 text-center hover:shadow-md transition-shadow duration-200">
+                <div class="flex items-center justify-center w-12 h-12 bg-yellow-200 rounded-lg mx-auto mb-3">
+                    <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                    </svg>
+                </div>
+                <div class="text-3xl font-bold text-yellow-700 mb-1">{{ urgency_stats.medium }}</div>
+                <div class="text-sm font-semibold text-yellow-600">Medium</div>
+            </div>
+            <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 text-center hover:shadow-md transition-shadow duration-200">
+                <div class="flex items-center justify-center w-12 h-12 bg-blue-200 rounded-lg mx-auto mb-3">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </div>
+                <div class="text-3xl font-bold text-blue-700 mb-1">{{ urgency_stats.low }}</div>
+                <div class="text-sm font-semibold text-blue-600">Low</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize DataTable
+    const tasksTable = $('#tasksTable').DataTable({
+        "pageLength": 25,
+        "lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+        "order": [[7, "desc"]], // Sort by created date descending
+        "columnDefs": [
+            { "orderable": false, "targets": [0, 8] }, // Disable sorting on checkbox and actions columns
+            { "type": "date", "targets": [6, 7] }, // Set date type for date columns
+            { "className": "text-center", "targets": [4, 5, 6, 7, 8] } // Center align specific columns
+        ],
+        "dom": '<"flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4"<"flex items-center gap-2"l><"flex items-center gap-2"f>>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-4"<"text-sm text-gray-700"i><"flex gap-2"p>>',
+        "language": {
+            "search": "Search tasks:",
+            "lengthMenu": "Show _MENU_ tasks per page",
+            "info": "Showing _START_ to _END_ of _TOTAL_ tasks",
+            "infoEmpty": "No tasks available",
+            "infoFiltered": "(filtered from _MAX_ total tasks)",
+            "paginate": {
+                "first": "First",
+                "last": "Last",
+                "next": "Next",
+                "previous": "Previous"
+            }
+        },
+        "initComplete": function() {
+            // Add custom filter controls
+            addCustomFilters();
+        }
+    });
+
+    // Add custom filter controls
+    function addCustomFilters() {
+        const table = $('#tasksTable').DataTable();
+        
+        // Add status filter
+        const statusFilter = `
+            <select id="statusFilter" class="ml-2 px-3 py-1 border border-gray-300 rounded-md text-sm">
+                <option value="">All Statuses</option>
+                <option value="To Do">To Do</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+            </select>
+        `;
+        
+        // Add urgency filter
+        const urgencyFilter = `
+            <select id="urgencyFilter" class="ml-2 px-3 py-1 border border-gray-300 rounded-md text-sm">
+                <option value="">All Urgency Levels</option>
+                <option value="Urgent">Urgent</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+            </select>
+        `;
+        
+        // Add user filter
+        const userFilter = `
+            <select id="userFilter" class="ml-2 px-3 py-1 border border-gray-300 rounded-md text-sm">
+                <option value="">All Users</option>
+                {% for user in users %}
+                <option value="{{ user.first_name }} {{ user.last_name }}">{{ user.first_name }} {{ user.last_name }}</option>
+                {% endfor %}
+            </select>
+        `;
+        
+        // Insert filters into the DataTable
+        $('.dataTables_filter').after(`
+            <div class="flex items-center gap-2 mt-2">
+                <span class="text-sm text-gray-600">Filters:</span>
+                ${statusFilter}
+                ${urgencyFilter}
+                ${userFilter}
+                <button id="clearFilters" class="ml-2 px-3 py-1 bg-gray-100 text-gray-700 rounded-md text-sm hover:bg-gray-200">Clear</button>
+            </div>
+        `);
+        
+        // Apply filters
+        $('#statusFilter, #urgencyFilter, #userFilter').on('change', function() {
+            table.draw();
+        });
+        
+        // Clear filters
+        $('#clearFilters').on('click', function() {
+            $('#statusFilter, #urgencyFilter, #userFilter').val('');
+            table.draw();
+        });
+    }
+
+    // Custom filtering function
+    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+        const statusFilter = $('#statusFilter').val();
+        const urgencyFilter = $('#urgencyFilter').val();
+        const userFilter = $('#userFilter').val();
+        
+        const status = data[4]; // Status column
+        const urgency = data[5]; // Urgency column
+        const user = data[3]; // User column
+        
+        if (statusFilter && !status.includes(statusFilter)) return false;
+        if (urgencyFilter && !urgency.includes(urgencyFilter)) return false;
+        if (userFilter && !user.includes(userFilter)) return false;
+        
+        return true;
+    });
+
+    // View toggle functionality
+    const tableView = document.getElementById('table-view');
+    const chartView = document.getElementById('chart-view');
+    const tableViewBtn = document.getElementById('table-view-btn');
+    const chartViewBtn = document.getElementById('chart-view-btn');
+
+    tableViewBtn.addEventListener('click', function() {
+        tableView.classList.remove('hidden');
+        chartView.classList.add('hidden');
+        tableViewBtn.classList.remove('text-gray-600', 'hover:text-gray-900');
+        tableViewBtn.classList.add('bg-white', 'text-gray-900', 'shadow-sm');
+        chartViewBtn.classList.remove('bg-white', 'text-gray-900', 'shadow-sm');
+        chartViewBtn.classList.add('text-gray-600', 'hover:text-gray-900');
+    });
+
+    chartViewBtn.addEventListener('click', function() {
+        tableView.classList.add('hidden');
+        chartView.classList.remove('hidden');
+        chartViewBtn.classList.remove('text-gray-600', 'hover:text-gray-900');
+        chartViewBtn.classList.add('bg-white', 'text-gray-900', 'shadow-sm');
+        tableViewBtn.classList.remove('bg-white', 'text-gray-900', 'shadow-sm');
+        tableViewBtn.classList.add('text-gray-600', 'hover:text-gray-900');
+        createChart();
+    });
+
+    // Chart creation function
+    function createChart() {
+        const ctx = document.getElementById('taskChart').getContext('2d');
+        
+        if (window.taskChartInstance) {
+            window.taskChartInstance.destroy();
+        }
+
+        const dailyStats = {{ daily_stats|safe }};
+        
+        window.taskChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dailyStats.map(stat => {
+                    const date = new Date(stat.date);
+                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                }),
+                datasets: [
+                    {
+                        label: 'Total Tasks',
+                        data: dailyStats.map(stat => stat.total_tasks),
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Completed Tasks',
+                        data: dailyStats.map(stat => stat.completed_tasks),
+                        borderColor: 'rgb(34, 197, 94)',
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'In Progress Tasks',
+                        data: dailyStats.map(stat => stat.in_progress_tasks),
+                        borderColor: 'rgb(234, 179, 8)',
+                        backgroundColor: 'rgba(234, 179, 8, 0.1)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'To Do Tasks',
+                        data: dailyStats.map(stat => stat.to_do_tasks),
+                        borderColor: 'rgb(239, 68, 68)',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Task Status Over Time'
+                    },
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                }
+            }
+        });
+    }
+
+    // Bulk actions functionality
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const taskCheckboxes = document.querySelectorAll('.task-checkbox');
+    const bulkActionsBtn = document.getElementById('bulk-actions-btn');
+
+    selectAllCheckbox.addEventListener('change', function() {
+        taskCheckboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+        updateBulkActionsButton();
+    });
+
+    taskCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateBulkActionsButton);
+    });
+
+    function updateBulkActionsButton() {
+        const checkedBoxes = document.querySelectorAll('.task-checkbox:checked');
+        if (checkedBoxes.length > 0) {
+            bulkActionsBtn.classList.remove('bg-gray-100', 'text-gray-700');
+            bulkActionsBtn.classList.add('bg-blue-600', 'text-white');
+            bulkActionsBtn.textContent = `${checkedBoxes.length} Selected`;
+        } else {
+            bulkActionsBtn.classList.remove('bg-blue-600', 'text-white');
+            bulkActionsBtn.classList.add('bg-gray-100', 'text-gray-700');
+            bulkActionsBtn.innerHTML = `
+                <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"></path>
+                </svg>
+                Bulk Actions
+            `;
+        }
+    }
+
+    // Export functionality
+    document.getElementById('export-btn').addEventListener('click', function() {
+        const table = $('#tasksTable').DataTable();
+        const data = table.buttons.exportData();
+        
+        // Create CSV content
+        let csvContent = "File Number,Task Description,Assigned To,Status,Urgency,Due Date,Created\n";
+        table.rows({search: 'applied'}).every(function() {
+            const row = this.node();
+            const cells = row.querySelectorAll('td');
+            if (cells.length > 1) {
+                const rowData = [
+                    cells[1].textContent.trim(),
+                    cells[2].textContent.trim(),
+                    cells[3].textContent.trim(),
+                    cells[4].textContent.trim(),
+                    cells[5].textContent.trim(),
+                    cells[6].textContent.trim(),
+                    cells[7].textContent.trim()
+                ];
+                csvContent += rowData.join(',') + '\n';
+            }
+        });
+        
+        // Download CSV
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'tasks_export.csv';
+        a.click();
+        window.URL.revokeObjectURL(url);
+    });
+
+    // Refresh functionality
+    document.getElementById('refresh-btn').addEventListener('click', function() {
+        location.reload();
+    });
+
+    // Add task functionality
+    document.getElementById('add-task-btn').addEventListener('click', function() {
+        // Redirect to add task page or open modal
+        window.location.href = '{% url "user_dashboard" %}';
+    });
+
+    // Filter toggle functionality
+    const toggleFilters = document.getElementById('toggle-filters');
+    const filtersContent = document.getElementById('filters-content');
+    const filterToggleText = document.getElementById('filter-toggle-text');
+    const filterToggleIcon = document.getElementById('filter-toggle-icon');
+
+    if (toggleFilters) {
+        toggleFilters.addEventListener('click', function() {
+            if (filtersContent.classList.contains('hidden')) {
+                filtersContent.classList.remove('hidden');
+                filterToggleText.textContent = 'Hide Filters';
+                filterToggleIcon.style.transform = 'rotate(0deg)';
+            } else {
+                filtersContent.classList.add('hidden');
+                filterToggleText.textContent = 'Show Filters';
+                filterToggleIcon.style.transform = 'rotate(180deg)';
+            }
+        });
+    }
+
+    // Date range functionality
+    const dateRangeSelect = document.getElementById('date_range');
+    const customDateRange = document.getElementById('custom-date-range');
+
+    if (dateRangeSelect) {
+        dateRangeSelect.addEventListener('change', function() {
+            if (this.value === 'custom') {
+                customDateRange.classList.remove('hidden');
+            } else {
+                customDateRange.classList.add('hidden');
+                // Set predefined date ranges
+                const today = new Date();
+                let startDate, endDate = today;
+                
+                switch(this.value) {
+                    case 'last_7_days':
+                        startDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+                        break;
+                    case 'last_30_days':
+                        startDate = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+                        break;
+                    case 'last_90_days':
+                        startDate = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000);
+                        break;
+                }
+                
+                if (startDate) {
+                    document.getElementById('start_date').value = startDate.toISOString().split('T')[0];
+                    document.getElementById('end_date').value = endDate.toISOString().split('T')[0];
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

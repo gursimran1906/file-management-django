@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import add_memo, delete_memo, display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, edit_memo, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work, read_memo, update_task_status, load_initial_tasks, load_more_tasks, get_files, get_users, create_task
+from .views import add_memo, delete_memo, display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, edit_memo, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work, read_memo, update_task_status, load_initial_tasks, load_more_tasks, get_files, get_users, create_task, management_task_review
 from .views import attendance_note_view, add_attendance_note, download_attendance_note, edit_attendance_note, correspondence_view, add_letter, edit_letter, download_sowc
 from .views import finance_view, add_blue_slip, add_pink_slip, add_green_slip, edit_pmts_slip, download_pmts_slip, edit_green_slip, download_green_slip, add_invoice
 from .views import allocate_monies, download_statement_account, download_invoice, edit_invoice, download_estate_accounts, unallocated_emails, allocate_emails
@@ -133,6 +133,8 @@ urlpatterns = [
          edit_undertaking, name='edit_undertaking'),
 
     path('management_reports/', management_reports, name='management_reports'),
+    path('management_task_review/', management_task_review,
+         name='management_task_review'),
     path('user_weekly_report/', weekly_report_view, name='user_weekly_report'),
     path('policies_read_per_user/', policies_read_per_user,
          name='policies_read_per_user'),

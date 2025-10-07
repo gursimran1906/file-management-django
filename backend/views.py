@@ -5778,3 +5778,120 @@ def bundle_delete(request, bundle_id):
         return redirect('bundle_create')
 
     return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+@login_required
+def management_task_review(request):
+    """Management view to review tasks completed or pending for one or multiple persons"""
+
+    # Get all active users for the filter dropdown
+    users = CustomUser.objects.filter(
+        is_active=True).order_by('first_name', 'last_name')
+
+    # Get selected users from request (can be multiple)
+    selected_user_ids = request.GET.getlist('users')
+    selected_users = []
+    if selected_user_ids:
+        selected_users = CustomUser.objects.filter(
+            id__in=selected_user_ids, is_active=True)
+
+    # Get date range filters
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+
+    # Default to last 30 days if no dates provided
+    if not start_date:
+        start_date = (timezone.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    if not end_date:
+        end_date = timezone.now().strftime('%Y-%m-%d')
+
+    # Convert to datetime objects for filtering
+    start_datetime = datetime.strptime(start_date, '%Y-%m-%d').date()
+    end_datetime = datetime.strptime(end_date, '%Y-%m-%d').date()
+
+    # Base queryset for tasks
+    tasks_queryset = NextWork.objects.select_related('person', 'file_number', 'created_by').filter(
+        timestamp__date__range=[start_datetime, end_datetime]
+    )
+
+    # Filter by selected users if any
+    if selected_users:
+        tasks_queryset = tasks_queryset.filter(person__in=selected_users)
+
+    # Get all tasks for the selected period and users
+    all_tasks = tasks_queryset.order_by('-timestamp')
+
+    # Get task statistics
+    task_stats = {
+        'total_tasks': all_tasks.count(),
+        'completed_tasks': all_tasks.filter(status='completed').count(),
+        'in_progress_tasks': all_tasks.filter(status='in_progress').count(),
+        'to_do_tasks': all_tasks.filter(status='to_do').count(),
+    }
+
+    # Calculate completion rate
+    if task_stats['total_tasks'] > 0:
+        task_stats['completion_rate'] = round(
+            (task_stats['completed_tasks'] / task_stats['total_tasks']) * 100, 1)
+    else:
+        task_stats['completion_rate'] = 0
+
+    # Get tasks by user for detailed breakdown
+    user_task_stats = []
+    users_to_analyze = selected_users if selected_users else users
+
+    for user in users_to_analyze:
+        user_tasks = all_tasks.filter(person=user)
+        user_stat = {
+            'user': user,
+            'total_tasks': user_tasks.count(),
+            'completed_tasks': user_tasks.filter(status='completed').count(),
+            'in_progress_tasks': user_tasks.filter(status='in_progress').count(),
+            'to_do_tasks': user_tasks.filter(status='to_do').count(),
+            'completion_rate': 0
+        }
+
+        if user_stat['total_tasks'] > 0:
+            user_stat['completion_rate'] = round(
+                (user_stat['completed_tasks'] / user_stat['total_tasks']) * 100, 1)
+
+        user_task_stats.append(user_stat)
+
+    # Get daily task completion data for line graph
+    daily_stats = []
+    current_date = start_datetime
+    while current_date <= end_datetime:
+        day_tasks = all_tasks.filter(timestamp__date=current_date)
+        daily_stat = {
+            'date': current_date.strftime('%Y-%m-%d'),
+            'total_tasks': day_tasks.count(),
+            'completed_tasks': day_tasks.filter(status='completed').count(),
+            'in_progress_tasks': day_tasks.filter(status='in_progress').count(),
+            'to_do_tasks': day_tasks.filter(status='to_do').count(),
+        }
+        daily_stats.append(daily_stat)
+        current_date += timedelta(days=1)
+
+    # Get urgency breakdown
+    urgency_stats = {
+        'urgent': all_tasks.filter(urgency='urgent').count(),
+        'high': all_tasks.filter(urgency='high').count(),
+        'medium': all_tasks.filter(urgency='medium').count(),
+        'low': all_tasks.filter(urgency='low').count(),
+    }
+
+    context = {
+        'users': users,
+        'selected_users': selected_users,
+        'selected_user_ids': [str(user.id) for user in selected_users],
+        'start_date': start_date,
+        'end_date': end_date,
+        # Limit to 50 most recent tasks for performance
+        'all_tasks': all_tasks[:50],
+        'task_stats': task_stats,
+        'user_task_stats': user_task_stats,
+        'daily_stats': daily_stats,
+        'urgency_stats': urgency_stats,
+    }
+
+    return render(request, 'management_task_review.html', context)
