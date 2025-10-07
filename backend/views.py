@@ -2366,26 +2366,51 @@ def allocate_monies(request):
         due_left = invoice.total_due_left
         balance = due_left - Decimal(amt_to_allocate)
 
+        # Store previous values for modification tracking
+        prev_slip_amount_allocated = slip.amount_allocated
+        prev_slip_balance_left = slip.balance_left
+
         already_allocated = json.loads(
             slip.amount_allocated) if slip.amount_allocated != {} else {}
         already_allocated.update({str(invoice.id): str(amt_to_allocate)})
         slip.amount_allocated = json.dumps(already_allocated)
 
-        slip.balance_left = Decimal(amt_to_allocate) - invoice.total_due_left
+        # Calculate total allocated amount from the slip
+        total_allocated = sum(Decimal(str(amt))
+                              for amt in already_allocated.values())
+
+        # Fix balance calculation: original amount - total allocated
+        slip.balance_left = slip.amount - total_allocated
+
         invoice.cash_allocated_slips.add(slip.id)
         if balance <= 0:
             invoice.total_due_left = 0
         else:
             invoice.total_due_left = balance
 
-        changes = {'prev_total_due_left': str(due_left),
-                   'after_total_due_left': str(invoice.total_due_left),
-                   'amount_allocated': amt_to_allocate}
+        # Create modification record for invoice
+        invoice_changes = {'prev_total_due_left': str(due_left),
+                           'after_total_due_left': str(invoice.total_due_left),
+                           'amount_allocated': amt_to_allocate}
 
         create_modification(
             user=request.user,
             modified_obj=invoice,
-            changes=changes
+            changes=invoice_changes
+        )
+
+        # Create modification record for slip
+        slip_changes = {'prev_amount_allocated': prev_slip_amount_allocated,
+                        'after_amount_allocated': slip.amount_allocated,
+                        'prev_balance_left': str(prev_slip_balance_left),
+                        'after_balance_left': str(slip.balance_left),
+                        'amount_allocated_to_invoice': amt_to_allocate,
+                        'invoice_number': invoice_num}
+
+        create_modification(
+            user=request.user,
+            modified_obj=slip,
+            changes=slip_changes
         )
 
         slip.save()
