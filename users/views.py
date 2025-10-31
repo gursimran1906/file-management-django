@@ -188,7 +188,9 @@ def profile_page(request):
             start_date = holiday_request.start_date
             end_date = holiday_request.end_date
             total_days = calculate_business_days(start_date, end_date)
-            if start_date.year == current_year:
+            # Only count approved holidays in the allowance calculation
+            # Exclude denied holidays (approved=False AND checked_by is not None)
+            if start_date.year == current_year and holiday_request.approved:
                 if holiday_request.type == 'Paid':
                     total_paid_holidays = total_paid_holidays + total_days
                 else:
@@ -236,7 +238,8 @@ def profile_page(request):
     office_closure_holidays = HolidayRecord.objects.filter(
         reason="Office Closure",
         employee=request.user,
-        start_date__year=current_year
+        start_date__year=current_year,
+        approved=True  # Only count approved office closures
     )
     total_office_closure_holidays = 0
     for holiday in office_closure_holidays:
@@ -541,11 +544,13 @@ def add_holiday_request(request):
         # Determine the year of the requested holiday
         request_year = start_date_dt.year
 
-        # Get all "Paid" holidays for the user within the requested year
+        # Get all approved "Paid" holidays for the user within the requested year
+        # Exclude denied holidays (only count approved ones)
         paid_holidays_in_request_year = HolidayRecord.objects.filter(
             employee=user,
             type='Paid',
             start_date__year=request_year,
+            approved=True  # Only count approved holidays
         ).exclude(reason="Office Closure")
 
         # Calculate the total number of paid holidays taken in that year
@@ -559,7 +564,8 @@ def add_holiday_request(request):
         office_closures = HolidayRecord.objects.filter(
             reason="Office Closure",
             employee=request.user,
-            start_date__year=current_year
+            start_date__year=current_year,
+            approved=True  # Only count approved office closures
         )
         total_office_closure_holidays = 0
         for holiday in office_closures:
@@ -921,6 +927,45 @@ def sickness_record_csv(request):
     return export_to_csv(queryset, fieldnames, f'sickness_records_{timezone.now()}.csv')
 
 
+def calculate_holiday_days_in_month(holiday_start, holiday_end, month_start, month_end):
+    """
+    Calculate the number of business days a holiday falls within a specific month.
+    Handles holidays that span across multiple months.
+
+    Args:
+        holiday_start: datetime - Start date of the holiday
+        holiday_end: datetime - End date of the holiday
+        month_start: date - First day of the target month
+        month_end: date - Last day of the target month
+
+    Returns:
+        float: Number of business days within the target month (rounded to 0.5)
+    """
+    # Ensure datetime objects are timezone-aware
+    if timezone.is_naive(holiday_start):
+        holiday_start = timezone.make_aware(holiday_start)
+    if timezone.is_naive(holiday_end):
+        holiday_end = timezone.make_aware(holiday_end)
+
+    # Convert month boundaries to datetime for comparison
+    month_start_dt = timezone.make_aware(
+        datetime.combine(month_start, time(0, 0, 0)))
+    month_end_dt = timezone.make_aware(
+        datetime.combine(month_end, time(23, 59, 59, 999999)))
+
+    # Find the overlap period within the month
+    overlap_start = max(holiday_start, month_start_dt)
+    overlap_end = min(holiday_end, month_end_dt)
+
+    # If no overlap, return 0
+    if overlap_start > overlap_end:
+        return 0.0
+
+    # Calculate business days for the overlap period
+    days_in_month = calculate_business_days(overlap_start, overlap_end)
+    return days_in_month
+
+
 @login_required
 def download_all_employee_reports(request):
     try:
@@ -955,11 +1000,41 @@ def download_all_employee_reports(request):
                         employee=employee,
                         date__range=(first_day_of_month, last_day_of_month)
                     ).order_by('date')
+
+                    # Get holidays that overlap with the target month
+                    # Only include approved holidays (excludes denied holidays and pending requests)
+                    # A holiday overlaps if: start_date <= month_end AND end_date >= month_start
+                    first_day_dt = timezone.make_aware(
+                        datetime.combine(first_day_of_month, time(0, 0, 0)))
+                    last_day_dt = timezone.make_aware(datetime.combine(
+                        last_day_of_month, time(23, 59, 59, 999999)))
+
                     holiday_records = HolidayRecord.objects.filter(
                         employee=employee,
-                        start_date__range=(
-                            first_day_of_month, last_day_of_month)
-                    )
+                        approved=True
+                    ).filter(
+                        # Holiday overlaps with month: start_date <= month_end AND end_date >= month_start
+                        Q(start_date__lte=last_day_dt) & Q(
+                            end_date__gte=first_day_dt)
+                    ).order_by('start_date')
+
+                    # Calculate days for each holiday within the target month
+                    holidays_with_days = []
+                    total_holiday_days = 0.0
+
+                    for holiday in holiday_records:
+                        days_in_month = calculate_holiday_days_in_month(
+                            holiday.start_date,
+                            holiday.end_date,
+                            first_day_of_month,
+                            last_day_of_month
+                        )
+                        holidays_with_days.append({
+                            'record': holiday,
+                            'days_in_month': days_in_month
+                        })
+                        total_holiday_days += days_in_month
+
                     sickness_records = SicknessRecord.objects.filter(
                         employee=employee,
                         start_date__range=(
@@ -971,10 +1046,13 @@ def download_all_employee_reports(request):
                         'employee': employee,
                         'month': month_year_date.strftime("%B %Y"),
                         'attendance': attendance_records,
-                        'holidays': holiday_records,
+                        'holidays': holidays_with_days,
                         'sickness': sickness_records,
                         'attendance_count': attendance_records.count(),
-                        'holiday_count': holiday_records.count(),
+                        # Count of holidays, not days
+                        'holiday_count': len(holidays_with_days),
+                        # Total days within month
+                        'holiday_days': round(total_holiday_days, 2),
                         'sickness_count': sickness_records.count(),
                     })
 

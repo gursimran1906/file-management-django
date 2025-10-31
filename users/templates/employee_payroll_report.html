@@ -31,7 +31,7 @@
             </div>
             <div class="card-body">
                 <p><strong>Total Attendance Days:</strong> {{ attendance_count }}</p>
-                <p><strong>Total Holidays Taken:</strong> {{ holiday_count }}</p>
+                <p><strong>Total Holidays Taken:</strong> {{ holiday_days }} days ({{ holiday_count }} holiday{{ holiday_count|pluralize }})</p>
                 <p><strong>Total Sick Days:</strong> {{ sickness_count }}</p>
             </div>
         </div>
@@ -42,30 +42,6 @@
                 <h3>Details</h3>
             </div>
             <div class="card-body">
-                <!-- Attendance Records -->
-                <h4>Attendance Records</h4>
-                <table class="table table-bordered">
-                    <thead class="thead-light">
-                        <tr>
-                            <th>Date</th>
-                            <th>Clock In</th>
-                            <th>Clock Out</th>
-                            <th>Lunch In</th>
-                            <th>Lunch Out</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for record in attendance %}
-                        <tr {% if record.lunch_duration > 30 %}class="flagged"{% endif %}>
-                            <td>{{ record.date|date:"d/m/Y" }}</td>
-                            <td>{{ record.clock_in|date:"H:i" }}</td>
-                            <td>{{ record.clock_out|date:"H:i" }}</td>
-                            <td>{{ record.lunch_in|date:"H:i" }}</td>
-                            <td>{{ record.lunch_out|date:"H:i" }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
 
                 <!-- Holiday Records -->
                 <h4 class="mt-4">Holiday Records</h4>
@@ -74,19 +50,21 @@
                         <tr>
                             <th>Start Date</th>
                             <th>End Date</th>
+                            <th>Days in {{ month }}</th>
                             <th>Type</th>
                             <th>Reason</th>
                             <th>Approved</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for record in holidays %}
+                        {% for holiday_data in holidays %}
                         <tr>
-                            <td>{{ record.start_date|date:"d/m/Y" }}</td>
-                            <td>{{ record.end_date|date:"d/m/Y" }}</td>
-                            <td>{{ record.type }}</td>
-                            <td>{{ record.reason }}</td>
-                            <td>{{ record.approved }}</td>
+                            <td>{{ holiday_data.record.start_date|date:"d/m/Y" }}</td>
+                            <td>{{ holiday_data.record.end_date|date:"d/m/Y" }}</td>
+                            <td>{{ holiday_data.days_in_month }}</td>
+                            <td>{{ holiday_data.record.type }}</td>
+                            <td>{{ holiday_data.record.reason }}</td>
+                            <td>{{ holiday_data.record.approved }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -108,6 +86,31 @@
                             <td>{{ record.start_date|date:"d/m/Y" }}</td>
                             <td>{{ record.end_date|date:"d/m/Y" }}</td>
                             <td>{{ record.description }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                
+                <!-- Attendance Records -->
+                <h4>Attendance Records</h4>
+                <table class="table table-bordered">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>Clock In</th>
+                            <th>Clock Out</th>
+                            <th>Lunch In</th>
+                            <th>Lunch Out</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in attendance %}
+                        <tr {% if record.lunch_duration > 30 %}class="flagged"{% endif %}>
+                            <td>{{ record.date|date:"d/m/Y" }}</td>
+                            <td>{{ record.clock_in|date:"H:i" }}</td>
+                            <td>{{ record.clock_out|date:"H:i" }}</td>
+                            <td>{{ record.lunch_in|date:"H:i" }}</td>
+                            <td>{{ record.lunch_out|date:"H:i" }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
