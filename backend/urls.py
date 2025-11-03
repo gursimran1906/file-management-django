@@ -9,6 +9,7 @@ from .views import add_risk_assessment, download_search_report, policies_display
 from .views import edit_ongoing_monitoring, download_document, onboarding_documents_display, edit_otherside, free30mins, download_free30mins, edit_free30mins
 from .views import undertakings, edit_undertaking, add_policy, edit_policy, download_policy_pdf, management_reports, weekly_report_view, policies_read_per_user
 from .views import bundle_create, bundle_edit, bundle_section_add, bundle_section_delete, bundle_section_reorder, bundle_document_upload, bundle_document_delete, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_delete
+from .views import update_comment
 
 urlpatterns = [
     path('dashboard/', user_dashboard, name='user_dashboard'),
@@ -184,4 +185,7 @@ urlpatterns = [
     path('api/get-files/', get_files, name='get_files'),
     path('api/get-users/', get_users, name='get_users'),
     path('api/create-task/', create_task, name='create_task'),
+
+    # Update comment endpoint
+    path('update-comment/', update_comment, name='update_comment'),
 ]

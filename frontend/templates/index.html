@@ -112,7 +112,23 @@
           <td class='td'>{{ row.latest_last_work_person|default:'-' }}</td>
           <td class='td'>{{ row.latest_last_work_task|default:'-' }}</td>
           <td class='td'>{{ row.latest_last_work_date|date:"d/m/Y"|default:'-' }}</td>
-          <td class='td'>{{ row.comments|default:'-' }}</td>
+          <td class='td comment-cell' data-file-number="{{ row.file_number }}">
+            <div class="comment-display">
+              <span class="comment-text">{{ row.comments|default:'-' }}</span>
+              <button class="ml-2 text-blue-600 hover:text-blue-800 edit-comment-btn" title="Edit comment">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            </div>
+            <div class="comment-edit hidden">
+              <textarea class="comment-textarea w-full p-2 border border-gray-300 rounded text-sm" rows="3">{{ row.comments|default:'' }}</textarea>
+              <div class="mt-2 flex gap-2">
+                <button class="save-comment-btn btn-primary text-xs py-1 px-3">Save</button>
+                <button class="cancel-comment-btn bg-gray-500 hover:bg-gray-600 text-white text-xs py-1 px-3 rounded">Cancel</button>
+              </div>
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -126,8 +142,173 @@
 </div>
 
 
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Get CSRF token
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+  const csrftoken = getCookie('csrftoken');
 
+  // Function to show toast notification
+  function showToast(message, type = 'success') {
+    // Create toast container if it doesn't exist
+    let toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+      toastContainer = document.createElement('div');
+      toastContainer.id = 'toast-container';
+      toastContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;';
+      document.body.appendChild(toastContainer);
+    }
 
+    // Create toast element
+    const toast = document.createElement('div');
+    const bgColor = type === 'success' ? '#10b981' : '#ef4444';
+    const icon = type === 'success' 
+      ? '<svg style="width: 20px; height: 20px; flex-shrink: 0;" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>'
+      : '<svg style="width: 20px; height: 20px; flex-shrink: 0;" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>';
+    
+    toast.style.cssText = `
+      background-color: ${bgColor};
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 300px;
+      max-width: 500px;
+      opacity: 0;
+      transform: translateX(400px);
+      transition: all 0.3s ease;
+    `;
+    
+    toast.innerHTML = `
+      ${icon}
+      <span style="flex: 1;">${message}</span>
+    `;
 
+    toastContainer.appendChild(toast);
+
+    // Trigger animation
+    setTimeout(() => {
+      toast.style.opacity = '1';
+      toast.style.transform = 'translateX(0)';
+    }, 10);
+
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(400px)';
+      setTimeout(() => {
+        toast.remove();
+        // Remove container if empty
+        if (toastContainer.children.length === 0) {
+          toastContainer.remove();
+        }
+      }, 300);
+    }, 3000);
+  }
+
+  // Handle edit button clicks
+  document.querySelectorAll('.edit-comment-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      const cell = this.closest('.comment-cell');
+      const displayDiv = cell.querySelector('.comment-display');
+      const editDiv = cell.querySelector('.comment-edit');
+      
+      displayDiv.classList.add('hidden');
+      editDiv.classList.remove('hidden');
+    });
+  });
+
+  // Handle cancel button clicks
+  document.querySelectorAll('.cancel-comment-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      const cell = this.closest('.comment-cell');
+      const displayDiv = cell.querySelector('.comment-display');
+      const editDiv = cell.querySelector('.comment-edit');
+      
+      // Reset textarea to original value
+      const originalText = cell.querySelector('.comment-text').textContent;
+      const textarea = cell.querySelector('.comment-textarea');
+      textarea.value = originalText === '-' ? '' : originalText;
+      
+      editDiv.classList.add('hidden');
+      displayDiv.classList.remove('hidden');
+    });
+  });
+
+  // Handle save button clicks
+  document.querySelectorAll('.save-comment-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      const cell = this.closest('.comment-cell');
+      const fileNumber = cell.dataset.fileNumber;
+      const textarea = cell.querySelector('.comment-textarea');
+      const newComment = textarea.value;
+      
+      // Disable button during save
+      this.disabled = true;
+      this.textContent = 'Saving...';
+
+      // Send AJAX request
+      fetch('/update-comment/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken
+        },
+        body: JSON.stringify({
+          file_number: fileNumber,
+          comment: newComment
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // Update the display text
+          const commentText = cell.querySelector('.comment-text');
+          commentText.textContent = newComment || '-';
+          
+          // Switch back to display mode
+          const displayDiv = cell.querySelector('.comment-display');
+          const editDiv = cell.querySelector('.comment-edit');
+          editDiv.classList.add('hidden');
+          displayDiv.classList.remove('hidden');
+          
+          // Show success toast notification
+          showToast('Comment saved successfully!', 'success');
+        } else {
+          showToast('Error saving comment: ' + (data.error || 'Unknown error'), 'error');
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        showToast('Error saving comment. Please try again.', 'error');
+      })
+      .finally(() => {
+        // Re-enable button
+        this.disabled = false;
+        this.textContent = 'Save';
+      });
+    });
+  });
+});
+</script>
 
 {% endblock %}

@@ -5803,3 +5803,45 @@ def bundle_delete(request, bundle_id):
         return redirect('bundle_create')
 
     return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+@login_required
+@require_POST
+def update_comment(request):
+    """Update comment for a file via AJAX"""
+    try:
+        data = json.loads(request.body)
+        file_number = data.get('file_number')
+        comment = data.get('comment', '')
+
+        if not file_number:
+            return JsonResponse({'success': False, 'error': 'File number is required'}, status=400)
+
+        # Get the WIP object
+        wip = get_object_or_404(WIP, file_number=file_number)
+
+        # Store old value for modification tracking
+        old_comment = wip.comments
+
+        # Update the comment
+        wip.comments = comment
+        wip.save()
+
+        # Create modification record
+        changes = {
+            'comments': {
+                'old': old_comment,
+                'new': comment
+            }
+        }
+        create_modification(request.user, wip, changes)
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Comment updated successfully'
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
