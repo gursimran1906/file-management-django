@@ -7,11 +7,105 @@
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        @page { size: A4 landscape; }
- 
+        @page { 
+            size: A4 landscape;
+            margin: 10mm 10mm 10mm 10mm;
+        }
+        
+        body {
+            font-family: Times New Roman, Times, serif;
+            font-size: 12px;
+        }
+        
+        .container {
+            max-width: 100%;
+            padding: 0 10px;
+        }
+        
+        h1 {
+            font-size: 22px;
+            margin-bottom: 12px !important;
+        }
+        
+        .row.mb-2 {
+            margin-bottom: 10px !important;
+            font-size: 11px;
+        }
+        
+        .table {
+            width: 100%;
+            font-size: 10px;
+            table-layout: fixed;
+            border-collapse: collapse;
+        }
+        
+        .table th,
+        .table td {
+            padding: 5px 4px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            vertical-align: top;
+        }
+        
+        .table th {
+            font-size: 10px;
+            font-weight: bold;
+            background-color: #f8f9fa;
+        }
+        
+        /* Column width optimization */
+        .table th:nth-child(1),
+        .table td:nth-child(1) { width: 4%; } /* No. */
+        
+        .table th:nth-child(2),
+        .table td:nth-child(2) { width: 8%; } /* File Number */
+        
+        .table th:nth-child(3),
+        .table td:nth-child(3) { width: 8%; } /* Fee Earner */
+        
+        .table th:nth-child(4),
+        .table td:nth-child(4) { width: 14%; } /* Matter Description */
+        
+        .table th:nth-child(5),
+        .table td:nth-child(5) { width: 11%; } /* Client 1 Name */
+        
+        .table th:nth-child(6),
+        .table td:nth-child(6) { width: 11%; } /* Client 2 Name */
+        
+        .table th:nth-child(7),
+        .table td:nth-child(7) { width: 10%; } /* Last Work Done By */
+        
+        .table th:nth-child(8),
+        .table td:nth-child(8) { width: 14%; } /* Desc Of Last Work */
+        
+        .table th:nth-child(9),
+        .table td:nth-child(9) { width: 8%; } /* Date Of Last Work */
+        
+        .table th:nth-child(10),
+        .table td:nth-child(10) { width: 12%; } /* Comments */
+        
+        .text-muted {
+            font-size: 10px;
+        }
+        
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            .table {
+                page-break-inside: auto;
+            }
+            
+            .table tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+            }
+        }
     </style>
 </head>
-<body style="font-family: Times New Roman, Times, serif;">
+<body>
     <div class="container">
         <div class="text-center">
             <h1 class="mb-4">SEARCH REPORT</h1>
