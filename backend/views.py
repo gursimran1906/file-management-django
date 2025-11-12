@@ -189,7 +189,8 @@ def user_dashboard(request):
     # Check if user is manager and show pending holiday requests
     if user.is_manager:
         pending_holiday_requests = HolidayRecord.objects.filter(
-            approved=False
+            approved=False,
+            checked_by__isnull=True
         ).count()
 
         if pending_holiday_requests > 0:
