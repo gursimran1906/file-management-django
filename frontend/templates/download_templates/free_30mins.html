@@ -16,13 +16,7 @@
             <h1 class="mt-2 mb-4">Free 30 Mins</h1>
         </div>
         <div class="row">
-            <div class="col-md-6">
-                <div class="mb-3">
-                    <strong>Attendees:</strong>
-                    {% for attendee in attendees %}
-                        {{attendee}}
-                    {% endfor %}
-                </div>
+            <div class="col-md-12">
                 <div class="mb-3">
                     <strong>Matter Type:</strong>
                     {{ matter_type }}
@@ -31,12 +25,46 @@
                     <strong>Date:</strong>
                     {{ date|date:'d/m/Y' }}
                 </div>
-                <div class="mb-2">
+                <div class="mb-3">
                     <strong>Start Time:</strong>
                     {{ start_time }}
                     <strong>Finish Time:</strong>
                     {{ finish_time }}
                 </div>
+            </div>
+        </div>
+        
+        <div class="row mb-3">
+            <div class="col-md-12">
+                <h5 class="mb-3">Attendees Details:</h5>
+                {% for attendee in attendees %}
+                <div class="card mb-2" style="border: 1px solid #dee2e6;">
+                    <div class="card-body" style="padding: 0.35rem 0.5rem;">
+                        <div class="row" style="font-size: 0.9rem;">
+                            <div class="col-md-6">
+                                <p class="mb-1" style="margin-bottom: 0.25rem !important;"><strong>Name:</strong> {{ attendee.name }}</p>
+                                <p class="mb-1" style="margin-bottom: 0.25rem !important;"><strong>Email:</strong> {{ attendee.email }}</p>
+                                <p class="mb-0"><strong>Contact Number:</strong> {{ attendee.contact_number }}</p>
+                            </div>
+                            <div class="col-md-6">
+                                {% if attendee.address_line1 %}
+                                <p class="mb-1" style="margin-bottom: 0.25rem !important;"><strong>Address:</strong></p>
+                                <p class="mb-0 ms-2" style="line-height: 1.3;">{{ attendee.address_line1 }}</p>
+                                {% if attendee.address_line2 %}
+                                <p class="mb-0 ms-2" style="line-height: 1.3;">{{ attendee.address_line2 }}</p>
+                                {% endif %}
+                                {% if attendee.county %}
+                                <p class="mb-0 ms-2" style="line-height: 1.3;">{{ attendee.county }}</p>
+                                {% endif %}
+                                {% if attendee.postcode %}
+                                <p class="mb-0 ms-2" style="line-height: 1.3;">{{ attendee.postcode }}</p>
+                                {% endif %}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
         </div>
         <hr>

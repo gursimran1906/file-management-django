@@ -4751,7 +4751,15 @@ def download_free30mins(request, id):
         'start_time': obj.start_time,
         'finish_time': obj.finish_time,
         # Adjust attribute if needed
-        'attendees': [attendee.name for attendee in obj.attendees.all()],
+        'attendees': [{
+            'name': attendee.name,
+            'address_line1': attendee.address_line1,
+            'address_line2': attendee.address_line2,
+            'county': attendee.county,
+            'postcode': attendee.postcode,
+            'email': attendee.email,
+            'contact_number': attendee.contact_number,
+        } for attendee in obj.attendees.all()],
         'fee_earner': obj.fee_earner.username if obj.fee_earner else None,
         'created_by': obj.created_by.username if obj.created_by else None,
         'timestamp': obj.timestamp,
