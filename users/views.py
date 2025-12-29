@@ -349,6 +349,10 @@ def get_accounted_dates_in_range(user, start_date, end_date, cutoff_date=None):
     """
     accounted_dates = set()
 
+    # Get bank holidays for the year to exclude them from holiday date ranges
+    holiday_list_for_exclusion = holidays.country_holidays(
+        'GB', subdiv='ENG', years=start_date.year)
+
     # Get all holidays (paid, unpaid, office closures)
     holidays_qs = HolidayRecord.objects.filter(
         employee=user,
@@ -367,8 +371,9 @@ def get_accounted_dates_in_range(user, start_date, end_date, cutoff_date=None):
         current = holiday_start.date()
         end = holiday_end.date()
         while current <= end:
-            # Only count business days (exclude weekends)
-            if current.weekday() < 5:  # Monday = 0, Friday = 4
+            # Only count business days (exclude weekends and bank holidays)
+            # This matches calculate_business_days logic
+            if current.weekday() < 5 and current not in holiday_list_for_exclusion:  # Monday = 0, Friday = 4
                 accounted_dates.add(current)
             current += timedelta(days=1)
 
@@ -398,14 +403,15 @@ def get_accounted_dates_in_range(user, start_date, end_date, cutoff_date=None):
             current += timedelta(days=1)
 
     # Get bank holidays in the range (only weekdays)
+    # IMPORTANT: Bank holidays are ALWAYS counted separately, regardless of office closures
+    # Office closures use calculate_business_days which already excludes bank holidays,
+    # so bank holidays remain independent and should be counted
     holiday_list = holidays.country_holidays(
         'GB', subdiv='ENG', years=start_date.year)
     for holiday_date in holiday_list.keys():
         if start_date.date() <= holiday_date <= end_date.date():
             if cutoff_date is None or holiday_date <= cutoff_date:
                 # Only count bank holidays on weekdays (Monday=0, Friday=4)
-                # Bank holidays are already excluded from working days, but we track them
-                # to avoid double counting with attendance
                 if holiday_date.weekday() < 5:
                     accounted_dates.add(holiday_date)
 
@@ -541,7 +547,28 @@ def calculate_missing_days_summary(user, year=None, month=None):
                 )
             total_accounted_days += Decimal(str(days))
 
-        # Bank holidays (only count those not already covered by office closures and not on weekends)
+        # Office closures
+        # IMPORTANT: calculate_holiday_days_in_month uses calculate_business_days which excludes weekends and bank holidays
+        # So office closures count only business days (weekdays that aren't bank holidays)
+        office_closures = HolidayRecord.objects.filter(
+            employee=user,
+            reason="Office Closure",
+            approved=True
+        ).filter(
+            Q(start_date__lte=last_day_dt) & Q(end_date__gte=first_day_dt)
+        )
+
+        for holiday in office_closures:
+            days = calculate_holiday_days_in_month(
+                holiday.start_date, holiday.end_date,
+                first_day_of_month, last_day_of_month
+            )
+            total_accounted_days += Decimal(str(days))
+
+        # Bank holidays
+        # IMPORTANT: Bank holidays are ALWAYS counted separately, regardless of office closures
+        # Office closures use calculate_business_days which already excludes bank holidays,
+        # so bank holidays remain independent and should be counted for the whole month/year
         holiday_list = holidays.country_holidays(
             'GB', subdiv='ENG', years=year)
         bank_holidays_in_month = []
@@ -550,35 +577,9 @@ def calculate_missing_days_summary(user, year=None, month=None):
                 # Only count weekdays (Monday=0, Friday=4)
                 if holiday_date.weekday() < 5:
                     if cutoff_date is None or holiday_date <= cutoff_date:
-                        # Check if this bank holiday is already covered by an office closure
-                        is_covered = HolidayRecord.objects.filter(
-                            employee=user,
-                            reason="Office Closure",
-                            approved=True,
-                            start_date__lte=timezone.make_aware(
-                                datetime.combine(holiday_date, time(23, 59, 59))),
-                            end_date__gte=timezone.make_aware(
-                                datetime.combine(holiday_date, time(0, 0, 0)))
-                        ).exists()
-                        if not is_covered:
-                            bank_holidays_in_month.append(holiday_date)
+                        bank_holidays_in_month.append(holiday_date)
 
         total_accounted_days += Decimal(str(len(bank_holidays_in_month)))
-
-        # Office closures
-        office_closures = HolidayRecord.objects.filter(
-            employee=user,
-            reason="Office Closure",
-            approved=True
-        ).filter(
-            Q(start_date__lte=last_day_dt) & Q(end_date__gte=first_day_dt)
-        )
-        for holiday in office_closures:
-            days = calculate_holiday_days_in_month(
-                holiday.start_date, holiday.end_date,
-                first_day_of_month, last_day_of_month
-            )
-            total_accounted_days += Decimal(str(days))
 
         # Attendance records - only count days NOT already accounted for by holidays/sick leave/bank holidays
         attendance_query = AttendanceRecord.objects.filter(
@@ -739,42 +740,18 @@ def calculate_holidays_summary(user, year):
                 else:
                     total_unpaid_holidays = total_unpaid_holidays + total_days
 
-    # Get office closure holidays for the year (fetch first to check overlaps with bank holidays)
+    # Get office closure holidays for the year
+    # IMPORTANT: calculate_business_days already excludes weekends and bank holidays
+    # So office closures count only business days (weekdays that aren't bank holidays)
+    # Example: Office closure from 24.12.2025 09:00 to 31.12.2025 17:00 = 8 calendar days
+    # Out of which: 4 business days, 2 bank holidays, 2 weekends
+    # Office closure should count as 4 days (business days only)
     office_closure_holidays = HolidayRecord.objects.filter(
         reason="Office Closure",
         employee=user,
         start_date__year=current_year,
         approved=True
     )
-
-    # Get bank holidays for the year
-    holiday_list = holidays.country_holidays(
-        'GB', subdiv='ENG', years=current_year)
-
-    # Count bank holidays up to cutoff date if applicable
-    # Exclude bank holidays that are already covered by office closures or fall on weekends
-    bank_holiday_dates = []
-    if cutoff_date:
-        bank_holiday_dates = [holiday_date for holiday_date in holiday_list.keys()
-                              if holiday_date <= cutoff_date and holiday_date.weekday() < 5]  # Only weekdays
-    else:
-        bank_holiday_dates = [holiday_date for holiday_date in holiday_list.keys()
-                              if holiday_date.weekday() < 5]  # Only weekdays
-
-    # Filter out bank holidays covered by office closures
-    office_closure_dates = set()
-    for holiday in office_closure_holidays:
-        current = holiday.start_date.date()
-        end = holiday.end_date.date()
-        while current <= end:
-            if current.weekday() < 5:  # Only business days
-                office_closure_dates.add(current)
-            current += timedelta(days=1)
-
-    # Only count bank holidays not covered by office closures
-    bank_holidays_not_covered = [
-        bh for bh in bank_holiday_dates if bh not in office_closure_dates]
-    total_bank_holidays = round(Decimal(len(bank_holidays_not_covered)), 2)
 
     total_office_closure_holidays = 0
     for holiday in office_closure_holidays:
@@ -797,6 +774,26 @@ def calculate_holidays_summary(user, year):
             total_days = calculate_business_days(
                 holiday.start_date, holiday.end_date)
         total_office_closure_holidays = total_office_closure_holidays + total_days
+
+    # Get bank holidays for the year
+    # IMPORTANT: Bank holidays are ALWAYS counted separately, regardless of office closures
+    # Office closures use calculate_business_days which already excludes bank holidays,
+    # so bank holidays remain independent and should be counted for the whole year
+    # Example: If there are 8 bank holidays in the year, they remain 8 even if some fall
+    # within office closure periods
+    holiday_list = holidays.country_holidays(
+        'GB', subdiv='ENG', years=current_year)
+
+    # Count bank holidays up to cutoff date if applicable (only weekdays)
+    bank_holiday_dates = []
+    if cutoff_date:
+        bank_holiday_dates = [holiday_date for holiday_date in holiday_list.keys()
+                              if holiday_date <= cutoff_date and holiday_date.weekday() < 5]
+    else:
+        bank_holiday_dates = [holiday_date for holiday_date in holiday_list.keys()
+                              if holiday_date.weekday() < 5]
+
+    total_bank_holidays = round(Decimal(len(bank_holiday_dates)), 2)
 
     # Calculate sick leave for the year
     sickness_records = SicknessRecord.objects.filter(

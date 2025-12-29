@@ -37,7 +37,8 @@ SECRET_KEY = os.getenv(
     'SECRET_KEY', 'django-insecure-3b1_t+z*dfo81p)$x=wa7uygt)x0%-6n+h3fhlkrg@xkuzq=7s')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
+# For local development, set DEBUG=True. For production, set DEBUG=False via environment variable
+DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
 # Production: Set ALLOWED_HOSTS from environment variable or use specific domains
 ALLOWED_HOSTS_ENV = os.getenv('ALLOWED_HOSTS', '')
@@ -197,9 +198,13 @@ COMPRESS_ROOT = BASE_DIR / 'static'
 
 COMPRESS_ENABLED = True
 
-STATICFILES_FINDERS = ('compressor.finders.CompressorFinder',)
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+    'compressor.finders.CompressorFinder',
+]
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     BASE_DIR / "static"
 ]
