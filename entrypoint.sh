@@ -1,5 +1,12 @@
 #!/bin/sh
 
+# Create logs directory if it doesn't exist
+mkdir -p /app/logs
+chmod 755 /app/logs
+
+# Set proper permissions for log files (if they exist)
+chmod 644 /app/logs/*.log 2>/dev/null || true
+
 # Run migrations
 echo 'Running migrations...'
 python manage.py migrate

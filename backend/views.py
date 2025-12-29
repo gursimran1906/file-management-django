@@ -1,3 +1,4 @@
+import logging
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.db.models import Q, Q, F, OuterRef, Subquery, Max, CharField, Exists, Count
@@ -41,6 +42,8 @@ import PyPDF2
 from io import BytesIO
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
+
+logger = logging.getLogger('backend')
 
 
 @login_required
@@ -650,6 +653,8 @@ def create_task(request):
 @login_required
 def display_data_home_page(request, file_number):
     try:
+        logger.info(
+            f'User {request.user.username} accessing matter file {file_number}')
         matter = WIP.objects.get(file_number=file_number)
         undertakings = Undertaking.objects.filter(file_number=matter)
         next_work_form = NextWorkFormWithoutFileNumber()
@@ -691,8 +696,16 @@ def display_data_home_page(request, file_number):
                                              'risk_assessment': risk_assessment, 'eleven_months_since_last_risk_assessment': eleven_months_since_last_risk_assessment,
                                              'logs': get_file_logs(file_number)})
     except WIP.DoesNotExist:
+        logger.warning(
+            f'User {request.user.username} attempted to access non-existent matter file {file_number}')
         messages.error(request, 'Matter file not found')
         return render(request, 'home.html', {'error': 'Matter file not found'})
+    except Exception as e:
+        logger.error(
+            f'Error displaying matter file {file_number} for user {request.user.username}: {str(e)}', exc_info=True)
+        messages.error(
+            request, 'An error occurred while loading the matter file')
+        return render(request, 'home.html', {'error': 'An error occurred while loading the matter file'})
 
 
 def get_file_logs(file_number):
