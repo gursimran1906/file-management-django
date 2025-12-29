@@ -510,7 +510,8 @@
           // Update the display
           document.getElementById("holidays-allowance-records").textContent = data.allowance.toFixed(2);
           document.getElementById("holidays-taken-records").textContent = data.total_paid_holidays.toFixed(2);
-          document.getElementById("holidays-office-closure-records").textContent = data.total_office_closure_holidays.toFixed(2);
+          // Use full year office closures for Holidays Summary display
+          document.getElementById("holidays-office-closure-records").textContent = (data.total_office_closure_holidays_full_year || data.total_office_closure_holidays).toFixed(2);
           document.getElementById("holidays-bank-holidays-records").textContent = data.total_bank_holidays.toFixed(2);
           document.getElementById("holidays-remaining-records").textContent = data.total_paid_holidays_remaining.toFixed(2);
           document.getElementById("holidays-unpaid-records").textContent = data.total_unpaid_holidays.toFixed(2);
