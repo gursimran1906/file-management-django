@@ -4978,10 +4978,122 @@ def management_reports(request):
         Exists(recent_monitoring_exists)
     ).order_by('file_number')
     cpds = CPDTrainingLog.objects.all()
-    return render(request, 'management_reports.html', {'users': users,
-                                                       'aml_checks_due': unique_aml_checks_due,
-                                                       'risk_assessments_due': risk_assessments_due,
-                                                       'cpds': cpds})
+
+    return render(request, 'management_reports.html', {
+        'users': users,
+        'aml_checks_due': unique_aml_checks_due,
+        'risk_assessments_due': risk_assessments_due,
+        'cpds': cpds
+    })
+
+
+@login_required
+def export_user_tasks_pdf(request):
+    """Export selected user's tasks as a PDF for printing and sending"""
+    user_id = request.GET.get('user_id')
+
+    if not user_id:
+        return JsonResponse({'error': 'User ID is required'}, status=400)
+
+    try:
+        user = CustomUser.objects.get(id=user_id)
+    except CustomUser.DoesNotExist:
+        return JsonResponse({'error': 'User not found'}, status=404)
+
+    # Get user's tasks
+    tasks = NextWork.objects.filter(person=user).select_related(
+        'file_number', 'created_by').order_by('status', 'urgency', 'date')
+
+    # Separate by status
+    to_do_tasks = tasks.filter(status='to_do')
+    in_progress_tasks = tasks.filter(status='in_progress')
+    completed_tasks = tasks.filter(status='completed')
+
+    # Render HTML template for PDF
+    html_string = render_to_string('download_templates/user_tasks_export.html', {
+        'user': user,
+        'to_do_tasks': to_do_tasks,
+        'in_progress_tasks': in_progress_tasks,
+        'completed_tasks': completed_tasks,
+        'export_date': timezone.now(),
+        'total_tasks': tasks.count(),
+    })
+
+    # Generate PDF
+    pdf_file = HTML(string=html_string).write_pdf()
+
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="tasks_{user.first_name}_{user.last_name}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+
+    return response
+
+
+@login_required
+def load_management_tasks(request):
+    """AJAX endpoint to load tasks for management kanban board"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        count = data.get('count', 5)
+        filter_user_ids = data.get('filter_user_ids', [])
+
+        # Base query
+        tasks_query = NextWork.objects.select_related(
+            'file_number', 'person', 'created_by')
+
+        # Apply user filter
+        if filter_user_ids:
+            tasks_query = tasks_query.filter(person_id__in=filter_user_ids)
+
+        # Get tasks by status
+        tasks_data = {}
+        total_counts = {}
+
+        for status in ['to_do', 'in_progress', 'completed']:
+            if status == 'completed':
+                # For completed, only show this week's tasks
+                one_week_ago = timezone.now() - timedelta(days=7)
+                status_tasks = tasks_query.filter(
+                    status=status,
+                    timestamp__gte=one_week_ago
+                ).order_by('-timestamp')
+            else:
+                # For to_do and in_progress, sort by urgency and due date
+                status_tasks = tasks_query.filter(status=status).order_by(
+                    '-urgency', 'date', '-timestamp'
+                )
+
+            total_counts[status] = status_tasks.count()
+
+            # Limit tasks if count is specified
+            if count != 'all':
+                status_tasks = status_tasks[:int(count)]
+
+            # Serialize tasks
+            tasks_data[status] = []
+            for task in status_tasks:
+                tasks_data[status].append({
+                    'id': task.id,
+                    'file_number': task.file_number.file_number if task.file_number else 'N/A',
+                    'task': task.task,
+                    'date': task.date.isoformat() if task.date else None,
+                    'urgency': task.urgency,
+                    'status': task.status,
+                    'assigned_to': f"{task.person.first_name} {task.person.last_name}" if task.person else 'Unassigned',
+                    'created_by': f"{task.created_by.first_name} {task.created_by.last_name}" if task.created_by else 'Unknown',
+                    'timestamp': task.timestamp.isoformat() if task.timestamp else None,
+                })
+
+        return JsonResponse({
+            'success': True,
+            'tasks': tasks_data,
+            'total_counts': total_counts
+        })
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 
 def calculate_minutes_for_date(user, date):

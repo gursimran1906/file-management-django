@@ -140,6 +140,279 @@
         </div>
     </div>
 
+    <!-- Holidays Summary Section -->
+    <div class="div-container">
+        <div class="flex flex-col gap-4">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <h2 class="text-xl font-semibold text-gray-700">Holidays Summary</h2>
+                <div class="flex flex-col md:flex-row gap-2">
+                    <select id="holidays-summary-user-select" class="form-input">
+                        <option value="">Select User</option>
+                        {% for user in users %}
+                        <option value="{{ user.id }}">{{ user.username }}</option>
+                        {% endfor %}
+                    </select>
+                    <select id="holidays-summary-view-select" class="form-input">
+                        <option value="year">Year View</option>
+                        <option value="month">Month View</option>
+                    </select>
+                    <select id="holidays-summary-year-select" class="form-input">
+                        <!-- Options will be populated by JavaScript -->
+                    </select>
+                    <select id="holidays-summary-month-select" class="form-input hidden">
+                        <!-- Options will be populated by JavaScript -->
+                    </select>
+                </div>
+            </div>
+            
+            <div id="holidays-summary-container" class="grid md:grid-cols-2 gap-4">
+                <!-- Paid Holidays Summary -->
+                <div class="div-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th colspan="2" class="text-lg px-2 pb-2 text-gray-900 text-center font-normal">
+                                    Paid Holidays Summary
+                                    <span class="text-xs font-light" id="holidays-summary-year-text">for current year</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="border-b">
+                                <th class="py-2 px-2 font-normal text-gray-800">Allowance</th>
+                                <td class="py-2 px-2 font-light text-gray-700" id="holidays-allowance">-</td>
+                            </tr>
+                            <tr class="border-b bg-gray-50">
+                                <th class="py-2 px-2 font-normal text-gray-800">Taken</th>
+                                <td class="py-2 px-2 font-light text-gray-700" id="holidays-taken">-</td>
+                            </tr>
+                            <tr class="border-b">
+                                <th class="py-2 px-2 font-normal text-gray-800">Office Closure</th>
+                                <td class="py-2 px-2 font-light text-gray-700" id="holidays-office-closure">-</td>
+                            </tr>
+                            <tr class="border-b">
+                                <th class="py-2 px-2 font-normal text-gray-800">Bank Holidays</th>
+                                <td class="py-2 px-2 font-light text-gray-700" id="holidays-bank-holidays">-</td>
+                            </tr>
+                            <tr class="border-b bg-gray-50">
+                                <th class="py-2 px-2 font-normal text-gray-800 flex flex-row items-center gap-2">
+                                    Remaining
+                                    <a data-popover-target="holidays_remaining_summary">
+                                        <svg class="w-4 h-4 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+                                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 11h2v5m-2 0h4m-2.592-8.5h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+                                        </svg>
+                                    </a>
+                                </th>
+                                <td class="py-2 px-2 text-gray-800" id="holidays-remaining">-</td>
+                                <div id="holidays_remaining_summary" role="tooltip" class="absolute z-50 invisible inline-block w-72 text-sm transition-opacity duration-300 border rounded-lg shadow-sm opacity-0 text-gray-200 border-gray-600 bg-gray-800">
+                                    <div class="px-3 py-2 border-b rounded-t-lg border-gray-600 bg-gray-700 flex items-center">
+                                        <h3 class="font-medium text-white">Paid Holidays Remaining</h3>
+                                    </div>
+                                    <div class="px-3 py-2 font-light text-gray-200">
+                                        <p>
+                                            <b class="text-gray-50">Paid Holidays Remaining</b> are calculated by taking the 
+                                            <b class="text-gray-50">Total Paid Holidays Allowance</b> for the year, subtracting the 
+                                            <b class="text-gray-50">Total Paid Holidays Taken</b>, and further subtracting both 
+                                            <b class="text-gray-50">Bank Holidays</b> and <b class="text-gray-50">Office Closure Holidays.</b>
+                                        </p>
+                                    </div>
+                                    <div data-popper-arrow></div>
+                                </div>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Unpaid Holidays Summary -->
+                <div class="div-container h-fit">
+                    <table class="table">
+                        <tbody>
+                            <tr class="border-b">
+                                <th colspan="2" class="text-lg px-2 pb-2 text-gray-900 text-center font-normal">
+                                    Unpaid Holidays
+                                    <span class="text-xs font-light" id="holidays-unpaid-year-text">for current year</span>
+                                </th>
+                            </tr>
+                            <tr class="border-b bg-gray-50">
+                                <th class="py-2 px-2 font-normal text-gray-800">Taken</th>
+                                <td class="py-2 px-2 text-gray-700" id="holidays-unpaid">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Days Accounting Summary -->
+            <div class="div-container">
+              <h3 class="text-lg font-semibold text-gray-700 mb-3">Days Accounting Summary</h3>
+              <div class="grid md:grid-cols-2 gap-4 mb-4">
+                <div class="div-container">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th colspan="2" class="text-lg px-2 pb-2 text-gray-900 text-center font-normal">
+                          Days Breakdown
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr class="border-b">
+                        <th class="py-2 px-2 font-normal text-gray-800">Total Working Days</th>
+                        <td class="py-2 px-2 font-light text-gray-700" id="total-working-days">-</td>
+                      </tr>
+                      <tr class="border-b bg-gray-50">
+                        <th class="py-2 px-2 font-normal text-gray-800">Days with Attendance</th>
+                        <td class="py-2 px-2 font-light text-gray-700" id="days-with-attendance">-</td>
+                      </tr>
+                      <tr class="border-b">
+                        <th class="py-2 px-2 font-normal text-gray-800">Total Accounted Days</th>
+                        <td class="py-2 px-2 font-light text-gray-700" id="total-accounted-days">-</td>
+                      </tr>
+                      <tr class="border-b bg-gray-50">
+                        <th class="py-2 px-2 font-normal text-gray-800">Unaccounted Days</th>
+                        <td class="py-2 px-2 font-light text-gray-700" id="unaccounted-days">-</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="div-container">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th colspan="2" class="text-lg px-2 pb-2 text-gray-900 text-center font-normal">
+                          Accounted Days Breakdown
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr class="border-b">
+                        <th class="py-2 px-2 font-normal text-gray-800">Paid Holidays</th>
+                        <td class="py-2 px-2 font-light text-gray-700" id="accounted-paid-holidays">-</td>
+                      </tr>
+                      <tr class="border-b bg-gray-50">
+                        <th class="py-2 px-2 font-normal text-gray-800">Unpaid Holidays</th>
+                        <td class="py-2 px-2 font-light text-gray-700" id="accounted-unpaid-holidays">-</td>
+                      </tr>
+                      <tr class="border-b">
+                        <th class="py-2 px-2 font-normal text-gray-800">Sick Leave</th>
+                        <td class="py-2 px-2 font-light text-gray-700" id="accounted-sick-leave">-</td>
+                      </tr>
+                      <tr class="border-b bg-gray-50">
+                        <th class="py-2 px-2 font-normal text-gray-800">Bank Holidays</th>
+                        <td class="py-2 px-2 font-light text-gray-700" id="accounted-bank-holidays">-</td>
+                      </tr>
+                      <tr class="border-b">
+                        <th class="py-2 px-2 font-normal text-gray-800">Office Closures</th>
+                        <td class="py-2 px-2 font-light text-gray-700" id="accounted-office-closures">-</td>
+                      </tr>
+                      <tr class="border-b bg-gray-50">
+                        <th class="py-2 px-2 font-normal text-gray-800">Days with Attendance</th>
+                        <td class="py-2 px-2 font-light text-gray-700" id="accounted-attendance-days">-</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="text-sm text-gray-600 space-y-2" id="holidays-calculation-breakdown">
+                <p>Select a user and year to see the calculation breakdown.</p>
+              </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Management Section -->
+    <div class="div-container">
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+            <div>
+                <h2 class="text-xl font-semibold text-gray-700">Task Management</h2>
+                <p class="text-sm text-gray-500 mt-1">Monitor and export team tasks</p>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-2">
+                <!-- User Filter -->
+                <select id="kanban-user-filter" multiple class="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" style="min-height: 40px; min-width: 200px;">
+                    <option selected value="">All Users</option>
+                    {% for user in users %}
+                    <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
+                    {% endfor %}
+                </select>
+                
+                <!-- Export Button -->
+                <div class="relative">
+                    <button id="export-dropdown-btn" class="btn-primary">
+                        Export PDF
+                    </button>
+                    <div id="export-dropdown" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                        <div class="p-3">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Select User:</label>
+                            <select id="export-user-select" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-2">
+                                <option value="">Choose...</option>
+                                {% for user in users %}
+                                <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
+                                {% endfor %}
+                            </select>
+                            <button id="export-user-pdf" class="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                                Generate PDF
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Toggle Button -->
+                <button id="kanban-toggle" class="px-3 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                    <span id="kanban-toggle-text">Hide</span>
+                </button>
+            </div>
+        </div>
+        
+        <div id="kanban-board-container">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- To Do -->
+                <div class="">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-medium text-gray-700">To Do</h3>
+                        <span class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-medium" id="kanban-to-do-count">0</span>
+                    </div>
+                    <div class="space-y-2" id="kanban-to-do-tasks" style="min-height: 200px;">
+                        <!-- Tasks loaded here -->
+                    </div>
+                </div>
+                
+                <!-- In Progress -->
+                <div class="">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-medium text-gray-700">In Progress</h3>
+                        <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-medium" id="kanban-in-progress-count">0</span>
+                    </div>
+                    <div class="space-y-2" id="kanban-in-progress-tasks" style="min-height: 200px;">
+                        <!-- Tasks loaded here -->
+                    </div>
+                </div>
+                
+                <!-- Completed -->
+                <div class="">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-medium text-gray-700">Completed</h3>
+                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-medium" id="kanban-completed-count">0</span>
+                    </div>
+                    <div class="space-y-2" id="kanban-completed-tasks" style="min-height: 200px;">
+                        <!-- Tasks loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Minimized State -->
+        <div id="kanban-minimized" class="hidden">
+            <div class="flex items-center gap-3 text-sm text-gray-600">
+                <span>Board Hidden -</span>
+                <span class="text-red-600" id="kanban-minimized-to-do-count">0 To Do</span>
+                <span class="text-yellow-600" id="kanban-minimized-in-progress-count">0 In Progress</span>
+                <span class="text-green-600" id="kanban-minimized-completed-count">0 Completed</span>
+            </div>
+        </div>
+    </div>
+
     <!-- CPD Training Logs -->
     <div class="div-container">
         <h2 class="text-xl font-semibold text-gray-700 pb-2 ">CPD Training Logs</h2>
@@ -438,6 +711,415 @@
         fetchPoliciesData(userSelect.value)
         fetchReportData(userSelect.value, currentWeekStart)
     });
+</script>
+
+<script>
+    // Holidays Summary Functionality
+    document.addEventListener("DOMContentLoaded", function () {
+        const userSelect = document.getElementById("holidays-summary-user-select");
+        const viewSelect = document.getElementById("holidays-summary-view-select");
+        const yearSelect = document.getElementById("holidays-summary-year-select");
+        const monthSelect = document.getElementById("holidays-summary-month-select");
+        
+        // Populate year dropdown
+        const currentYear = new Date().getFullYear();
+        for (let year = currentYear - 5; year <= currentYear + 5; year++) {
+            const option = document.createElement("option");
+            option.value = year;
+            option.textContent = year;
+            if (year === currentYear) {
+                option.selected = true;
+            }
+            yearSelect.appendChild(option);
+        }
+        
+        // Populate month dropdown
+        const months = [
+            { value: 1, name: 'January' },
+            { value: 2, name: 'February' },
+            { value: 3, name: 'March' },
+            { value: 4, name: 'April' },
+            { value: 5, name: 'May' },
+            { value: 6, name: 'June' },
+            { value: 7, name: 'July' },
+            { value: 8, name: 'August' },
+            { value: 9, name: 'September' },
+            { value: 10, name: 'October' },
+            { value: 11, name: 'November' },
+            { value: 12, name: 'December' }
+        ];
+        
+        months.forEach(month => {
+            const option = document.createElement("option");
+            option.value = month.value;
+            option.textContent = month.name;
+            if (month.value === new Date().getMonth() + 1) {
+                option.selected = true;
+            }
+            monthSelect.appendChild(option);
+        });
+        
+        // Toggle month selector visibility
+        viewSelect.addEventListener("change", function() {
+            if (this.value === 'month') {
+                monthSelect.classList.remove("hidden");
+            } else {
+                monthSelect.classList.add("hidden");
+            }
+            fetchHolidaysSummary();
+        });
+        
+        function fetchHolidaysSummary() {
+            const userId = userSelect.value;
+            const view = viewSelect.value;
+            const year = yearSelect.value;
+            const month = view === 'month' ? monthSelect.value : null;
+            
+            if (!userId) {
+                // Clear the display
+                document.getElementById("holidays-allowance").textContent = "-";
+                document.getElementById("holidays-taken").textContent = "-";
+                document.getElementById("holidays-office-closure").textContent = "-";
+                document.getElementById("holidays-bank-holidays").textContent = "-";
+                document.getElementById("holidays-remaining").textContent = "-";
+                document.getElementById("holidays-unpaid").textContent = "-";
+                document.getElementById("total-working-days").textContent = "-";
+                document.getElementById("days-with-attendance").textContent = "-";
+                document.getElementById("total-accounted-days").textContent = "-";
+                document.getElementById("unaccounted-days").textContent = "-";
+                document.getElementById("accounted-paid-holidays").textContent = "-";
+                document.getElementById("accounted-unpaid-holidays").textContent = "-";
+                document.getElementById("accounted-sick-leave").textContent = "-";
+                document.getElementById("accounted-bank-holidays").textContent = "-";
+                document.getElementById("accounted-office-closures").textContent = "-";
+                document.getElementById("accounted-attendance-days").textContent = "-";
+                document.getElementById("holidays-calculation-breakdown").innerHTML = "<p class='text-gray-500'>Select a user and year to see the calculation breakdown.</p>";
+                return;
+            }
+            
+            // Determine which endpoint to use based on view
+            let url;
+            if (view === 'month' && month) {
+                // Use missing days API for month view
+                url = `/missing-days/?user_id=${userId}&year=${year}&month=${month}`;
+            } else {
+                // Use holidays summary API for year view
+                url = `/holidays-summary/?user_id=${userId}&year=${year}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error(data.error);
+                        return;
+                    }
+                    
+                    if (view === 'month') {
+                        // Month view - show missing days summary
+                        document.getElementById("holidays-summary-container").classList.add("hidden");
+                        document.getElementById("holidays-calculation-breakdown").classList.remove("hidden");
+                        
+                        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                           'July', 'August', 'September', 'October', 'November', 'December'];
+                        const periodTitle = `${monthNames[parseInt(month) - 1]} ${year}`;
+                        
+                        const breakdown = `
+                            <div class="space-y-1">
+                                <p class="text-lg font-semibold text-gray-800">Missing Days Summary for ${periodTitle}</p>
+                                <p class="ml-4">Total Working Days: <b class="text-gray-800">${data.total_working_days.toFixed(2)}</b> ${data.date_range_description ? `<span class="text-xs text-gray-500">${data.date_range_description}</span>` : ''}</p>
+                                <p class="ml-4">Total Accounted Days: <b class="text-gray-800">${data.total_accounted_days.toFixed(2)}</b></p>
+                                <p class="ml-4">Missing Days: <b class="text-gray-800 ${data.missing_days > 0 ? 'text-red-600' : ''}">${data.missing_days.toFixed(2)}</b></p>
+                                ${data.missing_days > 0 ? `<p class="mt-2 text-red-600 font-semibold">⚠️ Warning: There are ${data.missing_days.toFixed(2)} missing working days in ${periodTitle}. These may need to be reviewed.</p>` : '<p class="mt-2 text-green-600 font-semibold">✓ All working days are accounted for.</p>'}
+                            </div>
+                        `;
+                        document.getElementById("holidays-calculation-breakdown").innerHTML = breakdown;
+                    } else {
+                        // Year view - show full holidays summary
+                        document.getElementById("holidays-summary-container").classList.remove("hidden");
+                        
+                        // Update the display
+                        document.getElementById("holidays-allowance").textContent = data.allowance.toFixed(2);
+                        document.getElementById("holidays-taken").textContent = data.total_paid_holidays.toFixed(2);
+                        document.getElementById("holidays-office-closure").textContent = data.total_office_closure_holidays.toFixed(2);
+                        document.getElementById("holidays-bank-holidays").textContent = data.total_bank_holidays.toFixed(2);
+                        document.getElementById("holidays-remaining").textContent = data.total_paid_holidays_remaining.toFixed(2);
+                        document.getElementById("holidays-unpaid").textContent = data.total_unpaid_holidays.toFixed(2);
+                        
+                        // Update year text
+                        document.getElementById("holidays-summary-year-text").textContent = `for ${year}`;
+                        document.getElementById("holidays-unpaid-year-text").textContent = `for ${year}`;
+                        
+                        // Update days accounting summary
+                        document.getElementById("total-working-days").textContent = data.total_working_days.toFixed(2);
+                        document.getElementById("days-with-attendance").textContent = (data.days_with_attendance || 0).toFixed(2);
+                        document.getElementById("total-accounted-days").textContent = data.total_accounted_days.toFixed(2);
+                        const unaccountedDays = data.unaccounted_days;
+                        const unaccountedCell = document.getElementById("unaccounted-days");
+                        unaccountedCell.textContent = unaccountedDays.toFixed(2);
+                        if (unaccountedDays > 0) {
+                            unaccountedCell.classList.add("text-red-600", "font-semibold");
+                            unaccountedCell.classList.remove("text-gray-700");
+                        } else {
+                            unaccountedCell.classList.remove("text-red-600", "font-semibold");
+                            unaccountedCell.classList.add("text-gray-700");
+                        }
+                        
+                        // Update accounted days breakdown
+                        document.getElementById("accounted-paid-holidays").textContent = data.total_paid_holidays.toFixed(2);
+                        document.getElementById("accounted-unpaid-holidays").textContent = data.total_unpaid_holidays.toFixed(2);
+                        document.getElementById("accounted-sick-leave").textContent = (data.total_sick_leave || 0).toFixed(2);
+                        document.getElementById("accounted-bank-holidays").textContent = data.total_bank_holidays.toFixed(2);
+                        document.getElementById("accounted-office-closures").textContent = data.total_office_closure_holidays.toFixed(2);
+                        document.getElementById("accounted-attendance-days").textContent = (data.days_with_attendance || 0).toFixed(2);
+                        
+                        // Update calculation breakdown
+                        const breakdown = `
+                            <div class="space-y-1">
+                                <p><b class="text-gray-800">Remaining Calculation:</b></p>
+                                <p class="ml-4">Allowance (${data.allowance.toFixed(2)}) - Taken (${data.total_paid_holidays.toFixed(2)}) - Bank Holidays (${data.total_bank_holidays.toFixed(2)}) - Office Closure (${data.total_office_closure_holidays.toFixed(2)}) = <b class="text-gray-800">${data.total_paid_holidays_remaining.toFixed(2)}</b></p>
+                                <p class="mt-2"><b class="text-gray-800">Days Accounting:</b></p>
+                                <p class="ml-4">Total Working Days (${data.total_working_days.toFixed(2)}) ${data.date_range_description ? `<span class="text-xs text-gray-500">${data.date_range_description}</span>` : ''} - Total Accounted Days (${data.total_accounted_days.toFixed(2)}) = <b class="text-gray-800 ${unaccountedDays > 0 ? 'text-red-600' : ''}">${unaccountedDays.toFixed(2)} Unaccounted Days</b></p>
+                                <p class="ml-4 text-xs text-gray-500">Accounted Days = Paid Holidays + Unpaid Holidays + Sick Leave + Bank Holidays + Office Closures + Days with Attendance</p>
+                                <p class="ml-4 text-xs text-gray-500">Days with Attendance = Days where employee has clocked in (worked days)</p>
+                                ${data.is_current_year || data.is_future_year ? `<p class="ml-4 text-xs text-blue-600 font-semibold">ℹ️ Note: Calculations are based on dates up to today (${new Date().toLocaleDateString('en-GB')}). Future dates are excluded.</p>` : ''}
+                                ${unaccountedDays > 0 ? `<p class="mt-2 text-red-600 font-semibold">⚠️ Warning: There are ${unaccountedDays.toFixed(2)} unaccounted working days. These may need to be reviewed.</p>` : ''}
+                                <p class="mt-2"><b class="text-gray-800">Note:</b> Office Closure days are excluded from the "Taken" count.</p>
+                            </div>
+                        `;
+                        document.getElementById("holidays-calculation-breakdown").innerHTML = breakdown;
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching holidays summary:", error);
+                });
+        }
+        
+        userSelect.addEventListener("change", fetchHolidaysSummary);
+        yearSelect.addEventListener("change", fetchHolidaysSummary);
+        monthSelect.addEventListener("change", fetchHolidaysSummary);
+    });
+</script>
+
+{% csrf_token %}
+<style>
+    /* Simplified styling */
+    .line-clamp-2 {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    
+    #kanban-to-do-tasks:empty::after,
+    #kanban-in-progress-tasks:empty::after,
+    #kanban-completed-tasks:empty::after {
+        content: 'No tasks';
+        display: block;
+        text-align: center;
+        padding: 2rem;
+        color: #9ca3af;
+        font-size: 0.875rem;
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Kanban Board Functionality
+    const kanbanBoardContainer = document.getElementById('kanban-board-container');
+    const kanbanMinimized = document.getElementById('kanban-minimized');
+    const kanbanToggle = document.getElementById('kanban-toggle');
+    const kanbanToggleText = document.getElementById('kanban-toggle-text');
+    const kanbanUserFilter = document.getElementById('kanban-user-filter');
+    
+    // Kanban containers
+    const kanbanContainers = {
+        'to_do': document.getElementById('kanban-to-do-tasks'),
+        'in_progress': document.getElementById('kanban-in-progress-tasks'),
+        'completed': document.getElementById('kanban-completed-tasks')
+    };
+    
+    const kanbanCounts = {
+        'to_do': document.getElementById('kanban-to-do-count'),
+        'in_progress': document.getElementById('kanban-in-progress-count'),
+        'completed': document.getElementById('kanban-completed-count')
+    };
+    
+    const kanbanMinimizedCounts = {
+        'to_do': document.getElementById('kanban-minimized-to-do-count'),
+        'in_progress': document.getElementById('kanban-minimized-in-progress-count'),
+        'completed': document.getElementById('kanban-minimized-completed-count')
+    };
+    
+    // Export dropdown functionality
+    const exportDropdownBtn = document.getElementById('export-dropdown-btn');
+    const exportDropdown = document.getElementById('export-dropdown');
+    const exportUserSelect = document.getElementById('export-user-select');
+    const exportUserPdf = document.getElementById('export-user-pdf');
+    
+    exportDropdownBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        exportDropdown.classList.toggle('hidden');
+    });
+    
+    document.addEventListener('click', function(e) {
+        if (!exportDropdownBtn.contains(e.target) && !exportDropdown.contains(e.target)) {
+            exportDropdown.classList.add('hidden');
+        }
+    });
+    
+    exportUserPdf.addEventListener('click', function() {
+        const userId = exportUserSelect.value;
+        if (!userId) {
+            alert('Please select a user to export');
+            return;
+        }
+        window.open(`/export_user_tasks_pdf/?user_id=${userId}`, '_blank');
+        exportDropdown.classList.add('hidden');
+    });
+    
+    // Kanban toggle functionality
+    kanbanToggle.addEventListener('click', function() {
+        const isMinimized = kanbanBoardContainer.classList.contains('hidden');
+        
+        if (isMinimized) {
+            kanbanBoardContainer.classList.remove('hidden');
+            kanbanMinimized.classList.add('hidden');
+            kanbanToggleText.textContent = 'Hide';
+        } else {
+            kanbanBoardContainer.classList.add('hidden');
+            kanbanMinimized.classList.remove('hidden');
+            kanbanToggleText.textContent = 'Show';
+        }
+    });
+    
+    // Load kanban tasks
+    function loadKanbanTasks() {
+        const selectedUsers = Array.from(kanbanUserFilter.selectedOptions).map(opt => opt.value).filter(v => v);
+        
+        fetch('/load-management-tasks/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                count: 10,
+                filter_user_ids: selectedUsers
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Clear existing tasks
+                Object.keys(kanbanContainers).forEach(status => {
+                    kanbanContainers[status].innerHTML = '';
+                });
+                
+                // Render tasks
+                Object.keys(data.tasks).forEach(status => {
+                    const tasks = data.tasks[status];
+                    const total = data.total_counts[status];
+                    
+                    // Update counts
+                    kanbanCounts[status].textContent = total;
+                    const statusText = status === 'to_do' ? 'To Do' :
+                                     status === 'in_progress' ? 'In Progress' : 'Completed';
+                    kanbanMinimizedCounts[status].textContent = `${total} ${statusText}`;
+                    
+                    // Render tasks
+                    if (tasks.length === 0) {
+                        showEmptyKanbanState(status);
+                    } else {
+                        tasks.forEach(task => {
+                            const taskElement = createKanbanTaskElement(task, status);
+                            kanbanContainers[status].appendChild(taskElement);
+                        });
+                    }
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error loading kanban tasks:', error);
+        });
+    }
+    
+    // Create kanban task element
+    function createKanbanTaskElement(task, status) {
+        const div = document.createElement('div');
+        div.className = `bg-white border-l-4 border-${getBorderColor(task.urgency)}-500 p-3 rounded-lg shadow-sm hover:shadow transition-all cursor-pointer`;
+        
+        const urgencyBadge = {
+            'urgent': '<span class="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded font-medium">Urgent</span>',
+            'high': '<span class="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">High</span>',
+            'medium': '<span class="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded font-medium">Medium</span>',
+            'low': '<span class="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">Low</span>'
+        }[task.urgency] || '';
+        
+        div.innerHTML = `
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-900">${task.file_number}</span>
+                ${urgencyBadge}
+            </div>
+            <p class="text-sm text-gray-700 mb-2 line-clamp-2">${task.task}</p>
+            <div class="flex items-center justify-between text-xs text-gray-500">
+                <span>${task.assigned_to}</span>
+                ${task.date ? `<span class="${getDateStatusColor(task.date)}">${formatDate(task.date)}</span>` : '<span>No date</span>'}
+            </div>
+        `;
+        
+        return div;
+    }
+    
+    function getBorderColor(urgency) {
+        switch(urgency) {
+            case 'urgent': return 'red';
+            case 'high': return 'orange';
+            case 'medium': return 'yellow';
+            case 'low': return 'blue';
+            default: return 'gray';
+        }
+    }
+    
+    function getDateStatusColor(dateStr) {
+        if (!dateStr) return 'text-gray-500';
+        
+        const today = new Date();
+        const taskDate = new Date(dateStr);
+        const diffTime = taskDate.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays < 0) return 'text-red-600 font-medium';
+        if (diffDays === 0) return 'text-red-500 font-medium';
+        if (diffDays === 1) return 'text-orange-500 font-medium';
+        if (diffDays <= 3) return 'text-yellow-600';
+        return 'text-gray-500';
+    }
+    
+    function formatDate(dateStr) {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-GB', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    
+    function showEmptyKanbanState(status) {
+        const container = kanbanContainers[status];
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'text-center text-gray-500 py-8';
+        
+        const emptyText = status === 'to_do' ? 'No tasks to do' :
+                        status === 'in_progress' ? 'No tasks in progress' :
+                        'No tasks completed this week';
+        
+        emptyDiv.innerHTML = `<p>${emptyText}</p>`;
+        container.appendChild(emptyDiv);
+    }
+    
+    // Load initial kanban tasks
+    loadKanbanTasks();
+    
+    // Reload kanban when user filter changes
+    kanbanUserFilter.addEventListener('change', loadKanbanTasks);
+});
 </script>
     
 {% endblock %}

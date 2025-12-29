@@ -93,6 +93,180 @@
     </form>
   </div>
 </div>
+
+<!-- Holidays Summary Section -->
+<div class="div-container mt-4">
+  <div class="flex flex-col gap-4">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <h2 class="text-xl font-semibold text-gray-700">Holidays Summary</h2>
+      <div class="flex flex-col md:flex-row gap-2">
+        <select id="holidays-summary-user-select-records" class="form-input">
+          <option value="">Select User</option>
+          {% for user in users %}
+          <option value="{{ user.id }}">{{ user.username }}</option>
+          {% endfor %}
+        </select>
+        <select id="holidays-summary-year-select-records" class="form-input">
+          <!-- Options will be populated by JavaScript -->
+        </select>
+      </div>
+    </div>
+    
+    <div id="holidays-summary-container-records" class="grid md:grid-cols-2 gap-4">
+      <!-- Paid Holidays Summary -->
+      <div class="div-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th colspan="2" class="text-lg px-2 pb-2 text-gray-900 text-center font-normal">
+                Paid Holidays Summary
+                <span class="text-xs font-light" id="holidays-summary-year-text-records">for current year</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b">
+              <th class="py-2 px-2 font-normal text-gray-800">Allowance</th>
+              <td class="py-2 px-2 font-light text-gray-700" id="holidays-allowance-records">-</td>
+            </tr>
+            <tr class="border-b bg-gray-50">
+              <th class="py-2 px-2 font-normal text-gray-800">Taken</th>
+              <td class="py-2 px-2 font-light text-gray-700" id="holidays-taken-records">-</td>
+            </tr>
+            <tr class="border-b">
+              <th class="py-2 px-2 font-normal text-gray-800">Office Closure</th>
+              <td class="py-2 px-2 font-light text-gray-700" id="holidays-office-closure-records">-</td>
+            </tr>
+            <tr class="border-b">
+              <th class="py-2 px-2 font-normal text-gray-800">Bank Holidays</th>
+              <td class="py-2 px-2 font-light text-gray-700" id="holidays-bank-holidays-records">-</td>
+            </tr>
+            <tr class="border-b bg-gray-50">
+              <th class="py-2 px-2 font-normal text-gray-800 flex flex-row items-center gap-2">
+                Remaining
+                <a data-popover-target="holidays_remaining_summary_records">
+                  <svg class="w-4 h-4 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 11h2v5m-2 0h4m-2.592-8.5h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+                  </svg>
+                </a>
+              </th>
+              <td class="py-2 px-2 text-gray-800" id="holidays-remaining-records">-</td>
+              <div id="holidays_remaining_summary_records" role="tooltip" class="absolute z-50 invisible inline-block w-72 text-sm transition-opacity duration-300 border rounded-lg shadow-sm opacity-0 text-gray-200 border-gray-600 bg-gray-800">
+                <div class="px-3 py-2 border-b rounded-t-lg border-gray-600 bg-gray-700 flex items-center">
+                  <h3 class="font-medium text-white">Paid Holidays Remaining</h3>
+                </div>
+                <div class="px-3 py-2 font-light text-gray-200">
+                  <p>
+                    <b class="text-gray-50">Paid Holidays Remaining</b> are calculated by taking the 
+                    <b class="text-gray-50">Total Paid Holidays Allowance</b> for the year, subtracting the 
+                    <b class="text-gray-50">Total Paid Holidays Taken</b>, and further subtracting both 
+                    <b class="text-gray-50">Bank Holidays</b> and <b class="text-gray-50">Office Closure Holidays.</b>
+                  </p>
+                </div>
+                <div data-popper-arrow></div>
+              </div>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <!-- Unpaid Holidays Summary -->
+      <div class="div-container h-fit">
+        <table class="table">
+          <tbody>
+            <tr class="border-b">
+              <th colspan="2" class="text-lg px-2 pb-2 text-gray-900 text-center font-normal">
+                Unpaid Holidays
+                <span class="text-xs font-light" id="holidays-unpaid-year-text-records">for current year</span>
+              </th>
+            </tr>
+            <tr class="border-b bg-gray-50">
+              <th class="py-2 px-2 font-normal text-gray-800">Taken</th>
+              <td class="py-2 px-2 text-gray-700" id="holidays-unpaid-records">-</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    
+    <!-- Days Accounting Summary -->
+    <div class="div-container">
+      <h3 class="text-lg font-semibold text-gray-700 mb-3">Days Accounting Summary</h3>
+      <div class="grid md:grid-cols-2 gap-4 mb-4">
+        <div class="div-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th colspan="2" class="text-lg px-2 pb-2 text-gray-900 text-center font-normal">
+                  Days Breakdown
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-b">
+                <th class="py-2 px-2 font-normal text-gray-800">Total Working Days</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="total-working-days-records">-</td>
+              </tr>
+              <tr class="border-b bg-gray-50">
+                <th class="py-2 px-2 font-normal text-gray-800">Days with Attendance</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="days-with-attendance-records">-</td>
+              </tr>
+              <tr class="border-b">
+                <th class="py-2 px-2 font-normal text-gray-800">Total Accounted Days</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="total-accounted-days-records">-</td>
+              </tr>
+              <tr class="border-b bg-gray-50">
+                <th class="py-2 px-2 font-normal text-gray-800">Unaccounted Days</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="unaccounted-days-records">-</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="div-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th colspan="2" class="text-lg px-2 pb-2 text-gray-900 text-center font-normal">
+                  Accounted Days Breakdown
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-b">
+                <th class="py-2 px-2 font-normal text-gray-800">Paid Holidays</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="accounted-paid-holidays-records">-</td>
+              </tr>
+              <tr class="border-b bg-gray-50">
+                <th class="py-2 px-2 font-normal text-gray-800">Unpaid Holidays</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="accounted-unpaid-holidays-records">-</td>
+              </tr>
+              <tr class="border-b">
+                <th class="py-2 px-2 font-normal text-gray-800">Sick Leave</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="accounted-sick-leave-records">-</td>
+              </tr>
+              <tr class="border-b bg-gray-50">
+                <th class="py-2 px-2 font-normal text-gray-800">Bank Holidays</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="accounted-bank-holidays-records">-</td>
+              </tr>
+              <tr class="border-b">
+                <th class="py-2 px-2 font-normal text-gray-800">Office Closures</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="accounted-office-closures-records">-</td>
+              </tr>
+              <tr class="border-b bg-gray-50">
+                <th class="py-2 px-2 font-normal text-gray-800">Days with Attendance</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="accounted-attendance-days-records">-</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="text-sm text-gray-600 space-y-2" id="holidays-calculation-breakdown-records">
+        <p>Select a user and year to see the calculation breakdown.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="overflow-auto div-container mt-4">
   <table id="holidayTable" class="min-w-full text-sm text-gray-800">
     <thead>
@@ -278,6 +452,119 @@
         th.addClass(order[0][1]);
       }
     });
+  });
+</script>
+
+<script>
+  // Holidays Summary Functionality for Holiday Records Page
+  document.addEventListener("DOMContentLoaded", function () {
+    const userSelect = document.getElementById("holidays-summary-user-select-records");
+    const yearSelect = document.getElementById("holidays-summary-year-select-records");
+    
+    // Populate year dropdown
+    const currentYear = new Date().getFullYear();
+    for (let year = currentYear - 5; year <= currentYear + 5; year++) {
+      const option = document.createElement("option");
+      option.value = year;
+      option.textContent = year;
+      if (year === currentYear) {
+        option.selected = true;
+      }
+      yearSelect.appendChild(option);
+    }
+    
+    function fetchHolidaysSummary() {
+      const userId = userSelect.value;
+      const year = yearSelect.value;
+      
+      if (!userId) {
+        // Clear the display
+        document.getElementById("holidays-allowance-records").textContent = "-";
+        document.getElementById("holidays-taken-records").textContent = "-";
+        document.getElementById("holidays-office-closure-records").textContent = "-";
+        document.getElementById("holidays-bank-holidays-records").textContent = "-";
+        document.getElementById("holidays-remaining-records").textContent = "-";
+        document.getElementById("holidays-unpaid-records").textContent = "-";
+        document.getElementById("total-working-days-records").textContent = "-";
+        document.getElementById("days-with-attendance-records").textContent = "-";
+        document.getElementById("total-accounted-days-records").textContent = "-";
+        document.getElementById("unaccounted-days-records").textContent = "-";
+        document.getElementById("accounted-paid-holidays-records").textContent = "-";
+        document.getElementById("accounted-unpaid-holidays-records").textContent = "-";
+        document.getElementById("accounted-sick-leave-records").textContent = "-";
+        document.getElementById("accounted-bank-holidays-records").textContent = "-";
+        document.getElementById("accounted-office-closures-records").textContent = "-";
+        document.getElementById("accounted-attendance-days-records").textContent = "-";
+        document.getElementById("holidays-calculation-breakdown-records").innerHTML = "<p class='text-gray-500'>Select a user and year to see the calculation breakdown.</p>";
+        return;
+      }
+      
+      fetch(`/holidays-summary/?user_id=${userId}&year=${year}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            console.error(data.error);
+            return;
+          }
+          
+          // Update the display
+          document.getElementById("holidays-allowance-records").textContent = data.allowance.toFixed(2);
+          document.getElementById("holidays-taken-records").textContent = data.total_paid_holidays.toFixed(2);
+          document.getElementById("holidays-office-closure-records").textContent = data.total_office_closure_holidays.toFixed(2);
+          document.getElementById("holidays-bank-holidays-records").textContent = data.total_bank_holidays.toFixed(2);
+          document.getElementById("holidays-remaining-records").textContent = data.total_paid_holidays_remaining.toFixed(2);
+          document.getElementById("holidays-unpaid-records").textContent = data.total_unpaid_holidays.toFixed(2);
+          
+          // Update year text
+          document.getElementById("holidays-summary-year-text-records").textContent = `for ${year}`;
+          document.getElementById("holidays-unpaid-year-text-records").textContent = `for ${year}`;
+          
+          // Update days accounting summary
+          document.getElementById("total-working-days-records").textContent = data.total_working_days.toFixed(2);
+          document.getElementById("days-with-attendance-records").textContent = (data.days_with_attendance || 0).toFixed(2);
+          document.getElementById("total-accounted-days-records").textContent = data.total_accounted_days.toFixed(2);
+          const unaccountedDays = data.unaccounted_days;
+          const unaccountedCell = document.getElementById("unaccounted-days-records");
+          unaccountedCell.textContent = unaccountedDays.toFixed(2);
+          if (unaccountedDays > 0) {
+            unaccountedCell.classList.add("text-red-600", "font-semibold");
+            unaccountedCell.classList.remove("text-gray-700");
+          } else {
+            unaccountedCell.classList.remove("text-red-600", "font-semibold");
+            unaccountedCell.classList.add("text-gray-700");
+          }
+          
+          // Update accounted days breakdown
+          document.getElementById("accounted-paid-holidays-records").textContent = data.total_paid_holidays.toFixed(2);
+          document.getElementById("accounted-unpaid-holidays-records").textContent = data.total_unpaid_holidays.toFixed(2);
+          document.getElementById("accounted-sick-leave-records").textContent = (data.total_sick_leave || 0).toFixed(2);
+          document.getElementById("accounted-bank-holidays-records").textContent = data.total_bank_holidays.toFixed(2);
+          document.getElementById("accounted-office-closures-records").textContent = data.total_office_closure_holidays.toFixed(2);
+          document.getElementById("accounted-attendance-days-records").textContent = (data.days_with_attendance || 0).toFixed(2);
+          
+          // Update calculation breakdown
+          const breakdown = `
+            <div class="space-y-1">
+              <p><b class="text-gray-800">Remaining Calculation:</b></p>
+              <p class="ml-4">Allowance (${data.allowance.toFixed(2)}) - Taken (${data.total_paid_holidays.toFixed(2)}) - Bank Holidays (${data.total_bank_holidays.toFixed(2)}) - Office Closure (${data.total_office_closure_holidays.toFixed(2)}) = <b class="text-gray-800">${data.total_paid_holidays_remaining.toFixed(2)}</b></p>
+              <p class="mt-2"><b class="text-gray-800">Days Accounting:</b></p>
+              <p class="ml-4">Total Working Days (${data.total_working_days.toFixed(2)}) ${data.date_range_description ? `<span class="text-xs text-gray-500">${data.date_range_description}</span>` : ''} - Total Accounted Days (${data.total_accounted_days.toFixed(2)}) = <b class="text-gray-800 ${unaccountedDays > 0 ? 'text-red-600' : ''}">${unaccountedDays.toFixed(2)} Unaccounted Days</b></p>
+              <p class="ml-4 text-xs text-gray-500">Accounted Days = Paid Holidays + Unpaid Holidays + Sick Leave + Bank Holidays + Office Closures + Days with Attendance</p>
+              <p class="ml-4 text-xs text-gray-500">Days with Attendance = Days where employee has clocked in (worked days)</p>
+              ${data.is_current_year || data.is_future_year ? `<p class="ml-4 text-xs text-blue-600 font-semibold">ℹ️ Note: Calculations are based on dates up to today (${new Date().toLocaleDateString('en-GB')}). Future dates are excluded.</p>` : ''}
+              ${unaccountedDays > 0 ? `<p class="mt-2 text-red-600 font-semibold">⚠️ Warning: There are ${unaccountedDays.toFixed(2)} unaccounted working days. These may need to be reviewed.</p>` : ''}
+              <p class="mt-2"><b class="text-gray-800">Note:</b> Office Closure days are excluded from the "Taken" count.</p>
+            </div>
+          `;
+          document.getElementById("holidays-calculation-breakdown-records").innerHTML = breakdown;
+        })
+        .catch(error => {
+          console.error("Error fetching holidays summary:", error);
+        });
+    }
+    
+    userSelect.addEventListener("change", fetchHolidaysSummary);
+    yearSelect.addEventListener("change", fetchHolidaysSummary);
   });
 </script>
 {% endblock %}

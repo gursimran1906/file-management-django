@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Task Report - {{ user.first_name }} {{ user.last_name }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #333;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #2563eb;
+            padding-bottom: 15px;
+        }
+        
+        .header h1 {
+            color: #1e40af;
+            font-size: 24pt;
+            margin: 0 0 10px 0;
+        }
+        
+        .header .user-name {
+            font-size: 16pt;
+            color: #4b5563;
+            margin: 5px 0;
+        }
+        
+        .header .export-date {
+            font-size: 9pt;
+            color: #6b7280;
+            margin-top: 5px;
+        }
+        
+        .summary {
+            background-color: #f3f4f6;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+        }
+        
+        .summary h2 {
+            color: #1e40af;
+            font-size: 14pt;
+            margin: 0 0 10px 0;
+        }
+        
+        .summary-stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 10px;
+        }
+        
+        .stat-box {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #2563eb;
+        }
+        
+        .stat-label {
+            font-size: 9pt;
+            color: #6b7280;
+            margin-top: 5px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            page-break-inside: avoid;
+        }
+        
+        .section-header {
+            background-color: #2563eb;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 12pt;
+            font-weight: bold;
+        }
+        
+        .section-header.to-do {
+            background-color: #dc2626;
+        }
+        
+        .section-header.in-progress {
+            background-color: #f59e0b;
+        }
+        
+        .section-header.completed {
+            background-color: #10b981;
+        }
+        
+        .task-card {
+            border: 1px solid #e5e7eb;
+            border-left: 4px solid #2563eb;
+            padding: 12px;
+            margin-bottom: 12px;
+            background-color: #ffffff;
+            page-break-inside: avoid;
+        }
+        
+        .task-card.urgent {
+            border-left-color: #dc2626;
+            background-color: #fef2f2;
+        }
+        
+        .task-card.high {
+            border-left-color: #f97316;
+            background-color: #fff7ed;
+        }
+        
+        .task-card.medium {
+            border-left-color: #f59e0b;
+            background-color: #fffbeb;
+        }
+        
+        .task-card.low {
+            border-left-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .file-number {
+            font-weight: bold;
+            color: #1e40af;
+            font-size: 11pt;
+        }
+        
+        .urgency-badge {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 8pt;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .urgency-badge.urgent {
+            background-color: #dc2626;
+            color: white;
+        }
+        
+        .urgency-badge.high {
+            background-color: #f97316;
+            color: white;
+        }
+        
+        .urgency-badge.medium {
+            background-color: #f59e0b;
+            color: white;
+        }
+        
+        .urgency-badge.low {
+            background-color: #3b82f6;
+            color: white;
+        }
+        
+        .task-description {
+            color: #374151;
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+        
+        .task-meta {
+            font-size: 9pt;
+            color: #6b7280;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .due-date {
+            font-weight: bold;
+        }
+        
+        .due-date.overdue {
+            color: #dc2626;
+        }
+        
+        .due-date.due-soon {
+            color: #f59e0b;
+        }
+        
+        .empty-section {
+            text-align: center;
+            color: #9ca3af;
+            padding: 20px;
+            font-style: italic;
+        }
+        
+        .footer {
+            margin-top: 40px;
+            padding-top: 15px;
+            border-top: 2px solid #e5e7eb;
+            text-align: center;
+            font-size: 8pt;
+            color: #9ca3af;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Task Report</h1>
+        <div class="user-name">{{ user.first_name }} {{ user.last_name }}</div>
+        <div class="export-date">Generated on {{ export_date|date:"F d, Y \a\t H:i" }}</div>
+    </div>
+    
+    <div class="summary">
+        <h2>Summary</h2>
+        <div class="summary-stats">
+            <div class="stat-box">
+                <div class="stat-value">{{ total_tasks }}</div>
+                <div class="stat-label">Total Tasks</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value">{{ to_do_tasks.count }}</div>
+                <div class="stat-label">To Do</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value">{{ in_progress_tasks.count }}</div>
+                <div class="stat-label">In Progress</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value">{{ completed_tasks.count }}</div>
+                <div class="stat-label">Completed</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- To Do Tasks -->
+    <div class="section">
+        <div class="section-header to-do">
+            📋 To Do Tasks ({{ to_do_tasks.count }})
+        </div>
+        {% if to_do_tasks %}
+            {% for task in to_do_tasks %}
+            <div class="task-card {{ task.urgency }}">
+                <div class="task-header">
+                    <span class="file-number">{{ task.file_number.file_number }}</span>
+                    <span class="urgency-badge {{ task.urgency }}">{{ task.get_urgency_display }}</span>
+                </div>
+                <div class="task-description">
+                    {{ task.task }}
+                </div>
+                <div class="task-meta">
+                    <span>Created: {{ task.timestamp|date:"M d, Y" }}</span>
+                    <span class="due-date {% if task.date %}{% now 'Y-m-d' as today %}{% if task.date|date:'Y-m-d' < today %}overdue{% elif task.date|date:'Y-m-d' == today %}due-soon{% endif %}{% endif %}">
+                        {% if task.date %}
+                            Due: {{ task.date|date:"M d, Y" }}
+                        {% else %}
+                            No due date
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-section">No tasks to do</div>
+        {% endif %}
+    </div>
+    
+    <!-- In Progress Tasks -->
+    <div class="section">
+        <div class="section-header in-progress">
+            🔄 In Progress Tasks ({{ in_progress_tasks.count }})
+        </div>
+        {% if in_progress_tasks %}
+            {% for task in in_progress_tasks %}
+            <div class="task-card {{ task.urgency }}">
+                <div class="task-header">
+                    <span class="file-number">{{ task.file_number.file_number }}</span>
+                    <span class="urgency-badge {{ task.urgency }}">{{ task.get_urgency_display }}</span>
+                </div>
+                <div class="task-description">
+                    {{ task.task }}
+                </div>
+                <div class="task-meta">
+                    <span>Started: {{ task.timestamp|date:"M d, Y" }}</span>
+                    <span class="due-date {% if task.date %}{% now 'Y-m-d' as today %}{% if task.date|date:'Y-m-d' < today %}overdue{% elif task.date|date:'Y-m-d' == today %}due-soon{% endif %}{% endif %}">
+                        {% if task.date %}
+                            Due: {{ task.date|date:"M d, Y" }}
+                        {% else %}
+                            No due date
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-section">No tasks in progress</div>
+        {% endif %}
+    </div>
+    
+    <!-- Completed Tasks -->
+    <div class="section">
+        <div class="section-header completed">
+            ✅ Completed Tasks ({{ completed_tasks.count }})
+        </div>
+        {% if completed_tasks %}
+            {% for task in completed_tasks %}
+            <div class="task-card">
+                <div class="task-header">
+                    <span class="file-number">{{ task.file_number.file_number }}</span>
+                    <span style="color: #10b981; font-weight: bold;">✓ Completed</span>
+                </div>
+                <div class="task-description">
+                    {{ task.task }}
+                </div>
+                <div class="task-meta">
+                    <span>Completed: {{ task.timestamp|date:"M d, Y H:i" }}</span>
+                    {% if task.date %}
+                        <span>Original Due: {{ task.date|date:"M d, Y" }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-section">No completed tasks</div>
+        {% endif %}
+    </div>
+    
+    <div class="footer">
+        <p>This report was generated automatically by the Task Management System.</p>
+        <p>For questions or clarifications, please contact your manager.</p>
+    </div>
+</body>
+</html>

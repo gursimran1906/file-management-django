@@ -82,6 +82,9 @@
       </tbody>
     </table>
   </div>
+  
+
+  
   {% if request.user.is_manager %}
   <div class="flex flex-col gap-4">
     <div class="div-container flex flex-col gap-2 md:justify-self-end h-fit">
@@ -775,6 +778,53 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
       </div>
     </div>
   </div>
+    <!-- Missing Days Summary -->
+    <div class="div-container">
+      <div class="flex flex-col gap-4">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <h3 class="text-lg font-semibold text-gray-700">Missing Days Summary</h3>
+          <div class="flex flex-col md:flex-row gap-2">
+            <select id="missing-days-view-select" class="form-input text-sm">
+              <option value="year">Year View</option>
+              <option value="month">Month View</option>
+            </select>
+            <select id="missing-days-year-select" class="form-input text-sm">
+              <!-- Options will be populated by JavaScript -->
+            </select>
+            <select id="missing-days-month-select" class="form-input text-sm hidden">
+              <!-- Options will be populated by JavaScript -->
+            </select>
+          </div>
+        </div>
+        
+        <div class="div-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th colspan="2" class="text-lg px-2 pb-2 text-gray-900 text-center font-normal">
+                  <span id="missing-days-period-title">Year Summary</span>
+                  <span class="text-xs font-light" id="missing-days-date-range">for current year</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-b">
+                <th class="py-2 px-2 font-normal text-gray-800">Total Working Days</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="missing-days-working">-</td>
+              </tr>
+              <tr class="border-b bg-gray-50">
+                <th class="py-2 px-2 font-normal text-gray-800">Total Accounted Days</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="missing-days-accounted">-</td>
+              </tr>
+              <tr class="border-b">
+                <th class="py-2 px-2 font-normal text-gray-800">Missing Days</th>
+                <td class="py-2 px-2 font-light text-gray-700" id="missing-days-missing">-</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   <div class="grid md:grid-cols-2 h-1/2 gap-4">
     <div class="div-container overflow-scroll col-span-2 h-full">
       <h2 class="text-xl mb-4">Attendance Records</h2>
@@ -1138,6 +1188,124 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
 
     // Initialize calendar on page load
     initializeCalendar();
+  });
+</script>
+
+<script>
+  // Missing Days Summary Functionality
+  document.addEventListener("DOMContentLoaded", function () {
+    const viewSelect = document.getElementById("missing-days-view-select");
+    const yearSelect = document.getElementById("missing-days-year-select");
+    const monthSelect = document.getElementById("missing-days-month-select");
+    
+    if (!viewSelect || !yearSelect || !monthSelect) {
+      return; // Elements not found, skip initialization
+    }
+    
+    // Populate year dropdown
+    const currentYear = new Date().getFullYear();
+    for (let year = currentYear - 2; year <= currentYear + 1; year++) {
+      const option = document.createElement("option");
+      option.value = year;
+      option.textContent = year;
+      if (year === currentYear) {
+        option.selected = true;
+      }
+      yearSelect.appendChild(option);
+    }
+    
+    // Populate month dropdown
+    const months = [
+      { value: 1, name: 'January' },
+      { value: 2, name: 'February' },
+      { value: 3, name: 'March' },
+      { value: 4, name: 'April' },
+      { value: 5, name: 'May' },
+      { value: 6, name: 'June' },
+      { value: 7, name: 'July' },
+      { value: 8, name: 'August' },
+      { value: 9, name: 'September' },
+      { value: 10, name: 'October' },
+      { value: 11, name: 'November' },
+      { value: 12, name: 'December' }
+    ];
+    
+    months.forEach(month => {
+      const option = document.createElement("option");
+      option.value = month.value;
+      option.textContent = month.name;
+      if (month.value === new Date().getMonth() + 1) {
+        option.selected = true;
+      }
+      monthSelect.appendChild(option);
+    });
+    
+    function fetchMissingDays() {
+      const view = viewSelect.value;
+      const year = yearSelect.value;
+      const month = view === 'month' ? monthSelect.value : null;
+      
+      let url = `/missing-days/?year=${year}`;
+      if (month) {
+        url += `&month=${month}`;
+      }
+      
+      fetch(url)
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            console.error(data.error);
+            return;
+          }
+          
+          // Update the display
+          document.getElementById("missing-days-working").textContent = data.total_working_days.toFixed(2);
+          document.getElementById("missing-days-accounted").textContent = data.total_accounted_days.toFixed(2);
+          const missingDays = data.missing_days;
+          const missingCell = document.getElementById("missing-days-missing");
+          missingCell.textContent = missingDays.toFixed(2);
+          
+          // Update styling based on missing days
+          if (missingDays > 0) {
+            missingCell.classList.add("text-red-600", "font-semibold");
+            missingCell.classList.remove("text-gray-700");
+          } else {
+            missingCell.classList.remove("text-red-600", "font-semibold");
+            missingCell.classList.add("text-gray-700");
+          }
+          
+          // Update period title and date range
+          if (data.period_type === 'month') {
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                               'July', 'August', 'September', 'October', 'November', 'December'];
+            document.getElementById("missing-days-period-title").textContent = 
+              `Month Summary - ${monthNames[data.month - 1]} ${data.year}`;
+          } else {
+            document.getElementById("missing-days-period-title").textContent = 
+              `Year Summary - ${data.year}`;
+          }
+          document.getElementById("missing-days-date-range").textContent = data.date_range_description;
+        })
+        .catch(error => {
+          console.error("Error fetching missing days:", error);
+        });
+    }
+    
+    // Toggle month selector visibility
+    viewSelect.addEventListener("change", function() {
+      if (this.value === 'month') {
+        monthSelect.classList.remove("hidden");
+      } else {
+        monthSelect.classList.add("hidden");
+      }
+      fetchMissingDays();
+    });
+    
+    yearSelect.addEventListener("change", fetchMissingDays);
+    monthSelect.addEventListener("change", fetchMissingDays);
+    
+    // Initial load
+    fetchMissingDays();
   });
 </script>
 {% endblock %}

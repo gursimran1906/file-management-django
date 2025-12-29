@@ -32,7 +32,7 @@
             <div class="card-body">
                 <p><strong>Total Attendance Days:</strong> {{ attendance_count }}</p>
                 <p><strong>Total Holidays Taken:</strong> {{ holiday_days }} days ({{ holiday_count }} holiday{{ holiday_count|pluralize }})</p>
-                <p><strong>Total Sick Days:</strong> {{ sickness_count }}</p>
+                <p><strong>Total Sick Days:</strong> {{ sickness_days }} days ({{ sickness_count }} record{{ sickness_count|pluralize }})</p>
             </div>
         </div>
 
@@ -77,15 +77,17 @@
                         <tr>
                             <th>Start Date</th>
                             <th>End Date</th>
+                            <th>Days in {{ month }}</th>
                             <th>Description</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for record in sickness %}
+                        {% for sickness_data in sickness %}
                         <tr>
-                            <td>{{ record.start_date|date:"d/m/Y" }}</td>
-                            <td>{{ record.end_date|date:"d/m/Y" }}</td>
-                            <td>{{ record.description }}</td>
+                            <td>{{ sickness_data.record.start_date|date:"d/m/Y" }}</td>
+                            <td>{% if sickness_data.record.end_date %}{{ sickness_data.record.end_date|date:"d/m/Y" }}{% else %}Ongoing{% endif %}</td>
+                            <td>{{ sickness_data.days_in_month }}</td>
+                            <td>{{ sickness_data.record.description }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

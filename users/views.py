@@ -276,6 +276,683 @@ def profile_page(request):
                                                  'users': users})
 
 
+def calculate_total_working_days_in_month(year, month, up_to_date=None):
+    """
+    Calculate total working days in a specific month (excluding weekends and bank holidays).
+    If up_to_date is provided, only count days up to that date.
+    
+    Args:
+        year: The year
+        month: The month (1-12)
+        up_to_date: Optional date to count up to
+    
+    Returns:
+        Total working days in the month (or up to the specified date)
+    """
+    from datetime import date
+    from calendar import monthrange
+    
+    # Get bank holidays for the year
+    holiday_list = holidays.country_holidays('GB', subdiv='ENG', years=year)
+    
+    # Get first and last day of the month
+    first_day = date(year, month, 1)
+    last_day = date(year, month, monthrange(year, month)[1])
+    
+    # Determine end date
+    if up_to_date:
+        if up_to_date.year != year or up_to_date.month != month:
+            if (up_to_date.year < year) or (up_to_date.year == year and up_to_date.month < month):
+                return 0  # Date is before the month
+            else:
+                end_date = last_day  # Date is after the month
+        else:
+            end_date = up_to_date.date() if hasattr(up_to_date, 'date') else up_to_date
+    else:
+        end_date = last_day
+    
+    # Ensure end_date is not before first_day
+    if end_date < first_day:
+        return 0
+    
+    total_working_days = 0
+    current_date = first_day
+    
+    while current_date <= end_date:
+        # Check if it's a weekday (Monday=0, Sunday=6)
+        if current_date.weekday() < 5:  # Monday to Friday
+            # Check if it's not a bank holiday
+            if current_date not in holiday_list:
+                total_working_days += 1
+        current_date += timedelta(days=1)
+    
+    return total_working_days
+
+
+def get_accounted_dates_in_range(user, start_date, end_date, cutoff_date=None):
+    """
+    Get a set of dates that are already accounted for by holidays, sick leave, or bank holidays.
+    This helps prevent double counting when calculating attendance records.
+    
+    Returns:
+        set: Set of date objects that are already accounted for
+    """
+    accounted_dates = set()
+    
+    # Get all holidays (paid, unpaid, office closures)
+    holidays_qs = HolidayRecord.objects.filter(
+        employee=user,
+        approved=True
+    ).filter(
+        Q(start_date__lte=end_date) & Q(end_date__gte=start_date)
+    )
+    
+    for holiday in holidays_qs:
+        holiday_start = max(holiday.start_date, start_date)
+        holiday_end = min(holiday.end_date, end_date)
+        if cutoff_date:
+            holiday_end = min(holiday_end, timezone.make_aware(datetime.combine(cutoff_date, time(23, 59, 59))))
+        
+        current = holiday_start.date()
+        end = holiday_end.date()
+        while current <= end:
+            # Only count business days (exclude weekends)
+            if current.weekday() < 5:  # Monday = 0, Friday = 4
+                accounted_dates.add(current)
+            current += timedelta(days=1)
+    
+    # Get all sick leave records
+    sickness_qs = SicknessRecord.objects.filter(
+        employee=user
+    ).filter(
+        Q(start_date__lte=end_date) & (Q(end_date__gte=start_date) | Q(end_date__isnull=True))
+    )
+    
+    for sickness in sickness_qs:
+        sickness_start = max(sickness.start_date, start_date)
+        if sickness.end_date:
+            sickness_end = min(sickness.end_date, end_date)
+        else:
+            sickness_end = min(end_date, timezone.now())
+        if cutoff_date:
+            sickness_end = min(sickness_end, timezone.make_aware(datetime.combine(cutoff_date, time(23, 59, 59))))
+        
+        current = sickness_start.date()
+        end = sickness_end.date()
+        while current <= end:
+            if current.weekday() < 5:  # Only business days
+                accounted_dates.add(current)
+            current += timedelta(days=1)
+    
+    # Get bank holidays in the range (only weekdays)
+    holiday_list = holidays.country_holidays('GB', subdiv='ENG', years=start_date.year)
+    for holiday_date in holiday_list.keys():
+        if start_date.date() <= holiday_date <= end_date.date():
+            if cutoff_date is None or holiday_date <= cutoff_date:
+                # Only count bank holidays on weekdays (Monday=0, Friday=4)
+                # Bank holidays are already excluded from working days, but we track them
+                # to avoid double counting with attendance
+                if holiday_date.weekday() < 5:
+                    accounted_dates.add(holiday_date)
+    
+    return accounted_dates
+
+
+def calculate_missing_days_summary(user, year=None, month=None):
+    """
+    Calculate missing days summary for a user for a specific month or year.
+    Handles edge cases to prevent double counting.
+    
+    Args:
+        user: The user
+        year: Optional year (defaults to current year)
+        month: Optional month (1-12). If provided, calculates for that month only
+    
+    Returns:
+        Dictionary with missing days information
+    """
+    from datetime import date
+    from calendar import monthrange
+    
+    today = timezone.now().date()
+    
+    if year is None:
+        year = today.year
+    if month is None:
+        # Year view
+        is_current_year = (year == today.year)
+        cutoff_date = today if is_current_year else None
+        
+        # Use existing function for year calculation
+        total_working_days = calculate_total_working_days_in_year(year, cutoff_date)
+        
+        # Get all accounted days for the year (using existing logic)
+        summary = calculate_holidays_summary(user, year)
+        total_accounted_days = summary['total_accounted_days']
+        missing_days = summary['unaccounted_days']
+        
+        # Ensure missing days is not negative (edge case: double counting)
+        if missing_days < 0:
+            missing_days = Decimal('0')
+        
+        return {
+            'period_type': 'year',
+            'year': year,
+            'month': None,
+            'total_working_days': float(total_working_days),
+            'total_accounted_days': float(total_accounted_days),
+            'missing_days': float(missing_days),
+            'date_range_description': summary.get('date_range_description', 'for entire year')
+        }
+    else:
+        # Month view
+        first_day_of_month = date(year, month, 1)
+        last_day_of_month = date(year, month, monthrange(year, month)[1])
+        
+        is_current_month = (year == today.year and month == today.month)
+        cutoff_date = today if is_current_month else None
+        
+        # Calculate working days in the month
+        total_working_days = calculate_total_working_days_in_month(year, month, cutoff_date)
+        
+        # Convert to datetime for calculations
+        first_day_dt = timezone.make_aware(datetime.combine(first_day_of_month, time(0, 0, 0)))
+        last_day_dt = timezone.make_aware(datetime.combine(last_day_of_month, time(23, 59, 59, 999999)))
+        
+        # Get accounted dates to prevent double counting
+        accounted_dates = get_accounted_dates_in_range(user, first_day_dt, last_day_dt, cutoff_date)
+        
+        # Calculate accounted days for the month
+        total_accounted_days = Decimal('0')
+        
+        # Paid holidays
+        paid_holidays = HolidayRecord.objects.filter(
+            employee=user,
+            approved=True,
+            type='Paid'
+        ).exclude(reason="Office Closure").filter(
+            Q(start_date__lte=last_day_dt) & Q(end_date__gte=first_day_dt)
+        )
+        for holiday in paid_holidays:
+            days = calculate_holiday_days_in_month(
+                holiday.start_date, holiday.end_date,
+                first_day_of_month, last_day_of_month
+            )
+            total_accounted_days += Decimal(str(days))
+        
+        # Unpaid holidays
+        unpaid_holidays = HolidayRecord.objects.filter(
+            employee=user,
+            approved=True,
+            type='Unpaid'
+        ).filter(
+            Q(start_date__lte=last_day_dt) & Q(end_date__gte=first_day_dt)
+        )
+        for holiday in unpaid_holidays:
+            days = calculate_holiday_days_in_month(
+                holiday.start_date, holiday.end_date,
+                first_day_of_month, last_day_of_month
+            )
+            total_accounted_days += Decimal(str(days))
+        
+        # Sick leave
+        sickness_records = SicknessRecord.objects.filter(
+            employee=user
+        ).filter(
+            Q(start_date__lte=last_day_dt) & (Q(end_date__gte=first_day_dt) | Q(end_date__isnull=True))
+        )
+        for sickness in sickness_records:
+            if sickness.end_date is None:
+                # Ongoing sickness
+                overlap_start = max(sickness.start_date, first_day_dt)
+                overlap_end = last_day_dt if cutoff_date is None else min(
+                    timezone.make_aware(datetime.combine(cutoff_date, time(23, 59, 59))),
+                    last_day_dt
+                )
+                days = calculate_holiday_days_in_month(
+                    overlap_start, overlap_end,
+                    first_day_of_month, last_day_of_month
+                )
+            else:
+                days = calculate_holiday_days_in_month(
+                    sickness.start_date, sickness.end_date,
+                    first_day_of_month, last_day_of_month
+                )
+            total_accounted_days += Decimal(str(days))
+        
+        # Bank holidays (only count those not already covered by office closures and not on weekends)
+        holiday_list = holidays.country_holidays('GB', subdiv='ENG', years=year)
+        bank_holidays_in_month = []
+        for holiday_date in holiday_list.keys():
+            if holiday_date.year == year and holiday_date.month == month:
+                # Only count weekdays (Monday=0, Friday=4)
+                if holiday_date.weekday() < 5:
+                    if cutoff_date is None or holiday_date <= cutoff_date:
+                        # Check if this bank holiday is already covered by an office closure
+                        is_covered = HolidayRecord.objects.filter(
+                            employee=user,
+                            reason="Office Closure",
+                            approved=True,
+                            start_date__lte=timezone.make_aware(datetime.combine(holiday_date, time(23, 59, 59))),
+                            end_date__gte=timezone.make_aware(datetime.combine(holiday_date, time(0, 0, 0)))
+                        ).exists()
+                        if not is_covered:
+                            bank_holidays_in_month.append(holiday_date)
+        
+        total_accounted_days += Decimal(str(len(bank_holidays_in_month)))
+        
+        # Office closures
+        office_closures = HolidayRecord.objects.filter(
+            employee=user,
+            reason="Office Closure",
+            approved=True
+        ).filter(
+            Q(start_date__lte=last_day_dt) & Q(end_date__gte=first_day_dt)
+        )
+        for holiday in office_closures:
+            days = calculate_holiday_days_in_month(
+                holiday.start_date, holiday.end_date,
+                first_day_of_month, last_day_of_month
+            )
+            total_accounted_days += Decimal(str(days))
+        
+        # Attendance records - only count days NOT already accounted for by holidays/sick leave/bank holidays
+        attendance_query = AttendanceRecord.objects.filter(
+            employee=user,
+            date__year=year,
+            date__month=month
+        )
+        if cutoff_date:
+            attendance_query = attendance_query.filter(date__lte=cutoff_date)
+        
+        attendance_dates = set(attendance_query.values_list('date', flat=True).distinct())
+        # Only count attendance on days that aren't already accounted for
+        unaccounted_attendance_dates = attendance_dates - accounted_dates
+        days_with_attendance = len(unaccounted_attendance_dates)
+        total_accounted_days += Decimal(str(days_with_attendance))
+        
+        # Calculate missing days
+        missing_days = Decimal(str(total_working_days)) - total_accounted_days
+        
+        # Ensure missing days is not negative (edge case: double counting or data issues)
+        if missing_days < 0:
+            missing_days = Decimal('0')
+        
+        date_range_desc = f"up to {cutoff_date.strftime('%d/%m/%Y')}" if cutoff_date else "for entire month"
+        
+        return {
+            'period_type': 'month',
+            'year': year,
+            'month': month,
+            'total_working_days': float(total_working_days),
+            'total_accounted_days': float(total_accounted_days),
+            'missing_days': float(missing_days),
+            'date_range_description': date_range_desc
+        }
+
+
+def calculate_total_working_days_in_year(year, up_to_date=None):
+    """
+    Calculate total working days in a year (excluding weekends and bank holidays).
+    If up_to_date is provided, only count days up to that date.
+    
+    Args:
+        year: The year to calculate for
+        up_to_date: Optional date to count up to (for current year, use today's date)
+    
+    Returns:
+        Total working days in the year (or up to the specified date)
+    """
+    from datetime import date
+    
+    # Get bank holidays for the year
+    holiday_list = holidays.country_holidays('GB', subdiv='ENG', years=year)
+    
+    # Start from January 1st
+    start_date = date(year, 1, 1)
+    
+    # Determine end date
+    if up_to_date:
+        # Use the provided date, but ensure it's within the year
+        if up_to_date.year != year:
+            # If date is in a different year, use end of year or start of year
+            if up_to_date.year < year:
+                return 0  # Date is before the year
+            else:
+                end_date = date(year, 12, 31)  # Date is after the year, use end of year
+        else:
+            end_date = up_to_date.date() if hasattr(up_to_date, 'date') else up_to_date
+    else:
+        # Use end of year
+        end_date = date(year, 12, 31)
+    
+    # Ensure end_date is not before start_date
+    if end_date < start_date:
+        return 0
+    
+    total_working_days = 0
+    current_date = start_date
+    
+    while current_date <= end_date:
+        # Check if it's a weekday (Monday=0, Sunday=6)
+        if current_date.weekday() < 5:  # Monday to Friday
+            # Check if it's not a bank holiday
+            if current_date not in holiday_list:
+                total_working_days += 1
+        current_date += timedelta(days=1)
+    
+    return total_working_days
+
+
+def calculate_holidays_summary(user, year):
+    """
+    Calculate holidays summary for a given user and year.
+    Smartly handles dates:
+    - Current year: counts working days and holidays only up to today
+    - Past years: counts all working days and holidays
+    - Future years: counts working days up to today (if any), holidays up to today
+    
+    Returns a dictionary with all holiday totals and breakdown.
+    """
+    current_year = year
+    today = timezone.now().date()
+    is_current_year = (current_year == today.year)
+    is_past_year = (current_year < today.year)
+    is_future_year = (current_year > today.year)
+    
+    # Determine the cutoff date for calculations
+    if is_current_year or is_future_year:
+        # For current or future years, only count up to today
+        cutoff_date = today
+    else:
+        # For past years, count the entire year
+        cutoff_date = None
+    
+    # Get all holiday requests for the user
+    holiday_requests = HolidayRecord.objects.filter(
+        employee=user
+    ).order_by('-timestamp')
+    
+    total_paid_holidays = 0
+    total_unpaid_holidays = 0
+    
+    # Calculate paid and unpaid holidays for the year
+    # Match the logic from profile_page: count all approved paid holidays first
+    for holiday_request in holiday_requests:
+        if holiday_request.start_date and holiday_request.end_date:
+            start_date = holiday_request.start_date
+            end_date = holiday_request.end_date
+            
+            # Only count holidays in the current year
+            if start_date.year != current_year:
+                continue
+            
+            # For current/future years, only count holidays up to today
+            if cutoff_date:
+                # If holiday ends before cutoff, count it fully
+                if end_date.date() <= cutoff_date:
+                    total_days = calculate_business_days(start_date, end_date)
+                # If holiday starts before cutoff but ends after, count only up to cutoff
+                elif start_date.date() <= cutoff_date:
+                    cutoff_datetime = timezone.make_aware(
+                        datetime.combine(cutoff_date, datetime.min.time())
+                    )
+                    total_days = calculate_business_days(start_date, cutoff_datetime)
+                else:
+                    # Holiday is entirely in the future, skip it
+                    continue
+            else:
+                # Past year - count all holidays
+                total_days = calculate_business_days(start_date, end_date)
+            
+            # Only count approved holidays in the allowance calculation
+            if holiday_request.approved:
+                if holiday_request.type == 'Paid':
+                    total_paid_holidays = total_paid_holidays + total_days
+                else:
+                    total_unpaid_holidays = total_unpaid_holidays + total_days
+    
+    # Get office closure holidays for the year (fetch first to check overlaps with bank holidays)
+    office_closure_holidays = HolidayRecord.objects.filter(
+        reason="Office Closure",
+        employee=user,
+        start_date__year=current_year,
+        approved=True
+    )
+    
+    # Get bank holidays for the year
+    holiday_list = holidays.country_holidays(
+        'GB', subdiv='ENG', years=current_year)
+    
+    # Count bank holidays up to cutoff date if applicable
+    # Exclude bank holidays that are already covered by office closures or fall on weekends
+    bank_holiday_dates = []
+    if cutoff_date:
+        bank_holiday_dates = [holiday_date for holiday_date in holiday_list.keys() 
+                              if holiday_date <= cutoff_date and holiday_date.weekday() < 5]  # Only weekdays
+    else:
+        bank_holiday_dates = [holiday_date for holiday_date in holiday_list.keys() 
+                             if holiday_date.weekday() < 5]  # Only weekdays
+    
+    # Filter out bank holidays covered by office closures
+    office_closure_dates = set()
+    for holiday in office_closure_holidays:
+        current = holiday.start_date.date()
+        end = holiday.end_date.date()
+        while current <= end:
+            if current.weekday() < 5:  # Only business days
+                office_closure_dates.add(current)
+            current += timedelta(days=1)
+    
+    # Only count bank holidays not covered by office closures
+    bank_holidays_not_covered = [bh for bh in bank_holiday_dates if bh not in office_closure_dates]
+    total_bank_holidays = round(Decimal(len(bank_holidays_not_covered)), 2)
+    
+    total_office_closure_holidays = 0
+    for holiday in office_closure_holidays:
+        if cutoff_date:
+            # If holiday ends before cutoff, count it fully
+            if holiday.end_date.date() <= cutoff_date:
+                total_days = calculate_business_days(
+                    holiday.start_date, holiday.end_date)
+            # If holiday starts before cutoff but ends after, count only up to cutoff
+            elif holiday.start_date.date() <= cutoff_date:
+                cutoff_datetime = timezone.make_aware(
+                    datetime.combine(cutoff_date, datetime.min.time())
+                )
+                total_days = calculate_business_days(
+                    holiday.start_date, cutoff_datetime)
+            else:
+                # Holiday is entirely in the future, skip it
+                continue
+        else:
+            total_days = calculate_business_days(
+                holiday.start_date, holiday.end_date)
+        total_office_closure_holidays = total_office_closure_holidays + total_days
+    
+    # Calculate sick leave for the year
+    sickness_records = SicknessRecord.objects.filter(
+        employee=user,
+        start_date__year=current_year
+    )
+    total_sick_leave = 0
+    for sickness in sickness_records:
+        if sickness.start_date:
+            # Only count days within the year
+            start_date = sickness.start_date
+            if start_date.year != current_year:
+                continue
+            
+            if cutoff_date:
+                # For current/future years, only count up to today
+                if sickness.end_date:
+                    end_date = sickness.end_date
+                    # If sickness ends before cutoff, count it fully
+                    if end_date.date() <= cutoff_date:
+                        total_days = calculate_business_days(start_date, end_date)
+                    # If sickness starts before cutoff but ends after, count only up to cutoff
+                    elif start_date.date() <= cutoff_date:
+                        cutoff_datetime = timezone.make_aware(
+                            datetime.combine(cutoff_date, datetime.min.time())
+                        )
+                        total_days = calculate_business_days(start_date, cutoff_datetime)
+                    else:
+                        # Sickness is entirely in the future, skip it
+                        continue
+                else:
+                    # Ongoing sickness - count from start to cutoff date
+                    cutoff_datetime = timezone.make_aware(
+                        datetime.combine(cutoff_date, datetime.min.time())
+                    )
+                    total_days = calculate_business_days(start_date, cutoff_datetime)
+            else:
+                # Past year - count all sick leave
+                if sickness.end_date:
+                    end_date = sickness.end_date
+                    # If end_date is in a future year, cap it at end of current year
+                    if end_date.year > current_year:
+                        end_of_year = datetime(current_year, 12, 31, 23, 59, 59)
+                        end_of_year = timezone.make_aware(end_of_year)
+                        end_date = end_of_year
+                    total_days = calculate_business_days(start_date, end_date)
+                else:
+                    # If end_date is None, it's ongoing - calculate from start_date to end of year
+                    end_of_year = datetime(current_year, 12, 31, 23, 59, 59)
+                    end_of_year = timezone.make_aware(end_of_year)
+                    total_days = calculate_business_days(start_date, end_of_year)
+            
+            total_sick_leave = total_sick_leave + total_days
+    
+    # Calculate total working days in the year (smartly based on date)
+    total_working_days = calculate_total_working_days_in_year(current_year, cutoff_date)
+    
+    # Calculate remaining holidays
+    # Match profile_page logic: subtract office closures from total_paid_holidays
+    total_paid_holidays_excluding_office_closure = total_paid_holidays - total_office_closure_holidays
+    total_paid_holidays_remaining = user.max_holidays_in_year - Decimal(total_paid_holidays_excluding_office_closure)
+    total_paid_holidays_remaining = total_paid_holidays_remaining - total_bank_holidays
+    
+    # Get attendance records for the year (up to cutoff date if applicable)
+    attendance_query = AttendanceRecord.objects.filter(
+        employee=user,
+        date__year=current_year
+    )
+    if cutoff_date:
+        attendance_query = attendance_query.filter(date__lte=cutoff_date)
+    
+    attendance_records = set(attendance_query.values_list('date', flat=True).distinct())
+    
+    # Get accounted dates to prevent double counting with attendance
+    year_start = timezone.make_aware(datetime(current_year, 1, 1, 0, 0, 0))
+    year_end = timezone.make_aware(datetime(current_year, 12, 31, 23, 59, 59))
+    if cutoff_date:
+        year_end = timezone.make_aware(datetime.combine(cutoff_date, time(23, 59, 59)))
+    
+    accounted_dates = get_accounted_dates_in_range(user, year_start, year_end, cutoff_date)
+    
+    # Only count attendance on days that aren't already accounted for by holidays/sick leave/bank holidays
+    unaccounted_attendance_dates = attendance_records - accounted_dates
+    days_with_attendance = len(unaccounted_attendance_dates)
+    
+    # Calculate total accounted days
+    # Convert all to Decimal first to avoid type mixing issues
+    # Include attendance records as they represent days the employee worked (but exclude overlaps)
+    total_accounted_days = (
+        Decimal(str(total_paid_holidays_excluding_office_closure)) +
+        Decimal(str(total_unpaid_holidays)) +
+        Decimal(str(total_sick_leave)) +
+        Decimal(str(total_bank_holidays)) +
+        Decimal(str(total_office_closure_holidays)) +
+        Decimal(str(days_with_attendance))
+    )
+    
+    # Calculate unaccounted days
+    unaccounted_days = Decimal(str(total_working_days)) - total_accounted_days
+    
+    # Ensure unaccounted days is not negative (edge case: double counting or data issues)
+    if unaccounted_days < 0:
+        unaccounted_days = Decimal('0')
+    
+    # Determine date range description
+    if cutoff_date:
+        date_range_description = f"up to {cutoff_date.strftime('%d/%m/%Y')}"
+    else:
+        date_range_description = "for entire year"
+    
+    return {
+        'allowance': float(user.max_holidays_in_year),
+        'total_paid_holidays': float(total_paid_holidays_excluding_office_closure),
+        'total_unpaid_holidays': float(total_unpaid_holidays),
+        'total_bank_holidays': float(total_bank_holidays),
+        'total_office_closure_holidays': float(total_office_closure_holidays),
+        'total_paid_holidays_remaining': float(total_paid_holidays_remaining),
+        'total_sick_leave': float(total_sick_leave),
+        'total_working_days': float(total_working_days),
+        'total_accounted_days': float(total_accounted_days),
+        'days_with_attendance': float(days_with_attendance),
+        'unaccounted_days': float(unaccounted_days),
+        'year': current_year,
+        'date_range_description': date_range_description,
+        'is_current_year': is_current_year,
+        'is_past_year': is_past_year,
+        'is_future_year': is_future_year
+    }
+
+
+@login_required
+def holidays_summary_api(request):
+    """AJAX endpoint to get holidays summary for a user and year"""
+    if not request.user.is_manager:
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+    
+    user_id = request.GET.get('user_id')
+    year = request.GET.get('year')
+    
+    if not user_id or not year:
+        return JsonResponse({'error': 'user_id and year are required'}, status=400)
+    
+    try:
+        user = CustomUser.objects.get(id=user_id)
+        year = int(year)
+    except (CustomUser.DoesNotExist, ValueError):
+        return JsonResponse({'error': 'Invalid user_id or year'}, status=400)
+    
+    summary = calculate_holidays_summary(user, year)
+    return JsonResponse(summary)
+
+
+@login_required
+def missing_days_api(request):
+    """AJAX endpoint to get missing days summary for a user, year, and optional month"""
+    user_id = request.GET.get('user_id')
+    year = request.GET.get('year')
+    month = request.GET.get('month')
+    
+    # If no user_id provided, use current user (for profile page)
+    if user_id:
+        try:
+            user = CustomUser.objects.get(id=user_id)
+            # Only managers can view other users' data
+            if not request.user.is_manager:
+                return JsonResponse({'error': 'Permission denied'}, status=403)
+        except (CustomUser.DoesNotExist, ValueError):
+            return JsonResponse({'error': 'Invalid user_id'}, status=400)
+    else:
+        user = request.user
+    
+    if not year:
+        return JsonResponse({'error': 'year is required'}, status=400)
+    
+    try:
+        year = int(year)
+        month = int(month) if month else None
+    except ValueError:
+        return JsonResponse({'error': 'Invalid year or month'}, status=400)
+    
+    summary = calculate_missing_days_summary(user, year, month)
+    return JsonResponse(summary)
+
+
 @login_required
 def holiday_records(request):
     if request.user.is_manager != True:
@@ -296,7 +973,14 @@ def holiday_records(request):
             'request': holiday_request,
             'total_days': total_days,
         })
-    return render(request, 'holiday_records.html', {'holiday_records': requests_with_total_days})
+    
+    # Get users list for the summary component
+    users = CustomUser.objects.filter(is_active=True).order_by('username')
+    
+    return render(request, 'holiday_records.html', {
+        'holiday_records': requests_with_total_days,
+        'users': users
+    })
 
 
 @login_required
@@ -1035,11 +1719,59 @@ def download_all_employee_reports(request):
                         })
                         total_holiday_days += days_in_month
 
-                    sickness_records = SicknessRecord.objects.filter(
-                        employee=employee,
-                        start_date__range=(
-                            first_day_of_month, last_day_of_month)
-                    )
+                    # Get sickness records that overlap with the target month
+                    # A sickness record overlaps if: start_date <= month_end AND (end_date >= month_start OR end_date is None)
+                    # This handles:
+                    # - Records that start before month and end during/after month
+                    # - Records that start during month
+                    # - Ongoing records (end_date is None) that started before or during month
+                    sickness_records_query = SicknessRecord.objects.filter(
+                        employee=employee
+                    ).filter(
+                        Q(start_date__lte=last_day_dt)
+                    ).filter(
+                        Q(end_date__gte=first_day_dt) | Q(end_date__isnull=True)
+                    ).order_by('start_date')
+
+                    # Calculate days for each sickness record within the target month
+                    sickness_with_days = []
+                    total_sickness_days = 0.0
+
+                    for sickness in sickness_records_query:
+                        # Handle ongoing sickness (end_date is None)
+                        if sickness.end_date is None:
+                            # For ongoing sickness, calculate from start_date to end of month
+                            # But only if start_date is before or during the month
+                            if sickness.start_date.date() <= last_day_of_month:
+                                # Use the same calculation function as holidays
+                                # It will handle the overlap correctly
+                                overlap_start = max(sickness.start_date, first_day_dt)
+                                overlap_end = last_day_dt
+                                days_in_month = calculate_holiday_days_in_month(
+                                    overlap_start,
+                                    overlap_end,
+                                    first_day_of_month,
+                                    last_day_of_month
+                                )
+                            else:
+                                continue  # Sickness starts after the month
+                        else:
+                            # Calculate days for sickness record within the month
+                            # This handles records that span multiple months correctly
+                            days_in_month = calculate_holiday_days_in_month(
+                                sickness.start_date,
+                                sickness.end_date,
+                                first_day_of_month,
+                                last_day_of_month
+                            )
+                        
+                        # Only include records that have days in this month
+                        if days_in_month > 0:
+                            sickness_with_days.append({
+                                'record': sickness,
+                                'days_in_month': days_in_month
+                            })
+                            total_sickness_days += days_in_month
 
                     # Render the HTML template for the employee
                     html_string = render_to_string('employee_payroll_report.html', {
@@ -1047,13 +1779,14 @@ def download_all_employee_reports(request):
                         'month': month_year_date.strftime("%B %Y"),
                         'attendance': attendance_records,
                         'holidays': holidays_with_days,
-                        'sickness': sickness_records,
+                        'sickness': sickness_with_days,
                         'attendance_count': attendance_records.count(),
                         # Count of holidays, not days
                         'holiday_count': len(holidays_with_days),
                         # Total days within month
                         'holiday_days': round(total_holiday_days, 2),
-                        'sickness_count': sickness_records.count(),
+                        'sickness_count': len(sickness_with_days),
+                        'sickness_days': round(total_sickness_days, 2),
                     })
 
                     # Generate PDF
