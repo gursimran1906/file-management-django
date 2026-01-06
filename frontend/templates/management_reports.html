@@ -838,13 +838,13 @@
                         // Year view - show full holidays summary
                         document.getElementById("holidays-summary-container").classList.remove("hidden");
                         
-                        // Update the display
+                        // Update the display - use FULL YEAR values for Paid Holidays Summary
                         document.getElementById("holidays-allowance").textContent = data.allowance.toFixed(2);
-                        document.getElementById("holidays-taken").textContent = data.total_paid_holidays.toFixed(2);
+                        document.getElementById("holidays-taken").textContent = (data.total_paid_holidays_full_year || data.total_paid_holidays).toFixed(2);
                         // Use full year office closures for Holidays Summary display
                         document.getElementById("holidays-office-closure").textContent = (data.total_office_closure_holidays_full_year || data.total_office_closure_holidays).toFixed(2);
-                        document.getElementById("holidays-bank-holidays").textContent = data.total_bank_holidays.toFixed(2);
-                        document.getElementById("holidays-remaining").textContent = data.total_paid_holidays_remaining.toFixed(2);
+                        document.getElementById("holidays-bank-holidays").textContent = (data.total_bank_holidays_full_year || data.total_bank_holidays).toFixed(2);
+                        document.getElementById("holidays-remaining").textContent = (data.total_paid_holidays_remaining_full_year || data.total_paid_holidays_remaining).toFixed(2);
                         document.getElementById("holidays-unpaid").textContent = data.total_unpaid_holidays.toFixed(2);
                         
                         // Update year text
@@ -878,14 +878,14 @@
                         const breakdown = `
                             <div class="space-y-1">
                                 <p><b class="text-gray-800">Remaining Calculation:</b></p>
-                                <p class="ml-4">Allowance (${data.allowance.toFixed(2)}) - Taken (${data.total_paid_holidays.toFixed(2)}) - Bank Holidays (${data.total_bank_holidays.toFixed(2)}) - Office Closure (${data.total_office_closure_holidays.toFixed(2)}) = <b class="text-gray-800">${data.total_paid_holidays_remaining.toFixed(2)}</b></p>
+                                <p class="ml-4">Allowance (${data.allowance.toFixed(2)}) - Taken (${(data.total_paid_holidays_full_year || data.total_paid_holidays).toFixed(2)}) - Bank Holidays (${(data.total_bank_holidays_full_year || data.total_bank_holidays).toFixed(2)}) - Office Closure (${(data.total_office_closure_holidays_full_year || data.total_office_closure_holidays).toFixed(2)}) = <b class="text-gray-800">${(data.total_paid_holidays_remaining_full_year || data.total_paid_holidays_remaining).toFixed(2)}</b></p>
                                 <p class="mt-2"><b class="text-gray-800">Days Accounting:</b></p>
                                 <p class="ml-4">Total Working Days (${data.total_working_days.toFixed(2)}) ${data.date_range_description ? `<span class="text-xs text-gray-500">${data.date_range_description}</span>` : ''} - Total Accounted Days (${data.total_accounted_days.toFixed(2)}) = <b class="text-gray-800 ${unaccountedDays > 0 ? 'text-red-600' : ''}">${unaccountedDays.toFixed(2)} Unaccounted Days</b></p>
                                 <p class="ml-4 text-xs text-gray-500">Accounted Days = Paid Holidays + Unpaid Holidays + Sick Leave + Bank Holidays + Office Closures + Days with Attendance</p>
                                 <p class="ml-4 text-xs text-gray-500">Days with Attendance = Days where employee has clocked in (worked days)</p>
-                                ${data.is_current_year || data.is_future_year ? `<p class="ml-4 text-xs text-blue-600 font-semibold">ℹ️ Note: Calculations are based on dates up to today (${new Date().toLocaleDateString('en-GB')}). Future dates are excluded.</p>` : ''}
+                                ${data.is_current_year || data.is_future_year ? `<p class="ml-4 text-xs text-blue-600 font-semibold">ℹ️ Note: Days Accounting calculations are based on dates up to today (${new Date().toLocaleDateString('en-GB')}). Future dates are excluded.</p>` : ''}
                                 ${unaccountedDays > 0 ? `<p class="mt-2 text-red-600 font-semibold">⚠️ Warning: There are ${unaccountedDays.toFixed(2)} unaccounted working days. These may need to be reviewed.</p>` : ''}
-                                <p class="mt-2"><b class="text-gray-800">Note:</b> Office Closure days are excluded from the "Taken" count.</p>
+                                <p class="mt-2"><b class="text-gray-800">Note:</b> Office Closure days are excluded from the "Taken" count but are deducted from the holiday allowance. Paid Holidays Summary shows full year values, while Days Accounting shows values up to date.</p>
                             </div>
                         `;
                         document.getElementById("holidays-calculation-breakdown").innerHTML = breakdown;

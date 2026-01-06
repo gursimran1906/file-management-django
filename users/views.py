@@ -748,6 +748,29 @@ def calculate_holidays_summary(user, year):
                 else:
                     total_unpaid_holidays = total_unpaid_holidays + total_days
 
+    # Calculate paid holidays for FULL YEAR (for Holidays Summary display)
+    # This shows all paid holidays for the entire year, regardless of current date
+    total_paid_holidays_full_year = 0
+    for holiday_request in holiday_requests:
+        if holiday_request.start_date and holiday_request.end_date:
+            start_date = holiday_request.start_date
+            end_date = holiday_request.end_date
+
+            # Only count holidays in the current year
+            if start_date.year != current_year:
+                continue
+
+            # Skip office closures (they're counted separately)
+            if holiday_request.reason == "Office Closure":
+                continue
+
+            # Count all holidays for the full year (no cutoff)
+            total_days = calculate_business_days(start_date, end_date)
+
+            # Only count approved holidays
+            if holiday_request.approved and holiday_request.type == 'Paid':
+                total_paid_holidays_full_year = total_paid_holidays_full_year + total_days
+
     # Get office closure holidays for the year
     # IMPORTANT: calculate_business_days already excludes weekends and bank holidays
     # So office closures count only business days (weekdays that aren't bank holidays)
@@ -882,7 +905,7 @@ def calculate_holidays_summary(user, year):
     total_working_days = calculate_total_working_days_in_year(
         current_year, cutoff_date)
 
-    # Calculate remaining holidays
+    # Calculate remaining holidays (to date - for Days Accounting)
     # IMPORTANT:
     # - total_paid_holidays already excludes office closures (they're filtered out in the loop above)
     # - Remaining calculation should use FULL YEAR bank holidays, not "to date"
@@ -896,6 +919,15 @@ def calculate_holidays_summary(user, year):
         Decimal(str(total_bank_holidays_full_year))
     # Subtract office closures from remaining (they're taken out of the allowance)
     total_paid_holidays_remaining = total_paid_holidays_remaining - \
+        Decimal(str(total_office_closure_holidays_full_year))
+
+    # Calculate remaining holidays for FULL YEAR (for Holidays Summary display)
+    # Use full year values for all components
+    total_paid_holidays_remaining_full_year = user.max_holidays_in_year - \
+        Decimal(str(total_paid_holidays_full_year))
+    total_paid_holidays_remaining_full_year = total_paid_holidays_remaining_full_year - \
+        Decimal(str(total_bank_holidays_full_year))
+    total_paid_holidays_remaining_full_year = total_paid_holidays_remaining_full_year - \
         Decimal(str(total_office_closure_holidays_full_year))
 
     # Get attendance records for the year (up to cutoff date if applicable)
@@ -950,14 +982,17 @@ def calculate_holidays_summary(user, year):
 
     return {
         'allowance': float(user.max_holidays_in_year),
-        'total_paid_holidays': float(total_paid_holidays_excluding_office_closure),
+        'total_paid_holidays': float(total_paid_holidays_excluding_office_closure),  # To date (for Days Accounting Summary)
+        'total_paid_holidays_full_year': float(total_paid_holidays_full_year),  # Full year (for Holidays Summary display)
         'total_unpaid_holidays': float(total_unpaid_holidays),
-        'total_bank_holidays': float(total_bank_holidays),
+        'total_bank_holidays': float(total_bank_holidays),  # To date (for Days Accounting Summary)
+        'total_bank_holidays_full_year': float(total_bank_holidays_full_year),  # Full year (for Holidays Summary display)
         # To date (for Days Accounting Summary)
         'total_office_closure_holidays': float(total_office_closure_holidays),
         # Full year (for Holidays Summary display)
         'total_office_closure_holidays_full_year': float(total_office_closure_holidays_full_year),
-        'total_paid_holidays_remaining': float(total_paid_holidays_remaining),
+        'total_paid_holidays_remaining': float(total_paid_holidays_remaining),  # To date (for Days Accounting Summary)
+        'total_paid_holidays_remaining_full_year': float(total_paid_holidays_remaining_full_year),  # Full year (for Holidays Summary display)
         'total_sick_leave': float(total_sick_leave),
         'total_working_days': float(total_working_days),
         'total_accounted_days': float(total_accounted_days),
