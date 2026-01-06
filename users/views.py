@@ -239,8 +239,11 @@ def profile_page(request):
 
     requests_with_total_days = requests_with_total_days + bank_holiday_records
 
-    total_bank_holidays = round(
-        Decimal(sum(1 for name in holiday_list.values())), 2)
+    # Only count bank holidays that fall on weekdays (Monday-Friday)
+    # This matches the logic used elsewhere in the codebase
+    bank_holiday_dates = [holiday_date for holiday_date in holiday_list.keys()
+                          if holiday_date.weekday() < 5]
+    total_bank_holidays = round(Decimal(len(bank_holiday_dates)), 2)
     total_paid_holidays_remaining = user.max_holidays_in_year - \
         Decimal(total_paid_holidays)
     total_paid_holidays_remaining = total_paid_holidays_remaining - total_bank_holidays
