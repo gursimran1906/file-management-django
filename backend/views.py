@@ -2671,22 +2671,53 @@ def download_invoice(request, id):
     style = """
             @page {
                     size: A4; 
+                    margin-top: 70px;
+                    margin-bottom: 4px; 
+                    margin-left: 40px;
+                    margin-right: 40px;
+            }
+            @page :first {
                     margin-top: 0mm;
                     margin-bottom: 4px; 
                     margin-left: 40px;
                     margin-right: 40px;
-           
             }
             .logoDiv{
-                position:fixed;
-                top:15px;
-                right:0px;
-                
+                position: fixed;
+                top: 15px;
+                right: 0px;
+                z-index: 1000;
+                width: 75px;
+                height: 50px;
+            }
+            /* Remove any extra padding since @page margin handles spacing */
+            .overflow-auto {
+                padding-top: 0;
+            }
+            @media print {
+                .logoDiv {
+                    position: fixed;
+                    top: 15px;
+                    right: 0px;
+                }
+                /* First page: no top margin */
+                @page :first {
+                    margin-top: 0mm;
+                    margin-bottom: 4px;
+                    margin-left: 40px;
+                    margin-right: 40px;
+                }
+                /* Subsequent pages: top margin to prevent logo overlap */
+                @page {
+                    margin-top: 70px;
+                    margin-bottom: 4px;
+                    margin-left: 40px;
+                    margin-right: 40px;
+                }
             }
             img {
-            
-            width: 75px;
-            height: 50px;
+                width: 75px;
+                height: 50px;
             }
             
             """
