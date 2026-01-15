@@ -2685,10 +2685,12 @@ def download_invoice(request, id):
             .logoDiv{
                 position: fixed;
                 top: 15px;
-                right: 0px;
+                right: 40px;
                 z-index: 1000;
                 width: 75px;
                 height: 50px;
+                margin: 0;
+                padding: 0;
             }
             /* Remove any extra padding since @page margin handles spacing */
             .overflow-auto {
@@ -2698,7 +2700,7 @@ def download_invoice(request, id):
                 .logoDiv {
                     position: fixed;
                     top: 15px;
-                    right: 0px;
+                    right: 40px;
                 }
                 /* First page: no top margin */
                 @page :first {
@@ -2718,6 +2720,9 @@ def download_invoice(request, id):
             img {
                 width: 75px;
                 height: 50px;
+                margin: 0;
+                padding: 0;
+                display: block;
             }
             
             """
