@@ -2678,13 +2678,13 @@ def download_invoice(request, id):
             }
             @page {
                     size: A4; 
-                    margin-top: 90px;
+                    margin-top: 0mm;
                     margin-bottom: 4px; 
                     margin-left: 40px;
                     margin-right: 40px;
             }
             .logoDiv{
-                position: fixed;
+                position: absolute;
                 top: 15px;
                 right: 40px;
                 z-index: 1000;
@@ -2701,9 +2701,9 @@ def download_invoice(request, id):
                 margin-top: 0;
             }
             @media print {
-                /* Logo position on all pages - fixed relative to page box */
+                /* Logo only appears on first page - absolute positioning */
                 .logoDiv {
-                    position: fixed;
+                    position: absolute;
                     top: 15px;
                     right: 40px;
                 }
@@ -2715,12 +2715,10 @@ def download_invoice(request, id):
                     margin-left: 40px;
                     margin-right: 40px;
                 }
-                /* Subsequent pages: top margin ensures content starts below logo area */
-                /* Logo is at top: 15px, height: 50px, so ends at 65px */
-                /* Margin needs to be larger to account for fixed positioning */
+                /* Subsequent pages: no top margin needed since logo won't appear */
                 @page {
                     size: A4;
-                    margin-top: 90px;
+                    margin-top: 0mm;
                     margin-bottom: 4px;
                     margin-left: 40px;
                     margin-right: 40px;
