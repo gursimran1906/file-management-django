@@ -2669,15 +2669,16 @@ def download_invoice(request, id):
             VAT No. 977 542 767 | SRA No. 515388<br>
             """
     style = """
-            @page {
-                    size: A4; 
-                    margin-top: 70px;
+            @page :first {
+                    size: A4;
+                    margin-top: 0mm;
                     margin-bottom: 4px; 
                     margin-left: 40px;
                     margin-right: 40px;
             }
-            @page :first {
-                    margin-top: 0mm;
+            @page {
+                    size: A4; 
+                    margin-top: 90px;
                     margin-bottom: 4px; 
                     margin-left: 40px;
                     margin-right: 40px;
@@ -2692,26 +2693,34 @@ def download_invoice(request, id):
                 margin: 0;
                 padding: 0;
             }
-            /* Remove any extra padding since @page margin handles spacing */
             .overflow-auto {
                 padding-top: 0;
             }
+            /* Ensure table respects page margins */
+            table {
+                margin-top: 0;
+            }
             @media print {
+                /* Logo position on all pages - fixed relative to page box */
                 .logoDiv {
                     position: fixed;
                     top: 15px;
                     right: 40px;
                 }
-                /* First page: no top margin */
+                /* First page: no top margin, content can start at top */
                 @page :first {
+                    size: A4;
                     margin-top: 0mm;
                     margin-bottom: 4px;
                     margin-left: 40px;
                     margin-right: 40px;
                 }
-                /* Subsequent pages: top margin to prevent logo overlap */
+                /* Subsequent pages: top margin ensures content starts below logo area */
+                /* Logo is at top: 15px, height: 50px, so ends at 65px */
+                /* Margin needs to be larger to account for fixed positioning */
                 @page {
-                    margin-top: 70px;
+                    size: A4;
+                    margin-top: 90px;
                     margin-bottom: 4px;
                     margin-left: 40px;
                     margin-right: 40px;
