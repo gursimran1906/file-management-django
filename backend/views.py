@@ -2678,7 +2678,7 @@ def download_invoice(request, id):
             }
             @page {
                     size: A4; 
-                    margin-top: 0mm;
+                    margin-top: 20px;
                     margin-bottom: 4px; 
                     margin-left: 40px;
                     margin-right: 40px;
@@ -2715,10 +2715,10 @@ def download_invoice(request, id):
                     margin-left: 40px;
                     margin-right: 40px;
                 }
-                /* Subsequent pages: no top margin needed since logo won't appear */
+                /* Subsequent pages: small top margin for spacing */
                 @page {
                     size: A4;
-                    margin-top: 0mm;
+                    margin-top: 20px;
                     margin-bottom: 4px;
                     margin-left: 40px;
                     margin-right: 40px;
