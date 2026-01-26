@@ -3328,7 +3328,7 @@ def edit_invoice(request, id):
                                         <input class="form-check-input" name="green_slips[]" type="checkbox" value="{slip.id}" {checked}>
                                         <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{slip.description}'">
                                         Transfer from&nbsp;<b >{slip.file_number_from}</b> of £{amt} (from £{slip.amount}) {slip.date.strftime('%d/%m/%Y')}</label>
-                                    </div
+                                    </div>
                                     """
                     green_slips.append(mark_safe(slip_display))
 
