@@ -226,6 +226,29 @@ class InvoicesForm(forms.ModelForm):
         for field_name, field in self.fields.items():
             field.widget.attrs['class'] = 'form-input'
 
+
+class CreditNoteHalfForm(forms.ModelForm):
+    class Meta:
+        model = CreditNote
+        fields = ['invoice', 'date', 'amount', 'reason']
+        widgets = {
+            'date': forms.DateInput(attrs={'type': 'date'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super(CreditNoteHalfForm, self).__init__(*args, **kwargs)
+        self.fields['date'].initial = timezone.localdate()
+        self.fields['invoice'].queryset = Invoices.objects.filter(
+            state='F').order_by('-invoice_number')
+        self.fields['invoice'].label_from_instance = (
+            lambda obj: f"Invoice {obj.invoice_number} - {obj.file_number.file_number} ({obj.date.strftime('%d/%m/%Y')})"
+        )
+        self.fields['amount'].help_text = 'Enter the total credit amount including VAT (gross).'
+        for field_name, field in self.fields.items():
+            field.widget.attrs['class'] = 'form-input'
+        self.fields['amount'].widget.attrs['placeholder'] = 'e.g. 120.00 (incl. VAT)'
+
+
 class ClientForm(forms.ModelForm):
     class Meta:
         model = ClientContactDetails
@@ -440,4 +463,3 @@ class MemoForm(forms.ModelForm):
         for field_name, field in self.fields.items():
                 if field_name not in ['content', 'is_charged']:
                     field.widget.attrs['class'] = 'form-input'
-

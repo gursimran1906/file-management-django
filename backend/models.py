@@ -6,6 +6,10 @@ from django_quill.fields import QuillField
 from math import ceil
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from decimal import Decimal
+
+
+CURRENT_VAT_RATE = Decimal('0.20')
 
 
 def get_sentinel_user():
@@ -314,6 +318,10 @@ class Invoices(models.Model):
         ('F', 'Final'),
         ('D', 'Draft'),
     ]
+    VAT_CALCULATION_MODES = [
+        ('auto', 'Auto'),
+        ('manual', 'Manual'),
+    ]
     id = models.AutoField(primary_key=True)
     invoice_number = models.IntegerField(null=True, blank=True)
     state = models.CharField(max_length=1, choices=STATES)
@@ -325,6 +333,10 @@ class Invoices(models.Model):
     description = models.TextField()
     our_costs_desc = models.JSONField(default=dict)
     our_costs = models.JSONField(default=dict)
+    vat = models.DecimalField(
+        decimal_places=2, max_digits=15, null=True, blank=True, default=0)
+    vat_calculation_mode = models.CharField(
+        max_length=10, choices=VAT_CALCULATION_MODES, default='auto', blank=True)
     disbs_ids = models.ManyToManyField(
         PmtsSlips, related_name='disbs_invoices', blank=True)
     moa_ids = models.ManyToManyField(
@@ -337,6 +349,30 @@ class Invoices(models.Model):
         decimal_places=2, max_digits=15, null=True, blank=True)
     created_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, related_name='invoice_created_by', null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+
+class CreditNote(models.Model):
+    STATUSES = [
+        ('P', 'Pending Approval'),
+        ('F', 'Final'),
+        ('R', 'Rejected'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    invoice = models.ForeignKey(
+        Invoices, on_delete=models.CASCADE, related_name='credit_notes')
+    file_number = models.ForeignKey(
+        WIP, on_delete=models.CASCADE, related_name='credit_notes')
+    date = models.DateField()
+    amount = models.DecimalField(max_digits=15, decimal_places=2)
+    reason = models.TextField()
+    status = models.CharField(max_length=1, choices=STATUSES, default='P')
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, related_name='credit_note_created_by', null=True, blank=True)
+    approved_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, related_name='credit_note_approved_by', null=True, blank=True)
+    approved_on = models.DateTimeField(null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
 

@@ -1,0 +1,19 @@
+<div class="grid grid-cols-12 gap-4">
+  <div class="col-span-12">
+    <label class="form-label">Invoice</label>
+    {{ credit_note_form.invoice }}
+  </div>
+  <div class="col-span-6">
+    <label class="form-label">Date</label>
+    {{ credit_note_form.date }}
+  </div>
+  <div class="col-span-6">
+    <label class="form-label">Amount (incl. VAT)</label>
+    {{ credit_note_form.amount }}
+    <p class="text-xs text-gray-600 mt-1">Use the total gross credit value (VAT included).</p>
+  </div>
+  <div class="col-span-12">
+    <label class="form-label">Reason</label>
+    {{ credit_note_form.reason }}
+  </div>
+</div>

@@ -1,8 +1,9 @@
 function addFieldsInvoice(id) {
   var container = document.getElementById(id);
+  if (!container) return;
 
   var divElmNewRow = document.createElement("div");
-  divElmNewRow.setAttribute("class", "grid grid-cols-12 gap-4 mt-2");
+  divElmNewRow.setAttribute("class", "grid grid-cols-1 md:grid-cols-12 gap-4 mt-2");
 
   var divElmField = document.createElement("div");
   divElmField.setAttribute("class", "col-span-5");
@@ -11,9 +12,10 @@ function addFieldsInvoice(id) {
   divElmField1.setAttribute("class", "col-span-5");
 
   var divElmFieldSymbol = document.createElement("div");
-  divElmFieldSymbol.setAttribute("class", "col-span-2 flex mt-1 mb-2");
+  divElmFieldSymbol.setAttribute("class", "col-span-2 flex items-center");
 
   var add_more_fields = document.getElementById("add_more_fields_inv");
+  if (!add_more_fields) return;
 
   var newField = document.createElement("input");
   newField.setAttribute("type", "text");
@@ -33,7 +35,7 @@ function addFieldsInvoice(id) {
   var minusSign = document.createElement("span");
   minusSign.setAttribute("type", "button");
   minusSign.setAttribute("onclick", "removeField(this);");
-  minusSign.setAttribute("class", "btn-danger px-4");
+  minusSign.setAttribute("class", "btn btn-danger px-4");
   minusSign.appendChild(document.createTextNode("-"));
 
   var plusSign = document.createElement("span");
@@ -44,7 +46,7 @@ function addFieldsInvoice(id) {
   plusSign.appendChild(document.createTextNode("+"));
   divElmFieldSymbol.appendChild(plusSign);
 
-  parentNode = add_more_fields.parentNode;
+  var parentNode = add_more_fields.parentNode;
   parentNode.replaceChild(minusSign, add_more_fields);
 
   divElmNewRow.appendChild(divElmField);
@@ -54,6 +56,7 @@ function addFieldsInvoice(id) {
 }
 
 function removeField(minusElm) {
+  if (!minusElm || !minusElm.parentNode || !minusElm.parentNode.parentNode) return;
   minusElm.parentNode.parentNode.remove();
 }
 

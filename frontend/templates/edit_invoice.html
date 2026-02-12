@@ -55,8 +55,24 @@
             <input type="number" step="0.01" class="form-input" name="our_costs[]" id="our_costs" placeholder="£0.00">
           </div>
           <div class="col-span-2 flex items-center">
-            <span type='button' class='btn btn-primary' onclick="addFieldsInvoice('our_costs_row');" id="add_more_fields_inv">+</span>
+            <span type='button' class='btn btn-primary px-4' onclick="addFieldsInvoice('our_costs_row');" id="add_more_fields_inv">+</span>
           </div>
+        </div>
+      </div>
+
+      <div class="col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="form-label">VAT Mode</label>
+          <select class="form-input" name="vat_mode" id="vat_mode">
+            <option value="auto" {% if vat_mode != 'manual' %}selected{% endif %}>Auto Calculate (Recommended)</option>
+            <option value="manual" {% if vat_mode == 'manual' %}selected{% endif %}>Manual VAT</option>
+          </select>
+          <p class="text-xs text-gray-600 mt-1">Auto uses current VAT rate of {{current_vat_rate_percent}}%.</p>
+        </div>
+        <div id="manualVatField" {% if vat_mode != 'manual' %}style="display:none;"{% endif %}>
+          <label class="form-label">Manual VAT Amount</label>
+          <input type="number" step="0.01" min="0" class="form-input" name="manual_vat" id="manual_vat" value="{{manual_vat}}">
+          <p class="text-xs text-gray-600 mt-1">Use manual VAT only when you need a penny adjustment.</p>
         </div>
       </div>
 
@@ -90,4 +106,17 @@
       
   </div>
 </form>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const vatMode = document.getElementById("vat_mode");
+    const manualVatField = document.getElementById("manualVatField");
+
+    function toggleManualVatField() {
+      manualVatField.style.display = vatMode.value === "manual" ? "block" : "none";
+    }
+
+    vatMode.addEventListener("change", toggleManualVatField);
+    toggleManualVatField();
+  });
+</script>
 {% endblock %} 

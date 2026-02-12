@@ -23,6 +23,7 @@ from .models import (Memo, Modifications, ClientContactDetails, AuthorisedPartie
                      FileLocation, FileStatus, MatterType, WIP, NextWork, LastWork, PmtsSlips,
                      LedgerAccountTransfers, Policy, PolicyVersion, TempSlips, Invoices, MatterEmails, MatterLetters,
                      MatterAttendanceNotes, RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees, Undertaking,
+                     CreditNote,
                      Bundle, BundleSection, BundleDocument)
 
 
@@ -124,7 +125,13 @@ class TempSlipsAdmin(admin.ModelAdmin):
 @admin.register(Invoices)
 class InvoicesAdmin(admin.ModelAdmin):
     list_display = ['id', 'invoice_number', 'state', 'file_number', 'date', 'payable_by',
-                    'by_email', 'by_post', 'description', 'total_due_left', 'created_by', 'timestamp']
+                    'by_email', 'by_post', 'description', 'vat', 'total_due_left', 'created_by', 'timestamp']
+
+
+@admin.register(CreditNote)
+class CreditNoteAdmin(admin.ModelAdmin):
+    list_display = ['id', 'invoice', 'file_number', 'date', 'amount',
+                    'status', 'created_by', 'approved_by', 'approved_on', 'timestamp']
 
 
 @admin.register(MatterEmails)

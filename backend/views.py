@@ -1,14 +1,15 @@
 import logging
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
-from django.db.models import Q, Q, F, OuterRef, Subquery, Max, CharField, Exists, Count
+from django.db import transaction
+from django.db.models import Q, Q, F, OuterRef, Subquery, Max, CharField, Exists, Count, Sum
 from django.db.models.functions import Cast
 from .models import WIP, Memo, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties
-from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring
+from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
 from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
-from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
+from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm
 from .utils import create_modification
 from django.utils import timezone
@@ -44,6 +45,72 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 
 logger = logging.getLogger('backend')
+CURRENT_VAT_RATE_PERCENT = int(CURRENT_VAT_RATE * 100)
+
+
+def calculate_invoice_total_with_vat(invoice):
+    our_costs = invoice.our_costs
+    costs = ast.literal_eval(our_costs) if not isinstance(our_costs, list) else our_costs
+    total_cost_invoice = Decimal('0')
+    for cost in costs:
+        total_cost_invoice += Decimal(str(cost))
+    vat_inv = Decimal(str(invoice.vat or 0))
+    total_cost_and_vat = total_cost_invoice + vat_inv
+    return round(total_cost_invoice, 2), round(vat_inv, 2), round(total_cost_and_vat, 2)
+
+
+def calculate_credit_note_breakdown(gross_amount):
+    gross = round(Decimal(str(gross_amount or 0)), 2)
+    denominator = Decimal('1.00') + CURRENT_VAT_RATE
+    if denominator == 0:
+        return gross, Decimal('0.00'), gross
+
+    vat_amount = round((gross * CURRENT_VAT_RATE) / denominator, 2)
+    net_amount = round(gross - vat_amount, 2)
+    return net_amount, vat_amount, gross
+
+
+def get_approved_credit_note_totals(invoice_ids):
+    totals = {}
+    if not invoice_ids:
+        return totals
+
+    rows = CreditNote.objects.filter(
+        invoice_id__in=invoice_ids,
+        status='F'
+    ).values('invoice_id').annotate(total=Sum('amount'))
+    for row in rows:
+        totals[row['invoice_id']] = row['total'] or Decimal('0')
+    return totals
+
+
+def get_invoice_approved_credit_total(invoice):
+    return CreditNote.objects.filter(
+        invoice=invoice,
+        status='F'
+    ).aggregate(total=Sum('amount')).get('total') or Decimal('0')
+
+
+def get_invoice_max_credit_amount(invoice, excluded_credit_note_id=None):
+    max_allowed = Decimal(str(invoice.total_due_left or 0))
+    if excluded_credit_note_id:
+        excluded_note = CreditNote.objects.filter(
+            id=excluded_credit_note_id,
+            status='F',
+            invoice=invoice
+        ).first()
+        if excluded_note:
+            max_allowed += Decimal(str(excluded_note.amount))
+    if max_allowed < 0:
+        return Decimal('0')
+    return round(max_allowed, 2)
+
+
+def get_effective_invoice_due(invoice, approved_credit_total=None):
+    effective_due = Decimal(str(invoice.total_due_left or 0))
+    if effective_due <= 0:
+        return Decimal('0')
+    return round(effective_due, 2)
 
 
 @login_required
@@ -280,11 +347,20 @@ def user_dashboard(request):
     last_100_emails = MatterEmails.objects.filter(
         fee_earner=user).order_by('-time')[:100]
 
-    unsettled_invoices = Invoices.objects.filter(
+    unsettled_invoice_candidates = Invoices.objects.filter(
         file_number__in=unique_wips,
-        state='F',
-        total_due_left__gt=0
+        state='F'
     ).order_by('invoice_number')
+    approved_credit_totals = get_approved_credit_note_totals(
+        [invoice.id for invoice in unsettled_invoice_candidates]
+    )
+    unsettled_invoices = []
+    for invoice in unsettled_invoice_candidates:
+        effective_due = get_effective_invoice_due(
+            invoice, approved_credit_totals.get(invoice.id, Decimal('0')))
+        invoice.effective_total_due_left = effective_due
+        if effective_due > 0:
+            unsettled_invoices.append(invoice)
 
     latest_version_subquery = PolicyVersion.objects.filter(
         policy=OuterRef('pk')
@@ -967,6 +1043,33 @@ def get_file_logs(file_number):
                 'desc': f'Invoice modification. Changes = {modification.changes}',
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'invoice'
+            })
+
+    credit_notes = CreditNote.objects.filter(file_number=file.id)
+    status_labels = dict(CreditNote.STATUSES)
+    for credit_note in credit_notes:
+        status_label = status_labels.get(credit_note.status, credit_note.status)
+        invoice_number = credit_note.invoice.invoice_number or "Draft"
+        desc = (
+            f'Credit note for Invoice {invoice_number} of £{credit_note.amount} '
+            f'created. Status: {status_label}'
+        )
+        logs.append({
+            'timestamp': credit_note.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
+            'desc': desc,
+            'user': credit_note.created_by,
+            'type': 'credit_note'
+        })
+        modifications = Modifications.objects.filter(
+            Q(content_type=ContentType.objects.get_for_model(credit_note)) &
+            Q(object_id=credit_note.id)
+        )
+        for modification in modifications:
+            logs.append({
+                'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
+                'desc': f'Credit note modification. Changes = {modification.changes}',
+                'user': modification.modified_by.username if modification.modified_by else None,
+                'type': 'credit_note'
             })
 
     risk_assessment = RiskAssessment.objects.filter(matter=file.id).first()
@@ -1845,7 +1948,8 @@ def download_sowc(request, file_number):
     total_cost_row = sum_end_row + 1
     writer.writerow(['', '', 'Total Costs', '',
                     f'=sum(E{sum_start_row}:E{sum_end_row})'])
-    writer.writerow(['', '', 'VAT @20%', '', f'=0.2*E{total_cost_row}'])
+    writer.writerow(
+        ['', '', f'VAT @{CURRENT_VAT_RATE_PERCENT}%', '', f'={CURRENT_VAT_RATE}*E{total_cost_row}'])
     writer.writerow(['', '', 'Total Costs and VAT', '',
                     f'=sum(E{total_cost_row}:E{total_cost_row+1})'])
 
@@ -1854,27 +1958,74 @@ def download_sowc(request, file_number):
 
 @login_required
 def finance_view(request, file_number):
-    file_number_id = WIP.objects.filter(file_number=file_number).first().id
+    file_obj = WIP.objects.filter(file_number=file_number).first()
+    if not file_obj:
+        messages.error(request, 'File not found.')
+        return redirect('index')
+
+    file_number_id = file_obj.id
     pmts_slips = PmtsSlips.objects.filter(
         file_number=file_number_id).order_by('-date')
     pmts_form = PmtsHalfForm()
     green_slips_form = LedgerAccountTransfersHalfForm()
+    credit_note_form = CreditNoteHalfForm()
+    credit_note_form.fields['invoice'].queryset = Invoices.objects.filter(
+        file_number=file_number_id, state='F').order_by('-invoice_number')
     green_slips = LedgerAccountTransfers.objects.filter(
         Q(file_number_from=file_number_id) | Q(file_number_to=file_number_id)).order_by('-date')
     invoices = Invoices.objects.filter(
         file_number=file_number_id).order_by('-date')
+    credit_notes = CreditNote.objects.filter(
+        file_number=file_number_id
+    ).select_related('invoice', 'created_by', 'approved_by').order_by('-date', '-timestamp')
+
+    credit_notes_by_invoice = {}
+    approved_credit_totals = {}
+    status_labels = dict(CreditNote.STATUSES)
+    credit_notes_data = []
+    for credit_note in credit_notes:
+        credit_notes_by_invoice.setdefault(credit_note.invoice_id, []).append(credit_note)
+        if credit_note.status == 'F':
+            approved_credit_totals[credit_note.invoice_id] = approved_credit_totals.get(
+                credit_note.invoice_id, Decimal('0')
+            ) + credit_note.amount
+        net_amount, vat_amount, gross_amount = calculate_credit_note_breakdown(
+            credit_note.amount)
+
+        credit_notes_data.append({
+            'id': credit_note.id,
+            'date': credit_note.date.strftime('%d/%m/%Y'),
+            'invoice_number': credit_note.invoice.invoice_number,
+            'amount': gross_amount,
+            'net_amount': net_amount,
+            'vat_amount': vat_amount,
+            'reason': credit_note.reason,
+            'status': credit_note.status,
+            'status_display': status_labels.get(credit_note.status, credit_note.status),
+            'created_by': credit_note.created_by,
+            'approved_by': credit_note.approved_by,
+            'approved_on': credit_note.approved_on,
+            'can_review': request.user.is_manager and credit_note.status == 'P',
+            'can_edit': (
+                (credit_note.status == 'P' and (
+                    credit_note.created_by_id == request.user.id or request.user.is_manager
+                )) or
+                (credit_note.status == 'F' and request.user.is_manager)
+            ),
+        })
 
     invoices_data = []
 
-    total_invoices = 0
-    total_out = 0
+    total_invoices = Decimal('0')
+    total_out = Decimal('0')
+    total_approved_credit_notes = Decimal('0')
     for invoice in invoices:
 
         our_costs = invoice.our_costs
 
         costs = ast.literal_eval(our_costs) if type(
             our_costs) != type([]) else our_costs
-        total_cost_invoice = 0
+        total_cost_invoice = Decimal('0')
 
         our_costs_desc_pre = invoice.our_costs_desc
         our_costs_desc = ast.literal_eval(our_costs_desc_pre) if type(
@@ -1884,10 +2035,10 @@ def finance_view(request, file_number):
             total_cost_invoice = total_cost_invoice + Decimal(costs[i])
             costs_display = costs_display + \
                 f"<b>{our_costs_desc[i]}</b>: £{costs[i]}<br>"
-        vat_inv = total_cost_invoice * Decimal(0.20)
+        _, vat_inv, total_cost_and_vat = calculate_invoice_total_with_vat(invoice)
         costs_display = costs_display + \
-            f"Add VAT @20%: £{round(vat_inv, 2)}<br>"
-        total_cost_and_vat = round(total_cost_invoice + vat_inv, 2)
+            f"Add VAT @{CURRENT_VAT_RATE_PERCENT}%: £{round(vat_inv, 2)}<br>"
+        total_cost_and_vat = round(total_cost_and_vat, 2)
         costs_display = costs_display + \
             f"<b>Total Costs and VAT:</b> £{total_cost_and_vat}<br>"
         costs_display = costs_display + "</div>"
@@ -2003,14 +2154,41 @@ def finance_view(request, file_number):
 
         cash_allocated_slips_display = cash_allocated_slips_display + "</div>"
 
+        invoice_credit_notes = credit_notes_by_invoice.get(invoice.id, [])
+        approved_credit_total = approved_credit_totals.get(invoice.id, Decimal('0'))
+        total_approved_credit_notes += approved_credit_total
+        credit_notes_display = "<div><h5 class='text-xl font-medium'>Credit Notes</h5>"
+        if invoice_credit_notes:
+            for note in invoice_credit_notes:
+                status_display = status_labels.get(note.status, note.status)
+                net_amount, vat_amount, gross_amount = calculate_credit_note_breakdown(
+                    note.amount)
+                approved_meta = ""
+                if note.approved_by:
+                    approved_meta = (
+                        f" (approved by {note.approved_by} on {note.approved_on.strftime('%d/%m/%Y %H:%M')})"
+                        if note.approved_on else f" (approved by {note.approved_by})"
+                    )
+                credit_notes_display = credit_notes_display + (
+                    f"{note.date.strftime('%d/%m/%Y')} - Ex VAT £{net_amount}, VAT £{vat_amount}, "
+                    f"Total £{gross_amount} - {status_display}{approved_meta}<br>"
+                )
+            credit_notes_display = credit_notes_display + \
+                f"<b>Total Final Credit Notes:</b> £{round(approved_credit_total, 2)}<br>"
+        else:
+            credit_notes_display = credit_notes_display + "No Credit Notes Issued"
+        credit_notes_display = credit_notes_display + "</div>"
+
         balance = (total_cost_and_vat + total_pink_slips) - \
-            total_green_slips - (total_blue_slips + total_cash_allocated_slips)
+            total_green_slips - (total_blue_slips + total_cash_allocated_slips) - approved_credit_total
 
         if balance >= 0:
             total_due_display = f"<div><b>Total Due: </b> £{round(balance, 2)}<br></div>"
         else:
             balance = balance * -1
             total_due_display = f"<div><b>Balance remaining on account:</b> £{round(balance, 2)}<br></div>"
+
+        effective_due_left = get_effective_invoice_due(invoice, approved_credit_total)
 
         data = {'id': invoice.id,
                 'state': invoice.state,
@@ -2023,8 +2201,9 @@ def finance_view(request, file_number):
                 'blue_slips': mark_safe(blue_slips_display),
                 'green_slips': mark_safe(green_slips_display),
                 'cash_allocated_slips': mark_safe(cash_allocated_slips_display),
+                'credit_notes': mark_safe(credit_notes_display),
                 'total_due': mark_safe(total_due_display),
-                'total_due_left': invoice.total_due_left,
+                'total_due_left': effective_due_left,
                 }
 
         invoices_data.append(data)
@@ -2032,7 +2211,7 @@ def finance_view(request, file_number):
         total_invoices = total_invoices + total_cost_and_vat
 
     total_out = total_out + total_invoices
-    total_in = 0
+    total_in = Decimal('0')
     for slip in pmts_slips:
         if slip.is_money_out == True:
             total_out = total_out + slip.amount
@@ -2047,12 +2226,14 @@ def finance_view(request, file_number):
 
         else:
             total_in = total_in + slip.amount
+    total_in = total_in + total_approved_credit_notes
     total_in = round(total_in, 2)
     total_out = round(total_out, 2)
-    total_balance = total_in - total_out
+    total_balance = round(total_in - total_out, 2)
 
     colors = {'draft_invoice': "#F9EBDF",
               "invoice": "#FFFCC9",
+              'credit_note': "#FFEAEA",
               'green': "#90EE90",
               'temp': "#CCD1D1"}
 
@@ -2060,7 +2241,271 @@ def finance_view(request, file_number):
                                              'pmts_slips': pmts_slips, 'file_number': file_number,
                                              'colors': colors,
                                              'pmts_form': pmts_form, 'green_slip_form': green_slips_form,
-                                             'green_slips': green_slips, 'invoices': invoices_data})
+                                             'green_slips': green_slips, 'invoices': invoices_data,
+                                             'credit_notes': credit_notes_data, 'credit_note_form': credit_note_form,
+                                             'current_vat_rate_percent': CURRENT_VAT_RATE_PERCENT})
+
+
+@login_required
+def add_credit_note(request, file_number):
+    if request.method == 'POST':
+        file_obj = WIP.objects.filter(file_number=file_number).first()
+        if not file_obj:
+            messages.error(request, 'File not found.')
+            return redirect('index')
+
+        request_post_copy = request.POST.copy()
+        request_post_copy['file_number'] = file_obj.id
+        form = CreditNoteHalfForm(request_post_copy)
+        form.fields['invoice'].queryset = Invoices.objects.filter(
+            file_number=file_obj.id, state='F'
+        ).order_by('-invoice_number')
+        if form.is_valid():
+            credit_note = form.save(commit=False)
+            if credit_note.invoice.file_number_id != file_obj.id:
+                messages.error(request, 'Selected invoice does not belong to this matter.')
+                return redirect('finance_view', file_number=file_number)
+            if credit_note.amount <= 0:
+                messages.error(request, 'Credit note amount must be greater than 0.')
+                return redirect('finance_view', file_number=file_number)
+
+            max_allowed_amount = get_effective_invoice_due(credit_note.invoice)
+            if credit_note.amount > max_allowed_amount:
+                messages.error(
+                    request,
+                    f'Credit note exceeds invoice due (£{max_allowed_amount}).'
+                )
+                return redirect('finance_view', file_number=file_number)
+
+            credit_note.file_number = file_obj
+            credit_note.created_by = request.user
+            credit_note.status = 'P'
+            credit_note.save()
+            messages.success(
+                request, 'Credit note submitted and is pending manager approval.')
+            return redirect('finance_view', file_number=file_number)
+
+        error_message = 'Form is not valid. Please correct the errors:'
+        for field, errors in form.errors.items():
+            error_message += f'\n{field}: {", ".join(errors)}'
+        messages.error(request, error_message)
+    else:
+        messages.error(request, 'Invalid request method.')
+
+    return redirect('finance_view', file_number=file_number)
+
+
+@login_required
+def approve_credit_note(request, id):
+    credit_note = get_object_or_404(CreditNote, id=id)
+    if not request.user.is_manager:
+        messages.error(request, 'Only managers can approve credit notes.')
+        return redirect('finance_view', file_number=credit_note.file_number.file_number)
+
+    if credit_note.status != 'P':
+        messages.info(request, 'This credit note has already been reviewed.')
+        return redirect('finance_view', file_number=credit_note.file_number.file_number)
+
+    max_allowed_amount = get_effective_invoice_due(credit_note.invoice)
+    if credit_note.amount > max_allowed_amount:
+        messages.error(
+            request,
+            f'Credit note cannot be approved because invoice due is £{max_allowed_amount}.'
+        )
+        return redirect('finance_view', file_number=credit_note.file_number.file_number)
+
+    invoice = credit_note.invoice
+    prev_invoice_due = Decimal(str(invoice.total_due_left or 0))
+    new_invoice_due = prev_invoice_due - Decimal(str(credit_note.amount))
+    if new_invoice_due < 0:
+        new_invoice_due = Decimal('0')
+
+    with transaction.atomic():
+        invoice.total_due_left = new_invoice_due
+        invoice.save(update_fields=['total_due_left'])
+
+        old_status = credit_note.status
+        credit_note.status = 'F'
+        credit_note.approved_by = request.user
+        credit_note.approved_on = timezone.now()
+        credit_note.save(update_fields=['status', 'approved_by', 'approved_on'])
+
+        create_modification(
+            request.user,
+            invoice,
+            {
+                'total_due_left': {
+                    'old_value': str(prev_invoice_due),
+                    'new_value': str(invoice.total_due_left)
+                },
+                'reason': f'Approved Credit Note {credit_note.id}'
+            }
+        )
+
+        create_modification(
+            request.user,
+            credit_note,
+            {
+                'status': {'old_value': old_status, 'new_value': 'F'},
+                'approved_by': {'old_value': None, 'new_value': str(request.user)},
+                'approved_on': {'old_value': None, 'new_value': str(credit_note.approved_on)},
+            }
+        )
+    messages.success(request, 'Credit note approved and finalized.')
+    return redirect('finance_view', file_number=credit_note.file_number.file_number)
+
+
+@login_required
+def reject_credit_note(request, id):
+    credit_note = get_object_or_404(CreditNote, id=id)
+    if not request.user.is_manager:
+        messages.error(request, 'Only managers can reject credit notes.')
+        return redirect('finance_view', file_number=credit_note.file_number.file_number)
+
+    if credit_note.status != 'P':
+        messages.info(request, 'This credit note has already been reviewed.')
+        return redirect('finance_view', file_number=credit_note.file_number.file_number)
+
+    old_status = credit_note.status
+    credit_note.status = 'R'
+    credit_note.approved_by = request.user
+    credit_note.approved_on = timezone.now()
+    credit_note.save(update_fields=['status', 'approved_by', 'approved_on'])
+
+    create_modification(
+        request.user,
+        credit_note,
+        {
+            'status': {'old_value': old_status, 'new_value': 'R'},
+            'approved_by': {'old_value': None, 'new_value': str(request.user)},
+            'approved_on': {'old_value': None, 'new_value': str(credit_note.approved_on)},
+        }
+    )
+    messages.success(request, 'Credit note rejected.')
+    return redirect('finance_view', file_number=credit_note.file_number.file_number)
+
+
+@login_required
+def edit_credit_note(request, id):
+    credit_note = get_object_or_404(CreditNote, id=id)
+
+    can_edit_pending = credit_note.status == 'P' and (
+        credit_note.created_by_id == request.user.id or request.user.is_manager
+    )
+    can_edit_approved = credit_note.status == 'F' and request.user.is_manager
+    if not (can_edit_pending or can_edit_approved):
+        messages.error(request, 'You do not have permission to edit this credit note.')
+        return redirect('finance_view', file_number=credit_note.file_number.file_number)
+
+    if request.method == 'POST':
+        duplicate_obj = copy.deepcopy(credit_note)
+        form = CreditNoteHalfForm(request.POST, instance=credit_note)
+        form.fields['invoice'].queryset = Invoices.objects.filter(
+            file_number=credit_note.file_number_id, state='F'
+        ).order_by('-invoice_number')
+        if form.is_valid():
+            edited_credit_note = form.save(commit=False)
+            edited_credit_note.file_number = credit_note.file_number
+
+            if edited_credit_note.amount <= 0:
+                messages.error(request, 'Credit note amount must be greater than 0.')
+                return redirect('edit_credit_note', id=credit_note.id)
+
+            if edited_credit_note.status == 'F':
+                max_allowed_amount = get_invoice_max_credit_amount(
+                    edited_credit_note.invoice, excluded_credit_note_id=edited_credit_note.id)
+            else:
+                max_allowed_amount = get_effective_invoice_due(edited_credit_note.invoice)
+
+            if edited_credit_note.amount > max_allowed_amount:
+                messages.error(
+                    request,
+                    f'Credit note exceeds invoice due (£{max_allowed_amount}).'
+                )
+                return redirect('edit_credit_note', id=credit_note.id)
+
+            with transaction.atomic():
+                if duplicate_obj.status == 'F':
+                    old_invoice = Invoices.objects.select_for_update().filter(
+                        id=duplicate_obj.invoice_id
+                    ).first()
+                    new_invoice = Invoices.objects.select_for_update().filter(
+                        id=edited_credit_note.invoice_id
+                    ).first()
+
+                    old_invoice_prev_due = Decimal(str(old_invoice.total_due_left or 0))
+                    old_invoice.total_due_left = old_invoice_prev_due + \
+                        Decimal(str(duplicate_obj.amount))
+                    old_invoice.save(update_fields=['total_due_left'])
+
+                    if old_invoice.id == new_invoice.id:
+                        new_invoice_prev_due = Decimal(str(old_invoice.total_due_left or 0))
+                    else:
+                        new_invoice_prev_due = Decimal(str(new_invoice.total_due_left or 0))
+
+                    new_invoice_due = new_invoice_prev_due - \
+                        Decimal(str(edited_credit_note.amount))
+                    if new_invoice_due < 0:
+                        new_invoice_due = Decimal('0')
+                    new_invoice.total_due_left = new_invoice_due
+                    new_invoice.save(update_fields=['total_due_left'])
+
+                    create_modification(
+                        user=request.user,
+                        modified_obj=old_invoice,
+                        changes={
+                            'total_due_left': {
+                                'old_value': str(old_invoice_prev_due),
+                                'new_value': str(old_invoice.total_due_left)
+                            },
+                            'reason': f'Edited Credit Note {edited_credit_note.id} (reverse old amount)'
+                        }
+                    )
+                    create_modification(
+                        user=request.user,
+                        modified_obj=new_invoice,
+                        changes={
+                            'total_due_left': {
+                                'old_value': str(new_invoice_prev_due),
+                                'new_value': str(new_invoice.total_due_left)
+                            },
+                            'reason': f'Edited Credit Note {edited_credit_note.id} (apply new amount)'
+                        }
+                    )
+
+                edited_credit_note.save()
+
+                changed_fields = form.changed_data
+                changes = {}
+                for field in changed_fields:
+                    changes[field] = {
+                        'old_value': str(getattr(duplicate_obj, field)),
+                        'new_value': str(getattr(edited_credit_note, field))
+                    }
+                if changes:
+                    create_modification(
+                        user=request.user,
+                        modified_obj=edited_credit_note,
+                        changes=changes
+                    )
+            messages.success(request, 'Credit note updated.')
+            return redirect('finance_view', file_number=edited_credit_note.file_number.file_number)
+        else:
+            error_message = 'Form is not valid. Please correct the errors:'
+            for field, errors in form.errors.items():
+                error_message += f'\n{field}: {", ".join(errors)}'
+            messages.error(request, error_message)
+    else:
+        form = CreditNoteHalfForm(instance=credit_note)
+        form.fields['invoice'].queryset = Invoices.objects.filter(
+            file_number=credit_note.file_number_id, state='F'
+        ).order_by('-invoice_number')
+
+    return render(request, 'edit_models.html', {
+        'form': form,
+        'title': 'Edit Credit Note',
+        'file_number': credit_note.file_number.file_number
+    })
 
 
 @login_required
@@ -2271,10 +2716,12 @@ def add_invoice(request, file_number):
         total_costs = 0
         for cost in request.POST.getlist('our_costs[]'):
             total_costs = total_costs + Decimal(cost)
-        total_costs_and_vat = (Decimal('0.20')*total_costs)+total_costs
+        vat_amount = round(total_costs * CURRENT_VAT_RATE, 2)
+        total_costs_and_vat = vat_amount + total_costs
 
         request_post_copy['created_by'] = request.user
         request_post_copy['file_number'] = file_number_id
+        request_post_copy['vat'] = str(vat_amount)
 
         form = InvoicesForm(request_post_copy)
 
@@ -2370,15 +2817,43 @@ def add_invoice(request, file_number):
 def allocate_monies(request):
     if request.method == 'POST':
 
-        amt_to_allocate = request.POST['amt_to_allocate']
+        amt_to_allocate_raw = request.POST['amt_to_allocate']
         invoice_num = request.POST['invoice_num']
         slip_id = request.POST['slip_id']
 
         invoice = Invoices.objects.filter(invoice_number=invoice_num).first()
         slip = PmtsSlips.objects.filter(id=slip_id).first()
+        if not invoice or not slip:
+            messages.error(request, 'Invoice or slip not found.')
+            if invoice:
+                return redirect('finance_view', file_number=invoice.file_number.file_number)
+            return redirect('index')
+
+        try:
+            amt_to_allocate = Decimal(amt_to_allocate_raw)
+        except Exception:
+            messages.error(request, 'Please provide a valid amount to allocate.')
+            return redirect('finance_view', file_number=invoice.file_number.file_number)
+
+        if amt_to_allocate <= 0:
+            messages.error(request, 'Amount to allocate must be greater than 0.')
+            return redirect('finance_view', file_number=invoice.file_number.file_number)
+
+        if amt_to_allocate > slip.balance_left:
+            messages.error(request, 'Amount to allocate cannot exceed slip balance.')
+            return redirect('finance_view', file_number=invoice.file_number.file_number)
 
         due_left = invoice.total_due_left
-        balance = due_left - Decimal(amt_to_allocate)
+        approved_credit_total = get_invoice_approved_credit_total(invoice)
+        effective_due_left = get_effective_invoice_due(invoice, approved_credit_total)
+        if amt_to_allocate > effective_due_left:
+            messages.error(
+                request,
+                f'Amount to allocate cannot exceed invoice due after credit notes (£{effective_due_left}).'
+            )
+            return redirect('finance_view', file_number=invoice.file_number.file_number)
+
+        balance = due_left - amt_to_allocate
 
         # Store previous values for modification tracking
         prev_slip_amount_allocated = slip.amount_allocated
@@ -2386,7 +2861,7 @@ def allocate_monies(request):
 
         already_allocated = json.loads(
             slip.amount_allocated) if slip.amount_allocated != {} else {}
-        already_allocated.update({str(invoice.id): str(amt_to_allocate)})
+        already_allocated.update({str(invoice.id): str(amt_to_allocate_raw)})
         slip.amount_allocated = json.dumps(already_allocated)
 
         # Calculate total allocated amount from the slip
@@ -2405,7 +2880,8 @@ def allocate_monies(request):
         # Create modification record for invoice
         invoice_changes = {'prev_total_due_left': str(due_left),
                            'after_total_due_left': str(invoice.total_due_left),
-                           'amount_allocated': amt_to_allocate}
+                           'amount_allocated': str(amt_to_allocate),
+                           'approved_credit_notes_total': str(approved_credit_total)}
 
         create_modification(
             user=request.user,
@@ -2418,7 +2894,7 @@ def allocate_monies(request):
                         'after_amount_allocated': slip.amount_allocated,
                         'prev_balance_left': str(prev_slip_balance_left),
                         'after_balance_left': str(slip.balance_left),
-                        'amount_allocated_to_invoice': amt_to_allocate,
+                        'amount_allocated_to_invoice': str(amt_to_allocate),
                         'invoice_number': invoice_num}
 
         create_modification(
@@ -2518,11 +2994,11 @@ def download_invoice(request, id):
             costs_display = costs_display + "'"
         costs_display = costs_display + \
             f">£{round(Decimal(costs[i]), 2)}</td></tr>"
-    vat_inv = total_cost_invoice * Decimal(0.20)
+    _, vat_inv, total_cost_and_vat = calculate_invoice_total_with_vat(invoice)
     costs_display = costs_display + \
-        f"<tr><td >Add VAT @20%:</td><td style='text-align: center; border-top: solid; border-top-width: thin;'>£{
+        f"<tr><td >Add VAT @{CURRENT_VAT_RATE_PERCENT}%:</td><td style='text-align: center; border-top: solid; border-top-width: thin;'>£{
             round(vat_inv, 2)}</td></tr>"
-    total_cost_and_vat = round(total_cost_invoice + vat_inv, 2)
+    total_cost_and_vat = round(total_cost_and_vat, 2)
     costs_display = costs_display + \
         f"<tr><td ><b>Total Costs and VAT:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{
             total_cost_and_vat}</td></tr>"
@@ -2755,6 +3231,160 @@ def download_invoice(request, id):
     return response
 
 
+@login_required
+def download_credit_note(request, id):
+    credit_note = get_object_or_404(CreditNote, id=id)
+    file_obj = credit_note.file_number
+    invoice = credit_note.invoice
+    net_amount, vat_amount, gross_amount = calculate_credit_note_breakdown(
+        credit_note.amount)
+    status_display = dict(CreditNote.STATUSES).get(
+        credit_note.status, credit_note.status)
+
+    client_address_block = f"""
+        <div class="me-4">{file_obj.client1.name}<br>
+        {file_obj.client1.address_line1}<br>
+        {file_obj.client1.address_line2}<br>
+        {file_obj.client1.county}, {file_obj.client1.postcode}
+        </div>
+    """
+    if file_obj.client2:
+        client_address_block = client_address_block + f"""
+            <div class="border-start ps-4">{file_obj.client2.name}<br>
+            {file_obj.client2.address_line1}<br>
+            {file_obj.client2.address_line2}<br>
+            {file_obj.client2.county}, {file_obj.client2.postcode}
+            </div>
+        """
+
+    file_details_display = f"""
+        <tr><td><b>Our Ref:</b> {file_obj.file_number}</td><td></td></tr>
+        <tr><td><b>Credit Note No:</b> CN-{credit_note.id}</td><td></td></tr>
+        <tr><td><b>Date:</b> {credit_note.date.strftime('%d/%m/%Y')}</td><td></td></tr>
+        <tr><td>&nbsp;</td><td></td></tr>
+        <tr><td><b>Private & Confidential</b></td><td></td></tr>
+        <tr><td class='d-flex flex-row'>{client_address_block}</td><td></td></tr>
+        <tr><td><b>Re:</b> {file_obj.matter_description}</td><td></td></tr>
+        <tr><td>&nbsp;</td><td></td></tr>
+    """
+
+    amount_summary_display = f"""
+        <div>
+            <table style='width: 100%; border-collapse: collapse; table-layout: fixed;'>
+                <tr>
+                    <td style='padding: 4px 0; text-align: left;'><b>Credit Amount Excl. VAT:</b></td>
+                    <td style='padding: 4px 0; text-align: right; width: 220px;'>
+                        <span style='display: inline-block; border-top: solid 1px; padding-top: 2px;'>£{net_amount}</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td style='padding: 4px 0; text-align: left;'><b>VAT @{CURRENT_VAT_RATE_PERCENT}% (included):</b></td>
+                    <td style='padding: 4px 0; text-align: right;'>£{vat_amount}</td>
+                </tr>
+                <tr>
+                    <td style='padding: 4px 0; text-align: left;'><b>Total Credit (Incl. VAT):</b></td>
+                    <td style='padding: 4px 0; text-align: right;'>
+                        <span style='display: inline-block; border-top: solid 1px; border-bottom: solid 1px; padding: 2px 0;'>£{gross_amount}</span>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    """
+    desc_and_cost_display = f"""
+        <tr><td colspan='2'><b>CREDIT NOTE FOR THE PARTIAL/FULL AMOUNT</b></td></tr>
+        <tr><td colspan='2' style='text-align: justify; text-justify: inter-word;'><b>Reason:</b> {credit_note.reason}</td></tr>
+        <tr><td>&nbsp;</td><td></td></tr>
+        <tr><td colspan='2'>{amount_summary_display}</td></tr>
+    """
+
+    meta_line = f"Status: {status_display}"
+    if credit_note.approved_by:
+        approved_on_display = credit_note.approved_on.strftime(
+            '%d/%m/%Y %H:%M') if credit_note.approved_on else ''
+        meta_line = f"{meta_line} | Approved: {credit_note.approved_by}"
+        if approved_on_display:
+            meta_line = f"{meta_line} ({approved_on_display})"
+
+    if credit_note.status == "P":
+        state = """
+                <div>
+                    <h1 class="position-fixed top-50 start-50 translate-middle z-n1 text-secondary opacity-50 text-center strong" style="font-size: 600%;">
+                        PENDING APPROVAL
+                    <h1>
+                </div>
+                """
+    else:
+        state = ""
+
+    footer = """
+            ANP Solicitors is a trading name of ANP Solicitors Limited<br>
+            Registered in England and Wales - Company No: 6948759 | Registered office at 290 Kiln Road, Benfleet, Essex SS7 1QT<br>
+            T: 01702 556688 | F: 01702 556696 | E: info@anpsolicitors.com | www.anpsolicitors.com<br>
+            This firm is authorised and regulated by the Solicitors Regulation Authority<br>
+            A list of directors is open to inspection at the office<br>
+            VAT No. 977 542 767 | SRA No. 515388<br>
+            """
+    style = """
+            @page :first {
+                    size: A4;
+                    margin-top: 0mm;
+                    margin-bottom: 4px;
+                    margin-left: 40px;
+                    margin-right: 40px;
+            }
+            @page {
+                    size: A4;
+                    margin-top: 20px;
+                    margin-bottom: 4px;
+                    margin-left: 40px;
+                    margin-right: 40px;
+            }
+            .logoDiv{
+                position: absolute;
+                top: 15px;
+                right: 40px;
+                z-index: 1000;
+                width: 75px;
+                height: 50px;
+                margin: 0;
+                padding: 0;
+            }
+            img {
+                width: 75px;
+                height: 50px;
+                margin: 0;
+                padding: 0;
+                display: block;
+            }
+            .docTitle {
+                text-align: center;
+                font-size: 32px;
+                font-weight: bold;
+                margin-top: 4px;
+                margin-bottom: 12px;
+            }
+            .creditTable {
+                width: 100%;
+                table-layout: fixed;
+            }
+            """
+
+    html = render_to_string('download_templates/credit_note.html', {
+        'credit_note_number': credit_note.id,
+        'style': style,
+        'state': mark_safe(state),
+        'file_details_display': mark_safe(file_details_display),
+        'desc_and_cost_display': mark_safe(desc_and_cost_display),
+        'meta_line': meta_line,
+        'footer': mark_safe(footer),
+    })
+    pdf_file = HTML(
+        string=html, base_url=request.build_absolute_uri()).write_pdf()
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="Credit_Note_CN-{credit_note.id}_{file_obj.file_number}.pdf"'
+    return response
+
+
 def get_all_financials(file_number):
     file = get_object_or_404(WIP, file_number=file_number)
 
@@ -2762,6 +3392,10 @@ def get_all_financials(file_number):
     green_slips = LedgerAccountTransfers.objects.filter(
         Q(file_number_from=file.id) | Q(file_number_to=file.id))
     invoices = Invoices.objects.filter(file_number=file.id)
+    credit_notes = CreditNote.objects.filter(
+        file_number=file.id,
+        status='F'
+    ).select_related('invoice')
     all_objects = []
     for slip in slips:
         if slip.is_money_out == True:
@@ -2806,22 +3440,24 @@ def get_all_financials(file_number):
 
         type_obj = "money_out"
 
-        our_costs = invoice.our_costs
-
-        costs = ast.literal_eval(our_costs) if type(
-            our_costs) != type([]) else our_costs
-        total_cost_invoice = 0
-
-        for cost in costs:
-            total_cost_invoice = total_cost_invoice + Decimal(cost)
-        total_cost_invoice = round(
-            ((total_cost_invoice*Decimal(0.2)) + total_cost_invoice), 2)
+        _, _, total_cost_invoice = calculate_invoice_total_with_vat(invoice)
         obj = {'date': invoice.date.strftime('%d/%m/%Y'),
                'desc': desc,
                'type': type_obj,
                'ledger': 'O',
                'amount': total_cost_invoice
                }
+        all_objects.append(obj)
+
+    for credit_note in credit_notes:
+        invoice_number = credit_note.invoice.invoice_number or 'Draft'
+        obj = {
+            'date': credit_note.date.strftime('%d/%m/%Y'),
+            'desc': f'Credit Note for ANP Invoice {invoice_number}',
+            'type': 'money_in',
+            'ledger': 'O',
+            'amount': credit_note.amount
+        }
         all_objects.append(obj)
 
     def sort_rows(rows):
@@ -3058,7 +3694,25 @@ def edit_invoice(request, id):
         for cost in our_costs_filtered:
 
             total_costs = total_costs + Decimal(cost)
-        total_costs_and_vat = (Decimal('0.20')*total_costs)+total_costs
+        vat_mode = request.POST.get('vat_mode', 'auto')
+        if vat_mode != 'manual':
+            vat_mode = 'auto'
+        auto_vat_amount = round(total_costs * CURRENT_VAT_RATE, 2)
+        if vat_mode == 'manual':
+            manual_vat_raw = request.POST.get('manual_vat', '').strip()
+            try:
+                vat_amount = round(Decimal(manual_vat_raw), 2)
+                if vat_amount < 0:
+                    raise ValueError
+            except Exception:
+                messages.error(
+                    request, 'Manual VAT must be a valid non-negative amount.')
+                return redirect('edit_invoice', id=id)
+        else:
+            vat_amount = auto_vat_amount
+        total_costs_and_vat = vat_amount + total_costs
+        invoice.vat = vat_amount
+        invoice.vat_calculation_mode = vat_mode
 
         prev_pink_slip_ids = list(
             invoice.disbs_ids.values_list('id', flat=True))
@@ -3217,8 +3871,8 @@ def edit_invoice(request, id):
                     <input required type="number" step="0.01" class="form-input" name="our_costs[]" id="our_costs"
                     placeholder="£0.00" value={round(Decimal(costs[i]), 2)}>
                 </div>
-                <div class="col-span-2">
-                    <span type='button' class='btn btn-danger' onclick="removeField(this);" >-</span>
+                <div class="col-span-2 flex items-center">
+                    <span type='button' class='btn btn-danger px-4' onclick="removeField(this);" >-</span>
                 </div>
             </div>
             """
@@ -3342,6 +3996,9 @@ def edit_invoice(request, id):
             'by_post': invoice.by_post,
             'description': invoice.description,
             'our_costs_rows': our_costs_rows,
+            'vat_mode': invoice.vat_calculation_mode or 'auto',
+            'manual_vat': round(Decimal(str(invoice.vat or 0)), 2),
+            'current_vat_rate_percent': CURRENT_VAT_RATE_PERCENT,
             'pink_slips': pink_slips,
             'blue_slips': blue_slips,
             'green_slips': green_slips,
@@ -3358,6 +4015,8 @@ def download_estate_accounts(request, file_number):
     green_slips = LedgerAccountTransfers.objects.filter(
         Q(file_number_from=file.id) | Q(file_number_to=file.id))
     invoices = Invoices.objects.filter(file_number=file.id)
+    credit_notes = CreditNote.objects.filter(
+        file_number=file.id, status='F').select_related('invoice')
     money_in_objects = []
     money_out_objects = []
     num_money_in_objs = 0
@@ -3399,36 +4058,26 @@ def download_estate_accounts(request, file_number):
                    }
             money_in_objects.append(obj)
 
-        obj = {'date': slip.date.strftime('%d/%m/%Y'),
-               'desc': desc,
-               'type': type_obj,
-               'amount': slip.amount
-               }
-        money_in_objects.append(obj)
-
     for invoice in invoices:
         if invoice.state == 'F':
             desc = f"ANP Invoice {invoice.invoice_number}"
         else:
             desc = f"DRAFT ANP Invoice"
 
-        type_obj = "money_out"
-
-        our_costs = invoice.our_costs
-
-        costs = ast.literal_eval(our_costs) if type(
-            our_costs) != type([]) else our_costs
-        total_cost_invoice = 0
-
-        for cost in costs:
-            total_cost_invoice = total_cost_invoice + Decimal(cost)
-        total_cost_invoice = round(
-            ((total_cost_invoice*Decimal(0.2)) + total_cost_invoice), 2)
-        obj = {'date': slip.date.strftime('%d/%m/%Y'),
+        _, _, total_cost_invoice = calculate_invoice_total_with_vat(invoice)
+        obj = {'date': invoice.date.strftime('%d/%m/%Y'),
                'desc': desc,
                'amount': total_cost_invoice
                }
         money_out_objects.append(obj)
+
+    for credit_note in credit_notes:
+        invoice_number = credit_note.invoice.invoice_number or "Draft"
+        obj = {'date': credit_note.date.strftime('%d/%m/%Y'),
+               'desc': f"Credit Note for ANP Invoice {invoice_number}",
+               'amount': credit_note.amount
+               }
+        money_in_objects.append(obj)
 
     def sort_rows(rows):
         def get_sort_key(row):
@@ -3540,10 +4189,10 @@ def download_estate_accounts(request, file_number):
             row.cells[1].text = "Description"
             row.cells[2].text = "Amount"
             i = 1
-        elif j < len(money_in_objects):
+        elif j < len(money_out_objects):
             row.cells[0].text = money_out_objects[j]['date']
             row.cells[1].text = money_out_objects[j]['desc']
-            row.cells[2].text = '£' + str(money_in_objects[j]['amount'])
+            row.cells[2].text = '£' + str(money_out_objects[j]['amount'])
             j = j + 1
 
     heading = doc.add_paragraph(
@@ -3687,16 +4336,18 @@ def download_cashier_data(request):
         start_date_str = request.POST['start_date']
 
         start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        start_datetime = datetime.combine(start_date.date(), time.min)
         get_pending_slips = request.POST['type_of_report'] == 'Pending Slips'
 
         if get_pending_slips:
-            end_date = datetime.combine(datetime.today().date(), time.min)
+            end_datetime = datetime.combine(datetime.today().date(), time.max)
             title = "Pending Slips"
             check_headings = ""
             check_body = ""
         else:
             end_date_str = request.POST['end_date']
             end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+            end_datetime = datetime.combine(end_date.date(), time.max)
 
             title = "Audit Slips"
             check_headings = """
@@ -3707,12 +4358,17 @@ def download_cashier_data(request):
                             <td></td>
                             <td></td>
                         """
+        start_date_only = start_datetime.date()
+        end_date_only = end_datetime.date()
         invoices = Invoices.objects.filter(
-            Q(date__range=(start_date, end_date)) & Q(state='F')).order_by('invoice_number')
+            Q(date__range=(start_date_only, end_date_only)) & Q(state='F')).order_by('invoice_number')
+        credit_notes = CreditNote.objects.filter(
+            date__range=(start_date_only, end_date_only)
+        ).select_related('invoice', 'file_number', 'created_by', 'approved_by').order_by('date')
         slips = PmtsSlips.objects.filter(
-            timestamp__range=(start_date, end_date)).order_by('date')
+            timestamp__range=(start_datetime, end_datetime)).order_by('date')
         green_slips = LedgerAccountTransfers.objects.filter(
-            timestamp__range=(start_date, end_date)).order_by('date')
+            timestamp__range=(start_datetime, end_datetime)).order_by('date')
 
         invoice_display_table = ''
         if get_pending_slips:
@@ -3742,16 +4398,8 @@ def download_cashier_data(request):
                 </thead>
             """
             for invoice in invoices:
-                our_costs = invoice.our_costs
-                costs = ast.literal_eval(our_costs) if type(
-                    our_costs) != type([]) else our_costs
-                total_cost_invoice = 0
-                for cost in costs:
-                    total_cost_invoice = round(
-                        total_cost_invoice + Decimal(cost), 2)
-                vat = round(total_cost_invoice * Decimal(0.2), 2)
-
-                total_cost_and_vat = total_cost_invoice + vat
+                total_cost_invoice, vat, total_cost_and_vat = calculate_invoice_total_with_vat(
+                    invoice)
                 slip_display = ''
                 for slip in invoice.disbs_ids.all():
                     slip_display = slip_display + \
@@ -3769,6 +4417,44 @@ def download_cashier_data(request):
                 </tr>
                 """
             invoice_display_table = invoice_display_table + "</table>"
+
+        status_labels = dict(CreditNote.STATUSES)
+        credit_notes_table = """
+            <table class='table table-striped'>
+                <thead>
+                    <th>Date</th>
+                    <th>File Number</th>
+                    <th>Credit Amount Excl. VAT</th>
+                    <th>VAT</th>
+                    <th>Total Credit Incl. VAT</th>
+                    <th>Status</th>
+                    <th>Reason</th>
+                    <th>Created By</th>
+                    <th>Approved By</th>
+                    <th>Approved On</th>
+                </thead>
+                <tbody>
+        """
+        for credit_note in credit_notes:
+            approved_on = credit_note.approved_on.strftime(
+                '%d/%m/%Y %H:%M') if credit_note.approved_on else '-'
+            net_amount, vat_amount, gross_amount = calculate_credit_note_breakdown(
+                credit_note.amount)
+            credit_notes_table = credit_notes_table + f"""
+            <tr>
+                <td>{credit_note.date.strftime('%d/%m/%Y')}</td>
+                <td>{credit_note.file_number.file_number}</td>
+                <td>£{net_amount}</td>
+                <td>£{vat_amount}</td>
+                <td>£{gross_amount}</td>
+                <td>{status_labels.get(credit_note.status, credit_note.status)}</td>
+                <td>{credit_note.reason}</td>
+                <td>{credit_note.created_by or '-'}</td>
+                <td>{credit_note.approved_by or '-'}</td>
+                <td>{approved_on}</td>
+            </tr>
+            """
+        credit_notes_table = credit_notes_table + "</tbody></table>"
 
         common_slips_header = f"""
                 <thead>
@@ -3923,6 +4609,8 @@ def download_cashier_data(request):
                     <body style="font-family: Times New Roman, Times, serif">
                         <h1 class="text-center">{title}</h1>
                         {invoice_display_table}
+                        <h2 class='mt-3'>Credit Notes</h2>
+                        {credit_notes_table}
                         <h2 class='mt-3'>Client Blue Slips</h2>
                         {client_blue_slips_table}
                         <h2 class='mt-3'>Client Pink Slips</h2>
@@ -4513,19 +5201,20 @@ def invoices_list(request):
         state='F', date__range=[start_date, end_date])
 
     if request.user.is_manager:
+        approved_credit_totals = get_approved_credit_note_totals(
+            [invoice.id for invoice in invoices]
+        )
         for invoice in invoices:
-            our_costs = invoice.our_costs
-            # Convert to list if stored as a string
-            costs = ast.literal_eval(our_costs) if not isinstance(
-                our_costs, list) else our_costs
-            total_cost_invoice = sum(Decimal(cost) for cost in costs)
-            vat_inv = total_cost_invoice * Decimal(0.20)
-            total_cost_and_vat = round(total_cost_invoice + vat_inv, 2)
+            total_cost_invoice, vat_inv, total_cost_and_vat = calculate_invoice_total_with_vat(
+                invoice)
+            effective_due = get_effective_invoice_due(
+                invoice, approved_credit_totals.get(invoice.id, Decimal('0')))
 
             # Update invoice attributes dynamically
             invoice.our_costs = total_cost_invoice
             invoice.vat = round(vat_inv, 2)
             invoice.total_cost_and_vat = total_cost_and_vat
+            invoice.total_due_left = effective_due
 
         # Render template with invoices and date range
         return render(request, 'invoices_list.html', {
@@ -4565,16 +5254,8 @@ def download_invoices(request):
                         'File Number', 'Our Costs', 'VAT', 'Total Costs and VAT'])
 
         for invoice in invoices:
-            our_costs = invoice.our_costs
-            costs = ast.literal_eval(our_costs) if type(
-                our_costs) != type([]) else our_costs
-            total_cost_invoice = 0
-
-            for i in range(len(costs)):
-                total_cost_invoice = total_cost_invoice + Decimal(costs[i])
-            vat_inv = total_cost_invoice * Decimal(0.20)
-
-            total_cost_and_vat = round(total_cost_invoice + vat_inv, 2)
+            total_cost_invoice, vat_inv, total_cost_and_vat = calculate_invoice_total_with_vat(
+                invoice)
 
             writer.writerow([f'{invoice.invoice_number}', f'{invoice.file_number.matter_type.type}', f'{invoice.date.strftime("%d/%m/%Y")}',
                             f'{invoice.file_number.file_number}', f'{total_cost_invoice}', f'{vat_inv}', f'{total_cost_and_vat}'])

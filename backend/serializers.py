@@ -22,6 +22,8 @@ class InvoicesSerializer:
             'description': self.invoice_instance.description,
             'our_costs_desc': self.invoice_instance.our_costs_desc,
             'our_costs': self.invoice_instance.our_costs,
+            'vat': str(self.invoice_instance.vat) if self.invoice_instance.vat is not None else None,
+            'vat_calculation_mode': self.invoice_instance.vat_calculation_mode,
             'disbs_ids': list(self.invoice_instance.disbs_ids.values_list('id', flat=True)),
             'moa_ids': list(self.invoice_instance.moa_ids.values_list('id', flat=True)),
             'cash_allocated_slips': list(self.invoice_instance.cash_allocated_slips.values_list('id', flat=True)),
