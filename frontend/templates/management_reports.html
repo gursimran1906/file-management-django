@@ -131,7 +131,13 @@
                     {% for assessment in risk_assessments_due %}
                     <tr class="border-b">
                         <td class="py-2 text-sm"><a href="{% url 'home' assessment.file_number %}" class="link">{{assessment.file_number}}</a></td>
-                        <td class="py-2 text-sm font-bold">{{ assessment.due_diligence_date|date:"d/m/y" }}</td>
+                        <td class="py-2 text-sm font-bold">
+                            {% if assessment.latest_assessment_date %}
+                            {{ assessment.latest_assessment_date|date:"d/m/y" }}
+                            {% else %}
+                            None
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                     

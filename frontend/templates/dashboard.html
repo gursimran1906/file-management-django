@@ -345,28 +345,87 @@
   </div>
   <div class="h-full md:h-1/2 grid grid-cols-1 md:grid-cols-7 gap-4">
     <!-- Risk Assessment -->
-    <div class="div-container md:col-span-2 overflow-scroll">
-      <div class="mb-2 flex justify-between">
-        <h2 class="text-xl">Risk Assessments</h2>
-        <span class="text-sm text-gray-500 p-2 rounded-lg align-middle"
-          >older than 11 months</span
+    <div class="div-container md:col-span-3 overflow-scroll">
+      <div class="mb-2 flex justify-between items-center gap-2">
+        <div class="flex items-center gap-2">
+          <h2 class="text-xl">Risk Assessments</h2>
+          <span
+            id="risk-count-badge"
+            class="text-xs font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded-full"
+          >
+            {{ risk_assessments_due_files|length }}
+          </span>
+        </div>
+        <a
+          id="risk-download-link"
+          href="{% url 'download_user_risk_assessments_due' %}?risk_scope={{ risk_scope }}"
+          class="btn-secondary text-xs"
+          >Download CSV</a
         >
       </div>
-      <ul class="rounded-lg">
-        {% for file in risk_assessments_due_files %} {% if file.date_of_last_risk_assessment %}
-        <li class="hover:bg-gray-50 border-b py-2">
-          <a href="{% url 'home' file.file_number %}">{{ file.file_number }}</a>
-          - {{ file.date_of_last_risk_assessment|date:"d/m/y" }}
+      <div class="mb-3 border rounded-lg bg-gray-50 px-3 py-2">
+        <div class="flex justify-between items-center gap-3">
+          <div>
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Scope</p>
+            <p id="risk-scope-label" class="text-sm text-gray-800">
+              {% if risk_scope == 'all_active' %}
+              All Open/To Be Closed files
+              {% else %}
+              My associated files
+              {% endif %}
+            </p>
+          </div>
+          <label class="inline-flex items-center cursor-pointer select-none">
+            <span class="me-3 text-xs text-gray-600">My Files</span>
+            <input
+              id="risk-scope-toggle"
+              type="checkbox"
+              class="sr-only peer"
+              {% if risk_scope == 'all_active' %}checked{% endif %}
+            >
+            <div class="relative w-9 h-5 bg-gray-300 rounded-full transition-colors peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-200 peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4 rtl:peer-checked:after:-translate-x-4"></div>
+            <span class="ms-3 text-xs text-gray-600">All Active</span>
+          </label>
+        </div>
+      </div>
+      <div class="mb-2">
+        <span class="text-sm text-gray-500 p-2 rounded-lg align-middle"
+          >due if no risk assessment, or no ongoing monitoring in last 12 months</span
+        >
+      </div>
+      <p id="risk-loading-state" class="hidden text-sm text-gray-500 px-2 py-1">
+        Updating risk assessments...
+      </p>
+      <ul id="risk-assessments-list" class="rounded-lg">
+        {% for file in risk_assessments_due_files %}
+        <li class="border rounded-lg mb-2 p-3 bg-white hover:bg-gray-50">
+          <div class="flex justify-between items-start gap-2">
+            <a class="link font-medium" href="{% url 'home' file.file_number %}">{{ file.file_number }}</a>
+            {% if file.latest_assessment_date %}
+            <span class="text-[11px] px-2 py-1 rounded-full bg-amber-100 text-amber-800">No ongoing monitoring in last year</span>
+            {% else %}
+            <span class="text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-800">No risk assessment completed</span>
+            {% endif %}
+          </div>
+          <div class="text-sm text-gray-700 mt-1">
+            Last RA:
+            {% if file.latest_assessment_date %}
+            {{ file.latest_assessment_date|date:"d/m/Y" }}
+            {% else %}
+            <span class="text-red-700">None done</span>
+            {% endif %}
+          </div>
+          <div class="text-sm text-gray-700 mt-1">
+            Last Ongoing Monitoring:
+            {% if file.latest_monitoring_date %}
+            {{ file.latest_monitoring_date|date:"d/m/Y" }}
+            {% else %}
+            <span class="text-red-700">None done</span>
+            {% endif %}
+          </div>
         </li>
-        {% else %}
-        <li class="hover:bg-gray-50 border-b py-2">
-          <a class="link" href="{% url 'home' file.file_number %}"
-            >{{ file.file_number }}</a
-          >
-          - <span class="text-red-700">None done</span>
-        </li>
-        {% endif %} {% empty %}
-        <li class="text-sm border-t border-b py-2 text-green-700">
+        {% empty %}
+        <li class="text-sm border rounded-lg py-3 px-2 text-green-700 bg-green-50">
           No Risk Assessments due
         </li>
         {% endfor %}
@@ -397,7 +456,7 @@
       </ul>
     </div>
     <!-- Overdue Invoices -->
-    <div class="div-container md:col-span-3 overflow-scroll">
+    <div class="div-container md:col-span-2    overflow-scroll">
       <h2 class="text-xl mb-2">Overdue Invoices</h2>
       <ul>
         {% for invoice in unsettled_invoices %}
@@ -588,6 +647,17 @@
         let currentFilterState = false;
         let currentTaskLimit = 5;
 
+        // Risk assessments panel elements/state
+        const riskScopeToggle = document.getElementById('risk-scope-toggle');
+        const riskScopeLabel = document.getElementById('risk-scope-label');
+        const riskList = document.getElementById('risk-assessments-list');
+        const riskLoadingState = document.getElementById('risk-loading-state');
+        const riskCountBadge = document.getElementById('risk-count-badge');
+        const riskDownloadLink = document.getElementById('risk-download-link');
+        const riskApiUrl = "{% url 'get_risk_assessments_due_data' %}";
+        const riskDownloadBaseUrl = "{% url 'download_user_risk_assessments_due' %}";
+        let currentRiskScope = "{{ risk_scope }}";
+
         // Cookie functions
         function setCookie(name, value, days) {
             const expires = new Date();
@@ -606,8 +676,150 @@
             return null;
         }
 
+        function escapeHtml(value) {
+            if (!value) return '';
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function setRiskScopeLabel(scope) {
+            if (!riskScopeLabel) return;
+            riskScopeLabel.textContent = scope === 'all_active'
+                ? 'All Open/To Be Closed files'
+                : 'My associated files';
+        }
+
+        function setRiskLoading(isLoading) {
+            if (riskLoadingState) {
+                riskLoadingState.classList.toggle('hidden', !isLoading);
+            }
+            if (riskScopeToggle) {
+                riskScopeToggle.disabled = isLoading;
+            }
+        }
+
+        function updateRiskDownloadLink(scope) {
+            if (!riskDownloadLink) return;
+            riskDownloadLink.href = `${riskDownloadBaseUrl}?risk_scope=${encodeURIComponent(scope)}`;
+        }
+
+        function syncRiskScopeInBrowserUrl(scope) {
+            const nextUrl = new URL(window.location.href);
+            nextUrl.searchParams.set('risk_scope', scope);
+            window.history.replaceState({}, '', nextUrl.toString());
+        }
+
+        function renderRiskItems(items) {
+            if (!riskList) return;
+
+            if (!items.length) {
+                riskList.innerHTML = `
+                    <li class="text-sm border rounded-lg py-3 px-2 text-green-700 bg-green-50">
+                        No Risk Assessments due
+                    </li>
+                `;
+                if (riskCountBadge) {
+                    riskCountBadge.textContent = '0';
+                }
+                return;
+            }
+
+            const html = items.map(item => {
+                const hasRiskAssessment = !!item.latest_assessment_date_display;
+                const reasonBadge = hasRiskAssessment
+                    ? `<span class="text-[11px] px-2 py-1 rounded-full bg-amber-100 text-amber-800">No ongoing monitoring in last year</span>`
+                    : `<span class="text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-800">No risk assessment completed</span>`;
+
+                const lastRa = hasRiskAssessment
+                    ? escapeHtml(item.latest_assessment_date_display)
+                    : '<span class="text-red-700">None done</span>';
+                const lastMonitoring = item.latest_monitoring_date_display
+                    ? escapeHtml(item.latest_monitoring_date_display)
+                    : '<span class="text-red-700">None done</span>';
+
+                return `
+                    <li class="border rounded-lg mb-2 p-3 bg-white hover:bg-gray-50">
+                        <div class="flex justify-between items-start gap-2">
+                            <a class="link font-medium" href="${escapeHtml(item.home_url)}">${escapeHtml(item.file_number)}</a>
+                            ${reasonBadge}
+                        </div>
+                        <div class="text-sm text-gray-700 mt-1">
+                            Last RA: ${lastRa}
+                        </div>
+                        <div class="text-sm text-gray-700 mt-1">
+                            Last Ongoing Monitoring: ${lastMonitoring}
+                        </div>
+                    </li>
+                `;
+            }).join('');
+
+            riskList.innerHTML = html;
+            if (riskCountBadge) {
+                riskCountBadge.textContent = String(items.length);
+            }
+        }
+
+        function renderRiskError() {
+            if (!riskList) return;
+            riskList.innerHTML = `
+                <li class="text-sm border rounded-lg py-3 px-2 text-red-700 bg-red-50">
+                    Unable to refresh risk assessments right now.
+                </li>
+            `;
+        }
+
+        function loadRiskAssessments(scope) {
+            setRiskLoading(true);
+            fetch(`${riskApiUrl}?risk_scope=${encodeURIComponent(scope)}`, {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Risk data request failed');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (!data.success) {
+                    throw new Error(data.error || 'Risk data request failed');
+                }
+
+                currentRiskScope = data.risk_scope;
+                if (riskScopeToggle) {
+                    riskScopeToggle.checked = currentRiskScope === 'all_active';
+                }
+                setRiskScopeLabel(currentRiskScope);
+                updateRiskDownloadLink(currentRiskScope);
+                syncRiskScopeInBrowserUrl(currentRiskScope);
+                renderRiskItems(data.items || []);
+            })
+            .catch(error => {
+                console.error('Error loading risk assessments:', error);
+                renderRiskError();
+            })
+            .finally(() => {
+                setRiskLoading(false);
+            });
+        }
+
         // Load initial tasks on page load
         loadInitialTasks();
+        setRiskScopeLabel(currentRiskScope);
+        updateRiskDownloadLink(currentRiskScope);
+
+        if (riskScopeToggle) {
+            riskScopeToggle.addEventListener('change', function() {
+                const nextScope = this.checked ? 'all_active' : 'associated';
+                loadRiskAssessments(nextScope);
+            });
+        }
 
         // Check if kanban should be minimized by default
         const isMinimized = getCookie('kanban_minimized');

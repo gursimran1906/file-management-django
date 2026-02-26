@@ -113,6 +113,65 @@ def get_effective_invoice_due(invoice, approved_credit_total=None):
     return round(effective_due, 2)
 
 
+def get_user_dashboard_wips(user):
+    next_work_wips = NextWork.objects.filter(
+        person=user,
+        completed=False
+    ).values_list('file_number', flat=True)
+    last_work_wips = LastWork.objects.filter(
+        person=user
+    ).values_list('file_number', flat=True)
+
+    fee_earner_files = WIP.objects.filter(
+        fee_earner=user,
+        file_status__status='Open'
+    )
+
+    combined_wip_ids = set(next_work_wips).union(set(last_work_wips))
+    return (WIP.objects.filter(id__in=combined_wip_ids) | fee_earner_files).distinct()
+
+
+def get_risk_assessments_due_queryset(wip_queryset):
+    one_year_ago = timezone.localdate() - relativedelta(years=1)
+
+    latest_assessment_subquery = RiskAssessment.objects.filter(
+        matter=OuterRef('pk')
+    ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
+
+    latest_monitoring_subquery = OngoingMonitoring.objects.filter(
+        file_number=OuterRef('pk')
+    ).order_by('-date_due_diligence_conducted').values('date_due_diligence_conducted')[:1]
+
+    return wip_queryset.annotate(
+        latest_assessment_date=Subquery(latest_assessment_subquery),
+        latest_monitoring_date=Subquery(latest_monitoring_subquery)
+    ).filter(
+        Q(file_status__status__in=['Open', 'To Be Closed']) &
+        (
+            Q(latest_assessment_date__isnull=True) |
+            (
+                Q(latest_assessment_date__lte=one_year_ago) &
+                (
+                    Q(latest_monitoring_date__isnull=True) |
+                    Q(latest_monitoring_date__lte=one_year_ago)
+                )
+            )
+        )
+    ).order_by('file_number')
+
+
+def get_dashboard_risk_scope_wips(user, risk_scope):
+    if risk_scope == 'all_active':
+        return WIP.objects.filter(
+            file_status__status__in=['Open', 'To Be Closed']
+        ).distinct(), 'all_active'
+
+    associated_wips = get_user_dashboard_wips(user).filter(
+        file_status__status__in=['Open', 'To Be Closed']
+    ).distinct()
+    return associated_wips, 'associated'
+
+
 @login_required
 def display_data_index_page(request):
     if 'valToSearch' in request.POST:
@@ -247,6 +306,7 @@ def download_search_report(request):
 @login_required
 def user_dashboard(request):
     user = CustomUser.objects.get(username=request.user)
+    risk_scope = request.GET.get('risk_scope', 'associated')
     user_next_works = NextWork.objects.filter(
         Q(person=user) & Q(completed=False)).order_by('date')
     user_last_works = LastWork.objects.filter(person=user).order_by('-date')
@@ -272,35 +332,14 @@ def user_dashboard(request):
                     request, f'You have {pending_holiday_requests} holiday requests pending your approval.')
 
     now = timezone.now()
-    # Collect unique WIP objects from user_next_works and user_last_works
-    next_work_wips = user_next_works.values_list('file_number', flat=True)
-    last_work_wips = user_last_works.values_list('file_number', flat=True)
-
-    fee_earner_files = WIP.objects.filter(
-        Q(fee_earner=user) & Q(file_status__status='Open'))
-
-    next_work_wips_set = set(next_work_wips)
-    last_work_wips_set = set(last_work_wips)
-
-    # Perform union of sets and combine with fee_earner_files
-    combined_wips_set = next_work_wips_set.union(last_work_wips_set)
-    unique_wips = WIP.objects.filter(
-        id__in=combined_wips_set) | fee_earner_files
+    unique_wips = get_user_dashboard_wips(user)
+    risk_scope_wips, validated_risk_scope = get_dashboard_risk_scope_wips(
+        user, risk_scope
+    )
+    risk_assessments_due = get_risk_assessments_due_queryset(risk_scope_wips)
 
     # Calculate the date 11 months ago
     eleven_months_ago = timezone.now() - relativedelta(months=11)
-
-    latest_assessment_subquery = RiskAssessment.objects.filter(
-        matter=OuterRef('pk')
-    ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
-
-    risk_assessments_due = unique_wips.annotate(
-        latest_assessment_date=Subquery(latest_assessment_subquery)
-    ).filter(
-        Q(file_status__status='Open') &
-        (Q(latest_assessment_date__lte=eleven_months_ago)
-         | Q(latest_assessment_date__isnull=True))
-    )
 
     aml_checks_due_client1 = unique_wips.filter(
         Q(file_status__status='Open') &
@@ -388,6 +427,7 @@ def user_dashboard(request):
         'files': unique_wips,
         'unread_policies_exist': unread_policies_exist,
         'has_pending_tasks': has_pending_tasks,
+        'risk_scope': validated_risk_scope,
     }
 
     return render(request, 'dashboard.html', context)
@@ -688,6 +728,55 @@ def get_users(request):
         return JsonResponse({
             'success': True,
             'users': users_data
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@login_required
+def get_risk_assessments_due_data(request):
+    """Get risk assessments due for dashboard without page reload."""
+    try:
+        user = CustomUser.objects.get(username=request.user)
+        risk_scope = request.GET.get('risk_scope', 'associated')
+        risk_scope_wips, validated_risk_scope = get_dashboard_risk_scope_wips(
+            user, risk_scope
+        )
+        risk_assessments_due = get_risk_assessments_due_queryset(
+            risk_scope_wips
+        ).select_related('client1', 'client2')
+
+        data = []
+        for assessment in risk_assessments_due:
+            reason_due = 'No risk assessment completed'
+            if assessment.latest_assessment_date:
+                reason_due = 'No ongoing monitoring in the last year'
+
+            data.append({
+                'file_number': assessment.file_number,
+                'matter_description': assessment.matter_description or '',
+                'client1_name': assessment.client1.name if assessment.client1 else '',
+                'client2_name': assessment.client2.name if assessment.client2 else '',
+                'latest_assessment_date_display': (
+                    assessment.latest_assessment_date.strftime('%d/%m/%Y')
+                    if assessment.latest_assessment_date else None
+                ),
+                'latest_monitoring_date_display': (
+                    assessment.latest_monitoring_date.strftime('%d/%m/%Y')
+                    if assessment.latest_monitoring_date else None
+                ),
+                'reason_due': reason_due,
+                'home_url': reverse('home', args=[assessment.file_number])
+            })
+
+        return JsonResponse({
+            'success': True,
+            'risk_scope': validated_risk_scope,
+            'count': len(data),
+            'items': data
         })
     except Exception as e:
         return JsonResponse({
@@ -5693,27 +5782,7 @@ def management_reports(request):
     unique_aml_checks_due = sorted(
         unique_aml_checks_due, key=lambda x: x['client_name'])
 
-    latest_assessment_subquery = RiskAssessment.objects.filter(
-        matter=OuterRef('pk')
-    ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
-
-    recent_monitoring_exists = OngoingMonitoring.objects.filter(
-        file_number=OuterRef('pk'),
-        date_due_diligence_conducted__gte=twelve_months_ago
-    )
-
-    # Final queryset
-    risk_assessments_due = WIP.objects.annotate(
-        latest_assessment_date=Subquery(latest_assessment_subquery)
-    ).filter(
-        Q(file_status__status='Open') &
-        (
-            Q(latest_assessment_date__lte=twelve_months_ago) |
-            Q(latest_assessment_date__isnull=True)
-        )
-    ).exclude(
-        Exists(recent_monitoring_exists)
-    ).order_by('file_number')
+    risk_assessments_due = get_risk_assessments_due_queryset(WIP.objects.all())
     cpds = CPDTrainingLog.objects.all()
 
     return render(request, 'management_reports.html', {
@@ -6011,29 +6080,58 @@ def download_aml_checks_due(request):
 
 
 @login_required
-def download_risk_assessments_due(request):
-    twelve_months_ago = timezone.now() - relativedelta(months=11)
-    latest_assessment_subquery = RiskAssessment.objects.filter(
-        matter=OuterRef('pk')
-    ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
-
-    recent_monitoring_exists = OngoingMonitoring.objects.filter(
-        file_number=OuterRef('pk'),
-        date_due_diligence_conducted__gte=twelve_months_ago
+def download_user_risk_assessments_due(request):
+    user = CustomUser.objects.get(username=request.user)
+    risk_scope = request.GET.get('risk_scope', 'associated')
+    risk_scope_wips, validated_risk_scope = get_dashboard_risk_scope_wips(
+        user, risk_scope
+    )
+    risk_assessments_due = get_risk_assessments_due_queryset(
+        risk_scope_wips
     )
 
-    # Final queryset
-    risk_assessments_due = WIP.objects.annotate(
-        latest_assessment_date=Subquery(latest_assessment_subquery)
-    ).filter(
-        Q(file_status__status='Open') &
-        (
-            Q(latest_assessment_date__lte=twelve_months_ago) |
-            Q(latest_assessment_date__isnull=True)
-        )
-    ).exclude(
-        Exists(recent_monitoring_exists)
-    ).order_by('file_number')
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = (
+        f'attachment; filename="risk_assessments_due_{user.username}_{validated_risk_scope}_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+    )
+    writer = csv.writer(response)
+
+    writer.writerow(['Risk Assessments Due'])
+    if validated_risk_scope == 'all_active':
+        writer.writerow(['Scope', 'All Open and To Be Closed files'])
+    else:
+        writer.writerow(['Scope', 'My associated files'])
+    writer.writerow([
+        'File Number',
+        'Matter Description',
+        'Client 1',
+        'Client 2',
+        'Last Risk Assessment Date',
+        'Last Ongoing Monitoring Date',
+        'Reason Due'
+    ])
+
+    for assessment in risk_assessments_due:
+        reason_due = 'No risk assessment completed'
+        if assessment.latest_assessment_date:
+            reason_due = 'No ongoing monitoring in the last year'
+
+        writer.writerow([
+            assessment.file_number,
+            assessment.matter_description,
+            assessment.client1.name if assessment.client1 else '',
+            assessment.client2.name if assessment.client2 else '',
+            assessment.latest_assessment_date,
+            assessment.latest_monitoring_date,
+            reason_due
+        ])
+
+    return response
+
+
+@login_required
+def download_risk_assessments_due(request):
+    risk_assessments_due = get_risk_assessments_due_queryset(WIP.objects.all())
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="risk_assessments_due_{timezone.now()}.csv"'
@@ -6041,12 +6139,30 @@ def download_risk_assessments_due(request):
     writer = csv.writer(response)
 
     writer.writerow(['Risk Assessments Due'])
-    writer.writerow(['File Number', 'Matter Desc', 'Client 1',
-                    'Client 2' 'Date of Last AML Check'])
+    writer.writerow([
+        'File Number',
+        'Matter Description',
+        'Client 1',
+        'Client 2',
+        'Last Risk Assessment Date',
+        'Last Ongoing Monitoring Date',
+        'Reason Due'
+    ])
 
     for assessment in risk_assessments_due:
-        writer.writerow([assessment.file_number, assessment.matter_description, assessment.client1.name,
-                        assessment.client2.name if assessment.client2 else '', assessment.latest_assessment_date])
+        reason_due = 'No risk assessment completed'
+        if assessment.latest_assessment_date:
+            reason_due = 'No ongoing monitoring in the last year'
+
+        writer.writerow([
+            assessment.file_number,
+            assessment.matter_description,
+            assessment.client1.name if assessment.client1 else '',
+            assessment.client2.name if assessment.client2 else '',
+            assessment.latest_assessment_date,
+            assessment.latest_monitoring_date,
+            reason_due
+        ])
 
     return response
 
