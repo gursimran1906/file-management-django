@@ -1,4 +1,5 @@
 import logging
+import html
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.db import transaction
@@ -1762,6 +1763,242 @@ def attendance_note_view(request, file_number):
     attendance_notes = MatterAttendanceNotes.objects.filter(
         file_number=file_number_id).order_by('-date')
     return render(request, 'attendance_notes.html', {'form': form, 'file_number': file_number, 'attendance_notes': attendance_notes})
+
+
+@login_required
+def download_attendance_notes_bulk_template(request, file_number):
+    if not WIP.objects.filter(file_number=file_number).exists():
+        messages.error(request, f'File number "{file_number}" not found.')
+        return redirect('user_dashboard')
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="attendance_notes_template_{file_number}.csv"'
+    writer = csv.writer(response)
+    writer.writerow([
+        'date',
+        'start_time',
+        'finish_time',
+        'subject_line',
+        'content',
+        'person',
+        'is_charged'
+    ])
+    return response
+
+
+def _get_row_value(row, keys):
+    for key in keys:
+        if key in row and row[key] is not None:
+            value = str(row[key]).strip()
+            if value:
+                return value
+    return ""
+
+
+def _parse_bulk_note_date(value):
+    value = (value or "").strip()
+    formats = ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']
+    for fmt in formats:
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError("invalid date format")
+
+
+def _parse_bulk_note_time(value):
+    value = (value or "").strip()
+    formats = ['%H:%M', '%H:%M:%S', '%I:%M %p', '%I:%M%p']
+    for fmt in formats:
+        try:
+            return datetime.strptime(value, fmt).time()
+        except ValueError:
+            continue
+    raise ValueError("invalid time format")
+
+
+def _parse_bulk_note_bool(value, default=True):
+    if value is None:
+        return default
+
+    normalized = str(value).strip().lower()
+    if normalized == "":
+        return default
+    if normalized in {"1", "true", "t", "yes", "y"}:
+        return True
+    if normalized in {"0", "false", "f", "no", "n"}:
+        return False
+    raise ValueError("invalid boolean value")
+
+
+def _to_quill_json(content):
+    content = (content or "").replace('\r\n', '\n').replace('\r', '\n').strip()
+    if not content:
+        return json.dumps({"delta": "", "html": ""})
+
+    if content.startswith('{') and '"delta"' in content and '"html"' in content:
+        try:
+            json.loads(content)
+            return content
+        except json.JSONDecodeError:
+            pass
+
+    escaped_lines = [html.escape(line) for line in content.split('\n')]
+    html_content = "<p>" + "<br>".join(escaped_lines) + "</p>"
+    delta_json = json.dumps({"ops": [{"insert": f"{content}\n"}]})
+    return json.dumps({"delta": delta_json, "html": html_content})
+
+
+def _resolve_user_for_bulk_note(raw_value, users_by_key, users_by_full_name):
+    candidate = (raw_value or "").strip()
+    if not candidate:
+        return None, "missing initials/user"
+
+    normalized = candidate.lower()
+    if normalized in users_by_key:
+        return users_by_key[normalized], None
+
+    matches = users_by_full_name.get(normalized, [])
+    if len(matches) == 1:
+        return matches[0], None
+    if len(matches) > 1:
+        return None, f"ambiguous user '{candidate}'"
+    return None, f"user '{candidate}' not found"
+
+
+@login_required
+def bulk_upload_attendance_notes(request, file_number):
+    if request.method != 'POST':
+        messages.error(request, 'Invalid request method.')
+        return redirect('attendance_note_view', file_number=file_number)
+
+    wip = WIP.objects.filter(file_number=file_number).first()
+    if not wip:
+        messages.error(request, f'File number "{file_number}" not found.')
+        return redirect('attendance_note_view', file_number=file_number)
+
+    uploaded_file = request.FILES.get('bulk_attendance_file')
+    if not uploaded_file:
+        messages.error(request, 'Please upload a CSV file.')
+        return redirect('attendance_note_view', file_number=file_number)
+
+    try:
+        decoded = uploaded_file.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        messages.error(request, 'Could not read file. Please upload UTF-8 CSV.')
+        return redirect('attendance_note_view', file_number=file_number)
+
+    reader = csv.DictReader(io.StringIO(decoded))
+    if not reader.fieldnames:
+        messages.error(request, 'CSV is missing a header row.')
+        return redirect('attendance_note_view', file_number=file_number)
+
+    users = CustomUser.objects.all()
+    users_by_key = {}
+    users_by_full_name = {}
+    for user in users:
+        if user.username:
+            users_by_key[user.username.strip().lower()] = user
+        if user.email:
+            users_by_key[user.email.strip().lower()] = user
+        users_by_key[str(user.id)] = user
+
+        full_name = f"{(user.first_name or '').strip()} {(user.last_name or '').strip()}".strip().lower()
+        if full_name:
+            users_by_full_name.setdefault(full_name, []).append(user)
+
+    created_count = 0
+    errors = []
+
+    for line_number, row in enumerate(reader, start=2):
+        if not any((value or "").strip() for value in row.values()):
+            continue
+
+        date_str = _get_row_value(row, ['date'])
+        start_time_str = _get_row_value(
+            row, ['start_time', 'start', 'starttime'])
+        finish_time_str = _get_row_value(
+            row, ['finish_time', 'finish', 'end_time', 'end'])
+        subject_line = _get_row_value(row, ['subject_line', 'subject'])
+        content_value = _get_row_value(row, ['content', 'note', 'notes'])
+        user_value = _get_row_value(
+            row, ['person_attended', 'person', 'initials', 'username', 'user', 'fee_earner'])
+        charged_value = _get_row_value(row, ['is_charged', 'charged', 'billable'])
+
+        missing_fields = []
+        if not date_str:
+            missing_fields.append('date')
+        if not start_time_str:
+            missing_fields.append('start_time')
+        if not finish_time_str:
+            missing_fields.append('finish_time')
+        if not subject_line:
+            missing_fields.append('subject_line')
+        if not content_value:
+            missing_fields.append('content')
+        if not user_value:
+            missing_fields.append('person/initials')
+
+        if missing_fields:
+            errors.append(
+                f'Line {line_number}: missing {", ".join(missing_fields)}.')
+            continue
+
+        try:
+            parsed_date = _parse_bulk_note_date(date_str)
+            parsed_start_time = _parse_bulk_note_time(start_time_str)
+            parsed_finish_time = _parse_bulk_note_time(finish_time_str)
+            parsed_is_charged = _parse_bulk_note_bool(charged_value, default=True)
+        except ValueError as exc:
+            errors.append(f'Line {line_number}: {str(exc)}.')
+            continue
+
+        resolved_user, user_error = _resolve_user_for_bulk_note(
+            user_value, users_by_key, users_by_full_name)
+        if user_error:
+            errors.append(f'Line {line_number}: {user_error}.')
+            continue
+
+        row_payload = {
+            'file_number': wip.id,
+            'date': parsed_date.isoformat(),
+            'start_time': parsed_start_time.strftime('%H:%M'),
+            'finish_time': parsed_finish_time.strftime('%H:%M'),
+            'subject_line': subject_line,
+            'content': _to_quill_json(content_value),
+            'is_charged': str(parsed_is_charged),
+            'person_attended': resolved_user.id
+        }
+
+        form = AttendanceNoteForm(row_payload)
+        if not form.is_valid():
+            field_errors = []
+            for field, field_messages in form.errors.items():
+                for field_message in field_messages:
+                    field_errors.append(f'{field}: {field_message}')
+            errors.append(
+                f'Line {line_number}: {"; ".join(field_errors) or "invalid row"}.')
+            continue
+
+        instance = form.save(commit=False)
+        instance.created_by = request.user
+        instance.save()
+        created_count += 1
+
+    if created_count:
+        messages.success(
+            request, f'Created {created_count} attendance note(s) from bulk upload.')
+
+    if errors:
+        preview_errors = " ".join(errors[:5])
+        suffix = f' (and {len(errors) - 5} more)' if len(errors) > 5 else ''
+        messages.warning(
+            request, f'{len(errors)} row(s) failed. {preview_errors}{suffix}')
+
+    if created_count == 0 and not errors:
+        messages.warning(request, 'No rows found in CSV.')
+
+    return redirect('attendance_note_view', file_number=file_number)
 
 
 @login_required

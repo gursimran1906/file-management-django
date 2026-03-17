@@ -1,7 +1,7 @@
 from django.urls import path
 
 from .views import add_memo, delete_memo, display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, edit_memo, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work, read_memo, update_task_status, load_initial_tasks, load_more_tasks, get_files, get_users, create_task
-from .views import attendance_note_view, add_attendance_note, download_attendance_note, edit_attendance_note, correspondence_view, add_letter, edit_letter, download_sowc
+from .views import attendance_note_view, add_attendance_note, bulk_upload_attendance_notes, download_attendance_notes_bulk_template, download_attendance_note, edit_attendance_note, correspondence_view, add_letter, edit_letter, download_sowc
 from .views import finance_view, add_blue_slip, add_pink_slip, add_green_slip, edit_pmts_slip, download_pmts_slip, edit_green_slip, download_green_slip, add_invoice, add_credit_note, approve_credit_note, reject_credit_note, edit_credit_note
 from .views import allocate_monies, download_statement_account, download_invoice, download_credit_note, edit_invoice, download_estate_accounts, unallocated_emails, allocate_emails
 from .views import download_cashier_data, edit_file, edit_client, edit_authorised_party, download_file_logs, download_frontsheet, generate_ledgers_report, user_dashboard, download_risk_assessment
@@ -61,6 +61,10 @@ urlpatterns = [
          attendance_note_view, name='attendance_note_view'),
     path('<str:file_number>/attendance_notes/add/',
          add_attendance_note, name='add_attendance_note'),
+    path('<str:file_number>/attendance_notes/bulk_upload/',
+         bulk_upload_attendance_notes, name='bulk_upload_attendance_notes'),
+    path('<str:file_number>/attendance_notes/bulk_template/',
+         download_attendance_notes_bulk_template, name='download_attendance_notes_bulk_template'),
 
     path('attendance_note/download/<int:id>/',
          download_attendance_note, name='download_attendance_note'),
