@@ -3,8 +3,8 @@ import html
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.db import transaction
-from django.db.models import Q, Q, F, OuterRef, Subquery, Max, CharField, Exists, Count, Sum
-from django.db.models.functions import Cast
+from django.db.models import Q, F, OuterRef, Subquery, Max, CharField, TextField, Exists, Count, Sum, Case, When, Value, DateField
+from django.db.models.functions import Cast, Coalesce, Greatest
 from .models import WIP, Memo, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
@@ -24,7 +24,7 @@ from weasyprint import HTML
 from django.utils.safestring import mark_safe
 from django.contrib.contenttypes.models import ContentType
 import csv
-from datetime import datetime, timedelta, time
+from datetime import date, datetime, timedelta, time
 from dateutil.relativedelta import relativedelta
 import copy
 from django.forms.models import model_to_dict
@@ -176,55 +176,15 @@ def get_dashboard_risk_scope_wips(user, risk_scope):
 @login_required
 def display_data_index_page(request):
     if 'valToSearch' in request.POST:
-        search_by = request.POST['searchBy']
-        val_to_search = request.POST['valToSearch']
+        search_by = request.POST.get('searchBy', 'FileNumber')
+        val_to_search = request.POST.get('valToSearch', '')
         show_archived = 'showArchived' in request.POST
 
-        file_status_field_name = 'file_status__status'
-
-        if show_archived:
-            file_status_list = ['Open', 'Archived']
-            filter_factor = Q(
-                **{f"{file_status_field_name}__in": file_status_list})
-        elif search_by == 'ToBeClosed':
-            file_status = 'To Be Closed'
-            filter_factor = Q(**{file_status_field_name: file_status})
-        else:
-            file_status = 'Open'
-            filter_factor = Q(**{file_status_field_name: file_status})
-
-        if search_by == 'ClientName':
-            filter_factor &= Q(client1__name__icontains=val_to_search) | Q(
-                client2__name__icontains=val_to_search)
-        elif search_by == 'FeeEarner':
-            if val_to_search == "DC":
-                print('DC')
-                filter_factor &= Q(fee_earner=None)
-            else:
-                filter_factor &= Q(
-                    fee_earner__username__icontains=val_to_search)
-        else:
-            filter_factor &= Q(file_number__icontains=val_to_search)
-
-        last_work_subquery = LastWork.objects.filter(file_number=OuterRef('pk')).order_by(
-            '-timestamp').values('task', 'date', 'person__username')[:1]
-
-        data = WIP.objects.filter(filter_factor).annotate(
-            latest_last_work_task=Subquery(last_work_subquery.values('task')),
-            latest_last_work_date=Subquery(last_work_subquery.values('date')),
-            latest_last_work_person=Subquery(
-                last_work_subquery.values('person__username'))
-        ).values(
-            'file_number',
-            'fee_earner__username',
-            'matter_description',
-            'client1__name',
-            'client2__name',
-            'comments',
-            'latest_last_work_date',
-            'latest_last_work_person',
-            'latest_last_work_task',
-        ).order_by('file_number')
+        data = get_index_search_data(
+            search_by=search_by,
+            val_to_search=val_to_search,
+            show_archived=show_archived
+        )
 
         context = {
             'search_by': search_by,
@@ -241,50 +201,15 @@ def display_data_index_page(request):
 @login_required
 def download_search_report(request):
     if 'valToSearch' in request.POST:
-        search_by = request.POST['searchBy']
-        val_to_search = request.POST['valToSearch']
+        search_by = request.POST.get('searchBy', 'FileNumber')
+        val_to_search = request.POST.get('valToSearch', '')
         show_archived = 'showArchived' in request.POST
 
-        file_status_field_name = 'file_status__status'
-
-        if show_archived:
-            file_status_list = ['Open', 'Archived']
-            filter_factor = Q(
-                **{f"{file_status_field_name}__in": file_status_list})
-        elif search_by == 'ToBeClosed':
-            file_status = 'To Be Closed'
-            filter_factor = Q(**{file_status_field_name: file_status})
-        else:
-            file_status = 'Open'
-            filter_factor = Q(**{file_status_field_name: file_status})
-
-        if search_by == 'ClientName':
-            filter_factor &= Q(client1__name__icontains=val_to_search) | Q(
-                client2__name__icontains=val_to_search)
-        elif search_by == 'FeeEarner':
-            filter_factor &= Q(fee_earner__username__icontains=val_to_search)
-        else:
-            filter_factor &= Q(file_number__icontains=val_to_search)
-
-        last_work_subquery = LastWork.objects.filter(file_number=OuterRef('pk')).order_by(
-            '-timestamp').values('task', 'date', 'person__username')[:1]
-
-        data = WIP.objects.filter(filter_factor).annotate(
-            latest_last_work_task=Subquery(last_work_subquery.values('task')),
-            latest_last_work_date=Subquery(last_work_subquery.values('date')),
-            latest_last_work_person=Subquery(
-                last_work_subquery.values('person__username'))
-        ).values(
-            'file_number',
-            'fee_earner__username',
-            'matter_description',
-            'client1__name',
-            'client2__name',
-            'comments',
-            'latest_last_work_date',
-            'latest_last_work_person',
-            'latest_last_work_task',
-        ).order_by('file_number')
+        data = get_index_search_data(
+            search_by=search_by,
+            val_to_search=val_to_search,
+            show_archived=show_archived
+        )
 
         context = {
             'search_by': search_by,
@@ -302,6 +227,148 @@ def download_search_report(request):
         response = HttpResponse(pdf_file, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="search_report_{search_by}+{val_to_search}.pdf"'
         return response
+
+
+def get_index_search_filter(search_by, val_to_search, show_archived):
+    file_status_field_name = 'file_status__status'
+
+    if show_archived:
+        file_status_list = ['Open', 'Archived']
+        filter_factor = Q(**{f"{file_status_field_name}__in": file_status_list})
+    elif search_by == 'ToBeClosed':
+        filter_factor = Q(**{file_status_field_name: 'To Be Closed'})
+    else:
+        filter_factor = Q(**{file_status_field_name: 'Open'})
+
+    if search_by == 'ClientName':
+        filter_factor &= Q(client1__name__icontains=val_to_search) | Q(
+            client2__name__icontains=val_to_search
+        )
+    elif search_by == 'FeeEarner':
+        if val_to_search == "DC":
+            filter_factor &= Q(fee_earner=None)
+        else:
+            filter_factor &= Q(fee_earner__username__icontains=val_to_search)
+    else:
+        filter_factor &= Q(file_number__icontains=val_to_search)
+
+    return filter_factor
+
+
+def get_index_search_data(search_by, val_to_search, show_archived):
+    filter_factor = get_index_search_filter(search_by, val_to_search, show_archived)
+
+    last_work_subquery = LastWork.objects.filter(
+        file_number=OuterRef('pk')
+    ).order_by('-timestamp')
+
+    latest_email_subquery = MatterEmails.objects.filter(
+        file_number=OuterRef('pk')
+    ).annotate(
+        email_activity_date=Coalesce(
+            Cast('time', output_field=DateField()),
+            Cast('timestamp', output_field=DateField())
+        ),
+        email_activity_desc=Coalesce(
+            'description',
+            'subject',
+            Value('Email activity', output_field=TextField()),
+            output_field=TextField()
+        )
+    ).order_by('-email_activity_date', '-timestamp')
+
+    latest_attendance_subquery = MatterAttendanceNotes.objects.filter(
+        file_number=OuterRef('pk'),
+        date__isnull=False
+    ).order_by('-date', '-timestamp')
+
+    fallback_date = date(1900, 1, 1)
+
+    data = WIP.objects.filter(filter_factor).annotate(
+        latest_work_task_raw=Subquery(last_work_subquery.values('task')[:1], output_field=TextField()),
+        latest_work_person_raw=Subquery(last_work_subquery.values('person__username')[:1]),
+        latest_work_entry_date=Subquery(last_work_subquery.values('date')[:1], output_field=DateField()),
+        latest_email_task_raw=Subquery(latest_email_subquery.values('email_activity_desc')[:1], output_field=TextField()),
+        latest_email_person_raw=Subquery(latest_email_subquery.values('fee_earner__username')[:1]),
+        latest_email_date=Subquery(latest_email_subquery.values('email_activity_date')[:1], output_field=DateField()),
+        latest_attendance_task_raw=Subquery(latest_attendance_subquery.values('subject_line')[:1], output_field=TextField()),
+        latest_attendance_person_raw=Subquery(latest_attendance_subquery.values('person_attended__username')[:1]),
+        latest_attendance_note_date=Subquery(latest_attendance_subquery.values('date')[:1], output_field=DateField())
+    ).annotate(
+        work_date_for_compare=Coalesce('latest_work_entry_date', Value(fallback_date, output_field=DateField())),
+        email_date_for_compare=Coalesce('latest_email_date', Value(fallback_date, output_field=DateField())),
+        attendance_date_for_compare=Coalesce('latest_attendance_note_date', Value(fallback_date, output_field=DateField()))
+    ).annotate(
+        latest_last_work_date=Case(
+            When(
+                latest_work_entry_date__isnull=True,
+                latest_email_date__isnull=True,
+                latest_attendance_note_date__isnull=True,
+                then=Value(None, output_field=DateField())
+            ),
+            default=Greatest(
+                'work_date_for_compare',
+                'email_date_for_compare',
+                'attendance_date_for_compare'
+            ),
+            output_field=DateField()
+        ),
+        latest_activity_source=Case(
+            When(
+                latest_work_entry_date__isnull=True,
+                latest_email_date__isnull=True,
+                latest_attendance_note_date__isnull=True,
+                then=Value('none')
+            ),
+            When(
+                Q(work_date_for_compare__gte=F('email_date_for_compare')) &
+                Q(work_date_for_compare__gte=F('attendance_date_for_compare')),
+                then=Value('work')
+            ),
+            When(
+                email_date_for_compare__gte=F('attendance_date_for_compare'),
+                then=Value('email')
+            ),
+            default=Value('attendance'),
+            output_field=CharField()
+        )
+    ).annotate(
+        latest_last_work_task=Case(
+            When(
+                latest_activity_source='work',
+                then=Coalesce('latest_work_task_raw', Value('Work activity', output_field=TextField()), output_field=TextField())
+            ),
+            When(
+                latest_activity_source='email',
+                then=Coalesce('latest_email_task_raw', Value('Email activity', output_field=TextField()), output_field=TextField())
+            ),
+            When(
+                latest_activity_source='attendance',
+                then=Coalesce('latest_attendance_task_raw', Value('Attendance note', output_field=TextField()), output_field=TextField())
+            ),
+            default=Value(None, output_field=TextField()),
+            output_field=TextField()
+        ),
+        latest_last_work_person=Case(
+            When(latest_activity_source='work', then=Coalesce('latest_work_person_raw', Value('-'))),
+            When(latest_activity_source='email', then=Coalesce('latest_email_person_raw', Value('-'))),
+            When(latest_activity_source='attendance', then=Coalesce('latest_attendance_person_raw', Value('-'))),
+            default=Value(None, output_field=CharField()),
+            output_field=CharField()
+        )
+    ).values(
+        'file_number',
+        'fee_earner__username',
+        'matter_description',
+        'client1__name',
+        'client2__name',
+        'comments',
+        'latest_last_work_date',
+        'latest_last_work_person',
+        'latest_last_work_task',
+    ).order_by('file_number')
+
+    return data
 
 
 @login_required

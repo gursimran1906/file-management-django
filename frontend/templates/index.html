@@ -91,7 +91,15 @@
           <th class='td'>Client 2 Name</th>
           <th class='td'>Last Work Done By</th>
           <th class='td'>Desc Of Last Work</th>
-          <th class='td'>Date Of Last Work</th>
+          <th class='td'>
+            <button id="sortLastActivityBtn" type="button" class="flex items-center gap-2 rounded border border-gray-300 px-2 py-1 hover:bg-gray-100">
+              <span>Date Of Last Activity</span>
+              <svg id="sortLastActivityIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="transition: transform 0.15s ease;">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7l4-4 4 4M16 17l-4 4-4-4M12 3v18" />
+              </svg>
+              <span id="sortLastActivityState" class="text-xs text-gray-600">Newest</span>
+            </button>
+          </th>
 
           <th class='td'>Comments</th>
         </tr>
@@ -111,7 +119,7 @@
           <td class='td'>{{ row.client2__name|default:'-' }}</td>
           <td class='td'>{{ row.latest_last_work_person|default:'-' }}</td>
           <td class='td'>{{ row.latest_last_work_task|default:'-' }}</td>
-          <td class='td'>{{ row.latest_last_work_date|date:"d/m/Y"|default:'-' }}</td>
+          <td class='td' data-last-activity="{{ row.latest_last_work_date|date:'Y-m-d' }}">{{ row.latest_last_work_date|date:"d/m/Y"|default:'-' }}</td>
           <td class='td comment-cell' data-file-number="{{ row.file_number }}">
             <div class="comment-display">
               <span class="comment-text">{{ row.comments|default:'-' }}</span>
@@ -160,6 +168,66 @@ document.addEventListener('DOMContentLoaded', function() {
     return cookieValue;
   }
   const csrftoken = getCookie('csrftoken');
+  const sortLastActivityBtn = document.getElementById('sortLastActivityBtn');
+  const sortLastActivityIcon = document.getElementById('sortLastActivityIcon');
+  const sortLastActivityState = document.getElementById('sortLastActivityState');
+  let isLastActivityDescending = true;
+
+  function getLastActivityTimestamp(row) {
+    const activityCell = row.querySelector('td[data-last-activity]');
+    const activityDate = activityCell ? activityCell.dataset.lastActivity : '';
+
+    if (!activityDate) return null;
+
+    const timestamp = Date.parse(`${activityDate}T00:00:00`);
+    return Number.isNaN(timestamp) ? null : timestamp;
+  }
+
+  function getFileNumberText(row) {
+    const fileLink = row.querySelector('td a');
+    return fileLink ? fileLink.textContent.trim() : '';
+  }
+
+  function sortTableByLastActivity(descending) {
+    const table = document.getElementById('tblUser');
+    if (!table) return;
+
+    const tableBody = table.querySelector('tbody');
+    if (!tableBody) return;
+
+    const rows = Array.from(tableBody.querySelectorAll('tr'));
+
+    rows.sort((rowA, rowB) => {
+      const timeA = getLastActivityTimestamp(rowA);
+      const timeB = getLastActivityTimestamp(rowB);
+
+      if (timeA === null && timeB === null) {
+        return getFileNumberText(rowA).localeCompare(getFileNumberText(rowB));
+      }
+      if (timeA === null) return 1;
+      if (timeB === null) return -1;
+      if (timeA === timeB) {
+        return getFileNumberText(rowA).localeCompare(getFileNumberText(rowB));
+      }
+
+      return descending ? timeB - timeA : timeA - timeB;
+    });
+
+    rows.forEach((row) => tableBody.appendChild(row));
+    if (sortLastActivityState) {
+      sortLastActivityState.textContent = descending ? 'Newest' : 'Oldest';
+    }
+    if (sortLastActivityIcon) {
+      sortLastActivityIcon.style.transform = descending ? 'rotate(0deg)' : 'rotate(180deg)';
+    }
+  }
+
+  if (sortLastActivityBtn) {
+    sortLastActivityBtn.addEventListener('click', function() {
+      sortTableByLastActivity(isLastActivityDescending);
+      isLastActivityDescending = !isLastActivityDescending;
+    });
+  }
 
   // Function to show toast notification
   function showToast(message, type = 'success') {
