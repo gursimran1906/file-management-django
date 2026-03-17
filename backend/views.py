@@ -3,8 +3,8 @@ import html
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.db import transaction
-from django.db.models import Q, F, OuterRef, Subquery, Max, CharField, TextField, Exists, Count, Sum, Case, When, Value, DateField
-from django.db.models.functions import Cast, Coalesce, Greatest
+from django.db.models import Q, F, OuterRef, Subquery, Max, CharField, TextField, BooleanField, Exists, Count, Sum, Case, When, Value, DateField
+from django.db.models.functions import Cast, Coalesce, Greatest, Concat
 from .models import WIP, Memo, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
@@ -292,6 +292,7 @@ def get_index_search_data(search_by, val_to_search, show_archived):
         latest_email_person_raw=Subquery(latest_email_subquery.values('fee_earner__username')[:1]),
         latest_email_date=Subquery(latest_email_subquery.values('email_activity_date')[:1], output_field=DateField()),
         latest_attendance_task_raw=Subquery(latest_attendance_subquery.values('subject_line')[:1], output_field=TextField()),
+        latest_attendance_is_charged_raw=Subquery(latest_attendance_subquery.values('is_charged')[:1], output_field=BooleanField()),
         latest_attendance_person_raw=Subquery(latest_attendance_subquery.values('person_attended__username')[:1]),
         latest_attendance_note_date=Subquery(latest_attendance_subquery.values('date')[:1], output_field=DateField())
     ).annotate(
@@ -344,7 +345,18 @@ def get_index_search_data(search_by, val_to_search, show_archived):
             ),
             When(
                 latest_activity_source='attendance',
-                then=Coalesce('latest_attendance_task_raw', Value('Attendance note', output_field=TextField()), output_field=TextField())
+                then=Case(
+                    When(
+                        latest_attendance_is_charged_raw=False,
+                        then=Concat(
+                            Coalesce('latest_attendance_task_raw', Value('Attendance note', output_field=TextField()), output_field=TextField()),
+                            Value(' (N/C)', output_field=TextField()),
+                            output_field=TextField()
+                        )
+                    ),
+                    default=Coalesce('latest_attendance_task_raw', Value('Attendance note', output_field=TextField()), output_field=TextField()),
+                    output_field=TextField()
+                )
             ),
             default=Value(None, output_field=TextField()),
             output_field=TextField()
@@ -1061,8 +1073,11 @@ def get_file_logs(file_number):
     attendance_notes = MatterAttendanceNotes.objects.filter(
         file_number=file.id)
     for note in attendance_notes:
+        note_subject_with_charge_status = (
+            f'{note.subject_line} (N/C)' if not note.is_charged else note.subject_line
+        )
         logs.append({'timestamp': note.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                     'desc': f'Attendance note created - {note.subject_line}',
+                     'desc': f'Attendance note created - {note_subject_with_charge_status}',
                      'user': note.created_by,
                     'type': 'attendance_note'})
 
@@ -2262,7 +2277,8 @@ def download_sowc(request, file_number):
         date = note.date.strftime('%d/%m/%Y')
         time = note.start_time.strftime('%H:%M')
         fee_earner = note.person_attended.username if note.person_attended != None else ''
-        desc = f"Attendance Note - {note.subject_line} from {note.start_time.strftime(
+        note_charge_status = " (N/C)" if not note.is_charged else ""
+        desc = f"Attendance Note{note_charge_status} - {note.subject_line} from {note.start_time.strftime(
             '%I:%M %p')} to {note.finish_time.strftime('%I:%M %p')}"
         units = note.unit
         amount = ((note.person_attended.hourly_rate.hourly_amount/10) * units) if note.person_attended != None else (
