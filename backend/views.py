@@ -4738,9 +4738,269 @@ def allocate_emails(request):
     return redirect('unallocated_emails')
 
 
+def get_client_to_office_transfers_context():
+    transfers = LedgerAccountTransfers.objects.filter(
+        is_cashier_co_transfer=True,
+        from_ledger_account='C',
+        to_ledger_account='O',
+        file_number_from=F('file_number_to')
+    ).select_related(
+        'file_number_from',
+        'created_by',
+        'bank_transfer_done_by'
+    ).order_by('-date', '-id')
+
+    grouped_transfers = []
+    current_group = None
+    for transfer in transfers:
+        if current_group is None or current_group['date'] != transfer.date:
+            current_group = {
+                'date': transfer.date,
+                'rows': [],
+                'total': Decimal('0.00'),
+                'pending_count': 0,
+                'completed_count': 0
+            }
+            grouped_transfers.append(current_group)
+        current_group['rows'].append(transfer)
+        current_group['total'] += transfer.amount
+        if transfer.is_bank_transfer_done:
+            current_group['completed_count'] += 1
+        else:
+            current_group['pending_count'] += 1
+
+    overall_total = transfers.aggregate(total=Sum('amount')).get('total') or Decimal('0.00')
+    pending_total = transfers.filter(
+        is_bank_transfer_done=False
+    ).aggregate(total=Sum('amount')).get('total') or Decimal('0.00')
+    completed_total = transfers.filter(
+        is_bank_transfer_done=True
+    ).aggregate(total=Sum('amount')).get('total') or Decimal('0.00')
+
+    return {
+        'active_files': WIP.objects.order_by('file_number'),
+        'grouped_client_to_office_transfers': grouped_transfers,
+        'client_to_office_overall_total': overall_total,
+        'client_to_office_pending_total': pending_total,
+        'client_to_office_completed_total': completed_total,
+        'client_to_office_pending_count': transfers.filter(is_bank_transfer_done=False).count(),
+        'client_to_office_completed_count': transfers.filter(is_bank_transfer_done=True).count(),
+    }
+
+
 @login_required
 def download_cashier_data(request):
     if request.method == 'POST':
+        cashier_action = request.POST.get('cashier_action')
+
+        if cashier_action == 'export_client_to_office_transfers':
+            start_date_str = request.POST.get('start_date', '').strip()
+            end_date_str = request.POST.get('end_date', '').strip()
+
+            if not start_date_str or not end_date_str:
+                messages.error(request, 'Start date and end date are required for export.')
+                return redirect('download_cashier_data')
+
+            try:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                messages.error(request, 'Export date range is invalid.')
+                return redirect('download_cashier_data')
+
+            if end_date < start_date:
+                messages.error(request, 'End date cannot be before start date.')
+                return redirect('download_cashier_data')
+
+            transfers = LedgerAccountTransfers.objects.filter(
+                is_cashier_co_transfer=True,
+                from_ledger_account='C',
+                to_ledger_account='O',
+                file_number_from=F('file_number_to'),
+                date__range=(start_date, end_date)
+            ).select_related(
+                'file_number_from',
+                'created_by',
+                'bank_transfer_done_by'
+            ).order_by('date', 'id')
+
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = (
+                f'attachment; filename="CO_TFR_{start_date.strftime("%Y%m%d")}_{end_date.strftime("%Y%m%d")}.csv"'
+            )
+
+            writer = csv.writer(response)
+            writer.writerow([
+                'Date', 'File', 'Amount', 'Description', 'Created By',
+                'Bank Status', 'Bank Done On', 'Bank Done By'
+            ])
+
+            if not transfers.exists():
+                writer.writerow(['No C-O TFR rows found in selected date range.'])
+                return response
+
+            current_date = None
+            group_total = Decimal('0.00')
+            grand_total = Decimal('0.00')
+            for transfer in transfers:
+                if current_date is not None and current_date != transfer.date:
+                    writer.writerow([
+                        '', f'SUBTOTAL {current_date.strftime("%d/%m/%Y")}',
+                        f'{group_total:.2f}', '', '', '', '', ''
+                    ])
+                    writer.writerow([])
+                    group_total = Decimal('0.00')
+
+                current_date = transfer.date
+                group_total += transfer.amount
+                grand_total += transfer.amount
+
+                writer.writerow([
+                    transfer.date.strftime('%d/%m/%Y'),
+                    transfer.file_number_from.file_number if transfer.file_number_from else '-',
+                    f'{transfer.amount:.2f}',
+                    transfer.description,
+                    str(transfer.created_by) if transfer.created_by else '-',
+                    'Done' if transfer.is_bank_transfer_done else 'Pending',
+                    transfer.bank_transfer_done_on.strftime('%d/%m/%Y') if transfer.bank_transfer_done_on else '-',
+                    str(transfer.bank_transfer_done_by) if transfer.bank_transfer_done_by else '-'
+                ])
+
+            if current_date is not None:
+                writer.writerow([
+                    '', f'SUBTOTAL {current_date.strftime("%d/%m/%Y")}',
+                    f'{group_total:.2f}', '', '', '', '', ''
+                ])
+            writer.writerow([])
+            writer.writerow(['', 'GRAND TOTAL', f'{grand_total:.2f}', '', '', '', '', ''])
+            return response
+
+        if cashier_action == 'add_client_to_office_transfers':
+            row_dates = request.POST.getlist('row_date[]')
+            row_file_ids = request.POST.getlist('row_file_id[]')
+            row_amounts = request.POST.getlist('row_amount[]')
+            row_descriptions = request.POST.getlist('row_description[]')
+
+            max_rows = max(
+                len(row_dates),
+                len(row_file_ids),
+                len(row_amounts),
+                len(row_descriptions),
+                0
+            )
+
+            created_count = 0
+            errors = []
+            for i in range(max_rows):
+                row_date = row_dates[i].strip() if i < len(row_dates) else ''
+                row_file_id = row_file_ids[i].strip() if i < len(row_file_ids) else ''
+                row_amount = row_amounts[i].strip() if i < len(row_amounts) else ''
+                row_description = row_descriptions[i].strip() if i < len(row_descriptions) else ''
+
+                has_core_values = any([row_file_id, row_amount])
+                has_custom_description = row_description not in ['', 'C-O TFR']
+                if not has_core_values and not has_custom_description:
+                    continue
+
+                if not row_date or not row_file_id or not row_amount:
+                    errors.append(f'Row {i + 1}: date, file and amount are required.')
+                    continue
+
+                if len(row_description) > 100:
+                    errors.append(f'Row {i + 1}: description must be 100 characters or fewer.')
+                    continue
+
+                try:
+                    transfer_date = datetime.strptime(row_date, '%Y-%m-%d').date()
+                except ValueError:
+                    errors.append(f'Row {i + 1}: date is invalid.')
+                    continue
+
+                try:
+                    amount = Decimal(row_amount)
+                except Exception:
+                    errors.append(f'Row {i + 1}: amount is invalid.')
+                    continue
+
+                if amount <= 0:
+                    errors.append(f'Row {i + 1}: amount must be greater than zero.')
+                    continue
+
+                file_obj = WIP.objects.filter(id=row_file_id).first()
+                if not file_obj:
+                    errors.append(f'Row {i + 1}: selected file was not found.')
+                    continue
+
+                LedgerAccountTransfers.objects.create(
+                    file_number_from=file_obj,
+                    file_number_to=file_obj,
+                    from_ledger_account='C',
+                    to_ledger_account='O',
+                    amount=amount,
+                    date=transfer_date,
+                    description=row_description or 'C-O TFR',
+                    amount_invoiced_from={},
+                    balance_left_from=amount,
+                    amount_invoiced_to={},
+                    balance_left_to=amount,
+                    is_cashier_co_transfer=True,
+                    created_by=request.user
+                )
+                created_count += 1
+
+            if created_count > 0:
+                messages.success(
+                    request, f'Added {created_count} client to office transfer row(s).')
+            if errors:
+                messages.error(request, 'Some rows were not added: ' + ' | '.join(errors[:5]))
+            if created_count == 0 and not errors:
+                messages.error(request, 'No rows were provided to add.')
+            return redirect('download_cashier_data')
+
+        if cashier_action == 'mark_group_done':
+            group_date_str = request.POST.get('group_date', '').strip()
+            done_date_str = request.POST.get('bank_transfer_done_on', '').strip()
+
+            if not group_date_str:
+                messages.error(request, 'Group date is required.')
+                return redirect('download_cashier_data')
+
+            if not done_date_str:
+                messages.error(request, 'Bank done date is required.')
+                return redirect('download_cashier_data')
+
+            try:
+                group_date = datetime.strptime(group_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                messages.error(request, 'Group date is invalid.')
+                return redirect('download_cashier_data')
+
+            try:
+                done_date = datetime.strptime(done_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                messages.error(request, 'Bank done date is invalid.')
+                return redirect('download_cashier_data')
+
+            pending_qs = LedgerAccountTransfers.objects.filter(
+                is_cashier_co_transfer=True,
+                from_ledger_account='C',
+                to_ledger_account='O',
+                file_number_from=F('file_number_to'),
+                date=group_date,
+                is_bank_transfer_done=False
+            )
+            updated_count = pending_qs.update(
+                is_bank_transfer_done=True,
+                bank_transfer_done_on=done_date,
+                bank_transfer_done_by=request.user
+            )
+
+            if updated_count == 0:
+                messages.error(request, 'No pending transfers found in this date group.')
+            else:
+                messages.success(
+                    request, f'Marked {updated_count} transfer(s) as done for {group_date.strftime("%d/%m/%Y")}.')
+            return redirect('download_cashier_data')
 
         start_date_str = request.POST['start_date']
 
@@ -4812,7 +5072,7 @@ def download_cashier_data(request):
                 slip_display = ''
                 for slip in invoice.disbs_ids.all():
                     slip_display = slip_display + \
-                        f'({slip.date.strftime('%d/%m%/%Y')}, £{slip.amount})'
+                        f"({slip.date.strftime('%d/%m/%Y')}, £{slip.amount})"
 
                 invoice_display_table = invoice_display_table + f"""
                 <tr>
@@ -4995,8 +5255,8 @@ def download_cashier_data(request):
             green_slips_table = green_slips_table + f"""
             <tr>
                 <td>{slip.date.strftime("%d/%m/%Y")}</td>
-                <td>{slip.file_number_from.file_number}</td>
-                <td>{slip.file_number_to.file_number}</td>
+                <td>{slip.file_number_from.file_number if slip.file_number_from else '-'}</td>
+                <td>{slip.file_number_to.file_number if slip.file_number_to else '-'}</td>
                 <td>{slip.from_ledger_account}</td>
                 <td>{slip.to_ledger_account}</td>
                 <td>{slip.description}</td>
@@ -5044,8 +5304,8 @@ def download_cashier_data(request):
 
         return HttpResponse(pdf_file, content_type='application/pdf')
 
-    else:
-        return render(request, 'cashier_data.html')
+    context = get_client_to_office_transfers_context()
+    return render(request, 'cashier_data.html', context)
 
 
 @login_required

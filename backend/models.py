@@ -296,6 +296,12 @@ class LedgerAccountTransfers(models.Model):
     balance_left_from = models.DecimalField(max_digits=15, decimal_places=2)
     amount_invoiced_to = models.JSONField(default=dict, null=True, blank=True)
     balance_left_to = models.DecimalField(max_digits=15, decimal_places=2)
+    is_cashier_co_transfer = models.BooleanField(default=False)
+    is_bank_transfer_done = models.BooleanField(default=False)
+    bank_transfer_done_on = models.DateField(null=True, blank=True)
+    bank_transfer_done_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL,
+        related_name='bank_transfer_done_by', null=True, blank=True)
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
                                    related_name='green_slip_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)

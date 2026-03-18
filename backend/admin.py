@@ -113,7 +113,8 @@ class PmtsSlipsAdmin(admin.ModelAdmin):
 @admin.register(LedgerAccountTransfers)
 class LedgerAccountTransfersAdmin(admin.ModelAdmin):
     list_display = ['id', 'file_number_from', 'file_number_to', 'from_ledger_account', 'to_ledger_account', 'amount', 'date',
-                    'description', 'amount_invoiced_from', 'balance_left_from', 'amount_invoiced_to', 'balance_left_to', 'created_by', 'timestamp']
+                    'description', 'amount_invoiced_from', 'balance_left_from', 'amount_invoiced_to', 'balance_left_to',
+                    'is_cashier_co_transfer', 'is_bank_transfer_done', 'bank_transfer_done_on', 'bank_transfer_done_by', 'created_by', 'timestamp']
 
 
 @admin.register(TempSlips)
