@@ -614,6 +614,150 @@ class OngoingMonitoring(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
 
 
+class MatterFileReview(models.Model):
+    YES_NO_CHOICES = [
+        ('Yes', 'Yes'),
+        ('No', 'No'),
+    ]
+
+    matter = models.ForeignKey(
+        WIP, on_delete=models.CASCADE, related_name='matter_file_reviews')
+    client_matter_reference = models.CharField(
+        max_length=255, null=True, blank=True)
+    supervisor = models.CharField(max_length=255, null=True, blank=True)
+    file_reviewed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='matter_file_reviews_reviewed_by'
+    )
+    date_reviewed = models.DateField(null=True, blank=True)
+
+    file_opening_checklist_completed = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    file_opening_checklist_completed_comments = models.TextField(
+        null=True, blank=True)
+    engagement_documents_sent_and_filed = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    engagement_documents_sent_and_filed_comments = models.TextField(
+        null=True, blank=True)
+    charging_rates_and_basis_provided = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    charging_rates_and_basis_provided_comments = models.TextField(
+        null=True, blank=True)
+    initial_costs_estimate_provided = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    initial_costs_estimate_provided_comments = models.TextField(
+        null=True, blank=True)
+    letter_of_authority_obtained = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    letter_of_authority_obtained_comments = models.TextField(
+        null=True, blank=True)
+    initial_risk_assessment_completed = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    initial_risk_assessment_completed_comments = models.TextField(
+        null=True, blank=True)
+
+    key_dates_recorded_in_calendar_and_wip = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    key_dates_recorded_in_calendar_and_wip_comments = models.TextField(
+        null=True, blank=True)
+    key_information_and_advice_shared = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    key_information_and_advice_shared_comments = models.TextField(
+        null=True, blank=True)
+    costs_estimates_updated = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    costs_estimates_updated_comments = models.TextField(
+        null=True, blank=True)
+    matter_progressing_without_dormancy = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    matter_progressing_without_dormancy_comments = models.TextField(
+        null=True, blank=True)
+    file_maintained_in_good_order = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    file_maintained_in_good_order_comments = models.TextField(
+        null=True, blank=True)
+
+    ongoing_aml_sanctions_monitoring_carried_out = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    ongoing_aml_sanctions_monitoring_carried_out_comments = models.TextField(
+        null=True, blank=True)
+    ongoing_monitoring_documents_kept_and_filed = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    ongoing_monitoring_documents_kept_and_filed_comments = models.TextField(
+        null=True, blank=True)
+    further_conflict_checks_completed = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    further_conflict_checks_completed_comments = models.TextField(
+        null=True, blank=True)
+
+    money_on_account_requested_and_received = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    money_on_account_requested_and_received_comments = models.TextField(
+        null=True, blank=True)
+    disbursements_paid_timely = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    disbursements_paid_timely_comments = models.TextField(
+        null=True, blank=True)
+    costs_and_disbursements_billed_timely = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    costs_and_disbursements_billed_timely_comments = models.TextField(
+        null=True, blank=True)
+    overdue_invoices = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    overdue_invoices_comments = models.TextField(null=True, blank=True)
+
+    appropriate_advice_given = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    appropriate_advice_given_comments = models.TextField(
+        null=True, blank=True)
+    matter_within_client_care_scope = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    matter_within_client_care_scope_comments = models.TextField(
+        null=True, blank=True)
+
+    undertakings_discharged_or_released = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    undertakings_discharged_or_released_comments = models.TextField(
+        null=True, blank=True)
+    complaints_raised_and_process_followed = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    complaints_raised_and_process_followed_comments = models.TextField(
+        null=True, blank=True)
+    internal_concerns_raised = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    internal_concerns_raised_comments = models.TextField(
+        null=True, blank=True)
+    economic_crime_or_sanctions_concerns = models.CharField(
+        max_length=3, choices=YES_NO_CHOICES, null=True, blank=True)
+    economic_crime_or_sanctions_concerns_comments = models.TextField(
+        null=True, blank=True)
+
+    recommendations_and_further_actions = models.TextField(
+        null=True, blank=True)
+    additional_notes_or_comments = models.TextField(null=True, blank=True)
+    file_review_completed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='matter_file_reviews_completed_by'
+    )
+    date_review_completed = models.DateField(null=True, blank=True)
+
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='matter_file_reviews_created_by'
+    )
+    timestamp = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date_review_completed', '-date_reviewed', '-timestamp']
+
+    def __str__(self):
+        completed_on = self.date_review_completed or self.date_reviewed
+        if completed_on:
+            return f"{self.matter.file_number} review ({completed_on})"
+        return f"{self.matter.file_number} review ({self.id})"
+
+
 class MatterEmails(models.Model):
     id = models.AutoField(primary_key=True)
     file_number = models.ForeignKey(WIP, on_delete=models.SET_NULL, null=True)

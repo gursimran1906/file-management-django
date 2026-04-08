@@ -792,20 +792,95 @@
 
 
         </div>
-        <div class='div-container h-full md:col-span-2 overflow-y-auto'>
-            <h3 class='text-2xl  mb-2'>Compliance</h3>
-            <div class="overflow-y-auto" id="Compliance">
-    
-                <ul class="list">
-                    <li class="list-item rounded-t-lg bg-gray-50">Client Care Letter Sent on: {{matter.date_of_client_care_sent|date:"d/m/Y"}}</li>
-                    <li class="list-item">Date Terms Of Engagement Sent: {{matter.date_of_toe_sent|date:"d/m/Y"}}</li>
-                    <li class="list-item bg-gray-50">Date Terms Of Engagement Received: {{matter.date_of_toe_rcvd|date:"d/m/Y"}}</li>
-                    <li class="list-item">Terms of Engagement Client 1: {{matter.terms_of_engagement_client1}}</li>
-                    <li class="list-item bg-gray-50">Terms of Engagement Client 2: {{matter.terms_of_engagement_client2}}</li>
-                    <li class="list-item">Date NCBA Sent: {{matter.date_of_ncba_sent|date:"d/m/Y"}}</li>
-                    <li class="list-item bg-gray-50">Date NCBA Received: {{matter.date_of_ncba_rcvd|date:"d/m/Y"}}</li>
-                    <li class="list-item">NCBA Client 1: {{matter.ncba_client1}}</li>
-                    <li class="list-item rounded-b-lg bg-gray-50">NCBA Client 2: {{matter.ncba_client2}}</li>
+        <div class='md:col-span-2 space-y-4'>
+            <div class='div-container overflow-y-auto'>
+                <h3 class='text-2xl mb-2'>Compliance</h3>
+                <div class="overflow-y-auto" id="Compliance">
+                    <ul class="list">
+                        <li class="list-item rounded-t-lg bg-gray-50">Client Care Letter Sent on: {{matter.date_of_client_care_sent|date:"d/m/Y"}}</li>
+                        <li class="list-item">Date Terms Of Engagement Sent: {{matter.date_of_toe_sent|date:"d/m/Y"}}</li>
+                        <li class="list-item bg-gray-50">Date Terms Of Engagement Received: {{matter.date_of_toe_rcvd|date:"d/m/Y"}}</li>
+                        <li class="list-item">Terms of Engagement Client 1: {{matter.terms_of_engagement_client1}}</li>
+                        <li class="list-item bg-gray-50">Terms of Engagement Client 2: {{matter.terms_of_engagement_client2}}</li>
+                        <li class="list-item">Date NCBA Sent: {{matter.date_of_ncba_sent|date:"d/m/Y"}}</li>
+                        <li class="list-item bg-gray-50">Date NCBA Received: {{matter.date_of_ncba_rcvd|date:"d/m/Y"}}</li>
+                        <li class="list-item">NCBA Client 1: {{matter.ncba_client1}}</li>
+                        <li class="list-item rounded-b-lg bg-gray-50">NCBA Client 2: {{matter.ncba_client2}}</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class='div-container overflow-y-auto'>
+                <div class='grid grid-cols-2 mb-2'>
+                    <h3 class='text-2xl'>File Reviews</h3>
+                    <div class='justify-self-end'>
+                        <a class='btn-primary text-xs' href="{% url 'add_matter_file_review' matter.file_number %}">Add</a>
+                    </div>
+                </div>
+
+                <ul class='list'>
+                    {% for item in matter_file_reviews %}
+                    <li class='list-item {% if forloop.first %}rounded-t-lg{% endif %} {% if forloop.last %}rounded-b-lg{% endif %}'>
+                        <div class='flex justify-between gap-2'>
+                            <div>
+                                <p class='font-medium'>
+                                    {% if item.review.date_review_completed %}
+                                    {{ item.review.date_review_completed|date:"d/m/Y" }}
+                                    {% else %}
+                                    Pending
+                                    {% endif %}
+                                    {% if item.review.file_review_completed_by %} by {{ item.review.file_review_completed_by }}{% endif %}
+                                </p>
+                                <p class='text-xs text-gray-500'>
+                                    Reviewed: {{ item.review.file_reviewed_by|default:"-" }}{% if item.review.date_reviewed %} on {{ item.review.date_reviewed|date:"d/m/Y" }}{% endif %}
+                                </p>
+                            </div>
+                            <div class='shrink-0'>
+                                <a class='link text-sm' href="{% url 'edit_matter_file_review' item.review.id %}">Edit</a>
+                            </div>
+                        </div>
+                        <p class='text-sm mt-1'>Recommendations: {{ item.review.recommendations_and_further_actions|default:"---"|truncatechars:120 }}</p>
+
+                        <details class='mt-2'>
+                            <summary class='text-sm link cursor-pointer'>View Full Review</summary>
+                            <div class='space-y-3 mt-2'>
+                                {% for section in item.sections %}
+                                <div class='overflow-x-auto rounded border'>
+                                    <table class='w-full'>
+                                        <thead>
+                                            <tr class='bg-gray-50 border-b'>
+                                                <th class='py-2 px-2 text-left text-xs'>{{ section.title }}</th>
+                                                <th class='py-2 px-2 text-left text-xs w-20'>Yes/No</th>
+                                                <th class='py-2 px-2 text-left text-xs'>Comments</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for row in section.rows %}
+                                            <tr class='border-b align-top'>
+                                                <td class='py-2 px-2 text-xs'>
+                                                    {{ row.question }}
+                                                    {% if row.bullets %}
+                                                    <ul class='list-disc ms-4 mt-1 space-y-1'>
+                                                        {% for bullet in row.bullets %}
+                                                        <li>{{ bullet }}</li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                    {% endif %}
+                                                </td>
+                                                <td class='py-2 px-2 text-xs'>{{ row.answer }}</td>
+                                                <td class='py-2 px-2 text-xs'>{{ row.comments }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </details>
+                    </li>
+                    {% empty %}
+                    <li class='list-item rounded-b-lg text-green-700'>No file reviews added yet.</li>
+                    {% endfor %}
                 </ul>
             </div>
         </div>

@@ -65,3 +65,12 @@ def basename(value):
         return os.path.basename(value)
     else:
         return str(value)
+
+
+@register.filter(name='get_item')
+def get_item(value, key):
+    """Get an item from dict-like objects (including Django forms)."""
+    try:
+        return value[key]
+    except Exception:
+        return None

@@ -23,7 +23,7 @@ from .models import (Memo, Modifications, ClientContactDetails, AuthorisedPartie
                      FileLocation, FileStatus, MatterType, WIP, NextWork, LastWork, PmtsSlips,
                      LedgerAccountTransfers, Policy, PolicyVersion, TempSlips, Invoices, MatterEmails, MatterLetters,
                      MatterAttendanceNotes, RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees, Undertaking,
-                     CreditNote,
+                     CreditNote, MatterFileReview,
                      Bundle, BundleSection, BundleDocument)
 
 
@@ -283,6 +283,38 @@ class UndertakingAdmin(admin.ModelAdmin):
 
     # Make the list ordered by timestamp by default
     ordering = ('-timestamp',)
+
+
+@admin.register(MatterFileReview)
+class MatterFileReviewAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'matter',
+        'file_reviewed_by',
+        'date_reviewed',
+        'file_review_completed_by',
+        'date_review_completed',
+        'created_by',
+        'timestamp',
+    )
+    search_fields = (
+        'matter__file_number',
+        'matter__matter_description',
+        'file_reviewed_by__username',
+        'file_reviewed_by__first_name',
+        'file_reviewed_by__last_name',
+        'file_review_completed_by__username',
+        'file_review_completed_by__first_name',
+        'file_review_completed_by__last_name',
+        'supervisor',
+    )
+    list_filter = (
+        'date_reviewed',
+        'date_review_completed',
+        'created_by',
+        'timestamp',
+    )
+    ordering = ('-date_review_completed', '-date_reviewed', '-timestamp')
 
 
 class PolicyVersionInline(admin.TabularInline):

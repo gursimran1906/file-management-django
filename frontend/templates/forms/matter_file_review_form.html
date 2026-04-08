@@ -1,0 +1,128 @@
+{% load utils %}
+
+<div class='grid md:grid-cols-2 gap-4 mt-2'>
+    <h1 class='div-container md:w-fit h-fit text-3xl font-medium '>{{ file_number }} | Matter File Review | {{ title }}</h1>
+    <div class='div-container md:justify-self-end h-fit'>
+        <a class='btn-secondary' href="{% url 'home' file_number %}">Back To Home</a>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div class='space-y-4 text-sm mt-4'>
+        {% if form.non_field_errors %}
+        <div class='div-container border border-red-200 bg-red-50 text-red-900'>
+            {% for error in form.non_field_errors %}
+            <p>{{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl'>File Review Details</h2>
+        </div>
+        <div class='div-container grid grid-cols-1 md:grid-cols-12 gap-2'>
+            <div class='md:col-span-6'>
+                <label class='form-label'>Client name</label>
+                <p class='form-input bg-gray-50'>{{ matter.client1.name }}{% if matter.client2 %}, {{ matter.client2.name }}{% endif %}</p>
+            </div>
+            <div class='md:col-span-6'>
+                <label class='form-label'>Matter name</label>
+                <p class='form-input bg-gray-50'>{{ matter.matter_description }}</p>
+            </div>
+            <div class='md:col-span-6'>
+                {{ form.client_matter_reference.label_tag }}
+                {{ form.client_matter_reference }}
+            </div>
+            <div class='md:col-span-6'>
+                <label class='form-label'>Fee Earner</label>
+                <p class='form-input bg-gray-50'>{{ matter.fee_earner }}</p>
+            </div>
+            <div class='md:col-span-6'>
+                {{ form.supervisor.label_tag }}
+                {{ form.supervisor }}
+            </div>
+            <div class='md:col-span-6'>
+                {{ form.file_reviewed_by.label_tag }}
+                {{ form.file_reviewed_by }}
+            </div>
+            <div class='md:col-span-6'>
+                {{ form.date_reviewed.label_tag }}
+                {{ form.date_reviewed }}
+            </div>
+        </div>
+
+        {% for section in matter_file_review_sections %}
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl'>{{ section.title }}</h2>
+        </div>
+        <div class='div-container overflow-x-auto'>
+            <table class='w-full text-black divide-y'>
+                <thead>
+                    <tr class='bg-gray-50'>
+                        <th class='py-2 px-2 text-left w-7/12'>Task or issue to consider</th>
+                        <th class='py-2 px-2 text-left w-2/12'>Yes/No</th>
+                        <th class='py-2 px-2 text-left w-3/12'>Comments</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in section.rows %}
+                    <tr class='border-t align-top'>
+                        <td class='py-2 px-2'>
+                            <p>{{ row.question }}</p>
+                            {% if row.bullets %}
+                            <ul class='list-disc ms-5 mt-2 space-y-1'>
+                                {% for bullet in row.bullets %}
+                                <li>{{ bullet }}</li>
+                                {% endfor %}
+                            </ul>
+                            {% endif %}
+                        </td>
+                        {% with answer_field=form|get_item:row.answer_field comments_field=form|get_item:row.comments_field %}
+                            <td class='py-2 px-2'>
+                                {{ answer_field }}
+                                {% if answer_field.errors %}
+                                <p class='text-red-700 text-xs mt-1'>{{ answer_field.errors|striptags }}</p>
+                                {% endif %}
+                            </td>
+                            <td class='py-2 px-2'>
+                                {{ comments_field }}
+                                {% if comments_field.errors %}
+                                <p class='text-red-700 text-xs mt-1'>{{ comments_field.errors|striptags }}</p>
+                                {% endif %}
+                            </td>
+                        {% endwith %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+
+        <div class='div-container sticky top-16'>
+            <h2 class='text-2xl'>Outcome Of Review</h2>
+        </div>
+        <div class='div-container grid grid-cols-1 md:grid-cols-12 gap-2'>
+            <div class='md:col-span-12'>
+                <label class='form-label'>Recommendations and further action required (if any):</label>
+                {{ form.recommendations_and_further_actions }}
+            </div>
+            <div class='md:col-span-12'>
+                <label class='form-label'>Additional notes or comments:</label>
+                {{ form.additional_notes_or_comments }}
+            </div>
+            <div class='md:col-span-6'>
+                {{ form.file_review_completed_by.label_tag }}
+                {{ form.file_review_completed_by }}
+            </div>
+            <div class='md:col-span-6'>
+                {{ form.date_review_completed.label_tag }}
+                {{ form.date_review_completed }}
+            </div>
+        </div>
+
+        <div>
+            <button class='btn-primary'>{{ title }} Review</button>
+        </div>
+    </div>
+</form>

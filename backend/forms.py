@@ -352,6 +352,38 @@ class OngoingMonitoringForm(forms.ModelForm):
                 field.widget.attrs['class'] = 'h-16 shadow-sm mb-2 mt-1 border border-gray-300 text-gray-900 text-sm rounded focus:ring-blue-100 focus:border-blue-100 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500'
                 field.widget.attrs['rows'] = 4
 
+
+class MatterFileReviewForm(forms.ModelForm):
+    class Meta:
+        model = MatterFileReview
+        exclude = ['matter', 'created_by', 'timestamp', 'updated_at']
+        widgets = {
+            'date_reviewed': forms.DateInput(attrs={'type': 'date'}),
+            'date_review_completed': forms.DateInput(attrs={'type': 'date'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super(MatterFileReviewForm, self).__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            field.required = False
+            if isinstance(field, forms.ModelChoiceField):
+                if field_name in ['file_reviewed_by', 'file_review_completed_by']:
+                    field.queryset = field.queryset.filter(
+                        is_active=True
+                    ).order_by('first_name', 'last_name', 'username')
+                field.empty_label = '---'
+                field.widget.attrs['class'] = 'form-input'
+            elif isinstance(field, forms.ChoiceField):
+                field.choices = [('', '---')] + [
+                    choice for choice in field.choices if choice[0] != ''
+                ]
+                field.widget.attrs['class'] = 'form-input'
+            elif isinstance(field.widget, forms.Textarea):
+                field.widget.attrs['class'] = 'h-16 shadow-sm mb-2 mt-1 border border-gray-300 text-gray-900 text-sm rounded focus:ring-blue-100 focus:border-blue-100 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500'
+                field.widget.attrs['rows'] = 3
+            else:
+                field.widget.attrs['class'] = 'form-input'
+
 class Free30MinsForm(forms.ModelForm):
     class Meta:
         model = Free30Mins

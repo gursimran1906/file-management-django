@@ -8,10 +8,10 @@ from django.db.models.functions import Cast, Coalesce, Greatest, Concat
 from .models import WIP, Memo, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
-from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument
+from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
 from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
-from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm
+from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm
 from .utils import create_modification
 from django.utils import timezone
 from users.models import CPDTrainingLog, CustomUser, HolidayRecord
@@ -47,6 +47,190 @@ from django.core.files.base import ContentFile
 
 logger = logging.getLogger('backend')
 CURRENT_VAT_RATE_PERCENT = int(CURRENT_VAT_RATE * 100)
+
+MATTER_FILE_REVIEW_SECTIONS = [
+    {
+        'title': 'Client Onboarding',
+        'rows': [
+            {
+                'question': 'File Opening Checklist completed?',
+                'answer_field': 'file_opening_checklist_completed',
+                'comments_field': 'file_opening_checklist_completed_comments',
+            },
+            {
+                'question': 'Engagement documents sent to the client and copies kept on file?',
+                'bullets': [
+                    'Client care letter',
+                    'Terms of business (including complaints procedure and cancellation procedure)',
+                    'Non-contentious Business Agreement (if applicable)',
+                    'PEP',
+                    'SOF',
+                ],
+                'answer_field': 'engagement_documents_sent_and_filed',
+                'comments_field': 'engagement_documents_sent_and_filed_comments',
+            },
+            {
+                'question': 'Accurate and up-to-date details of our charging rates and basis provided?',
+                'answer_field': 'charging_rates_and_basis_provided',
+                'comments_field': 'charging_rates_and_basis_provided_comments',
+            },
+            {
+                'question': 'Initial estimate of costs provided?',
+                'answer_field': 'initial_costs_estimate_provided',
+                'comments_field': 'initial_costs_estimate_provided_comments',
+            },
+            {
+                'question': "Signed Letter of Authority obtained to enable us to receive advice and instructions on the client's behalf (if applicable)?",
+                'answer_field': 'letter_of_authority_obtained',
+                'comments_field': 'letter_of_authority_obtained_comments',
+            },
+            {
+                'question': 'Initial Risk Assessment completed?',
+                'answer_field': 'initial_risk_assessment_completed',
+                'comments_field': 'initial_risk_assessment_completed_comments',
+            },
+        ],
+    },
+    {
+        'title': 'Matter Management',
+        'rows': [
+            {
+                'question': 'All key dates recorded in shared calendar and WIP?',
+                'answer_field': 'key_dates_recorded_in_calendar_and_wip',
+                'comments_field': 'key_dates_recorded_in_calendar_and_wip_comments',
+            },
+            {
+                'question': 'Key information and advice shared with the client?',
+                'answer_field': 'key_information_and_advice_shared',
+                'comments_field': 'key_information_and_advice_shared_comments',
+            },
+            {
+                'question': 'Costs estimates updated as necessary?',
+                'answer_field': 'costs_estimates_updated',
+                'comments_field': 'costs_estimates_updated_comments',
+            },
+            {
+                'question': 'Overall, the matter is progressing without any long unexplained periods of dormancy?',
+                'answer_field': 'matter_progressing_without_dormancy',
+                'comments_field': 'matter_progressing_without_dormancy_comments',
+            },
+            {
+                'question': 'Overall, the file appears to be maintained in good order?',
+                'answer_field': 'file_maintained_in_good_order',
+                'comments_field': 'file_maintained_in_good_order_comments',
+            },
+        ],
+    },
+    {
+        'title': 'Ongoing Monitoring',
+        'rows': [
+            {
+                'question': 'Ongoing AML, financial crime prevention and sanctions monitoring carried out at appropriate intervals or on appropriate triggers (if applicable)?',
+                'answer_field': 'ongoing_aml_sanctions_monitoring_carried_out',
+                'comments_field': 'ongoing_aml_sanctions_monitoring_carried_out_comments',
+            },
+            {
+                'question': 'Copies of all documents obtained from ongoing monitoring activities kept and correctly filed?',
+                'answer_field': 'ongoing_monitoring_documents_kept_and_filed',
+                'comments_field': 'ongoing_monitoring_documents_kept_and_filed_comments',
+            },
+            {
+                'question': 'Further conflict checks and consideration carried out appropriately, if parties have changed?',
+                'answer_field': 'further_conflict_checks_completed',
+                'comments_field': 'further_conflict_checks_completed_comments',
+            },
+        ],
+    },
+    {
+        'title': 'Finance, Costs And Accounting',
+        'rows': [
+            {
+                'question': 'Money on account (as appropriate to the matter) has been requested at appropriate times and received before significant work undertaken?',
+                'answer_field': 'money_on_account_requested_and_received',
+                'comments_field': 'money_on_account_requested_and_received_comments',
+            },
+            {
+                'question': 'All disbursements paid in a timely manner?',
+                'answer_field': 'disbursements_paid_timely',
+                'comments_field': 'disbursements_paid_timely_comments',
+            },
+            {
+                'question': 'Costs and disbursements billed at appropriate intervals?',
+                'answer_field': 'costs_and_disbursements_billed_timely',
+                'comments_field': 'costs_and_disbursements_billed_timely_comments',
+            },
+            {
+                'question': 'Overdue invoices?',
+                'answer_field': 'overdue_invoices',
+                'comments_field': 'overdue_invoices_comments',
+            },
+        ],
+    },
+    {
+        'title': 'Legal Advice And Instructions',
+        'rows': [
+            {
+                'question': 'Appropriate advice given to the client on all substantive issues to date?',
+                'answer_field': 'appropriate_advice_given',
+                'comments_field': 'appropriate_advice_given_comments',
+            },
+            {
+                'question': 'Matter proceeding within the scope set out in the client care letter? If not, why?',
+                'answer_field': 'matter_within_client_care_scope',
+                'comments_field': 'matter_within_client_care_scope_comments',
+            },
+        ],
+    },
+    {
+        'title': 'Specific Risk Issues',
+        'rows': [
+            {
+                'question': 'Undertakings given by the firm have been discharged appropriately and on time, or released in writing (if not ongoing)?',
+                'answer_field': 'undertakings_discharged_or_released',
+                'comments_field': 'undertakings_discharged_or_released_comments',
+            },
+            {
+                'question': 'Have any complaints been raised by the client? If so, has the firms complaints procedure been followed?',
+                'answer_field': 'complaints_raised_and_process_followed',
+                'comments_field': 'complaints_raised_and_process_followed_comments',
+            },
+            {
+                'question': 'Does the file review raise any internal concerns?',
+                'answer_field': 'internal_concerns_raised',
+                'comments_field': 'internal_concerns_raised_comments',
+            },
+            {
+                'question': 'Does the file review raise any concerns or suspicions about potential money laundering, sanctions breaches, or any other economic crime?',
+                'answer_field': 'economic_crime_or_sanctions_concerns',
+                'comments_field': 'economic_crime_or_sanctions_concerns_comments',
+            },
+        ],
+    },
+]
+
+
+def build_matter_file_review_display_data(reviews):
+    output = []
+    for review in reviews:
+        section_data = []
+        for section in MATTER_FILE_REVIEW_SECTIONS:
+            rows = []
+            for row in section['rows']:
+                rows.append({
+                    'question': row['question'],
+                    'bullets': row.get('bullets', []),
+                    'answer': getattr(review, row['answer_field']) or '---',
+                    'comments': getattr(review, row['comments_field']) or '---',
+                })
+            section_data.append({
+                'title': section['title'],
+                'rows': rows,
+            })
+        output.append({
+            'review': review,
+            'sections': section_data,
+        })
+    return output
 
 
 def calculate_invoice_total_with_vat(invoice):
@@ -901,6 +1085,8 @@ def display_data_home_page(request, file_number):
         logger.info(
             f'User {request.user.username} accessing matter file {file_number}')
         matter = WIP.objects.get(file_number=file_number)
+        matter_file_reviews = MatterFileReview.objects.filter(
+            matter=matter).order_by('-date_review_completed', '-date_reviewed', '-timestamp')
         undertakings = Undertaking.objects.filter(file_number=matter)
         next_work_form = NextWorkFormWithoutFileNumber()
         next_work = NextWork.objects.filter(
@@ -939,6 +1125,7 @@ def display_data_home_page(request, file_number):
                                              'last_work': last_work, 'last_work_form': last_work_form,
                                              'ongoing_monitorings': ongoing_monitorings,
                                              'risk_assessment': risk_assessment, 'eleven_months_since_last_risk_assessment': eleven_months_since_last_risk_assessment,
+                                             'matter_file_reviews': build_matter_file_review_display_data(matter_file_reviews),
                                              'logs': get_file_logs(file_number)})
     except WIP.DoesNotExist:
         logger.warning(
@@ -1505,6 +1692,87 @@ def add_risk_assessment(request, file_number):
         form = RiskAssessmentForm(initial={'matter': matter.id})
 
     return render(request, 'risk_assessment.html', {'form': form, 'file_number': file_number, 'title': 'Add'})
+
+
+@login_required
+def add_matter_file_review(request, file_number):
+    matter = get_object_or_404(WIP, file_number=file_number)
+
+    if request.method == 'POST':
+        form = MatterFileReviewForm(request.POST)
+        if form.is_valid():
+            review = form.save(commit=False)
+            review.matter = matter
+            review.created_by = request.user
+            review.save()
+            messages.success(request, 'Matter file review added successfully.')
+            return redirect('home', file_number=matter.file_number)
+
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(request, f"{form[field].label}: {error}")
+    else:
+        form = MatterFileReviewForm(initial={
+            'client_matter_reference': matter.file_number,
+            'file_reviewed_by': request.user.id,
+            'date_reviewed': timezone.localdate(),
+            'file_review_completed_by': request.user.id,
+            'date_review_completed': timezone.localdate(),
+        })
+
+    return render(request, 'matter_file_review.html', {
+        'form': form,
+        'file_number': matter.file_number,
+        'matter': matter,
+        'title': 'Add',
+        'matter_file_review_sections': MATTER_FILE_REVIEW_SECTIONS,
+    })
+
+
+@login_required
+def edit_matter_file_review(request, id):
+    review = get_object_or_404(MatterFileReview, id=id)
+    duplicate_obj = copy.deepcopy(review)
+
+    if request.method == 'POST':
+        form = MatterFileReviewForm(request.POST, instance=review)
+        if form.is_valid():
+            changed_fields = form.changed_data
+            changes = {}
+            for field in changed_fields:
+                changes[field] = {
+                    'old_value': str(getattr(duplicate_obj, field)),
+                    'new_value': None
+                }
+
+            form.save()
+
+            for field in changed_fields:
+                changes[field]['new_value'] = str(getattr(review, field))
+
+            if changes:
+                create_modification(
+                    user=request.user,
+                    modified_obj=review,
+                    changes=changes
+                )
+
+            messages.success(request, 'Matter file review updated successfully.')
+            return redirect('home', file_number=review.matter.file_number)
+
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(request, f"{form[field].label}: {error}")
+    else:
+        form = MatterFileReviewForm(instance=review)
+
+    return render(request, 'matter_file_review.html', {
+        'form': form,
+        'file_number': review.matter.file_number,
+        'matter': review.matter,
+        'title': 'Edit',
+        'matter_file_review_sections': MATTER_FILE_REVIEW_SECTIONS,
+    })
 
 
 @login_required

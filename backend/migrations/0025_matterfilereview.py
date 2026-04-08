@@ -1,0 +1,83 @@
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('backend', '0024_ledgeraccounttransfers_is_cashier_co_transfer'),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='MatterFileReview',
+            fields=[
+                ('id', models.AutoField(primary_key=True, serialize=False)),
+                ('client_matter_reference', models.CharField(blank=True, max_length=255, null=True)),
+                ('supervisor', models.CharField(blank=True, max_length=255, null=True)),
+                ('file_reviewed_by', models.CharField(blank=True, max_length=255, null=True)),
+                ('date_reviewed', models.DateField(blank=True, null=True)),
+                ('file_opening_checklist_completed', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('file_opening_checklist_completed_comments', models.TextField(blank=True, null=True)),
+                ('engagement_documents_sent_and_filed', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('engagement_documents_sent_and_filed_comments', models.TextField(blank=True, null=True)),
+                ('charging_rates_and_basis_provided', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('charging_rates_and_basis_provided_comments', models.TextField(blank=True, null=True)),
+                ('initial_costs_estimate_provided', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('initial_costs_estimate_provided_comments', models.TextField(blank=True, null=True)),
+                ('letter_of_authority_obtained', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('letter_of_authority_obtained_comments', models.TextField(blank=True, null=True)),
+                ('initial_risk_assessment_completed', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('initial_risk_assessment_completed_comments', models.TextField(blank=True, null=True)),
+                ('key_dates_recorded_in_calendar_and_wip', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('key_dates_recorded_in_calendar_and_wip_comments', models.TextField(blank=True, null=True)),
+                ('key_information_and_advice_shared', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('key_information_and_advice_shared_comments', models.TextField(blank=True, null=True)),
+                ('costs_estimates_updated', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('costs_estimates_updated_comments', models.TextField(blank=True, null=True)),
+                ('matter_progressing_without_dormancy', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('matter_progressing_without_dormancy_comments', models.TextField(blank=True, null=True)),
+                ('file_maintained_in_good_order', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('file_maintained_in_good_order_comments', models.TextField(blank=True, null=True)),
+                ('ongoing_aml_sanctions_monitoring_carried_out', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('ongoing_aml_sanctions_monitoring_carried_out_comments', models.TextField(blank=True, null=True)),
+                ('ongoing_monitoring_documents_kept_and_filed', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('ongoing_monitoring_documents_kept_and_filed_comments', models.TextField(blank=True, null=True)),
+                ('further_conflict_checks_completed', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('further_conflict_checks_completed_comments', models.TextField(blank=True, null=True)),
+                ('money_on_account_requested_and_received', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('money_on_account_requested_and_received_comments', models.TextField(blank=True, null=True)),
+                ('disbursements_paid_timely', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('disbursements_paid_timely_comments', models.TextField(blank=True, null=True)),
+                ('costs_and_disbursements_billed_timely', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('costs_and_disbursements_billed_timely_comments', models.TextField(blank=True, null=True)),
+                ('overdue_invoices', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('overdue_invoices_comments', models.TextField(blank=True, null=True)),
+                ('appropriate_advice_given', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('appropriate_advice_given_comments', models.TextField(blank=True, null=True)),
+                ('matter_within_client_care_scope', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('matter_within_client_care_scope_comments', models.TextField(blank=True, null=True)),
+                ('undertakings_discharged_or_released', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('undertakings_discharged_or_released_comments', models.TextField(blank=True, null=True)),
+                ('complaints_raised_and_process_followed', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('complaints_raised_and_process_followed_comments', models.TextField(blank=True, null=True)),
+                ('internal_concerns_raised', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('internal_concerns_raised_comments', models.TextField(blank=True, null=True)),
+                ('economic_crime_or_sanctions_concerns', models.CharField(blank=True, choices=[('Yes', 'Yes'), ('No', 'No')], max_length=3, null=True)),
+                ('economic_crime_or_sanctions_concerns_comments', models.TextField(blank=True, null=True)),
+                ('recommendations_and_further_actions', models.TextField(blank=True, null=True)),
+                ('additional_notes_or_comments', models.TextField(blank=True, null=True)),
+                ('file_review_completed_by', models.CharField(blank=True, max_length=255, null=True)),
+                ('date_review_completed', models.DateField(blank=True, null=True)),
+                ('timestamp', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='matter_file_reviews_created_by', to=settings.AUTH_USER_MODEL)),
+                ('matter', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='matter_file_reviews', to='backend.wip')),
+            ],
+            options={
+                'ordering': ['-date_review_completed', '-date_reviewed', '-timestamp'],
+            },
+        ),
+    ]
