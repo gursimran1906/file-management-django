@@ -41,6 +41,7 @@ from django.http import FileResponse, Http404
 from django.conf import settings
 import os
 import PyPDF2
+import zipfile
 from io import BytesIO
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
@@ -2401,6 +2402,52 @@ def download_attendance_note(request, id):
     pdf_file = HTML(string=html_string).write_pdf()
 
     return HttpResponse(pdf_file, content_type='application/pdf')
+
+
+@login_required
+def download_attendance_notes_bulk(request, file_number):
+    wip = WIP.objects.filter(file_number=file_number).first()
+    if not wip:
+        messages.error(request, f'File number "{file_number}" not found.')
+        return redirect('user_dashboard')
+
+    attendance_notes = MatterAttendanceNotes.objects.filter(
+        file_number=wip.id
+    ).order_by('-date', '-start_time', '-id')
+
+    if not attendance_notes.exists():
+        messages.warning(request, 'No attendance notes found to download.')
+        return redirect('attendance_note_view', file_number=file_number)
+
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for note in attendance_notes:
+            context = {
+                'client1_name': note.file_number.client1.name,
+                'client2_name': note.file_number.client2.name if note.file_number.client2 else '',
+                'file_number': note.file_number.file_number,
+                'date': note.date.strftime('%d/%m/%Y'),
+                'start_time': note.start_time,
+                'finish_time': note.finish_time,
+                'content': mark_safe(note.content.html),
+                'is_charged': note.is_charged,
+                'unit': note.unit,
+                'person_attended': note.person_attended,
+                'user': request.user
+            }
+
+            html_string = render_to_string(
+                'download_templates/attendance_note.html', context)
+            pdf_file = HTML(string=html_string).write_pdf()
+            file_name = f'attendance_note_{note.date.strftime("%Y%m%d")}_{note.id}.pdf'
+            zip_file.writestr(file_name, pdf_file)
+
+    zip_buffer.seek(0)
+    response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
+    response['Content-Disposition'] = (
+        f'attachment; filename="attendance_notes_{file_number}.zip"'
+    )
+    return response
 
 
 @login_required

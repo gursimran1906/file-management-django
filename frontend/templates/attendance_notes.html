@@ -106,6 +106,101 @@
                 bulkUploadModal.addClass('hidden');
             }
         });
+
+        const bulkDownloadForm = $('#bulkDownloadAttendanceNotesForm');
+        const bulkDownloadButton = $('#bulkDownloadAttendanceNotes');
+        const bulkDownloadStatus = $('#bulkDownloadStatus');
+        const bulkDownloadDefaultText = bulkDownloadButton.text();
+        let isBulkDownloadInProgress = false;
+
+        function setBulkDownloadState(isProcessing, statusText, isError) {
+            isBulkDownloadInProgress = isProcessing;
+            bulkDownloadButton.prop('disabled', isProcessing);
+
+            if (isProcessing) {
+                bulkDownloadButton.removeClass('btn-primary').addClass('btn-disabled');
+                bulkDownloadButton.text('Preparing ZIP...');
+                bulkDownloadStatus.removeClass('hidden text-red-600').addClass('text-gray-600');
+                bulkDownloadStatus.text(statusText || 'Preparing download...');
+                return;
+            }
+
+            bulkDownloadButton.removeClass('btn-disabled').addClass('btn-primary');
+            bulkDownloadButton.text(bulkDownloadDefaultText);
+            if (statusText) {
+                bulkDownloadStatus.removeClass('hidden text-gray-600 text-red-600');
+                bulkDownloadStatus.addClass(isError ? 'text-red-600' : 'text-gray-600');
+                bulkDownloadStatus.text(statusText);
+            } else {
+                bulkDownloadStatus.addClass('hidden');
+                bulkDownloadStatus.text('');
+            }
+        }
+
+        function getDownloadFilename(contentDisposition) {
+            if (!contentDisposition) {
+                return 'attendance_notes.zip';
+            }
+
+            const match = contentDisposition.match(/filename\*?=(?:UTF-8''|")?([^\";]+)/i);
+            if (!match || !match[1]) {
+                return 'attendance_notes.zip';
+            }
+
+            const rawFilename = match[1].replace(/"/g, '').trim();
+            try {
+                return decodeURIComponent(rawFilename);
+            } catch (e) {
+                return rawFilename;
+            }
+        }
+
+        bulkDownloadForm.on('submit', async function(e) {
+            e.preventDefault();
+            if (isBulkDownloadInProgress) {
+                return;
+            }
+
+            const downloadUrl = bulkDownloadForm.attr('action');
+            setBulkDownloadState(true, 'Preparing attendance notes ZIP...', false);
+
+            try {
+                const response = await fetch(downloadUrl, {
+                    method: 'GET',
+                    credentials: 'same-origin'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Unable to download attendance notes.');
+                }
+
+                const contentType = (response.headers.get('content-type') || '').toLowerCase();
+                if (!contentType.includes('application/zip')) {
+                    window.location.href = downloadUrl;
+                    setBulkDownloadState(false, '', false);
+                    return;
+                }
+
+                const blob = await response.blob();
+                const filename = getDownloadFilename(response.headers.get('content-disposition'));
+                const blobUrl = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(blobUrl);
+
+                setBulkDownloadState(false, 'Download started.', false);
+                setTimeout(function() {
+                    bulkDownloadStatus.addClass('hidden');
+                    bulkDownloadStatus.text('');
+                }, 2500);
+            } catch (error) {
+                setBulkDownloadState(false, 'Failed to download. Please try again.', true);
+            }
+        });
     });
 </script>
 
@@ -113,8 +208,12 @@
     <div class="div-container flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <h1 class='w-fit text-3xl '>{{ file_number }} | Attendance Notes</h1>
         <div class="flex flex-wrap items-center gap-2">
+            <form id="bulkDownloadAttendanceNotesForm" method="get" action="{% url 'download_attendance_notes_bulk' file_number %}">
+                <button type="submit" id="bulkDownloadAttendanceNotes" class="btn-primary">Download All Attendance Notes</button>
+            </form>
             <a class="btn-primary" href="{% url 'download_attendance_notes_bulk_template' file_number %}">Download CSV Headers</a>
             <button type="button" id="openBulkUploadModal" class="btn-primary">Bulk Upload</button>
+            <span id="bulkDownloadStatus" class="hidden text-sm"></span>
         </div>
     </div>
 </div>
