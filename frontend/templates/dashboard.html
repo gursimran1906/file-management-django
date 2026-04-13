@@ -442,7 +442,7 @@
         </div>
       </div>
       <div class="mb-2">
-        <span class="text-sm text-gray-500 p-2 rounded-lg align-middle">due if no file review, or last review older than 12 months</span>
+        <span class="text-sm text-gray-500 p-2 rounded-lg align-middle">due if no file review, or last review older than 3 months</span>
       </div>
       <ul class="rounded-lg">
         {% for file in file_reviews_due_files %}
@@ -450,7 +450,7 @@
           <div class="flex justify-between items-start gap-2">
             <a class="link font-medium" href="{% url 'home' file.file_number %}">{{ file.file_number }}</a>
             {% if file.latest_review_date %}
-            <span class="text-[11px] px-2 py-1 rounded-full bg-amber-100 text-amber-800">Review older than 12 months</span>
+            <span class="text-[11px] px-2 py-1 rounded-full bg-amber-100 text-amber-800">Review older than 3 months</span>
             {% else %}
             <span class="text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-800">No file review done</span>
             {% endif %}

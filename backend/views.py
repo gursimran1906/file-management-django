@@ -347,7 +347,7 @@ def get_risk_assessments_due_queryset(wip_queryset):
 
 
 def get_file_reviews_due_queryset(wip_queryset):
-    one_year_ago = timezone.localdate() - relativedelta(years=1)
+    three_months_ago = timezone.localdate() - relativedelta(months=3)
 
     latest_review_subquery = MatterFileReview.objects.filter(
         matter=OuterRef('pk')
@@ -364,7 +364,7 @@ def get_file_reviews_due_queryset(wip_queryset):
         Q(file_status__status__in=['Open', 'To Be Closed']) &
         (
             Q(latest_review_date__isnull=True) |
-            Q(latest_review_date__lte=one_year_ago)
+            Q(latest_review_date__lte=three_months_ago)
         )
     ).order_by('file_number')
 
