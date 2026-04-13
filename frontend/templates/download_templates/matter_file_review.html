@@ -1,0 +1,83 @@
+{% load static %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Review</title>
+    <style>
+        body { font-family: Times New Roman, Times, serif; font-size: 11pt; }
+        @page { size: A4 landscape; margin: 20pt; }
+        h1 { font-size: 18pt; font-weight: bold; text-align: center; margin-bottom: 4pt; }
+        h2 { font-size: 14pt; font-weight: bold; text-align: center; margin-bottom: 12pt; }
+        h3 { font-size: 12pt; font-weight: bold; margin-top: 14pt; margin-bottom: 6pt; }
+        table { width: 100%; border-collapse: collapse; font-size: 10pt; margin-bottom: 10pt; }
+        th, td { border: 1px solid #dee2e6; padding: 5pt 6pt; text-align: left; vertical-align: top; }
+        th { background-color: #f8f9fa; font-weight: bold; }
+        ul { margin: 4pt 0 0 16pt; padding: 0; }
+        li { margin-bottom: 2pt; }
+        strong { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>ANP Solicitors - File Review</h1>
+    <h2>ANP Reference: {{ review.matter.file_number }}</h2>
+
+    <table>
+        <tr>
+            <td><strong>Client/Matter Reference</strong></td>
+            <td>{{ review.client_matter_reference|default:"---" }}</td>
+            <td><strong>Supervisor</strong></td>
+            <td>{{ review.supervisor|default:"---" }}</td>
+        </tr>
+        <tr>
+            <td><strong>File Reviewed By</strong></td>
+            <td>{{ review.file_reviewed_by|default:"---" }}</td>
+            <td><strong>Date Reviewed</strong></td>
+            <td>{{ review.date_reviewed|date:"d/m/Y"|default:"---" }}</td>
+        </tr>
+        <tr>
+            <td><strong>Review Completed By</strong></td>
+            <td>{{ review.file_review_completed_by|default:"---" }}</td>
+            <td><strong>Date Review Completed</strong></td>
+            <td>{{ review.date_review_completed|date:"d/m/Y"|default:"---" }}</td>
+        </tr>
+    </table>
+
+    {% for section in sections %}
+    <h3>{{ section.title }}</h3>
+    <table>
+        <thead>
+            <tr>
+                <th style="width:50%">Question</th>
+                <th style="width:10%">Yes/No</th>
+                <th style="width:40%">Comments</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in section.rows %}
+            <tr>
+                <td>
+                    {{ row.question }}
+                    {% if row.bullets %}
+                    <ul>
+                        {% for bullet in row.bullets %}
+                        <li>{{ bullet }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </td>
+                <td>{{ row.answer }}</td>
+                <td>{{ row.comments }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endfor %}
+
+    <h3>Recommendations and Further Actions</h3>
+    <p>{{ review.recommendations_and_further_actions|default:"---" }}</p>
+
+    <h3>Additional Notes or Comments</h3>
+    <p>{{ review.additional_notes_or_comments|default:"---" }}</p>
+</body>
+</html>

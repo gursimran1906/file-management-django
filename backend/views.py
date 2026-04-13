@@ -346,6 +346,29 @@ def get_risk_assessments_due_queryset(wip_queryset):
     ).order_by('file_number')
 
 
+def get_file_reviews_due_queryset(wip_queryset):
+    one_year_ago = timezone.localdate() - relativedelta(years=1)
+
+    latest_review_subquery = MatterFileReview.objects.filter(
+        matter=OuterRef('pk')
+    ).order_by('-date_review_completed').values('date_review_completed')[:1]
+
+    latest_review_by_subquery = MatterFileReview.objects.filter(
+        matter=OuterRef('pk')
+    ).order_by('-date_review_completed').values('file_review_completed_by__first_name')[:1]
+
+    return wip_queryset.annotate(
+        latest_review_date=Subquery(latest_review_subquery),
+        latest_review_by=Subquery(latest_review_by_subquery),
+    ).filter(
+        Q(file_status__status__in=['Open', 'To Be Closed']) &
+        (
+            Q(latest_review_date__isnull=True) |
+            Q(latest_review_date__lte=one_year_ago)
+        )
+    ).order_by('file_number')
+
+
 def get_dashboard_risk_scope_wips(user, risk_scope):
     if risk_scope == 'all_active':
         return WIP.objects.filter(
@@ -602,6 +625,7 @@ def user_dashboard(request):
         user, risk_scope
     )
     risk_assessments_due = get_risk_assessments_due_queryset(risk_scope_wips)
+    file_reviews_due = get_file_reviews_due_queryset(unique_wips)
 
     # Calculate the date 11 months ago
     eleven_months_ago = timezone.now() - relativedelta(months=11)
@@ -693,6 +717,7 @@ def user_dashboard(request):
         'unread_policies_exist': unread_policies_exist,
         'has_pending_tasks': has_pending_tasks,
         'risk_scope': validated_risk_scope,
+        'file_reviews_due_files': file_reviews_due,
     }
 
     return render(request, 'dashboard.html', context)
@@ -1774,6 +1799,39 @@ def edit_matter_file_review(request, id):
         'title': 'Edit',
         'matter_file_review_sections': MATTER_FILE_REVIEW_SECTIONS,
     })
+
+
+@login_required
+def download_matter_file_review(request, id):
+    review = get_object_or_404(MatterFileReview, id=id)
+    sections = []
+    for section in MATTER_FILE_REVIEW_SECTIONS:
+        rows = []
+        for row in section['rows']:
+            rows.append({
+                'question': row['question'],
+                'bullets': row.get('bullets', []),
+                'answer': getattr(review, row['answer_field']) or '---',
+                'comments': getattr(review, row['comments_field']) or '---',
+            })
+        sections.append({
+            'title': section['title'],
+            'rows': rows,
+        })
+
+    html_string = render_to_string(
+        'download_templates/matter_file_review.html', {
+            'review': review,
+            'sections': sections,
+        })
+
+    pdf_file = HTML(string=html_string).write_pdf()
+
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'attachment; filename="file_review_{review.matter.file_number}_{id}.pdf"'
+    )
+    return response
 
 
 @login_required

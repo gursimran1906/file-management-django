@@ -9,7 +9,7 @@ from .views import add_risk_assessment, download_search_report, policies_display
 from .views import edit_ongoing_monitoring, download_document, onboarding_documents_display, edit_otherside, free30mins, download_free30mins, edit_free30mins
 from .views import undertakings, edit_undertaking, add_policy, edit_policy, download_policy_pdf, management_reports, weekly_report_view, policies_read_per_user
 from .views import bundle_create, bundle_edit, bundle_section_add, bundle_section_delete, bundle_section_reorder, bundle_document_upload, bundle_document_delete, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_delete
-from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review
+from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review
 
 urlpatterns = [
     path('dashboard/', user_dashboard, name='user_dashboard'),
@@ -38,6 +38,8 @@ urlpatterns = [
          add_matter_file_review, name='add_matter_file_review'),
     path('matter_file_review/edit/<int:id>/',
          edit_matter_file_review, name='edit_matter_file_review'),
+    path('matter_file_review/download/<int:id>/',
+         download_matter_file_review, name='download_matter_file_review'),
 
 
     path('<str:file_number>/edit/', edit_file, name='edit_file'),

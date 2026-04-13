@@ -835,11 +835,28 @@
                                     Reviewed: {{ item.review.file_reviewed_by|default:"-" }}{% if item.review.date_reviewed %} on {{ item.review.date_reviewed|date:"d/m/Y" }}{% endif %}
                                 </p>
                             </div>
-                            <div class='shrink-0'>
+                            <div class='shrink-0 flex gap-2'>
                                 <a class='link text-sm' href="{% url 'edit_matter_file_review' item.review.id %}">Edit</a>
+                                <a class='link text-sm' href="{% url 'download_matter_file_review' item.review.id %}">Print</a>
                             </div>
                         </div>
-                        <p class='text-sm mt-1'>Recommendations: {{ item.review.recommendations_and_further_actions|default:"---"|truncatechars:120 }}</p>
+                        <div class='text-sm mt-1'>
+                            <span class='font-medium'>Recommendations:</span>
+                            {% if item.review.recommendations_and_further_actions %}
+                                {% if item.review.recommendations_and_further_actions|length > 120 %}
+                                <span class='review-rec-short'>{{ item.review.recommendations_and_further_actions|truncatechars:120 }}
+                                    <button class='link text-xs review-rec-toggle' type='button'>View More</button>
+                                </span>
+                                <span class='review-rec-full hidden'>{{ item.review.recommendations_and_further_actions }}
+                                    <button class='link text-xs review-rec-toggle' type='button'>View Less</button>
+                                </span>
+                                {% else %}
+                                {{ item.review.recommendations_and_further_actions }}
+                                {% endif %}
+                            {% else %}
+                            ---
+                            {% endif %}
+                        </div>
 
                         <details class='mt-2'>
                             <summary class='text-sm link cursor-pointer'>View Full Review</summary>
@@ -957,6 +974,16 @@
               } else {
                   fullContent.style.display = "none";
               }
+          });
+      });
+
+      document.querySelectorAll('.review-rec-toggle').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+              var container = this.closest('.text-sm');
+              var shortSpan = container.querySelector('.review-rec-short');
+              var fullSpan = container.querySelector('.review-rec-full');
+              shortSpan.classList.toggle('hidden');
+              fullSpan.classList.toggle('hidden');
           });
       });
   });
