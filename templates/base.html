@@ -261,63 +261,44 @@
     
     <style>
       :root {
-        --navbar-height: 64px; /* Default value for fallback */
+        --navbar-height: 64px;
       }
-      
-      #content {
-        height: calc(100vh - var(--navbar-height));
+
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: transparent transparent;
       }
-      
+      *:hover,
+      *:focus-within {
+        scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+      }
 
-          /* Body and html for custom scrollbar appearance */
-    body, html {
-        scrollbar-width: thin; /* Thin scrollbars for Firefox */
-        scrollbar-color: transparent transparent; /* Hide scrollbar */
-    }
-
-    /* Show scrollbar on scroll (Webkit browsers) */
-    .scrolling {
-        overflow-y: scroll; /* Always show scrollbar */
-        scrollbar-color: rgba(100, 100, 100, 0.5) transparent; /* Custom thumb color */
-       
-        box-sizing: content-box; /* Ensure padding doesn't affect layout */
-    }
-
-    /* Custom scrollbar styles for Webkit browsers */
-    .scrolling::-webkit-scrollbar {
-        width: 8px; /* Set scrollbar width */
-    }
-
-    .scrolling::-webkit-scrollbar-thumb {
-        background-color: rgba(100, 100, 100, 0.5); /* Custom thumb color */
-        border-radius: 4px; /* Rounded corners for the thumb */
-    }
-
-    .scrolling::-webkit-scrollbar-track {
-        background-color: transparent; /* Transparent track */
-    }
-
-    /* Optional: Hide scrollbar but keep space occupied */
-    ::-webkit-scrollbar {
-        display: none; /* Hide scrollbar by default */
-    }
-
-    /* Show scrollbar when content overflows */
-  ::-webkit-scrollbar {
-        display: block; /* Show scrollbar when content overflows */
-    }
-
-      
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background-color: transparent;
+        border-radius: 3px;
+      }
+      *:hover::-webkit-scrollbar-thumb {
+        background-color: rgba(156, 163, 175, 0.5);
+      }
+      *:hover::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(107, 114, 128, 0.7);
+      }
     </style>
   </head>
 
-  <body class="container w-full bg-gray-50">
+  <body class="w-full bg-gray-50">
     {% include 'navbar.html' %}
     <div id="content"
-        class="sm:ml-64 sm:p-0 mt-[var(--navbar-height)]"
-        
+        class="sm:ml-64 mt-[var(--navbar-height)] min-h-[calc(100vh-var(--navbar-height))] overflow-y-auto"
       >
-    <div class="p-4 sm:w-vw-64 sm" style="height: calc(100vh - var(--navbar-height));">
+    <div class="p-4">
         {% if unread_policies_exist %}
         <div
             id="alert-policies"
@@ -429,30 +410,7 @@
       </div>
     </div>
     
-    <script>
-    // Function to add 'scrolling' class to the element being scrolled
-    function handleScroll(event) {
-      // Remove the 'scrolling' class from all elements
-      document.querySelectorAll('.scrolling').forEach(el => el.classList.remove('scrolling'));
 
-      // Add the 'scrolling' class to the element that is being scrolled
-      event.target.classList.add('scrolling');
-      
-      // Clear the timeout to avoid multiple executions
-      clearTimeout(event.target.scrollTimeout);
 
-      event.target.scrollTimeout = setTimeout(() => {
-        event.target.classList.remove('scrolling');
-      }, 2000); 
-    }
-
-    // Attach the scroll event listener to all scrollable elements
-    document.querySelectorAll('body, html, *').forEach(el => {
-      if (el.scrollHeight > el.clientHeight) {
-        el.addEventListener('scroll', handleScroll);
-      }
-    });
-
-    </script>
   </body>
 </html>

@@ -56,7 +56,7 @@
                     </svg>
                 </button>
             </h2>
-            <div id="accordion-color-body-invoice-{{ invoice.id }}" style="background-color:{% if invoice.state == 'D' %}{{colors.draft_invoice}}{% else %}{{colors.invoice}}{% endif %} !important;" class="hidden overflow-scroll bg-white dark:bg-gray-900" aria-labelledby="accordion-color-heading-invoice-{{invoice.id}}">
+            <div id="accordion-color-body-invoice-{{ invoice.id }}" style="background-color:{% if invoice.state == 'D' %}{{colors.draft_invoice}}{% else %}{{colors.invoice}}{% endif %} !important;" class="hidden overflow-auto bg-white dark:bg-gray-900" aria-labelledby="accordion-color-heading-invoice-{{invoice.id}}">
                 <div class="text-sm {% if forloop.last %} rounded-b-lg shadow{% endif %} p-4 border border-gray-200 dark:border-gray-700">
                     <b>Date:</b>{{invoice.date}}<br>
                     <b>Invoice No:</b>{{invoice.number}}
@@ -105,7 +105,7 @@
             </h2>
             <div id="accordion-color-body-credit-note-{{ credit_note.id }}"
                 style="background-color:{{colors.credit_note}}!important;"
-                class="hidden overflow-scroll bg-white dark:bg-gray-900" aria-labelledby="accordion-color-heading-credit-note-{{ credit_note.id }}">
+                class="hidden overflow-auto bg-white dark:bg-gray-900" aria-labelledby="accordion-color-heading-credit-note-{{ credit_note.id }}">
                 <div class="{% if forloop.last %} rounded-b-lg shadow{% endif %} p-4 border border-gray-200 dark:border-gray-700">
                     <table class='table text-black'>
                         <tr><td><b>Date:</b></td><td>{{credit_note.date}}</td></tr>
@@ -150,7 +150,7 @@
                         </svg>
                     </button>
                 </h2>
-                <div id="accordion-color-body-pmt-slip-{{ slip.id }}" style="background-color:{% if slip.is_money_out %}pink {% else %}lightblue {% endif %}!important;" class="hidden overflow-scroll bg-white dark:bg-gray-900" aria-labelledby="accordion-color-heading-pmt-slip-{{ slip.id }}">
+                <div id="accordion-color-body-pmt-slip-{{ slip.id }}" style="background-color:{% if slip.is_money_out %}pink {% else %}lightblue {% endif %}!important;" class="hidden overflow-auto bg-white dark:bg-gray-900" aria-labelledby="accordion-color-heading-pmt-slip-{{ slip.id }}">
                     <div class="{% if forloop.last %} rounded-b-lg shadow{% endif %} p-4 border border-gray-200 dark:border-gray-700">
                         <table class='table text-black' >
                             <tr>
@@ -223,7 +223,7 @@
                 </h2>
                 <div id="accordion-color-body-green-slip-{{ slip.id }}"
                     style="background-color:{{colors.green}}!important;"
-                    class="hidden overflow-scroll bg-white dark:bg-gray-900" aria-labelledby="accordion-color-heading-green-slip-{{ slip.id }}">
+                    class="hidden overflow-auto bg-white dark:bg-gray-900" aria-labelledby="accordion-color-heading-green-slip-{{ slip.id }}">
                     <div class="{% if forloop.last %} rounded-b-lg shadow{% endif %} p-4 border border-gray-200 dark:border-gray-700">
                         <table class='table table-striped' >
                             <tr>
