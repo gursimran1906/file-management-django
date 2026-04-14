@@ -75,7 +75,7 @@
             >0</span
           >
         </div>
-        <div class="space-y-3 min-h-80" id="to-do-tasks">
+        <div class="space-y-3 min-h-80 max-h-[70vh] overflow-y-auto" id="to-do-tasks">
           <!-- Tasks will be loaded here -->
         </div>
       </div>
@@ -95,7 +95,7 @@
             >0</span
           >
         </div>
-        <div class="space-y-3 min-h-80" id="in-progress-tasks">
+        <div class="space-y-3 min-h-80 max-h-[70vh] overflow-y-auto" id="in-progress-tasks">
           <!-- Tasks will be loaded here -->
         </div>
       </div>
@@ -115,7 +115,7 @@
             >0</span
           >
         </div>
-        <div class="space-y-3 min-h-80" id="completed-tasks">
+        <div class="space-y-3 min-h-80 max-h-[70vh] overflow-y-auto" id="completed-tasks">
           <!-- Tasks will be loaded here -->
         </div>
       </div>
@@ -164,7 +164,7 @@
   {% endcomment %}
   <div class="grid grid-cols-1 md:grid-cols-9 gap-4">
     <!-- Recent Files -->
-    <div class="overflow-y-auto max-h-[60vh] div-container md:col-span-3">
+    <div class="overflow-y-auto max-h-96 div-container md:col-span-3">
       <h2 class="text-xl mb-2">Files</h2>
       <div class="overflow-x-auto rounded-lg border">
         <table class="text-gray-600 w-full">
@@ -198,7 +198,7 @@
       </div>
     </div>
     <!-- Next Work -->
-    <div class="overflow-auto max-h-[60vh] div-container md:col-span-3">
+    <div class="overflow-auto max-h-96 div-container md:col-span-3">
       <h2 class="text-xl mb-2">Upcoming Tasks</h2>
       <ul>
         {% for work in user_next_works %}
@@ -221,7 +221,7 @@
       </ul>
     </div>
     <!-- Recent Emails -->
-    <div class="overflow-auto max-h-[60vh] div-container md:col-span-3">
+    <div class="overflow-auto max-h-96 div-container md:col-span-3">
       <div class="mb-4 flex justify-between">
         <h2 class="text-xl">Emails</h2>
         <span
@@ -345,7 +345,7 @@
   </div>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <!-- Risk Assessment -->
-    <div class="div-container overflow-auto max-h-[60vh]">
+    <div class="div-container overflow-auto max-h-96">
       <div class="mb-2 flex justify-between items-center gap-2">
         <div class="flex items-center gap-2">
           <h2 class="text-xl">Risk Assessments</h2>
@@ -432,7 +432,7 @@
       </ul>
     </div>
     <!-- File Reviews Due -->
-    <div class="div-container overflow-auto max-h-[60vh]">
+    <div class="div-container overflow-auto max-h-96">
       <div class="mb-2 flex justify-between items-center gap-2">
         <div class="flex items-center gap-2">
           <h2 class="text-xl">File Reviews</h2>
@@ -477,7 +477,7 @@
       </ul>
     </div>
     <!-- AML Checks Due -->
-    <div class="div-container overflow-auto max-h-[60vh]">
+    <div class="div-container overflow-auto max-h-96">
       <div class="mb-2 flex justify-between">
         <h2 class="text-xl">AML Checks</h2>
         <span
@@ -501,7 +501,7 @@
       </ul>
     </div>
     <!-- Overdue Invoices -->
-    <div class="div-container overflow-auto max-h-[60vh]">
+    <div class="div-container overflow-auto max-h-96">
       <h2 class="text-xl mb-2">Overdue Invoices</h2>
       <ul>
         {% for invoice in unsettled_invoices %}
