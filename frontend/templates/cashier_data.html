@@ -6,288 +6,231 @@
 {% block container %}
 {% now "Y-m-d" as today_date %}
 
-<div class="grid grid-cols-1 md:grid-cols-12 gap-4 mt-2">
-  <div class="md:col-span-6 div-container">
-    <form
-      class=""
-      action="{% url 'download_cashier_data' %}"
-      method="post"
-    >
-      <legend class="text-center text-xl">Pending Slips</legend>
-      {% csrf_token %}
-      <label class=" ">Date of Cashier's last visit</label>
-      <div class="mt-2 d-flex justify-content-center w-100">
-        <input
-          class="form-input"
-          type="date"
-          name="start_date"
-          value="{{ today_date }}"
-          title="Enter the Date for the last slips done"
-          required
-        />
-      </div>
-      <input
-        type="submit"
-        class="mt-4 btn-primary w-full"
-        name="type_of_report"
-        value="Pending Slips"
-      />
-    </form>
-  </div>
-  <div class="md:col-span-6 div-container">
-    <form
-      class=""
-      action="{% url 'download_cashier_data' %}"
-        method="post"
-      >
-      <legend class="text-center text-xl">Audit Monthly Slips</legend>
-      {% csrf_token %}
-    <div class='grid grid-cols-12 gap-4 mt-4'>
-        <div class='col-span-6'>
-            <label class="mt-2  form-label">Start Date</label>
-            <div class="mt-2 d-flex justify-content-center w-100">
-                <input
-                class="form-input"
-                type="date"
-                name="start_date"
-                value="{{ today_date }}"
-                title="Start Date"
-                required
-                />
-            </div>
-            
-        </div>
-        <div class='col-span-6'>
-            <label class="mt-2  form-label">End Date</label>
-            <div class="mt-2 d-flex justify-content-center w-100">
-                <input
-                class="form-input w-50"
-                type="date"
-                name="end_date"
-                value="{{ today_date }}"
-                title="End Date"
-                required
-                />
-            </div>
-            
-        </div>
-       
+<div class="mt-2 div-container">
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <legend class="text-xl mb-0">Transfers</legend>
+    <div class="flex flex-wrap gap-2">
+      <button type="button" onclick="document.getElementById('pendingSlipsModal').classList.remove('hidden')" class="btn-secondary">
+        Pending Slips
+      </button>
+      <button type="button" onclick="document.getElementById('auditSlipsModal').classList.remove('hidden')" class="btn-secondary">
+        Audit Slips
+      </button>
     </div>
-        <input
-        type="submit"
-        class="mt-4 btn-primary w-full"
-        name="type_of_report"
-        value="Audit Slips"
-        />
-    </form>
   </div>
-</div>
 
-<div class="mt-4 div-container">
-  <legend class="text-center text-xl">Transfers</legend>
+  <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+    <details class="border rounded-lg bg-white p-3" open>
+      <summary class="cursor-pointer font-medium text-gray-800">Add C-O Transfers</summary>
+      <form class="mt-3" method="post" action="{% url 'download_cashier_data' %}">
+        {% csrf_token %}
+        <input type="hidden" name="cashier_action" value="add_client_to_office_transfers">
+        <div class="overflow-x-auto border rounded-lg">
+          <table class="bg-white w-full text-sm text-left text-gray-700">
+            <thead>
+              <tr class="uppercase border-b bg-gray-50">
+                <th class="td border-e">Date</th>
+                <th class="td border-e">File</th>
+                <th class="td border-e">Amount (£)</th>
+                <th class="td border-e">Description</th>
+                <th class="td"></th>
+              </tr>
+            </thead>
+            <tbody id="clientToOfficeRowsBody">
+              <tr class="border-b">
+                <td class="td border-e">
+                  <input type="date" class="form-input w-full" name="row_date[]" value="{{ today_date }}">
+                </td>
+                <td class="td border-e">
+                  <select class="form-input w-full" name="row_file_id[]">
+                    <option value="">Select file</option>
+                    {% for file in active_files %}
+                    <option value="{{ file.id }}">{{ file.file_number }}{% if file.matter_description %} - {{ file.matter_description|truncatechars:60 }}{% endif %}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td class="td border-e">
+                  <input type="number" step="0.01" min="0" class="form-input w-full co-amount-input" name="row_amount[]" placeholder="0.00">
+                </td>
+                <td class="td border-e">
+                  <input type="text" maxlength="100" class="form-input w-full" name="row_description[]" value="C-O TFR">
+                </td>
+                <td class="td text-center">
+                  <button type="button" class="text-red-400 hover:text-red-600 co-remove-row-btn" title="Remove row">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button type="button" id="addCoRowBtn" class="btn-secondary">+ Row</button>
+          <button type="submit" class="btn-primary">Save</button>
+        </div>
+      </form>
+    </details>
 
-  <details class="mt-4 border rounded-lg bg-white p-3" open>
-    <summary class="cursor-pointer font-medium text-gray-800">Add C-O Transfers</summary>
-    <form class="mt-3" method="post" action="{% url 'download_cashier_data' %}">
-      {% csrf_token %}
-      <input type="hidden" name="cashier_action" value="add_client_to_office_transfers">
-      <div class="relative overflow-x-auto border sm:rounded-lg">
-        <table class="bg-white w-full text-sm text-left text-gray-700">
-          <thead>
-            <tr class="uppercase border-b bg-gray-50">
-              <th class="td border-e">Date</th>
-              <th class="td border-e">File</th>
-              <th class="td border-e">Amount (£)</th>
-              <th class="td border-e">Description</th>
-              <th class="td">Row</th>
-            </tr>
-          </thead>
-          <tbody id="clientToOfficeRowsBody">
-            <tr class="border-b">
-              <td class="td border-e">
-                <input type="date" class="form-input w-full" name="row_date[]" value="{{ today_date }}">
-              </td>
-              <td class="td border-e">
-                <select class="form-input w-full" name="row_file_id[]">
-                  <option value="">Select file</option>
-                  {% for file in active_files %}
-                  <option value="{{ file.id }}">{{ file.file_number }}{% if file.matter_description %} - {{ file.matter_description|truncatechars:60 }}{% endif %}</option>
-                  {% endfor %}
-                </select>
-              </td>
-              <td class="td border-e">
-                <input type="number" step="0.01" min="0" class="form-input w-full co-amount-input" name="row_amount[]" placeholder="0.00">
-              </td>
-              <td class="td border-e">
-                <input type="text" maxlength="100" class="form-input w-full" name="row_description[]" value="C-O TFR">
-              </td>
-              <td class="td">
-                <button type="button" class="btn-secondary co-remove-row-btn">Remove</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="mt-3 flex gap-2">
-        <button type="button" id="addCoRowBtn" class="btn-secondary">Add Row</button>
-        <button type="submit" class="btn-primary">Save Rows</button>
-      </div>
-    </form>
-  </details>
-
-  <details class="mt-3 border rounded-lg bg-white p-3">
-    <summary class="cursor-pointer font-medium text-gray-800">Add O-C Transfers</summary>
-    <form class="mt-3" method="post" action="{% url 'download_cashier_data' %}">
-      {% csrf_token %}
-      <input type="hidden" name="cashier_action" value="add_office_to_client_transfers">
-      <div class="relative overflow-x-auto border sm:rounded-lg">
-        <table class="bg-white w-full text-sm text-left text-gray-700">
-          <thead>
-            <tr class="uppercase border-b bg-gray-50">
-              <th class="td border-e">Date</th>
-              <th class="td border-e">File</th>
-              <th class="td border-e">Amount (£)</th>
-              <th class="td border-e">Description</th>
-              <th class="td">Row</th>
-            </tr>
-          </thead>
-          <tbody id="officeToClientRowsBody">
-            <tr class="border-b">
-              <td class="td border-e">
-                <input type="date" class="form-input w-full" name="oc_row_date[]" value="{{ today_date }}">
-              </td>
-              <td class="td border-e">
-                <select class="form-input w-full" name="oc_row_file_id[]">
-                  <option value="">Select file</option>
-                  {% for file in active_files %}
-                  <option value="{{ file.id }}">{{ file.file_number }}{% if file.matter_description %} - {{ file.matter_description|truncatechars:60 }}{% endif %}</option>
-                  {% endfor %}
-                </select>
-              </td>
-              <td class="td border-e">
-                <input type="number" step="0.01" min="0" class="form-input w-full oc-amount-input" name="oc_row_amount[]" placeholder="0.00">
-              </td>
-              <td class="td border-e">
-                <input type="text" maxlength="100" class="form-input w-full" name="oc_row_description[]" value="O-C TFR">
-              </td>
-              <td class="td">
-                <button type="button" class="btn-secondary oc-remove-row-btn">Remove</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="mt-3 flex gap-2">
-        <button type="button" id="addOcRowBtn" class="btn-secondary">Add Row</button>
-        <button type="submit" class="btn-primary">Save Rows</button>
-      </div>
-    </form>
-  </details>
+    <details class="border rounded-lg bg-white p-3">
+      <summary class="cursor-pointer font-medium text-gray-800">Add O-C Transfers</summary>
+      <form class="mt-3" method="post" action="{% url 'download_cashier_data' %}">
+        {% csrf_token %}
+        <input type="hidden" name="cashier_action" value="add_office_to_client_transfers">
+        <div class="overflow-x-auto border rounded-lg">
+          <table class="bg-white w-full text-sm text-left text-gray-700">
+            <thead>
+              <tr class="uppercase border-b bg-gray-50">
+                <th class="td border-e">Date</th>
+                <th class="td border-e">File</th>
+                <th class="td border-e">Amount (£)</th>
+                <th class="td border-e">Description</th>
+                <th class="td"></th>
+              </tr>
+            </thead>
+            <tbody id="officeToClientRowsBody">
+              <tr class="border-b">
+                <td class="td border-e">
+                  <input type="date" class="form-input w-full" name="oc_row_date[]" value="{{ today_date }}">
+                </td>
+                <td class="td border-e">
+                  <select class="form-input w-full" name="oc_row_file_id[]">
+                    <option value="">Select file</option>
+                    {% for file in active_files %}
+                    <option value="{{ file.id }}">{{ file.file_number }}{% if file.matter_description %} - {{ file.matter_description|truncatechars:60 }}{% endif %}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td class="td border-e">
+                  <input type="number" step="0.01" min="0" class="form-input w-full oc-amount-input" name="oc_row_amount[]" placeholder="0.00">
+                </td>
+                <td class="td border-e">
+                  <input type="text" maxlength="100" class="form-input w-full" name="oc_row_description[]" value="O-C TFR">
+                </td>
+                <td class="td text-center">
+                  <button type="button" class="text-red-400 hover:text-red-600 oc-remove-row-btn" title="Remove row">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button type="button" id="addOcRowBtn" class="btn-secondary">+ Row</button>
+          <button type="submit" class="btn-primary">Save</button>
+        </div>
+      </form>
+    </details>
+  </div>
 
   {% if grouped_transfers %}
-  <div class="mt-6 border rounded-lg bg-gray-50 p-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-    <div>
-      <label for="transferGroupDateFilter" class="block text-sm font-medium text-gray-700 mb-1">
-        View Date Group
-      </label>
+  <div class="mt-5 flex flex-wrap items-end gap-3">
+    <div class="flex-1 min-w-[200px]">
+      <label for="transferGroupDateFilter" class="block text-sm font-medium text-gray-700 mb-1">Date Group</label>
       <div class="flex gap-2">
         <select id="transferGroupDateFilter" class="form-input w-full">
-          <option value="">Choose date</option>
           {% for group in grouped_transfers %}
           <option value="{{ group.date|date:'Y-m-d' }}"{% if forloop.first %} selected{% endif %}>
-            {{ group.date|date:'d/m/Y' }} | £{{ group.total|intcomma }} | Pending {{ group.co_pending_count|add:group.oc_pending_count }}
+            {{ group.date|date:'d/m/Y' }} &mdash; £{{ group.total|intcomma }} &middot; {{ group.co_pending_count|add:group.oc_pending_count }} pending
           </option>
           {% endfor %}
         </select>
-        <button type="button" id="showAllTransferGroupsBtn" class="btn-secondary whitespace-nowrap">Show All</button>
+        <button type="button" id="showAllTransferGroupsBtn" class="btn-secondary whitespace-nowrap">All</button>
       </div>
     </div>
-    <form method="post" action="{% url 'download_cashier_data' %}">
+    <form method="post" action="{% url 'download_cashier_data' %}" class="flex items-end gap-2">
       {% csrf_token %}
       <input type="hidden" name="cashier_action" value="export_client_to_office_transfers">
-      <label class="block text-sm font-medium text-gray-700 mb-1">Export C-O Range</label>
-      <div class="flex gap-2">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">C-O from</label>
         <input type="date" class="form-input" name="start_date" value="{{ today_date }}" required>
-        <input type="date" class="form-input" name="end_date" value="{{ today_date }}" required>
-        <button type="submit" class="btn-primary whitespace-nowrap">CSV</button>
       </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">to</label>
+        <input type="date" class="form-input" name="end_date" value="{{ today_date }}" required>
+      </div>
+      <button type="submit" class="btn-secondary whitespace-nowrap">Export</button>
     </form>
-    <form method="post" action="{% url 'download_cashier_data' %}">
+    <form method="post" action="{% url 'download_cashier_data' %}" class="flex items-end gap-2">
       {% csrf_token %}
       <input type="hidden" name="cashier_action" value="export_office_to_client_transfers">
-      <label class="block text-sm font-medium text-gray-700 mb-1">Export O-C Range</label>
-      <div class="flex gap-2">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">O-C from</label>
         <input type="date" class="form-input" name="start_date" value="{{ today_date }}" required>
-        <input type="date" class="form-input" name="end_date" value="{{ today_date }}" required>
-        <button type="submit" class="btn-primary whitespace-nowrap">CSV</button>
       </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">to</label>
+        <input type="date" class="form-input" name="end_date" value="{{ today_date }}" required>
+      </div>
+      <button type="submit" class="btn-secondary whitespace-nowrap">Export</button>
     </form>
   </div>
   {% endif %}
 
-  <div class="mt-6 space-y-4">
+  <div class="mt-5 space-y-4">
     {% for group in grouped_transfers %}
-    <div class="border rounded-lg bg-white transfer-group-card" data-group-date="{{ group.date|date:'Y-m-d' }}">
-      <div class="p-3 border-b bg-gray-50">
-        <p class="font-semibold">{{ group.date|date:'d/m/Y' }}</p>
-        <p class="text-sm text-gray-600">
-          Date Total: £{{ group.total|intcomma }}
-        </p>
+    <div class="border rounded-lg bg-white shadow-sm transfer-group-card" data-group-date="{{ group.date|date:'Y-m-d' }}">
+      <div class="px-4 py-3 border-b bg-gray-50 rounded-t-lg">
+        <div class="flex items-center justify-between">
+          <p class="font-semibold text-gray-900">{{ group.date|date:'d/m/Y' }}</p>
+          <span class="text-sm font-medium text-gray-600">£{{ group.total|intcomma }}</span>
+        </div>
       </div>
 
       {% if group.co_rows %}
       <div class="border-b">
-        <div class="px-3 py-2 bg-indigo-50 flex flex-wrap gap-2 items-center justify-between">
+        <div class="px-4 py-2 bg-indigo-50/70 flex flex-wrap gap-2 items-center justify-between">
           <p class="text-sm font-medium text-indigo-800">
-            C-O &middot; £{{ group.co_total|intcomma }} &middot; Pending {{ group.co_pending_count }}
+            C-O &middot; £{{ group.co_total|intcomma }}
+            {% if group.co_pending_count > 0 %}
+            <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800">{{ group.co_pending_count }} pending</span>
+            {% endif %}
           </p>
           {% if group.co_pending_count > 0 %}
           <form method="post" action="{% url 'download_cashier_data' %}" class="flex gap-2 items-center">
             {% csrf_token %}
             <input type="hidden" name="cashier_action" value="mark_group_done">
             <input type="hidden" name="group_date" value="{{ group.date|date:'Y-m-d' }}">
-            <input type="date" name="bank_transfer_done_on" class="form-input" value="{{ today_date }}" required>
-            <button type="submit" class="btn-primary whitespace-nowrap text-xs">Mark C-O Done</button>
+            <input type="date" name="bank_transfer_done_on" class="form-input text-xs" value="{{ today_date }}" required>
+            <button type="submit" class="btn-primary whitespace-nowrap text-xs">Mark Done</button>
           </form>
-          {% else %}
-          <p class="text-green-700 font-medium text-xs">All done</p>
           {% endif %}
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm text-left text-gray-700">
             <thead>
-              <tr class="border-b uppercase">
+              <tr class="border-b bg-gray-50/50 uppercase text-xs text-gray-500">
                 <th class="td border-e">File</th>
                 <th class="td border-e">Amount</th>
                 <th class="td border-e">Description</th>
                 <th class="td border-e">Created By</th>
-                <th class="td">Bank Status</th>
+                <th class="td">Status</th>
               </tr>
             </thead>
             <tbody>
               {% for transfer in group.co_rows %}
-              <tr class="border-b">
-                <td class="td border-e">{{ transfer.file_number_from }}</td>
+              <tr class="border-b hover:bg-gray-50/50 transition-colors">
+                <td class="td border-e font-medium">{{ transfer.file_number_from }}</td>
                 <td class="td border-e">£{{ transfer.amount|intcomma }}</td>
-                <td class="td border-e">{{ transfer.description }}</td>
-                <td class="td border-e">{{ transfer.created_by|default:"-" }}</td>
+                <td class="td border-e text-gray-500">{{ transfer.description }}</td>
+                <td class="td border-e text-gray-500">{{ transfer.created_by|default:"-" }}</td>
                 <td class="td">
                   {% if transfer.is_bank_transfer_done %}
-                    <p class="text-green-700 font-medium">Done</p>
-                    <p class="text-xs text-gray-500">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Done</span>
+                    <p class="text-xs text-gray-400 mt-0.5">
                       {% if transfer.bank_transfer_done_on %}{{ transfer.bank_transfer_done_on|date:'d/m/Y' }}{% endif %}
-                      {% if transfer.bank_transfer_done_by %} by {{ transfer.bank_transfer_done_by }}{% endif %}
+                      {% if transfer.bank_transfer_done_by %} &middot; {{ transfer.bank_transfer_done_by }}{% endif %}
                     </p>
                   {% else %}
-                    <p class="text-amber-700 font-medium">Pending</p>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">Pending</span>
                   {% endif %}
                 </td>
               </tr>
               {% endfor %}
-              <tr class="bg-gray-50 font-semibold">
+              <tr class="bg-gray-50 font-semibold text-xs">
                 <td class="td border-e">C-O Total</td>
                 <td class="td border-e">£{{ group.co_total|intcomma }}</td>
-                <td class="td border-e" colspan="3"></td>
+                <td class="td" colspan="3"></td>
               </tr>
             </tbody>
           </table>
@@ -297,57 +240,58 @@
 
       {% if group.oc_rows %}
       <div>
-        <div class="px-3 py-2 bg-teal-50 flex flex-wrap gap-2 items-center justify-between">
+        <div class="px-4 py-2 bg-teal-50/70 flex flex-wrap gap-2 items-center justify-between">
           <p class="text-sm font-medium text-teal-800">
-            O-C &middot; £{{ group.oc_total|intcomma }} &middot; Pending {{ group.oc_pending_count }}
+            O-C &middot; £{{ group.oc_total|intcomma }}
+            {% if group.oc_pending_count > 0 %}
+            <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800">{{ group.oc_pending_count }} pending</span>
+            {% endif %}
           </p>
           {% if group.oc_pending_count > 0 %}
           <form method="post" action="{% url 'download_cashier_data' %}" class="flex gap-2 items-center">
             {% csrf_token %}
             <input type="hidden" name="cashier_action" value="mark_oc_group_done">
             <input type="hidden" name="group_date" value="{{ group.date|date:'Y-m-d' }}">
-            <input type="date" name="bank_transfer_done_on" class="form-input" value="{{ today_date }}" required>
-            <button type="submit" class="btn-primary whitespace-nowrap text-xs">Mark O-C Done</button>
+            <input type="date" name="bank_transfer_done_on" class="form-input text-xs" value="{{ today_date }}" required>
+            <button type="submit" class="btn-primary whitespace-nowrap text-xs">Mark Done</button>
           </form>
-          {% else %}
-          <p class="text-green-700 font-medium text-xs">All done</p>
           {% endif %}
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm text-left text-gray-700">
             <thead>
-              <tr class="border-b uppercase">
+              <tr class="border-b bg-gray-50/50 uppercase text-xs text-gray-500">
                 <th class="td border-e">File</th>
                 <th class="td border-e">Amount</th>
                 <th class="td border-e">Description</th>
                 <th class="td border-e">Created By</th>
-                <th class="td">Bank Status</th>
+                <th class="td">Status</th>
               </tr>
             </thead>
             <tbody>
               {% for transfer in group.oc_rows %}
-              <tr class="border-b">
-                <td class="td border-e">{{ transfer.file_number_from }}</td>
+              <tr class="border-b hover:bg-gray-50/50 transition-colors">
+                <td class="td border-e font-medium">{{ transfer.file_number_from }}</td>
                 <td class="td border-e">£{{ transfer.amount|intcomma }}</td>
-                <td class="td border-e">{{ transfer.description }}</td>
-                <td class="td border-e">{{ transfer.created_by|default:"-" }}</td>
+                <td class="td border-e text-gray-500">{{ transfer.description }}</td>
+                <td class="td border-e text-gray-500">{{ transfer.created_by|default:"-" }}</td>
                 <td class="td">
                   {% if transfer.is_bank_transfer_done %}
-                    <p class="text-green-700 font-medium">Done</p>
-                    <p class="text-xs text-gray-500">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Done</span>
+                    <p class="text-xs text-gray-400 mt-0.5">
                       {% if transfer.bank_transfer_done_on %}{{ transfer.bank_transfer_done_on|date:'d/m/Y' }}{% endif %}
-                      {% if transfer.bank_transfer_done_by %} by {{ transfer.bank_transfer_done_by }}{% endif %}
+                      {% if transfer.bank_transfer_done_by %} &middot; {{ transfer.bank_transfer_done_by }}{% endif %}
                     </p>
                   {% else %}
-                    <p class="text-amber-700 font-medium">Pending</p>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">Pending</span>
                   {% endif %}
                 </td>
               </tr>
               {% endfor %}
-              <tr class="bg-gray-50 font-semibold">
+              <tr class="bg-gray-50 font-semibold text-xs">
                 <td class="td border-e">O-C Total</td>
                 <td class="td border-e">£{{ group.oc_total|intcomma }}</td>
-                <td class="td border-e" colspan="3"></td>
+                <td class="td" colspan="3"></td>
               </tr>
             </tbody>
           </table>
@@ -362,107 +306,130 @@
   </div>
 </div>
 
+<!-- Pending Slips Modal -->
+<div id="pendingSlipsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+  <div class="relative top-20 mx-auto p-6 border w-11/12 md:w-96 shadow-lg rounded-lg bg-white">
+    <div class="flex justify-between items-center pb-4 border-b">
+      <h3 class="text-lg font-semibold text-gray-900">Pending Slips</h3>
+      <button type="button" onclick="document.getElementById('pendingSlipsModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <form action="{% url 'download_cashier_data' %}" method="post" class="mt-4 space-y-4">
+      {% csrf_token %}
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Date of Cashier's last visit</label>
+        <input class="form-input w-full" type="date" name="start_date" value="{{ today_date }}" required />
+      </div>
+      <input type="submit" class="btn-primary w-full" name="type_of_report" value="Pending Slips" />
+    </form>
+  </div>
+</div>
+
+<!-- Audit Slips Modal -->
+<div id="auditSlipsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+  <div class="relative top-20 mx-auto p-6 border w-11/12 md:w-96 shadow-lg rounded-lg bg-white">
+    <div class="flex justify-between items-center pb-4 border-b">
+      <h3 class="text-lg font-semibold text-gray-900">Audit Monthly Slips</h3>
+      <button type="button" onclick="document.getElementById('auditSlipsModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <form action="{% url 'download_cashier_data' %}" method="post" class="mt-4 space-y-4">
+      {% csrf_token %}
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+          <input class="form-input w-full" type="date" name="start_date" value="{{ today_date }}" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+          <input class="form-input w-full" type="date" name="end_date" value="{{ today_date }}" required />
+        </div>
+      </div>
+      <input type="submit" class="btn-primary w-full" name="type_of_report" value="Audit Slips" />
+    </form>
+  </div>
+</div>
+
 <script>
-  (function () {
-    const todayDate = '{{ today_date }}';
+(function () {
+  var todayDate = '{{ today_date }}';
 
-    function initAddForm(config) {
-      const rowsBody = document.getElementById(config.rowsBodyId);
-      const addRowBtn = document.getElementById(config.addRowBtnId);
-      if (!rowsBody || !addRowBtn) {
-        return;
-      }
+  function initAddForm(cfg) {
+    var body = document.getElementById(cfg.bodyId);
+    var addBtn = document.getElementById(cfg.addBtnId);
+    if (!body || !addBtn) return;
 
-      function updateDraftTotal() {}
+    function resetRow(row) {
+      row.querySelectorAll('input').forEach(function (input) {
+        if (input.name === cfg.descField) input.value = cfg.defaultDesc;
+        else if (input.name === cfg.dateField) input.value = todayDate;
+        else input.value = '';
+      });
+      row.querySelectorAll('select').forEach(function (s) { s.selectedIndex = 0; });
+    }
 
-      function resetRow(row) {
-        row.querySelectorAll('input').forEach((input) => {
-          if (input.name === config.descField) {
-            input.value = config.defaultDesc;
-          } else if (input.name === config.dateField) {
-            input.value = todayDate;
-          } else {
-            input.value = '';
-          }
+    function bindRow(row) {
+      var rm = row.querySelector(cfg.rmSelector);
+      if (rm) {
+        rm.addEventListener('click', function () {
+          var all = body.querySelectorAll('tr');
+          if (all.length === 1) resetRow(all[0]); else row.remove();
         });
-        row.querySelectorAll('select').forEach((s) => { s.selectedIndex = 0; });
       }
-
-      function bindRow(row) {
-        const removeBtn = row.querySelector(config.removeSelector);
-        const amountInput = row.querySelector(config.amountSelector);
-        if (amountInput) amountInput.addEventListener('input', updateDraftTotal);
-        if (removeBtn) {
-          removeBtn.addEventListener('click', function () {
-            const allRows = rowsBody.querySelectorAll('tr');
-            if (allRows.length === 1) { resetRow(allRows[0]); } else { row.remove(); }
-            updateDraftTotal();
-          });
-        }
-      }
-
-      addRowBtn.addEventListener('click', function () {
-        const firstRow = rowsBody.querySelector('tr');
-        if (!firstRow) return;
-        const newRow = firstRow.cloneNode(true);
-        resetRow(newRow);
-        rowsBody.appendChild(newRow);
-        bindRow(newRow);
-        updateDraftTotal();
-      });
-
-      rowsBody.querySelectorAll('tr').forEach(bindRow);
-      updateDraftTotal();
     }
 
-    initAddForm({
-      rowsBodyId: 'clientToOfficeRowsBody',
-      addRowBtnId: 'addCoRowBtn',
-      draftTotalId: null,
-      amountSelector: '.co-amount-input',
-      removeSelector: '.co-remove-row-btn',
-      descField: 'row_description[]',
-      dateField: 'row_date[]',
-      defaultDesc: 'C-O TFR'
+    addBtn.addEventListener('click', function () {
+      var first = body.querySelector('tr');
+      if (!first) return;
+      var nr = first.cloneNode(true);
+      resetRow(nr);
+      body.appendChild(nr);
+      bindRow(nr);
     });
 
-    initAddForm({
-      rowsBodyId: 'officeToClientRowsBody',
-      addRowBtnId: 'addOcRowBtn',
-      draftTotalId: null,
-      amountSelector: '.oc-amount-input',
-      removeSelector: '.oc-remove-row-btn',
-      descField: 'oc_row_description[]',
-      dateField: 'oc_row_date[]',
-      defaultDesc: 'O-C TFR'
+    body.querySelectorAll('tr').forEach(bindRow);
+  }
+
+  initAddForm({
+    bodyId: 'clientToOfficeRowsBody', addBtnId: 'addCoRowBtn',
+    rmSelector: '.co-remove-row-btn', descField: 'row_description[]',
+    dateField: 'row_date[]', defaultDesc: 'C-O TFR'
+  });
+  initAddForm({
+    bodyId: 'officeToClientRowsBody', addBtnId: 'addOcRowBtn',
+    rmSelector: '.oc-remove-row-btn', descField: 'oc_row_description[]',
+    dateField: 'oc_row_date[]', defaultDesc: 'O-C TFR'
+  });
+
+  var filter = document.getElementById('transferGroupDateFilter');
+  var showAll = document.getElementById('showAllTransferGroupsBtn');
+  var cards = Array.from(document.querySelectorAll('.transfer-group-card'));
+
+  function applyFilter(date, all) {
+    cards.forEach(function (c) {
+      c.classList.toggle('hidden', !all && c.dataset.groupDate !== date);
     });
+  }
 
-    var groupDateFilter = document.getElementById('transferGroupDateFilter');
-    var showAllGroupsBtn = document.getElementById('showAllTransferGroupsBtn');
-    var transferGroupCards = Array.from(document.querySelectorAll('.transfer-group-card'));
+  if (filter && cards.length) {
+    applyFilter(cards[0].dataset.groupDate, false);
+    filter.addEventListener('change', function () { applyFilter(filter.value, false); });
+  }
+  if (showAll) {
+    showAll.addEventListener('click', function () {
+      if (filter) filter.value = '';
+      applyFilter('', true);
+    });
+  }
 
-    function applyGroupFilter(filterDate, showAll) {
-      if (!transferGroupCards.length) return;
-      transferGroupCards.forEach(function (card) {
-        var shouldShow = showAll || (filterDate && card.dataset.groupDate === filterDate);
-        card.classList.toggle('hidden', !shouldShow);
-      });
-    }
-
-    if (groupDateFilter && transferGroupCards.length) {
-      var latestDate = transferGroupCards[0].dataset.groupDate;
-      groupDateFilter.value = latestDate || '';
-      applyGroupFilter(latestDate, false);
-      groupDateFilter.addEventListener('change', function () { applyGroupFilter(groupDateFilter.value, false); });
-    }
-
-    if (showAllGroupsBtn) {
-      showAllGroupsBtn.addEventListener('click', function () {
-        if (groupDateFilter) groupDateFilter.value = '';
-        applyGroupFilter('', true);
-      });
-    }
-  })();
+  document.querySelectorAll('#pendingSlipsModal, #auditSlipsModal').forEach(function (modal) {
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) modal.classList.add('hidden');
+    });
+  });
+})();
 </script>
 
 {% endblock %}
