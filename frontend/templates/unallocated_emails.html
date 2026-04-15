@@ -3,11 +3,22 @@
 {% block title %}Unallocated Emails{% endblock %}
 {% load utils %}
 {% block container_class %}container-fluid{% endblock %}
+
+{% block styles %}
+<style>
+    #content {
+        height: calc(100vh - var(--navbar-height));
+        min-height: unset;
+        overflow-y: auto;
+    }
+</style>
+{% endblock %}
+
 {% block container %}
 
 <form action="{% url 'allocate_emails' %}" method="POST">
     {% csrf_token %}
-    <div class="sticky top-0 z-20 -mx-4 px-4 pt-0 pb-3 bg-gray-50">
+    <div class="sticky top-0 z-20 -mx-4 px-4 pb-3 bg-gray-50">
         <div class="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3 bg-white rounded-lg border p-4">
             <div>
                 <label class="form-label" for="emailFilter">Filter by email</label>
@@ -40,6 +51,8 @@
             <tbody>
                 {% for email in emails %}
                     {{ email }}
+                
+                    
                 {% endfor %}
             </tbody>
         </table>
