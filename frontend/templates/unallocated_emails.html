@@ -5,28 +5,30 @@
 {% block container_class %}container-fluid{% endblock %}
 {% block container %}
 
-<form class="flex flex-col h-[calc(100vh-var(--navbar-height)-2rem)]" action="{% url 'allocate_emails' %}" method="POST">
+<form action="{% url 'allocate_emails' %}" method="POST">
     {% csrf_token %}
-    <div class="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3 bg-white rounded-lg border p-4 shrink-0">
-        <div>
-            <label class="form-label" for="emailFilter">Filter by email</label>
-            <select id="emailFilter" class="form-input" onchange="filterRows()">
-                <option value="All">Show all</option>
-                <option>mail@anpsolicitors.com</option>
-                <option>family@anpsolicitors.com</option>
-                <option>conveyancing@anpsolicitors.com</option>
-                <option>privateclient@anpsolicitors.com</option>
-                <option>disputeresolution@anpsolicitors.com</option>
-                <option>riskmanagment@anpsolicitors.com</option>
-            </select>
+    <div class="sticky top-0 z-20 -mx-4 px-4 pt-0 pb-3 bg-gray-50">
+        <div class="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3 bg-white rounded-lg border p-4">
+            <div>
+                <label class="form-label" for="emailFilter">Filter by email</label>
+                <select id="emailFilter" class="form-input" onchange="filterRows()">
+                    <option value="All">Show all</option>
+                    <option>mail@anpsolicitors.com</option>
+                    <option>family@anpsolicitors.com</option>
+                    <option>conveyancing@anpsolicitors.com</option>
+                    <option>privateclient@anpsolicitors.com</option>
+                    <option>disputeresolution@anpsolicitors.com</option>
+                    <option>riskmanagment@anpsolicitors.com</option>
+                </select>
+            </div>
+            <button class="btn-primary text-sm" type="submit">Allocate Emails</button>
         </div>
-        <button class="btn-primary text-sm" type="submit">Allocate Emails</button>
     </div>
 
-    <div class="flex-1 min-h-0 overflow-auto rounded-lg border bg-white mt-3">
+    <div class="rounded-lg border bg-white overflow-x-auto">
         <table class="table">
             <thead>
-                <tr class="thead sticky top-0 z-10">
+                <tr class="thead">
                     <th class="td">Index</th>
                     <th class="td">Date Time</th>
                     <th class="td">Email</th>
