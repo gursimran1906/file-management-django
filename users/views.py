@@ -1220,72 +1220,6 @@ def add_sickness_record(request):
 
 
 @login_required
-def add_holiday_request(request):
-    if request.method == 'POST':
-        start_date = request.POST.get('start_date')
-        end_date = request.POST.get('end_date')
-        reason = request.POST.get('reason', '')
-        holiday_type = request.POST.get('type')
-
-        # Convert dates from string to datetime
-        start_date_dt = datetime.fromisoformat(start_date)
-        end_date_dt = datetime.fromisoformat(end_date)
-
-        # Calculate the number of business days requested
-        num_days_requested = calculate_business_days(
-            start_date_dt, end_date_dt)
-
-        user = request.user
-        max_holidays_in_year = user.max_holidays_in_year
-
-        # Determine the year of the requested holiday
-        request_year = start_date_dt.year
-
-        # Get all "Paid" holidays for the user within the requested year
-        paid_holidays_in_request_year = HolidayRecord.objects.filter(
-            employee=user,
-            type='Paid',
-            start_date__year=request_year
-        )
-
-        # Calculate the total number of paid holidays taken in that year
-        total_paid_holidays_taken = sum(
-            calculate_business_days(holiday.start_date, holiday.end_date)
-            for holiday in paid_holidays_in_request_year
-        )
-
-        # Add the current request's days to the total
-        total_holidays_after_request = total_paid_holidays_taken + num_days_requested
-
-        # Check if the total number of paid holidays exceeds the user's maximum allowed holidays
-        if total_holidays_after_request > max_holidays_in_year and holiday_type == 'Paid':
-            exceeding_amount = total_holidays_after_request - max_holidays_in_year
-            messages.error(
-                request, f'You have requested {num_days_requested} business days in {request_year}, but this exceeds your yearly limit of {max_holidays_in_year} paid holidays by {exceeding_amount} days.')
-        else:
-            try:
-                # Create the holiday request
-                holiday_request = HolidayRecord(
-                    employee=user,
-                    start_date=start_date,
-                    end_date=end_date,
-                    type=holiday_type,
-                    reason=reason,
-                )
-                holiday_request.save()
-
-                messages.success(
-                    request, 'Holiday request submitted successfully.')
-            except Exception as e:
-                messages.error(
-                    request, 'There was an error submitting your holiday request. Please try again.')
-
-        return redirect('profile_page')
-
-    return redirect('profile_page')
-
-
-@login_required
 def add_office_closure(request):
     if request.method == 'POST':
         form = OfficeClosureRecordForm(request.POST)
@@ -1321,75 +1255,75 @@ def add_holiday_request(request):
         reason = request.POST.get('reason', '')
         holiday_type = request.POST.get('type')
 
-        # Convert dates from string to datetime
         start_date_dt = datetime.fromisoformat(start_date)
         end_date_dt = datetime.fromisoformat(end_date)
-
-        # Calculate the number of business days requested
-        num_days_requested = calculate_business_days(
-            start_date_dt, end_date_dt)
 
         user = request.user
         max_holidays_in_year = user.max_holidays_in_year
 
-        # Determine the year of the requested holiday
-        request_year = start_date_dt.year
+        start_year = start_date_dt.year
+        end_year = end_date_dt.year
+        years_spanned = range(start_year, end_year + 1)
 
-        # Get all approved "Paid" holidays for the user within the requested year
-        # Exclude denied holidays (only count approved ones)
-        paid_holidays_in_request_year = HolidayRecord.objects.filter(
-            employee=user,
-            type='Paid',
-            start_date__year=request_year,
-            approved=True  # Only count approved holidays
-        ).exclude(reason="Office Closure")
+        validation_failed = False
 
-        # Calculate the total number of paid holidays taken in that year
-        total_paid_holidays_taken = sum(
-            calculate_business_days(holiday.start_date, holiday.end_date)
-            for holiday in paid_holidays_in_request_year
-        )
+        if holiday_type == 'Paid':
+            for year in years_spanned:
+                # Calculate only the business days falling in this year
+                if year == start_year and year == end_year:
+                    year_start = start_date_dt
+                    year_end = end_date_dt
+                elif year == start_year:
+                    year_boundary = datetime(year + 1, 1, 1, 0, 0, 0, tzinfo=start_date_dt.tzinfo)
+                    year_start = start_date_dt
+                    year_end = year_boundary
+                else:
+                    year_start = datetime(year, 1, 1, 9, 0, 0, tzinfo=start_date_dt.tzinfo)
+                    year_end = end_date_dt
 
-        # Retrieve office closures and bank holidays for the requested year
-        current_year = datetime.now().year
-        office_closures = HolidayRecord.objects.filter(
-            reason="Office Closure",
-            employee=request.user,
-            start_date__year=current_year,
-            approved=True  # Only count approved office closures
-        )
-        total_office_closure_holidays = 0
-        for holiday in office_closures:
-            total_days = calculate_business_days(
-                holiday.start_date, holiday.end_date)
+                days_requested_in_year = calculate_business_days(year_start, year_end)
 
-            total_office_closure_holidays = total_office_closure_holidays + total_days
+                paid_holidays_in_year = HolidayRecord.objects.filter(
+                    employee=user,
+                    type='Paid',
+                    start_date__year=year,
+                    approved=True
+                ).exclude(reason="Office Closure")
 
-        holiday_list = holidays.country_holidays(
-            'GB', subdiv='ENG', years=current_year)
-        total_bank_holidays = sum(1 for name in holiday_list.values())
+                total_paid_taken_in_year = sum(
+                    calculate_business_days(h.start_date, h.end_date)
+                    for h in paid_holidays_in_year
+                )
 
-        non_working_days = total_office_closure_holidays + total_bank_holidays
-        max_holidays_adjusted = max_holidays_in_year - \
-            Decimal(non_working_days)
+                office_closures = HolidayRecord.objects.filter(
+                    reason="Office Closure",
+                    employee=user,
+                    start_date__year=year,
+                    approved=True
+                )
+                total_office_closure = sum(
+                    calculate_business_days(h.start_date, h.end_date)
+                    for h in office_closures
+                )
 
-        total_holidays_after_request = total_paid_holidays_taken + num_days_requested
+                holiday_list = holidays.country_holidays('GB', subdiv='ENG', years=year)
+                total_bank_holidays = len([d for d in holiday_list.keys() if d.weekday() < 5])
 
-        # Check if the total number of paid holidays exceeds the adjusted max holidays
-        if total_holidays_after_request > max_holidays_adjusted and holiday_type == 'Paid':
-            exceeding_amount = Decimal(
-                total_holidays_after_request) - max_holidays_adjusted
-            remaining_days = max_holidays_adjusted - \
-                Decimal(total_paid_holidays_taken)
+                non_working_days = total_office_closure + total_bank_holidays
+                max_adjusted = max_holidays_in_year - Decimal(non_working_days)
+                remaining_in_year = max_adjusted - Decimal(str(total_paid_taken_in_year))
 
-            messages.error(
-                request,
-                f"You cannot take these holidays as it will exceed your yearly allowance. "
-                f"You can request up to {remaining_days} more paid holiday days this year."
-            )
-        else:
+                if Decimal(str(total_paid_taken_in_year + days_requested_in_year)) > max_adjusted:
+                    messages.error(
+                        request,
+                        f"You cannot take these holidays as it will exceed your {year} yearly allowance. "
+                        f"You can request up to {remaining_in_year} more paid holiday days in {year}."
+                    )
+                    validation_failed = True
+                    break
+
+        if not validation_failed:
             try:
-                # Create the holiday request
                 holiday_request = HolidayRecord(
                     employee=user,
                     start_date=start_date,
