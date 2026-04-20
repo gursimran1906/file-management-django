@@ -136,14 +136,24 @@
                         <td class='td border-e'>
                             {{log.type|capfirst}}
                         </td>
-                        <td class='td border-e'>
-                            {% if log.desc|length > 50 %}
+                        <td class='td border-e align-top'>
+                            {% if log.desc|length > 50 or log.changes_list %}
                             <div class="description-content">
                                 {{ log.desc|slice:"0:50" }}{% if log.desc|length > 50 %}...{% endif %}
                             </div>
                             <button class='more-button link float-end'>More</button>
                             <div class="full-description" style="display: none;">
-                                {{ log.desc }}
+                                <div>{{ log.desc }}</div>
+                                {% if log.changes_list %}
+                                <ul class="list-disc ml-4 mt-1 text-xs text-gray-700 space-y-0.5">
+                                    {% for c in log.changes_list %}
+                                    <li>
+                                        <span class="font-medium text-gray-800">{{ c.label }}:</span>
+                                        {% if c.old_display %}<span class="text-gray-500 line-through">{{ c.old_display }}</span> <span class="text-gray-400">&rarr;</span> {% endif %}<span class="text-gray-800">{{ c.new_display }}</span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                                {% endif %}
                             </div>
                             {% else %}
                             {{ log.desc }}

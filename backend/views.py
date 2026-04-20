@@ -1,5 +1,6 @@
 import logging
 import html
+from html import escape as html_escape
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.db import transaction
@@ -1166,6 +1167,49 @@ def display_data_home_page(request, file_number):
         return render(request, 'home.html', {'error': 'An error occurred while loading the matter file'})
 
 
+def _display_change_value(value):
+    """Render a single old/new value for a Modifications log item."""
+    if value is None or value == '' or value == 'None':
+        return '(empty)'
+    text = str(value)
+    if len(text) > 120:
+        text = text[:117] + '...'
+    return text
+
+
+def build_change_items(changes):
+    """Normalise a ``Modifications.changes`` value into a list of entries.
+
+    Modifications are stored as a JSON dict of the shape::
+
+        {field_name: {'old_value': str, 'new_value': str}, ...}
+
+    Returns a list of ``{'label', 'old_display', 'new_display'}`` dicts, which
+    templates render as a bulleted list. Returns an empty list for missing or
+    unexpected payloads so the caller doesn't need to special-case them.
+    """
+    if not changes or not isinstance(changes, dict):
+        return []
+
+    items = []
+    for field, value in changes.items():
+        label = str(field).replace('_', ' ').strip()
+        label = label[:1].upper() + label[1:] if label else str(field)
+        if isinstance(value, dict) and ('old_value' in value or 'new_value' in value):
+            items.append({
+                'label': label,
+                'old_display': _display_change_value(value.get('old_value')),
+                'new_display': _display_change_value(value.get('new_value')),
+            })
+        else:
+            items.append({
+                'label': label,
+                'old_display': '',
+                'new_display': _display_change_value(value),
+            })
+    return items
+
+
 def get_file_logs(file_number):
     file = WIP.objects.filter(file_number=file_number).first()
     """
@@ -1181,10 +1225,10 @@ def get_file_logs(file_number):
         Q(object_id=file.id)
     )
     for modification in file_modifications:
-        # You can append modifications to logs similarly
         logs.append({
             'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-            'desc': f'File updated. Changes = {modification.changes}',
+            'desc': 'File updated.',
+            'changes_list': build_change_items(modification.changes),
             'user': modification.modified_by.username if modification.modified_by else None,
             'type': 'file_info'
         })
@@ -1195,7 +1239,8 @@ def get_file_logs(file_number):
     for modification in file_modifications:
         logs.append({
             'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-            'desc': f'Client updated. Changes = {modification.changes}',
+            'desc': f'Client ({file.client1}) updated.',
+            'changes_list': build_change_items(modification.changes),
             'user': modification.modified_by.username if modification.modified_by else None,
             'type': 'client_info'
         })
@@ -1214,10 +1259,10 @@ def get_file_logs(file_number):
             Q(object_id=file.client2.id)
         )
         for modification in file_modifications:
-
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Client updated. Changes = {modification.changes}',
+                'desc': f'Client ({file.client2}) updated.',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'client_info'
             })
@@ -1235,7 +1280,8 @@ def get_file_logs(file_number):
         for modification in file_modifications:
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Authorised Party updated. Changes = {modification.changes}',
+                'desc': f'Authorised Party ({file.authorised_party1}) updated.',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'authorised_party_info'
             })
@@ -1252,7 +1298,8 @@ def get_file_logs(file_number):
         for modification in file_modifications:
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Authorised Party updated. Changes = {modification.changes}',
+                'desc': f'Authorised Party ({file.authorised_party2}) updated.',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'authorised_party_info'
             })
@@ -1269,7 +1316,8 @@ def get_file_logs(file_number):
         for modification in file_modifications:
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Other Side updated. Changes = {modification.changes}',
+                'desc': f'Other Side ({file.other_side}) updated.',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'other_side_info'
             })
@@ -1299,10 +1347,10 @@ def get_file_logs(file_number):
             Q(object_id=note.id)
         )
         for modification in note_modifications:
-            # You can append modifications to logs similarly
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Attendance note modification, date of attendance note {note.date.strftime('%d/%m/%Y')}. Changes = {mark_safe(modification.changes)}',
+                'desc': f'Attendance note ({note.date.strftime('%d/%m/%Y')}) updated.',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'attendance_note'
             })
@@ -1319,10 +1367,10 @@ def get_file_logs(file_number):
             Q(object_id=letter.id)
         )
         for modification in modifications:
-            # You can append modifications to logs similarly
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Letter modification, date of letter {letter.date.strftime('%d/%m/%Y')}. Changes = {modification.changes}',
+                'desc': f'Letter ({letter.date.strftime('%d/%m/%Y')}) updated.',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'letter'
             })
@@ -1339,10 +1387,10 @@ def get_file_logs(file_number):
             Q(object_id=work.id)
         )
         for modification in modifications:
-
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Next Work modification, completed= {work.completed}, description of task {work.task}. Changes = {modification.changes}',
+                'desc': f'Next Work updated (task: {work.task}, completed: {work.completed}).',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'next_work'
             })
@@ -1359,10 +1407,10 @@ def get_file_logs(file_number):
             Q(object_id=work.id)
         )
         for modification in modifications:
-
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Last Work modification, description of task {work.task}. Changes = {modification.changes}',
+                'desc': f'Last Work updated (task: {work.task}).',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'last_work'
             })
@@ -1383,7 +1431,8 @@ def get_file_logs(file_number):
             slip_type = 'Pink slip' if slip.is_money_out else 'Blue slip'
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'{slip_type} modification. Changes = {modification.changes}',
+                'desc': f'{slip_type} updated.',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'pmts_slip'
             })
@@ -1402,10 +1451,10 @@ def get_file_logs(file_number):
             Q(object_id=slip.id)
         )
         for modification in modifications:
-
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Green slip modification. Changes = {modification.changes}',
+                'desc': 'Green slip updated.',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'green_slip'
             })
@@ -1422,10 +1471,10 @@ def get_file_logs(file_number):
             Q(object_id=invoice.id)
         )
         for modification in modifications:
-
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Invoice modification. Changes = {modification.changes}',
+                'desc': 'Invoice updated.',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'invoice'
             })
@@ -1452,7 +1501,8 @@ def get_file_logs(file_number):
         for modification in modifications:
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Credit note modification. Changes = {modification.changes}',
+                'desc': 'Credit note updated.',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'credit_note'
             })
@@ -1470,7 +1520,8 @@ def get_file_logs(file_number):
         for modification in modifications:
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Risk Assessment modification. Changes = {modification.changes}',
+                'desc': 'Risk Assessment updated.',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'risk_assessment'
             })
@@ -1487,7 +1538,8 @@ def get_file_logs(file_number):
         for modification in modifications:
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Ongoing Monitoring modification. Changes = {modification.changes}',
+                'desc': 'Ongoing Monitoring updated.',
+                'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'ongoing_monitoring'
             })
@@ -5927,10 +5979,26 @@ def download_file_logs(request, file_number):
                 <tbody>
             """
     for log in logs:
+        changes_html = ''
+        change_items = log.get('changes_list') or []
+        if change_items:
+            bullets = ''
+            for c in change_items:
+                old_part = (
+                    f"<span style='color:#6b7280;text-decoration:line-through'>{html_escape(c['old_display'])}</span> &rarr; "
+                    if c.get('old_display') else ''
+                )
+                bullets += (
+                    f"<li><strong>{html_escape(c['label'])}:</strong> "
+                    f"{old_part}{html_escape(c['new_display'])}</li>"
+                )
+            changes_html = (
+                f"<ul style='margin:4px 0 0 18px;padding:0;font-size:11px;color:#374151'>{bullets}</ul>"
+            )
         html = html + f"""
                         <tr>
                             <td>{log['type']}</td>
-                            <td>{log['desc']}</td>
+                            <td>{html_escape(log['desc'])}{changes_html}</td>
                             <td>{log['user']}</td>
                             <td>{log['timestamp']}</td>
                         </tr>
