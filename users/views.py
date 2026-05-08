@@ -1458,6 +1458,21 @@ def clock_out(request):
     return redirect('user_dashboard')
 
 
+ALLOWED_HOLIDAY_DELETE_NEXT = frozenset({'holiday_records', 'profile_page'})
+
+
+def user_can_delete_holiday_record(user, holiday):
+    """Managers may delete others' records; own records only while pending unless superuser.
+    Office closure rows require superuser."""
+    if not getattr(user, 'is_manager', False):
+        return False
+    if (holiday.reason or '').strip() == 'Office Closure' and not user.is_superuser:
+        return False
+    if holiday.employee_id == user.id and holiday.checked_by is not None and not user.is_superuser:
+        return False
+    return True
+
+
 @login_required
 def edit_holiday_record(request, holiday_id):
     """Edit an existing holiday record."""
@@ -1504,9 +1519,64 @@ def edit_holiday_record(request, holiday_id):
     context = {
         'holiday': holiday,
         'form': form,
+        'can_delete_holiday': user_can_delete_holiday_record(request.user, holiday),
     }
 
     return render(request, 'edit_holiday.html', context)
+
+
+@login_required
+@require_POST
+def delete_holiday_record(request, holiday_id):
+    if not request.user.is_manager:
+        messages.error(
+            request, 'You do not have permission to delete holiday records.')
+        return redirect('profile_page')
+
+    next_name = request.POST.get('next', 'holiday_records')
+    if next_name not in ALLOWED_HOLIDAY_DELETE_NEXT:
+        next_name = 'holiday_records'
+
+    holiday = get_object_or_404(HolidayRecord, id=holiday_id)
+
+    if (holiday.reason or '').strip() == 'Office Closure' and not request.user.is_superuser:
+        messages.error(
+            request,
+            'Only an administrator can delete office closure records.',
+        )
+        return redirect(next_name)
+
+    if (
+        holiday.employee_id == request.user.id
+        and holiday.checked_by is not None
+        and not request.user.is_superuser
+    ):
+        messages.error(
+            request,
+            'You cannot delete your own holiday record after it has been reviewed. '
+            'Ask another manager or an administrator.',
+        )
+        return redirect(next_name)
+
+    logger.info(
+        'HolidayRecord deleted actor_id=%s actor_username=%s record_id=%s employee_id=%s '
+        'start=%s end=%s type=%s approved=%s reason=%s',
+        request.user.id,
+        request.user.username,
+        holiday.id,
+        holiday.employee_id,
+        holiday.start_date,
+        holiday.end_date,
+        holiday.type,
+        holiday.approved,
+        (holiday.reason or '')[:200],
+    )
+
+    employee_username = holiday.employee.username
+    holiday.delete()
+    messages.success(
+        request, f'Holiday record for {employee_username} was removed.')
+    return redirect(next_name)
 
 
 def export_to_csv(queryset, fieldnames, filename):

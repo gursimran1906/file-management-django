@@ -77,6 +77,21 @@
         <!-- Submit Button -->
         <button type="submit" class="btn-primary w-full mt-4">Save Changes</button>
     </form>
+
+    {% if user.is_manager and can_delete_holiday %}
+    <form
+      method="post"
+      action="{% url 'delete_holiday_record' holiday.id %}"
+      class="mt-6 pt-4 border-t border-gray-200"
+      onsubmit="return confirm('Permanently delete this holiday record? This cannot be undone.');"
+    >
+      {% csrf_token %}
+      <input type="hidden" name="next" value="holiday_records" />
+      <button type="submit" class="w-full py-2 px-4 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-sm font-medium">
+        Delete holiday record
+      </button>
+    </form>
+    {% endif %}
 </div>
 
 {% endblock %}

@@ -496,27 +496,42 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
         </tr>
       </thead>
       <tbody>
-        {% for request in all_requests %}
+        {% for holiday_req in all_requests %}
         <tr class="hover:bg-gray-50 border-b">
-          <td class="px-4 py-2">{{ request.employee.username }}</td>
-          <td class="px-4 py-2">{{ request.start_date|date:"d/m/Y H:i " }}</td>
-          <td class="px-4 py-2">{{ request.end_date|date:"d/m/Y H:i " }}</td>
-          <td class="px-4 py-2">{{ request.type }}</td>
-          <td class="px-4 py-2">{{ request.reason }}</td>
+          <td class="px-4 py-2">{{ holiday_req.employee.username }}</td>
+          <td class="px-4 py-2">{{ holiday_req.start_date|date:"d/m/Y H:i " }}</td>
+          <td class="px-4 py-2">{{ holiday_req.end_date|date:"d/m/Y H:i " }}</td>
+          <td class="px-4 py-2">{{ holiday_req.type }}</td>
+          <td class="px-4 py-2">{{ holiday_req.reason }}</td>
           <td class="px-4 py-2 text-center">
             <a
               type="submit"
               class="link cursor-pointer"
-              href="{% url 'approve_holiday_request' request.id %}"
+              href="{% url 'approve_holiday_request' holiday_req.id %}"
               >Approve</a
             >
             /
             <a
               type="submit"
               class="link cursor-pointer"
-              href="{% url 'deny_holiday_request' request.id %}"
+              href="{% url 'deny_holiday_request' holiday_req.id %}"
               >Deny</a
             >
+            {% if request.user.is_superuser or holiday_req.reason != "Office Closure" %}
+            <span class="text-gray-400"> / </span>
+            <form
+              method="post"
+              action="{% url 'delete_holiday_record' holiday_req.id %}"
+              class="inline"
+              onsubmit="return confirm('Remove this holiday request permanently?');"
+            >
+              {% csrf_token %}
+              <input type="hidden" name="next" value="profile_page" />
+              <button type="submit" class="link cursor-pointer text-red-600 bg-transparent border-0 p-0 font-inherit">
+                Delete
+              </button>
+            </form>
+            {% endif %}
           </td>
         </tr>
         {% empty %}
