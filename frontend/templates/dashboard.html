@@ -476,6 +476,80 @@
         {% endfor %}
       </ul>
     </div>
+    <!-- Key Document Expiries -->
+    <div class="div-container overflow-auto max-h-96">
+      <div class="mb-2 flex justify-between items-center gap-2">
+        <div>
+          <h2 class="text-xl">Key Documents</h2>
+          <span class="text-sm text-gray-500">missing, expired or due in 30 days</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <a
+            href="{% url 'download_user_key_documents_due' %}?key_doc_scope={{ key_doc_scope }}"
+            class="btn-secondary text-xs"
+          >Download CSV</a>
+          <label class="inline-flex items-center cursor-pointer select-none">
+            <span class="me-3 text-xs text-gray-600">My Files</span>
+            <input
+              id="key-doc-scope-toggle"
+              type="checkbox"
+              class="sr-only peer"
+              {% if key_doc_scope == 'all_active' %}checked{% endif %}
+            >
+            <div class="relative w-9 h-5 bg-gray-300 rounded-full transition-colors peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-200 peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4 rtl:peer-checked:after:-translate-x-4"></div>
+            <span class="ms-3 text-xs text-gray-600">All Active</span>
+          </label>
+        </div>
+      </div>
+      <ul>
+        {% for alert in missing_key_document_alerts %}
+        <li class="border-b py-2">
+          <div class="flex justify-between gap-2">
+            <a class="link" href="{% url 'edit_client' alert.client_id %}">{{ alert.client_name }}</a>
+            <span class="text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-800">Missing</span>
+          </div>
+          <div class="text-sm text-gray-700 mt-1">
+            {{ alert.document_category }} needs adding
+          </div>
+          <div class="text-xs text-gray-500 mt-1">
+            File: <a class="link" href="{% url 'home' alert.file_number %}">{{ alert.file_number }}</a>
+          </div>
+        </li>
+        {% endfor %}
+        {% for alert in key_document_expiry_alerts %}
+        <li class="border-b py-2">
+          <div class="flex justify-between gap-2">
+            <a class="link" href="{% url 'edit_client' alert.client_id %}"
+              >{{ alert.client_name }}</a
+            >
+            {% if alert.status == 'expired' %}
+            <span class="text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-800">Expired</span>
+            {% else %}
+            <span class="text-[11px] px-2 py-1 rounded-full bg-amber-100 text-amber-800">Due soon</span>
+            {% endif %}
+          </div>
+          <div class="text-sm text-gray-700 mt-1">
+            {{ alert.document_category }}{% if alert.document_type %}: {{ alert.document_type }}{% endif %}
+            expires {{ alert.expiry_date|date:"d/m/Y" }}
+          </div>
+          {% if alert.document_reference %}
+          <div class="text-xs text-gray-500 mt-1">
+            Ref: {{ alert.document_reference }}
+          </div>
+          {% endif %}
+          <div class="text-xs text-gray-500 mt-1">
+            File(s): {{ alert.file_numbers|join:", " }}
+          </div>
+        </li>
+        {% empty %}
+        {% if not missing_key_document_alerts %}
+        <li class="text-sm border-t border-b py-2 text-green-700">
+          No Key Document Issues
+        </li>
+        {% endif %}
+        {% endfor %}
+      </ul>
+    </div>
     <!-- AML Checks Due -->
     <div class="div-container overflow-auto max-h-96">
       <div class="mb-2 flex justify-between">
@@ -702,6 +776,18 @@
         const riskApiUrl = "{% url 'get_risk_assessments_due_data' %}";
         const riskDownloadBaseUrl = "{% url 'download_user_risk_assessments_due' %}";
         let currentRiskScope = "{{ risk_scope }}";
+        const keyDocScopeToggle = document.getElementById('key-doc-scope-toggle');
+
+        if (keyDocScopeToggle) {
+            keyDocScopeToggle.addEventListener('change', function () {
+                const nextUrl = new URL(window.location.href);
+                nextUrl.searchParams.set(
+                    'key_doc_scope',
+                    this.checked ? 'all_active' : 'associated'
+                );
+                window.location.href = nextUrl.toString();
+            });
+        }
 
         // Cookie functions
         function setCookie(name, value, days) {

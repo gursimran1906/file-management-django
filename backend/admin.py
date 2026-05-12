@@ -20,6 +20,7 @@
 # admin.site.register(Modifications)
 from django.contrib import admin
 from .models import (Memo, Modifications, ClientContactDetails, AuthorisedParties, OthersideDetails,
+                     ClientKeyDocument, MatterKeyDate,
                      FileLocation, FileStatus, MatterType, WIP, NextWork, LastWork, PmtsSlips,
                      LedgerAccountTransfers, Policy, PolicyVersion, TempSlips, Invoices, MatterEmails, MatterLetters,
                      MatterAttendanceNotes, RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees, Undertaking,
@@ -37,6 +38,14 @@ class ModificationsAdmin(admin.ModelAdmin):
 class ClientContactDetailsAdmin(admin.ModelAdmin):
     list_display = ['id', 'name', 'dob', 'address_line1', 'address_line2', 'county', 'postcode',
                     'email', 'contact_number', 'date_of_last_aml', 'id_verified', 'timestamp', 'created_by']
+
+
+@admin.register(ClientKeyDocument)
+class ClientKeyDocumentAdmin(admin.ModelAdmin):
+    list_display = ['id', 'client', 'category', 'document_type', 'document_reference',
+                    'issue_date', 'expiry_date', 'verified_on', 'verified_by', 'timestamp']
+    list_filter = ['category', 'expiry_date', 'verified_on']
+    search_fields = ['client__name', 'document_type', 'document_reference']
 
 
 @admin.register(AuthorisedParties)
@@ -79,6 +88,14 @@ class PricingItemAdmin(admin.ModelAdmin):
 class WIPAdmin(admin.ModelAdmin):
     list_display = ['id', 'file_number', 'fee_earner', 'matter_description', 'client1', 'client2',
                     'matter_type', 'file_status', 'file_location', 'other_side', 'timestamp', 'created_by']
+
+
+@admin.register(MatterKeyDate)
+class MatterKeyDateAdmin(admin.ModelAdmin):
+    list_display = ['id', 'matter', 'date_type', 'title',
+                    'date', 'time', 'location', 'created_by', 'timestamp']
+    list_filter = ['date_type', 'date']
+    search_fields = ['matter__file_number', 'title', 'location', 'notes']
 
 
 @admin.register(NextWork)

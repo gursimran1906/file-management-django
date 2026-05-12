@@ -8,6 +8,74 @@
 <form class="div-container mt-4" method="post">
   {% csrf_token %}
   {{ form.as_p }}
+  {% if key_document_formset %}
+  <div class="mt-6">
+    <h2 class="text-xl mb-2">Key Documents</h2>
+    {{ key_document_formset.management_form }}
+    <div class="overflow-x-auto rounded-lg border">
+      <table class="w-full text-sm text-gray-700">
+        <thead>
+          <tr class="bg-gray-50 border-b">
+            <th class="text-left p-2">Category</th>
+            <th class="text-left p-2">Document Type</th>
+            <th class="text-left p-2">Document No./Reference</th>
+            <th class="text-left p-2">Issue Date</th>
+            <th class="text-left p-2">Expiry Date</th>
+            <th class="text-left p-2">Verified On</th>
+            <th class="text-left p-2">Notes</th>
+            <th class="text-left p-2">Delete</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for document_form in key_document_formset %}
+          <tr class="border-b align-top">
+            <td class="p-2">
+              {{ document_form.id }}
+              {{ document_form.category }}
+              {{ document_form.category.errors }}
+            </td>
+            <td class="p-2">
+              {{ document_form.document_type }}
+              {{ document_form.document_type.errors }}
+            </td>
+            <td class="p-2">
+              {{ document_form.document_reference }}
+              {{ document_form.document_reference.errors }}
+            </td>
+            <td class="p-2">
+              {{ document_form.issue_date }}
+              {{ document_form.issue_date.errors }}
+            </td>
+            <td class="p-2">
+              {{ document_form.expiry_date }}
+              {{ document_form.expiry_date.errors }}
+            </td>
+            <td class="p-2">
+              {{ document_form.verified_on }}
+              {{ document_form.verified_on.errors }}
+            </td>
+            <td class="p-2">
+              {{ document_form.notes }}
+              {{ document_form.notes.errors }}
+            </td>
+            <td class="p-2">
+              {% if document_form.instance.pk %}
+              <label class="inline-flex items-center gap-2">
+                {{ document_form.DELETE }}
+                <span>Delete</span>
+              </label>
+              {{ document_form.DELETE.errors }}
+              {% else %}
+              <span class="text-gray-400">New row</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
   <button class='mt-2 btn-primary' type="submit">Save Changes</button>
 </form>
 {% endblock %}

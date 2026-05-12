@@ -1,6 +1,6 @@
 from django import forms
 from .models import *
-from django.forms import formset_factory
+from django.forms import formset_factory, inlineformset_factory
 from datetime import date
 from math import ceil
 from django.utils import timezone
@@ -18,7 +18,7 @@ class OpenFileForm(forms.ModelForm):
 class NextWorkFormWithoutFileNumber(forms.ModelForm):
     class Meta:
         model = NextWork
-        fields = ['person', 'task', 'date']
+        fields = ['person', 'task', 'date', 'status', 'urgency']
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date'}),
         }
@@ -324,13 +324,57 @@ class ClientForm(forms.ModelForm):
         
         widgets = {
             'dob': forms.DateInput(attrs={'type': 'date'}),
-            'date_of_last_aml': forms.DateInput(attrs={'type': 'date'})
+            'date_of_last_aml': forms.DateInput(attrs={'type': 'date'}),
         }
 
     def __init__(self, *args, **kwargs):
         super(ClientForm, self).__init__(*args, **kwargs)
         for field_name, field in self.fields.items():
             field.widget.attrs['class'] = 'form-input'
+
+
+class ClientKeyDocumentForm(forms.ModelForm):
+    class Meta:
+        model = ClientKeyDocument
+        fields = ['category', 'document_type', 'document_reference',
+                  'issue_date', 'expiry_date', 'verified_on', 'notes']
+        widgets = {
+            'issue_date': forms.DateInput(attrs={'type': 'date'}),
+            'expiry_date': forms.DateInput(attrs={'type': 'date'}),
+            'verified_on': forms.DateInput(attrs={'type': 'date'}),
+            'notes': forms.Textarea(attrs={'rows': 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super(ClientKeyDocumentForm, self).__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            field.widget.attrs['class'] = 'form-input'
+
+
+ClientKeyDocumentFormSet = inlineformset_factory(
+    ClientContactDetails,
+    ClientKeyDocument,
+    form=ClientKeyDocumentForm,
+    extra=2,
+    can_delete=True
+)
+
+
+class MatterKeyDateForm(forms.ModelForm):
+    class Meta:
+        model = MatterKeyDate
+        fields = ['date_type', 'title', 'date', 'time', 'location', 'notes']
+        widgets = {
+            'date': forms.DateInput(attrs={'type': 'date'}),
+            'time': forms.TimeInput(attrs={'type': 'time'}),
+            'notes': forms.Textarea(attrs={'rows': 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super(MatterKeyDateForm, self).__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            field.widget.attrs['class'] = 'form-input'
+
 
 class AuthorisedPartyForm(forms.ModelForm):
     class Meta:

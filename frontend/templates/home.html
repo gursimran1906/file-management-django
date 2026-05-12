@@ -31,19 +31,28 @@
                 </div>
             </div>
         </div>
+        {% if matter_key_date_alerts or matter_key_document_alerts %}
+        <div class='mt-3 flex flex-wrap gap-2'>
+            {% for key_date in matter_key_date_alerts %}
+            <span class='text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800'>
+                {{ key_date.get_date_type_display }}: {{ key_date.title }} on {{ key_date.date|date:"d/m/Y" }}
+            </span>
+            {% endfor %}
+            {% for item in matter_key_document_alerts %}
+            {% with document=item.document %}
+            <span class='text-xs px-2 py-1 rounded-full bg-red-100 text-red-800'>
+                Expired {{ document.get_category_display }}{% if document.document_type %}: {{ document.document_type }}{% endif %} for {{ document.client.name }}
+            </span>
+            {% endwith %}
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
-    <div class='grid grid-cols-1 md:grid-cols-3 gap-4'>
+    <div class='grid grid-cols-1 md:grid-cols-2 gap-4'>
         <div class='div-container overflow-y-auto max-h-[70vh]'>
             <div class='flex items-center justify-between mb-3'>
                 <h3 class='text-lg font-semibold text-gray-900'>Next Work</h3>
-                <button class='btn-primary text-xs' type="button" onclick="toggleNormalCollapse('nextWorkFormContainer');">Add</button>
-            </div>
-            <div id="nextWorkFormContainer" class='hidden bg-gray-50 p-3 border rounded-lg mb-3'>
-                <form method="post" action="{% url 'add_next_work_file' matter.file_number %}">
-                {% csrf_token %}
-                {{next_work_form.as_p}}
-                <button class='btn-primary mt-2'>Add</button>
-                </form>
+                <button class='btn-primary text-xs' type="button" data-open-modal="nextWorkModal">Add</button>
             </div>
             <div class="space-y-3">
             {% for work in next_work %}
@@ -51,6 +60,10 @@
                     <div class="flex items-center justify-between">
                         <span class="font-medium text-gray-900">{{work.person}}</span>
                         <a class='link text-xs' href="{% url 'edit_next_work' work.id %}">Edit</a>
+                    </div>
+                    <div class="flex flex-wrap gap-2 text-[11px]">
+                        <span class="px-2 py-1 rounded-full bg-blue-100 text-blue-800">{{ work.get_status_display }}</span>
+                        <span class="px-2 py-1 rounded-full bg-gray-100 text-gray-700">{{ work.get_urgency_display }}</span>
                     </div>
                     <p class="text-gray-600">{{work.task}}</p>
                     <div class="flex gap-3 text-xs text-gray-400">
@@ -66,14 +79,7 @@
         <div class='div-container overflow-y-auto max-h-[70vh]'>
             <div class='flex items-center justify-between mb-3'>
                 <h3 class='text-lg font-semibold text-gray-900'>Last Work</h3>
-                <button class='btn-primary text-xs' type="button" onclick="toggleNormalCollapse('lastWorkFormContainer');">Add</button>
-            </div>
-            <div id="lastWorkFormContainer" class='hidden bg-gray-50 p-3 border rounded-lg mb-3'>
-                <form method="post" action="{% url 'add_last_work_file' matter.file_number %}">
-                    {% csrf_token %}
-                    {{last_work_form.as_p}}
-                    <button class='btn-primary mt-2'>Add</button>
-                </form>
+                <button class='btn-primary text-xs' type="button" data-open-modal="lastWorkModal">Add</button>
             </div>
             <div class="space-y-3">
             {% for work in last_work %}
@@ -93,82 +99,80 @@
             {% endfor %}
             </div>
         </div>
+    </div>
+    <div class='grid grid-cols-1 md:grid-cols-2 gap-4'>
         <div class='div-container overflow-y-auto max-h-[70vh]'>
-            <div class='flex items-center justify-between mb-2'>
-                <h3 class='text-lg font-semibold text-gray-900'>Logs</h3>
-                <a class="btn-primary text-xs" href="{% url 'download_file_logs' matter.file_number %}">Download</a>
+            <div class='flex items-center justify-between mb-3'>
+                <h3 class='text-lg font-semibold text-gray-900'>Key Documents</h3>
+                <span class='text-xs text-gray-500'>Client ID and address evidence</span>
             </div>
-            <div class='flex flex-wrap gap-3 mb-3 text-sm'>
-                <label class="inline-flex items-center gap-1.5 cursor-pointer">
-                    <input class="form-check-input filter-checkbox rounded" type="checkbox" id="filterFinance">
-                    <span class="text-gray-600">Finance</span>
-                </label>
-                <label class="inline-flex items-center gap-1.5 cursor-pointer">
-                    <input class="form-check-input filter-checkbox rounded" type="checkbox" id="filterCorrespondence">
-                    <span class="text-gray-600">Correspondence</span>
-                </label>
-                <label class="inline-flex items-center gap-1.5 cursor-pointer">
-                    <input class="form-check-input filter-checkbox rounded" type="checkbox" id="filterAttendanceNote">
-                    <span class="text-gray-600">Attendance Notes</span>
-                </label>
+            <div class='space-y-3'>
+                {% for item in matter_key_documents %}
+                {% with document=item.document %}
+                <div class='rounded-lg border bg-white p-3 text-sm'>
+                    <div class='flex justify-between gap-2'>
+                        <div>
+                            <p class='font-medium text-gray-900'>{{ document.client.name }}</p>
+                            <p class='text-gray-700'>{{ document.get_category_display }}{% if document.document_type %}: {{ document.document_type }}{% endif %}</p>
+                        </div>
+                        {% if item.status == 'expired' %}
+                        <span class='h-fit text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-800'>Expired</span>
+                        {% elif item.status == 'due_soon' %}
+                        <span class='h-fit text-[11px] px-2 py-1 rounded-full bg-amber-100 text-amber-800'>Due soon</span>
+                        {% endif %}
+                    </div>
+                    <div class='mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs text-gray-500'>
+                        {% if document.document_reference %}<p>Ref: {{ document.document_reference }}</p>{% endif %}
+                        {% if document.issue_date %}<p>Issue date: {{ document.issue_date|date:"d/m/Y" }}</p>{% endif %}
+                        {% if document.expiry_date %}<p>Expiry: {{ document.expiry_date|date:"d/m/Y" }}</p>{% endif %}
+                        {% if document.verified_on %}<p>Verified: {{ document.verified_on|date:"d/m/Y" }}{% if document.verified_by %} by {{ document.verified_by }}{% endif %}</p>{% endif %}
+                    </div>
+                    {% if document.notes %}
+                    <p class='mt-2 text-xs text-gray-600'>{{ document.notes }}</p>
+                    {% endif %}
+                    <a class='link text-xs mt-2 inline-block' href="{% url 'edit_client' document.client.id %}">Edit client documents</a>
+                </div>
+                {% endwith %}
+                {% empty %}
+                <p class='text-sm text-gray-400'>No key documents recorded for this matter's client(s).</p>
+                {% endfor %}
             </div>
-            <div class='overflow-auto mt-2 rounded border'>
-                <table class='table ' id="logTable">
-                <thead class='thead border-b'>
-                    <tr>
-                        <th class='td border-e'>
-                            Type
-                        </th>
-                        <th class='td border-e'>
-                            Description
-                        </th>
-                        <th class='td border-e'>
-                            User
-                        </th>
-                        <th class='td border-e'>
-                            Datetime
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for log in logs %}
-                    <tr class="log-row hover:bg-gray-100 text-black border-b" data-type="{{ log.type }}">
-                        <td class='td border-e'>
-                            {{log.type|capfirst}}
-                        </td>
-                        <td class='td border-e align-top'>
-                            {% if log.desc|length > 50 or log.changes_list %}
-                            <div class="description-content">
-                                {{ log.desc|slice:"0:50" }}{% if log.desc|length > 50 %}...{% endif %}
-                            </div>
-                            <button class='more-button link float-end'>More</button>
-                            <div class="full-description" style="display: none;">
-                                <div>{{ log.desc }}</div>
-                                {% if log.changes_list %}
-                                <ul class="list-disc ml-4 mt-1 text-xs text-gray-700 space-y-0.5">
-                                    {% for c in log.changes_list %}
-                                    <li>
-                                        <span class="font-medium text-gray-800">{{ c.label }}:</span>
-                                        {% if c.old_display %}<span class="text-gray-500 line-through">{{ c.old_display }}</span> <span class="text-gray-400">&rarr;</span> {% endif %}<span class="text-gray-800">{{ c.new_display }}</span>
-                                    </li>
-                                    {% endfor %}
-                                </ul>
-                                {% endif %}
-                            </div>
-                            {% else %}
-                            {{ log.desc }}
-                            {% endif %}
-                        </td>
-                        <td class='td border-e'>
-                            {{log.user}}
-                        </td>
-                        <td class='td'>
-                            {{log.timestamp}}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                </table>
+        </div>
+        <div class='div-container overflow-y-auto max-h-[70vh]'>
+            <div class='flex items-center justify-between mb-3'>
+                <h3 class='text-lg font-semibold text-gray-900'>Key Dates</h3>
+                <button class='btn-primary text-xs' type="button" data-open-modal="matterKeyDateModal">Add</button>
+            </div>
+            <div class='space-y-3'>
+                {% for key_date in matter_key_dates %}
+                <div class='rounded-lg border bg-white p-3 text-sm'>
+                    <div class='flex justify-between gap-2'>
+                        <div>
+                            <p class='font-medium text-gray-900'>{{ key_date.title }}</p>
+                            <p class='text-gray-600'>{{ key_date.get_date_type_display }}</p>
+                        </div>
+                        <div class='text-right text-xs text-gray-500'>
+                            <p>{{ key_date.date|date:"d/m/Y" }}</p>
+                            {% if key_date.time %}<p>{{ key_date.time|time:"H:i" }}</p>{% endif %}
+                        </div>
+                    </div>
+                    {% if key_date.location %}
+                    <p class='mt-2 text-xs text-gray-500'>Location: {{ key_date.location }}</p>
+                    {% endif %}
+                    {% if key_date.notes %}
+                    <p class='mt-1 text-xs text-gray-600'>{{ key_date.notes }}</p>
+                    {% endif %}
+                    <div class='mt-2 flex gap-3 text-xs'>
+                        <a class='link' href="{% url 'edit_matter_key_date' key_date.id %}">Edit</a>
+                        <form method='post' action="{% url 'delete_matter_key_date' key_date.id %}">
+                            {% csrf_token %}
+                            <button class='link text-red-700' type='submit'>Delete</button>
+                        </form>
+                    </div>
+                </div>
+                {% empty %}
+                <p class='text-sm text-gray-400'>No key dates recorded.</p>
+                {% endfor %}
             </div>
         </div>
     </div>
@@ -879,13 +883,155 @@
                     <li class='list-item rounded-b-lg text-green-700'>No file reviews added yet.</li>
                     {% endfor %}
                 </ul>
-            </div>
         </div>
     </div>
+    <div class='div-container overflow-y-auto max-h-[80vh]'>
+        <div class='flex items-center justify-between mb-2'>
+            <h3 class='text-lg font-semibold text-gray-900'>Logs</h3>
+            <a class="btn-primary text-xs" href="{% url 'download_file_logs' matter.file_number %}">Download</a>
+        </div>
+        <p class='text-xs text-gray-500 mb-3'>Showing latest {{ log_limit }} log entries on this page. Download for the full log.</p>
+        <div class='flex flex-wrap gap-3 mb-3 text-sm'>
+            <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input class="form-check-input filter-checkbox rounded" type="checkbox" id="filterFinance">
+                <span class="text-gray-600">Finance</span>
+            </label>
+            <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input class="form-check-input filter-checkbox rounded" type="checkbox" id="filterCorrespondence">
+                <span class="text-gray-600">Correspondence</span>
+            </label>
+            <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input class="form-check-input filter-checkbox rounded" type="checkbox" id="filterAttendanceNote">
+                <span class="text-gray-600">Attendance Notes</span>
+            </label>
+        </div>
+        <div class='overflow-auto mt-2 rounded border'>
+            <table class='table' id="logTable">
+            <thead class='thead border-b'>
+                <tr>
+                    <th class='td border-e'>Type</th>
+                    <th class='td border-e'>Description</th>
+                    <th class='td border-e'>User</th>
+                    <th class='td border-e'>Datetime</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr class="log-row hover:bg-gray-100 text-black border-b" data-type="{{ log.type }}">
+                    <td class='td border-e'>{{log.type|capfirst}}</td>
+                    <td class='td border-e align-top'>
+                        {% if log.desc|length > 50 or log.changes_list %}
+                        <div class="description-content">
+                            {{ log.desc|slice:"0:50" }}{% if log.desc|length > 50 %}...{% endif %}
+                        </div>
+                        <button class='more-button link float-end'>More</button>
+                        <div class="full-description" style="display: none;">
+                            <div>{{ log.desc }}</div>
+                            {% if log.changes_list %}
+                            <ul class="list-disc ml-4 mt-1 text-xs text-gray-700 space-y-0.5">
+                                {% for c in log.changes_list %}
+                                <li>
+                                    <span class="font-medium text-gray-800">{{ c.label }}:</span>
+                                    {% if c.old_display %}<span class="text-gray-500 line-through">{{ c.old_display }}</span> <span class="text-gray-400">&rarr;</span> {% endif %}<span class="text-gray-800">{{ c.new_display }}</span>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        {{ log.desc }}
+                        {% endif %}
+                    </td>
+                    <td class='td border-e'>{{log.user}}</td>
+                    <td class='td'>{{log.timestamp}}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="nextWorkModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
+    <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
+        <div class="flex items-center justify-between border-b px-4 py-3">
+            <h3 class="text-lg font-semibold text-gray-900">Add Next Work</h3>
+            <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal>&times;</button>
+        </div>
+        <form class="p-4 space-y-3" method="post" action="{% url 'add_next_work_file' matter.file_number %}">
+            {% csrf_token %}
+            {{ next_work_form.as_p }}
+            <div class="flex justify-end gap-2">
+                <button class="btn-secondary" type="button" data-close-modal>Cancel</button>
+                <button class="btn-primary" type="submit">Add</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="lastWorkModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
+    <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
+        <div class="flex items-center justify-between border-b px-4 py-3">
+            <h3 class="text-lg font-semibold text-gray-900">Add Last Work</h3>
+            <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal>&times;</button>
+        </div>
+        <form class="p-4 space-y-3" method="post" action="{% url 'add_last_work_file' matter.file_number %}">
+            {% csrf_token %}
+            {{ last_work_form.as_p }}
+            <div class="flex justify-end gap-2">
+                <button class="btn-secondary" type="button" data-close-modal>Cancel</button>
+                <button class="btn-primary" type="submit">Add</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="matterKeyDateModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
+    <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
+        <div class="flex items-center justify-between border-b px-4 py-3">
+            <h3 class="text-lg font-semibold text-gray-900">Add Key Date</h3>
+            <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal>&times;</button>
+        </div>
+        <form class="p-4 space-y-3" method="post" action="{% url 'add_matter_key_date' matter.file_number %}">
+            {% csrf_token %}
+            {{ matter_key_date_form.as_p }}
+            <div class="flex justify-end gap-2">
+                <button class="btn-secondary" type="button" data-close-modal>Cancel</button>
+                <button class="btn-primary" type="submit">Add</button>
+            </div>
+        </form>
+    </div>
+</div>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll('[data-open-modal]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var modal = document.getElementById(this.dataset.openModal);
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        });
+    });
+
+    document.querySelectorAll('[data-close-modal]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var modal = this.closest('[data-modal]');
+            if (!modal) return;
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        });
+    });
+
+    document.querySelectorAll('[data-modal]').forEach(function (modal) {
+        modal.addEventListener('click', function (event) {
+            if (event.target !== modal) return;
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        });
+    });
     
     var logTable = document.getElementById("logTable");
+    if (!logTable) return;
     var rows = logTable.getElementsByClassName("log-row");
     var checkboxes = document.querySelectorAll(".filter-checkbox");
    

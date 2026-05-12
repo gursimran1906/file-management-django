@@ -26,6 +26,12 @@ class Modifications(models.Model):
     changes = models.JSONField(null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['content_type', 'object_id'],
+                         name='modifications_obj_idx'),
+        ]
+
 
 class ClientContactDetails(models.Model):
     id = models.AutoField(primary_key=True)
@@ -46,6 +52,30 @@ class ClientContactDetails(models.Model):
 
     def __str__(self):
         return f'{self.name}'
+
+
+class ClientKeyDocument(models.Model):
+    DOCUMENT_CATEGORY_CHOICES = [
+        ('proof_of_id', 'Proof of ID'),
+        ('proof_of_address', 'Proof of Address'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    client = models.ForeignKey(
+        ClientContactDetails, on_delete=models.CASCADE, related_name='key_documents')
+    category = models.CharField(max_length=50, choices=DOCUMENT_CATEGORY_CHOICES)
+    document_type = models.CharField(max_length=100, blank=True)
+    document_reference = models.CharField(max_length=100, blank=True)
+    issue_date = models.DateField(null=True, blank=True)
+    expiry_date = models.DateField(null=True, blank=True)
+    verified_on = models.DateField(null=True, blank=True)
+    verified_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, related_name='verified_client_key_documents', null=True, blank=True)
+    notes = models.TextField(blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'{self.client} - {self.get_category_display()} - {self.document_type}'
 
 
 class AuthorisedParties(models.Model):
@@ -249,6 +279,38 @@ class WIP(models.Model):
 
     def __str__(self):
         return self.file_number
+
+
+class MatterKeyDate(models.Model):
+    DATE_TYPE_CHOICES = [
+        ('hearing', 'Hearing'),
+        ('meeting', 'Meeting'),
+        ('conference', 'Conference'),
+        ('mediation', 'Mediation'),
+        ('deadline', 'Deadline'),
+        ('appointment', 'Appointment'),
+        ('other', 'Other'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    matter = models.ForeignKey(
+        WIP, on_delete=models.CASCADE, related_name='key_dates')
+    date_type = models.CharField(
+        max_length=50, choices=DATE_TYPE_CHOICES, default='other')
+    title = models.CharField(max_length=255)
+    date = models.DateField()
+    time = models.TimeField(null=True, blank=True)
+    location = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, related_name='matter_key_dates_created_by', null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date', 'time', 'title']
+
+    def __str__(self):
+        return f'{self.matter} - {self.get_date_type_display()} - {self.title}'
 
 
 class NextWork(models.Model):

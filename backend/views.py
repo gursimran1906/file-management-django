@@ -6,12 +6,12 @@ from django.urls import reverse
 from django.db import transaction
 from django.db.models import Q, F, OuterRef, Subquery, Max, CharField, TextField, BooleanField, Exists, Count, Sum, Case, When, Value, DateField
 from django.db.models.functions import Cast, Coalesce, Greatest, Concat
-from .models import WIP, Memo, NextWork, LastWork, FileStatus, FileLocation, MatterType, PricingItem, ClientContactDetails, AuthorisedParties
+from .models import WIP, Memo, NextWork, LastWork, MatterKeyDate, FileStatus, FileLocation, MatterType, PricingItem, ClientContactDetails, ClientKeyDocument, AuthorisedParties
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
 from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
-from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
+from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm
 from .utils import create_modification
 from django.utils import timezone
@@ -319,6 +319,124 @@ def get_user_dashboard_wips(user):
     return (WIP.objects.filter(id__in=combined_wip_ids) | fee_earner_files).distinct()
 
 
+def get_key_document_expiry_alerts(wips, warning_days=30):
+    today = timezone.localdate()
+    warning_date = today + timedelta(days=warning_days)
+    client_file_numbers = {}
+
+    rows = wips.filter(file_status__status__in=['Open', 'To Be Closed']).values(
+        'file_number', 'client1_id', 'client2_id')
+    for row in rows:
+        if row['client1_id']:
+            client_file_numbers.setdefault(
+                row['client1_id'], set()).add(row['file_number'])
+        if row['client2_id']:
+            client_file_numbers.setdefault(
+                row['client2_id'], set()).add(row['file_number'])
+
+    documents = ClientKeyDocument.objects.filter(
+        client_id__in=client_file_numbers.keys(),
+        expiry_date__isnull=False,
+        expiry_date__lte=warning_date,
+    ).select_related('client').order_by('expiry_date', 'client__name', 'category')
+
+    alerts = []
+    for document in documents:
+        alerts.append({
+            'client_id': document.client_id,
+            'client_name': document.client.name,
+            'document_category': document.get_category_display(),
+            'document_type': document.document_type,
+            'document_reference': document.document_reference,
+            'expiry_date': document.expiry_date,
+            'status': 'expired' if document.expiry_date < today else 'due_soon',
+            'file_numbers': sorted(client_file_numbers.get(document.client_id, [])),
+        })
+
+    return sorted(alerts, key=lambda alert: (
+        alert['expiry_date'], alert['client_name'], alert['document_category'], alert['document_type']))
+
+
+def get_missing_key_document_alerts(wips):
+    active_wips = list(wips.filter(
+        file_status__status__in=['Open', 'To Be Closed']
+    ).select_related('client1', 'client2').order_by('file_number'))
+    client_ids = set()
+    for matter in active_wips:
+        if matter.client1_id:
+            client_ids.add(matter.client1_id)
+        if matter.client2_id:
+            client_ids.add(matter.client2_id)
+
+    existing_documents = ClientKeyDocument.objects.filter(
+        client_id__in=client_ids
+    ).values('client_id', 'category')
+    document_categories_by_client = {}
+    for document in existing_documents:
+        document_categories_by_client.setdefault(
+            document['client_id'], set()).add(document['category'])
+
+    required_categories = [
+        ('proof_of_id', 'Proof of ID'),
+        ('proof_of_address', 'Proof of Address'),
+    ]
+    alerts = []
+    for matter in active_wips:
+        matter_clients = [matter.client1]
+        if matter.client2:
+            matter_clients.append(matter.client2)
+
+        for client in matter_clients:
+            existing_categories = document_categories_by_client.get(
+                client.id, set())
+            for category, label in required_categories:
+                if category not in existing_categories:
+                    alerts.append({
+                        'file_number': matter.file_number,
+                        'client_id': client.id,
+                        'client_name': client.name,
+                        'document_category': label,
+                    })
+
+    return alerts
+
+
+def get_dashboard_key_document_scope_wips(user, key_doc_scope):
+    if key_doc_scope == 'all_active':
+        return WIP.objects.filter(
+            file_status__status__in=['Open', 'To Be Closed']
+        ).distinct(), 'all_active'
+
+    return get_user_dashboard_wips(user).filter(
+        file_status__status__in=['Open', 'To Be Closed']
+    ).distinct(), 'associated'
+
+
+def get_matter_key_documents(matter):
+    clients = [matter.client1]
+    if matter.client2:
+        clients.append(matter.client2)
+
+    documents = ClientKeyDocument.objects.filter(
+        client__in=clients
+    ).select_related('client', 'verified_by').order_by(
+        'client__name', 'category', 'expiry_date', 'document_type')
+
+    today = timezone.localdate()
+    key_documents = []
+    for document in documents:
+        key_documents.append({
+            'document': document,
+            'status': (
+                'expired' if document.expiry_date and document.expiry_date < today
+                else 'due_soon' if document.expiry_date and document.expiry_date <= today + timedelta(days=30)
+                else 'current'
+            )
+        })
+
+    return key_documents
+
+
 def get_risk_assessments_due_queryset(wip_queryset):
     one_year_ago = timezone.localdate() - relativedelta(years=1)
 
@@ -597,6 +715,7 @@ def get_index_search_data(search_by, val_to_search, show_archived):
 def user_dashboard(request):
     user = CustomUser.objects.get(username=request.user)
     risk_scope = request.GET.get('risk_scope', 'associated')
+    key_doc_scope = request.GET.get('key_doc_scope', 'associated')
     user_next_works = NextWork.objects.filter(
         Q(person=user) & Q(completed=False)).order_by('date')
     user_last_works = LastWork.objects.filter(person=user).order_by('-date')
@@ -625,6 +744,9 @@ def user_dashboard(request):
     unique_wips = get_user_dashboard_wips(user)
     risk_scope_wips, validated_risk_scope = get_dashboard_risk_scope_wips(
         user, risk_scope
+    )
+    key_doc_scope_wips, validated_key_doc_scope = get_dashboard_key_document_scope_wips(
+        user, key_doc_scope
     )
     risk_assessments_due = get_risk_assessments_due_queryset(risk_scope_wips)
     file_reviews_due = get_file_reviews_due_queryset(unique_wips)
@@ -673,6 +795,10 @@ def user_dashboard(request):
     ]
     unique_aml_checks_due = sorted(
         unique_aml_checks_due, key=lambda x: x['date_of_last_aml'])
+    key_document_expiry_alerts = get_key_document_expiry_alerts(
+        key_doc_scope_wips)
+    missing_key_document_alerts = get_missing_key_document_alerts(
+        key_doc_scope_wips)
     # Filter for unsettled invoices
     last_100_emails = MatterEmails.objects.filter(
         fee_earner=user).order_by('-time')[:100]
@@ -713,12 +839,15 @@ def user_dashboard(request):
         'user_last_works': user_last_works,
         'risk_assessments_due_files': risk_assessments_due,
         'aml_checks_due': unique_aml_checks_due,
+        'key_document_expiry_alerts': key_document_expiry_alerts,
+        'missing_key_document_alerts': missing_key_document_alerts,
         'unsettled_invoices': unsettled_invoices,
         'last_100_emails': last_100_emails,
         'files': unique_wips,
         'unread_policies_exist': unread_policies_exist,
         'has_pending_tasks': has_pending_tasks,
         'risk_scope': validated_risk_scope,
+        'key_doc_scope': validated_key_doc_scope,
         'file_reviews_due_files': file_reviews_due,
     }
 
@@ -1112,21 +1241,53 @@ def display_data_home_page(request, file_number):
     try:
         logger.info(
             f'User {request.user.username} accessing matter file {file_number}')
-        matter = WIP.objects.get(file_number=file_number)
+        matter = WIP.objects.select_related(
+            'fee_earner',
+            'client1',
+            'client1__created_by',
+            'client2',
+            'client2__created_by',
+            'matter_type',
+            'file_status',
+            'file_location',
+            'other_side',
+            'authorised_party1',
+            'authorised_party2',
+            'created_by',
+        ).get(file_number=file_number)
         matter_file_reviews = MatterFileReview.objects.filter(
-            matter=matter).order_by('-date_review_completed', '-date_reviewed', '-timestamp')
-        undertakings = Undertaking.objects.filter(file_number=matter)
+            matter=matter
+        ).select_related(
+            'file_reviewed_by',
+            'file_review_completed_by',
+            'created_by',
+        ).order_by('-date_review_completed', '-date_reviewed', '-timestamp')
+        matter_key_dates = MatterKeyDate.objects.filter(matter=matter)
+        matter_key_date_form = MatterKeyDateForm()
+        matter_key_documents = get_matter_key_documents(matter)
+        today = timezone.localdate()
+        matter_key_date_alerts = matter_key_dates.filter(
+            date__gte=today,
+            date__lte=today + timedelta(days=30)
+        )
+        matter_key_document_alerts = [
+            item for item in matter_key_documents if item['status'] == 'expired'
+        ]
+        undertakings = Undertaking.objects.filter(file_number=matter).select_related(
+            'given_by', 'discharged_by')
         next_work_form = NextWorkFormWithoutFileNumber()
         next_work = NextWork.objects.filter(
-            file_number=matter, completed=False).order_by('date')
+            file_number=matter, completed=False).select_related(
+            'person', 'created_by').order_by('date')
         last_work = LastWork.objects.filter(
-            file_number=matter).order_by('-date')
+            file_number=matter).select_related('person', 'created_by').order_by('-date')
         last_work_form = LastWorkFormWithoutFileNumber()
         ongoing_monitorings = OngoingMonitoring.objects.filter(
-            file_number=matter.id).order_by('-timestamp')
+            file_number=matter.id).select_related(
+            'signed_by', 'created_by').order_by('-timestamp')
         risk_assessment = RiskAssessment.objects.filter(
             matter=matter
-        ).order_by('-due_diligence_date')
+        ).select_related('due_diligence_signed_by').order_by('-due_diligence_date')
         eleven_months_ago = (timezone.now() - relativedelta(months=11)).date()
         if risk_assessment.exists():
             risk_assessment = risk_assessment[0]
@@ -1154,7 +1315,13 @@ def display_data_home_page(request, file_number):
                                              'ongoing_monitorings': ongoing_monitorings,
                                              'risk_assessment': risk_assessment, 'eleven_months_since_last_risk_assessment': eleven_months_since_last_risk_assessment,
                                              'matter_file_reviews': build_matter_file_review_display_data(matter_file_reviews),
-                                             'logs': get_file_logs(file_number)})
+                                             'matter_key_dates': matter_key_dates,
+                                             'matter_key_date_form': matter_key_date_form,
+                                             'matter_key_documents': matter_key_documents,
+                                             'matter_key_date_alerts': matter_key_date_alerts,
+                                             'matter_key_document_alerts': matter_key_document_alerts,
+                                             'logs': get_file_logs(file_number, limit=300),
+                                             'log_limit': 300})
     except WIP.DoesNotExist:
         logger.warning(
             f'User {request.user.username} attempted to access non-existent matter file {file_number}')
@@ -1166,6 +1333,52 @@ def display_data_home_page(request, file_number):
         messages.error(
             request, 'An error occurred while loading the matter file')
         return render(request, 'home.html', {'error': 'An error occurred while loading the matter file'})
+
+
+@login_required
+@require_POST
+def add_matter_key_date(request, file_number):
+    matter = get_object_or_404(WIP, file_number=file_number)
+    form = MatterKeyDateForm(request.POST)
+    if form.is_valid():
+        key_date = form.save(commit=False)
+        key_date.matter = matter
+        key_date.created_by = request.user
+        key_date.save()
+        messages.success(request, 'Key date added.')
+    else:
+        messages.error(request, 'Please correct the key date form.')
+
+    return redirect('home', file_number=file_number)
+
+
+@login_required
+def edit_matter_key_date(request, id):
+    key_date = get_object_or_404(MatterKeyDate, id=id)
+    if request.method == 'POST':
+        form = MatterKeyDateForm(request.POST, instance=key_date)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Key date updated.')
+            return redirect('home', file_number=key_date.matter.file_number)
+        messages.error(request, 'Please correct the key date form.')
+    else:
+        form = MatterKeyDateForm(instance=key_date)
+
+    return render(request, 'edit_models.html', {
+        'form': form,
+        'title': 'Matter Key Date'
+    })
+
+
+@login_required
+@require_POST
+def delete_matter_key_date(request, id):
+    key_date = get_object_or_404(MatterKeyDate, id=id)
+    file_number = key_date.matter.file_number
+    key_date.delete()
+    messages.success(request, 'Key date deleted.')
+    return redirect('home', file_number=file_number)
 
 
 def _display_change_value(value):
@@ -1211,21 +1424,47 @@ def build_change_items(changes):
     return items
 
 
-def get_file_logs(file_number):
-    file = WIP.objects.filter(file_number=file_number).first()
+def get_modifications_by_object(model, object_ids):
+    if not object_ids:
+        return {}
+
+    content_type = ContentType.objects.get_for_model(model)
+    modifications = Modifications.objects.filter(
+        content_type=content_type,
+        object_id__in=object_ids
+    ).select_related('modified_by').order_by('timestamp')
+
+    modifications_by_object = {}
+    for modification in modifications:
+        modifications_by_object.setdefault(
+            modification.object_id, []).append(modification)
+
+    return modifications_by_object
+
+
+def get_file_logs(file_number, limit=None):
+    file = WIP.objects.select_related(
+        'created_by',
+        'client1__created_by',
+        'client2__created_by',
+        'authorised_party1__created_by',
+        'authorised_party2__created_by',
+        'other_side__created_by',
+    ).filter(file_number=file_number).first()
     """
     Log: {datetime:datetime, description, user, type_of_data}
     """
+    if not file:
+        return []
+
     logs = []
     logs.append({'timestamp': file.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': 'Matter created.',
                  'user': file.created_by,
                  'type': 'file_info'})
-    file_modifications = Modifications.objects.filter(
-        Q(content_type=ContentType.objects.get_for_model(file)) &
-        Q(object_id=file.id)
-    )
-    for modification in file_modifications:
+
+    wip_modifications = get_modifications_by_object(WIP, [file.id])
+    for modification in wip_modifications.get(file.id, []):
         logs.append({
             'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
             'desc': 'File updated.',
@@ -1233,11 +1472,14 @@ def get_file_logs(file_number):
             'user': modification.modified_by.username if modification.modified_by else None,
             'type': 'file_info'
         })
-    file_modifications = Modifications.objects.filter(
-        Q(content_type=ContentType.objects.get_for_model(file.client1)) &
-        Q(object_id=file.client1.id)
-    )
-    for modification in file_modifications:
+
+    client_ids = [file.client1_id]
+    if file.client2_id:
+        client_ids.append(file.client2_id)
+    client_modifications = get_modifications_by_object(
+        ClientContactDetails, client_ids)
+
+    for modification in client_modifications.get(file.client1_id, []):
         logs.append({
             'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
             'desc': f'Client ({file.client1}) updated.',
@@ -1255,11 +1497,7 @@ def get_file_logs(file_number):
                      'desc': f'Client ({file.client2}) Created.',
                      'user': file.client2.created_by,
                      'type': 'client_info'})
-        file_modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(file.client2)) &
-            Q(object_id=file.client2.id)
-        )
-        for modification in file_modifications:
+        for modification in client_modifications.get(file.client2_id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': f'Client ({file.client2}) updated.',
@@ -1268,17 +1506,19 @@ def get_file_logs(file_number):
                 'type': 'client_info'
             })
 
-    if file.authorised_party1:
+    authorised_party_ids = [
+        party_id for party_id in [file.authorised_party1_id, file.authorised_party2_id]
+        if party_id
+    ]
+    authorised_party_modifications = get_modifications_by_object(
+        AuthorisedParties, authorised_party_ids)
 
+    if file.authorised_party1:
         logs.append({'timestamp': file.authorised_party1.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                      'desc': f'Authorised Party {file.authorised_party1} Created.',
                      'user': file.authorised_party1.created_by,
                      'type': 'authorised_party_info'})
-        file_modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(file.authorised_party1)) &
-            Q(object_id=file.authorised_party1.id)
-        )
-        for modification in file_modifications:
+        for modification in authorised_party_modifications.get(file.authorised_party1_id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': f'Authorised Party ({file.authorised_party1}) updated.',
@@ -1292,11 +1532,7 @@ def get_file_logs(file_number):
                      'desc': f'Authorised Party ({file.authorised_party2.name}) Created.',
                      'user': file.authorised_party2.created_by,
                      'type': 'authorised_party_info'})
-        file_modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(file.authorised_party2)) &
-            Q(object_id=file.authorised_party1.id)
-        )
-        for modification in file_modifications:
+        for modification in authorised_party_modifications.get(file.authorised_party2_id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': f'Authorised Party ({file.authorised_party2}) updated.',
@@ -1310,11 +1546,9 @@ def get_file_logs(file_number):
                      'desc': f'Other Side ({file.other_side}) Created.',
                      'user': file.other_side.created_by,
                      'type': 'other_side_info'})
-        file_modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(file.other_side)) &
-            Q(object_id=file.other_side.id)
-        )
-        for modification in file_modifications:
+        other_side_modifications = get_modifications_by_object(
+            OthersideDetails, [file.other_side_id])
+        for modification in other_side_modifications.get(file.other_side_id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': f'Other Side ({file.other_side}) updated.',
@@ -1332,8 +1566,10 @@ def get_file_logs(file_number):
                      'desc': desc, 'user': 'Automatic System',
                     'type': 'email'})
 
-    attendance_notes = MatterAttendanceNotes.objects.filter(
-        file_number=file.id)
+    attendance_notes = list(MatterAttendanceNotes.objects.filter(
+        file_number=file.id).select_related('created_by'))
+    attendance_note_modifications = get_modifications_by_object(
+        MatterAttendanceNotes, [note.id for note in attendance_notes])
     for note in attendance_notes:
         note_subject_with_charge_status = (
             f'{note.subject_line} (N/C)' if not note.is_charged else note.subject_line
@@ -1343,11 +1579,7 @@ def get_file_logs(file_number):
                      'user': note.created_by,
                     'type': 'attendance_note'})
 
-        note_modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(note)) &
-            Q(object_id=note.id)
-        )
-        for modification in note_modifications:
+        for modification in attendance_note_modifications.get(note.id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': f'Attendance note ({note.date.strftime('%d/%m/%Y')}) updated.',
@@ -1356,18 +1588,17 @@ def get_file_logs(file_number):
                 'type': 'attendance_note'
             })
 
-    letters = MatterLetters.objects.filter(file_number=file.id)
+    letters = list(MatterLetters.objects.filter(
+        file_number=file.id).select_related('created_by'))
+    letter_modifications = get_modifications_by_object(
+        MatterLetters, [letter.id for letter in letters])
     for letter in letters:
         logs.append({'timestamp': letter.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                      'desc': f'Letter entered - {letter.subject_line}',
                      'user': letter.created_by,
                     'type': 'letter'})
 
-        modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(letter)) &
-            Q(object_id=letter.id)
-        )
-        for modification in modifications:
+        for modification in letter_modifications.get(letter.id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': f'Letter ({letter.date.strftime('%d/%m/%Y')}) updated.',
@@ -1376,18 +1607,17 @@ def get_file_logs(file_number):
                 'type': 'letter'
             })
 
-    next_work = NextWork.objects.filter(file_number=file.id)
+    next_work = list(NextWork.objects.filter(
+        file_number=file.id).select_related('person', 'created_by'))
+    next_work_modifications = get_modifications_by_object(
+        NextWork, [work.id for work in next_work])
     for work in next_work:
         logs.append({'timestamp': work.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                      'desc': f'Next work created - {work.task} - for {work.person}',
                      'user': work.created_by,
                     'type': 'next_work'
                      })
-        modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(work)) &
-            Q(object_id=work.id)
-        )
-        for modification in modifications:
+        for modification in next_work_modifications.get(work.id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': f'Next Work updated (task: {work.task}, completed: {work.completed}).',
@@ -1396,18 +1626,17 @@ def get_file_logs(file_number):
                 'type': 'next_work'
             })
 
-    last_work = LastWork.objects.filter(file_number=file.id)
+    last_work = list(LastWork.objects.filter(
+        file_number=file.id).select_related('person', 'created_by'))
+    last_work_modifications = get_modifications_by_object(
+        LastWork, [work.id for work in last_work])
     for work in last_work:
         logs.append({'timestamp': work.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                      'desc': f'Last work created - {work.task} - done by {work.person}',
                      'user': work.created_by,
                     'type': 'last_work'
                      })
-        modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(work)) &
-            Q(object_id=work.id)
-        )
-        for modification in modifications:
+        for modification in last_work_modifications.get(work.id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': f'Last Work updated (task: {work.task}).',
@@ -1416,7 +1645,10 @@ def get_file_logs(file_number):
                 'type': 'last_work'
             })
 
-    pmts_slips = PmtsSlips.objects.filter(file_number=file.id)
+    pmts_slips = list(PmtsSlips.objects.filter(
+        file_number=file.id).select_related('created_by'))
+    pmts_slip_modifications = get_modifications_by_object(
+        PmtsSlips, [slip.id for slip in pmts_slips])
     for slip in pmts_slips:
         desc = f'Pink slip for amount £{
             slip.amount} - {slip.description}' if slip.is_money_out else f'Blue slip for amount £{slip.amount} - {slip.description}'
@@ -1424,11 +1656,7 @@ def get_file_logs(file_number):
                      'desc': desc,
                      'user': slip.created_by,
                     'type': 'pmts_slip'})
-        modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(slip)) &
-            Q(object_id=slip.id)
-        )
-        for modification in modifications:
+        for modification in pmts_slip_modifications.get(slip.id, []):
             slip_type = 'Pink slip' if slip.is_money_out else 'Blue slip'
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
@@ -1438,8 +1666,11 @@ def get_file_logs(file_number):
                 'type': 'pmts_slip'
             })
 
-    green_slips = LedgerAccountTransfers.objects.filter(
-        Q(file_number_from=file.id) or Q(file_number_to=file.id))
+    green_slips = list(LedgerAccountTransfers.objects.filter(
+        Q(file_number_from=file.id) | Q(file_number_to=file.id)
+    ).select_related('file_number_from', 'file_number_to', 'created_by'))
+    green_slip_modifications = get_modifications_by_object(
+        LedgerAccountTransfers, [slip.id for slip in green_slips])
     for slip in green_slips:
         desc = f'Green slip for amount £{
             slip.amount} - From: {slip.file_number_from} To: {slip.file_number_to} {slip.description}'
@@ -1447,11 +1678,7 @@ def get_file_logs(file_number):
                      'desc': desc,
                      'user': slip.created_by,
                     'type': 'green_slip'})
-        modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(slip)) &
-            Q(object_id=slip.id)
-        )
-        for modification in modifications:
+        for modification in green_slip_modifications.get(slip.id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': 'Green slip updated.',
@@ -1460,18 +1687,17 @@ def get_file_logs(file_number):
                 'type': 'green_slip'
             })
 
-    invoices = Invoices.objects.filter(file_number=file.id)
+    invoices = list(Invoices.objects.filter(
+        file_number=file.id).select_related('created_by'))
+    invoice_modifications = get_modifications_by_object(
+        Invoices, [invoice.id for invoice in invoices])
     for invoice in invoices:
         desc = f'Invoice created for amount(s) {invoice.our_costs}'
         logs.append({'timestamp': invoice.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                      'desc': desc,
                      'user': invoice.created_by,
                     'type': 'invoice'})
-        modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(invoice)) &
-            Q(object_id=invoice.id)
-        )
-        for modification in modifications:
+        for modification in invoice_modifications.get(invoice.id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': 'Invoice updated.',
@@ -1480,7 +1706,10 @@ def get_file_logs(file_number):
                 'type': 'invoice'
             })
 
-    credit_notes = CreditNote.objects.filter(file_number=file.id)
+    credit_notes = list(CreditNote.objects.filter(
+        file_number=file.id).select_related('invoice', 'created_by'))
+    credit_note_modifications = get_modifications_by_object(
+        CreditNote, [credit_note.id for credit_note in credit_notes])
     status_labels = dict(CreditNote.STATUSES)
     for credit_note in credit_notes:
         status_label = status_labels.get(credit_note.status, credit_note.status)
@@ -1495,11 +1724,7 @@ def get_file_logs(file_number):
             'user': credit_note.created_by,
             'type': 'credit_note'
         })
-        modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(credit_note)) &
-            Q(object_id=credit_note.id)
-        )
-        for modification in modifications:
+        for modification in credit_note_modifications.get(credit_note.id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': 'Credit note updated.',
@@ -1508,17 +1733,16 @@ def get_file_logs(file_number):
                 'type': 'credit_note'
             })
 
-    risk_assessment = RiskAssessment.objects.filter(matter=file.id).first()
+    risk_assessment = RiskAssessment.objects.filter(
+        matter=file.id).select_related('due_diligence_signed_by').first()
     if risk_assessment:
         logs.append({'timestamp': risk_assessment.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                     'desc': f'Risk Assessment completed',
                      'user': risk_assessment.due_diligence_signed_by,
                      'type': 'risk_assessment'})
-        modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(risk_assessment)) &
-            Q(object_id=risk_assessment.id)
-        )
-        for modification in modifications:
+        risk_assessment_modifications = get_modifications_by_object(
+            RiskAssessment, [risk_assessment.id])
+        for modification in risk_assessment_modifications.get(risk_assessment.id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': 'Risk Assessment updated.',
@@ -1526,17 +1750,16 @@ def get_file_logs(file_number):
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'risk_assessment'
             })
-    ongoing_monitoring = OngoingMonitoring.objects.filter(file_number=file.id)
+    ongoing_monitoring = list(OngoingMonitoring.objects.filter(
+        file_number=file.id).select_related('created_by'))
+    ongoing_monitoring_modifications = get_modifications_by_object(
+        OngoingMonitoring, [obj.id for obj in ongoing_monitoring])
     for obj in ongoing_monitoring:
         logs.append({'timestamp': obj.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                      'desc': f'Ongoing Monitoring done.',
                      'user': obj.created_by,
                      'type': 'ongoing_monitoring'})
-        modifications = Modifications.objects.filter(
-            Q(content_type=ContentType.objects.get_for_model(obj)) &
-            Q(object_id=obj.id)
-        )
-        for modification in modifications:
+        for modification in ongoing_monitoring_modifications.get(obj.id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
                 'desc': 'Ongoing Monitoring updated.',
@@ -1547,6 +1770,8 @@ def get_file_logs(file_number):
     sorted_logs = sorted(logs, key=lambda x: datetime.strptime(
         x['timestamp'], '%d/%m/%Y %H:%M:%S'), reverse=True)
 
+    if limit:
+        return sorted_logs[:limit]
     return sorted_logs
 
 
@@ -1580,8 +1805,45 @@ def add_new_client(request_post_copy, client_prefix, user):
     )
 
     client_contact.save()
+    add_client_key_documents_from_post(request_post_copy, client_prefix, client_contact, user)
 
     return client_contact.id
+
+
+def add_client_key_documents_from_post(request_post_copy, client_prefix, client, user):
+    document_configs = [
+        ('ProofOfID', 'proof_of_id'),
+        ('ProofOfAddress', 'proof_of_address'),
+    ]
+
+    for field_prefix, category in document_configs:
+        document_type = request_post_copy.get(
+            f'Client{client_prefix}{field_prefix}DocumentType', '').strip()
+        document_reference = request_post_copy.get(
+            f'Client{client_prefix}{field_prefix}DocumentReference', '').strip()
+        issue_date = request_post_copy.get(
+            f'Client{client_prefix}{field_prefix}IssueDate', '')
+        expiry_date = request_post_copy.get(
+            f'Client{client_prefix}{field_prefix}ExpiryDate', '')
+        verified_on = request_post_copy.get(
+            f'Client{client_prefix}{field_prefix}VerifiedOn', '')
+        notes = request_post_copy.get(
+            f'Client{client_prefix}{field_prefix}Notes', '').strip()
+
+        if not any([document_type, document_reference, issue_date, expiry_date, verified_on, notes]):
+            continue
+
+        ClientKeyDocument.objects.create(
+            client=client,
+            category=category,
+            document_type=document_type,
+            document_reference=document_reference,
+            issue_date=issue_date if issue_date != '' else None,
+            expiry_date=expiry_date if expiry_date != '' else None,
+            verified_on=verified_on if verified_on != '' else None,
+            verified_by=user if verified_on != '' else None,
+            notes=notes,
+        )
 
 
 def add_new_authorised_party(request_post_copy, ap_prefix, user):
@@ -2002,7 +2264,9 @@ def edit_client(request, id):
     if request.method == 'POST':
         duplicate_obj = copy.deepcopy(client)
         form = ClientForm(request.POST, instance=client)
-        if form.is_valid():
+        key_document_formset = ClientKeyDocumentFormSet(
+            request.POST, instance=client, prefix='key_documents')
+        if form.is_valid() and key_document_formset.is_valid():
 
             changed_fields = form.changed_data
             changes = {}
@@ -2012,16 +2276,25 @@ def edit_client(request, id):
                     'new_value': None
                 }
             form.save()
+            key_documents = key_document_formset.save(commit=False)
+            for deleted_document in key_document_formset.deleted_objects:
+                deleted_document.delete()
+            for document in key_documents:
+                if document.verified_on and not document.verified_by:
+                    document.verified_by = request.user
+                document.save()
+            key_document_formset.save_m2m()
 
             for field in changed_fields:
                 changes[field]['new_value'] = str(
                     getattr(client, field))
 
-            create_modification(
-                user=request.user,
-                modified_obj=client,
-                changes=changes
-            )
+            if changes:
+                create_modification(
+                    user=request.user,
+                    modified_obj=client,
+                    changes=changes
+                )
 
             messages.success(
                 request, 'Successfully updated Client. Please search for File Number.')
@@ -2030,10 +2303,18 @@ def edit_client(request, id):
             error_message = 'Form is not valid. Please correct the errors:'
             for field, errors in form.errors.items():
                 error_message += f'\n{field}: {", ".join(errors)}'
+            if key_document_formset.errors:
+                error_message += '\nPlease check the key document rows.'
             messages.error(request, error_message)
     else:
         form = ClientForm(instance=client)
-    return render(request, 'edit_models.html', {'form': form, 'title': 'Client Information'})
+        key_document_formset = ClientKeyDocumentFormSet(
+            instance=client, prefix='key_documents')
+    return render(request, 'edit_models.html', {
+        'form': form,
+        'key_document_formset': key_document_formset,
+        'title': 'Client Information'
+    })
 
 
 @login_required
@@ -7496,6 +7777,65 @@ def download_user_risk_assessments_due(request):
             assessment.latest_assessment_date,
             assessment.latest_monitoring_date,
             reason_due
+        ])
+
+    return response
+
+
+@login_required
+def download_user_key_documents_due(request):
+    user = CustomUser.objects.get(username=request.user)
+    key_doc_scope = request.GET.get('key_doc_scope', 'associated')
+    key_doc_scope_wips, validated_key_doc_scope = get_dashboard_key_document_scope_wips(
+        user, key_doc_scope
+    )
+    missing_alerts = get_missing_key_document_alerts(key_doc_scope_wips)
+    expiry_alerts = get_key_document_expiry_alerts(key_doc_scope_wips)
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = (
+        f'attachment; filename="key_documents_{user.username}_{validated_key_doc_scope}_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+    )
+    writer = csv.writer(response)
+
+    writer.writerow(['Key Document Issues'])
+    if validated_key_doc_scope == 'all_active':
+        writer.writerow(['Scope', 'All Open and To Be Closed files'])
+    else:
+        writer.writerow(['Scope', 'My associated files'])
+    writer.writerow([
+        'Issue Type',
+        'File Number(s)',
+        'Client',
+        'Document Category',
+        'Document Type',
+        'Document Reference',
+        'Expiry Date',
+        'Status'
+    ])
+
+    for alert in missing_alerts:
+        writer.writerow([
+            'Missing',
+            alert['file_number'],
+            alert['client_name'],
+            alert['document_category'],
+            '',
+            '',
+            '',
+            'Missing'
+        ])
+
+    for alert in expiry_alerts:
+        writer.writerow([
+            'Expiry',
+            ', '.join(alert['file_numbers']),
+            alert['client_name'],
+            alert['document_category'],
+            alert['document_type'],
+            alert['document_reference'],
+            alert['expiry_date'],
+            'Expired' if alert['status'] == 'expired' else 'Due soon'
         ])
 
     return response
