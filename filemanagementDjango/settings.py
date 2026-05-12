@@ -151,10 +151,12 @@ if is_postgresql_available(DATABASES['default']['HOST'], DATABASES['default']['P
         # If PostgreSQL is not available, switch to SQLite
         DATABASES['default']['ENGINE'] = 'django.db.backends.sqlite3'
         DATABASES['default']['NAME'] = os.path.join(BASE_DIR, 'db.sqlite3')
+        DATABASES['default'].pop('OPTIONS', None)
 else:
     # If PostgreSQL is not available on the specified port, switch to SQLite
     DATABASES['default']['ENGINE'] = 'django.db.backends.sqlite3'
     DATABASES['default']['NAME'] = os.path.join(BASE_DIR, 'db.sqlite3')
+    DATABASES['default'].pop('OPTIONS', None)
 
 
 # Password validation

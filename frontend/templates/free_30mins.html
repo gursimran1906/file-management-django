@@ -146,7 +146,40 @@
 </div>
 {% endfor %}
 
+<div class="div-container mt-4">
+    <form method="get" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+        <div class="md:col-span-2">
+            <label for="free30-search" class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+            <input
+                id="free30-search"
+                name="q"
+                value="{{ search_query }}"
+                class="form-input w-full"
+                type="search"
+                placeholder="Search attendee, email, matter type, or creator"
+            >
+        </div>
+        <div>
+            <label for="free30-page-size" class="block text-sm font-medium text-gray-700 mb-1">Rows per page</label>
+            <select id="free30-page-size" name="per_page" class="form-input w-full">
+                {% for option in allowed_page_sizes %}
+                    <option value="{{ option }}" {% if option == page_size %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="flex gap-2">
+            <button class="btn btn-primary" type="submit">Apply</button>
+            {% if search_query %}
+                <a class="btn" href="{% url 'free30mins' %}">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
 <div class="div-container mt-4 overflow-auto">
+    <div class="text-sm text-gray-600 mb-3">
+        Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ paginator.count }} meetings
+    </div>
     <table id="meetings_table" class="table">
         <thead class="text-gray-900">
             <tr class="border-b">
@@ -182,78 +215,36 @@
             </tr>
             {% endfor %}
         </tbody>
-        <tfoot class="">
-            <tr class="">
-                <th class="td">Date</th>
-                <th class="td">Attendees</th>
-                <th class="td">Matter Type</th>
-                <th class="td">Start Time</th>
-                <th class="td">Finish Time</th>
-                <th class="td">Download</th>
-                <th class="td">Created By</th>
-                <th class="td">Timestamp</th>
-                
-            </tr>
-        </tfoot>
     </table>
 </div>
 
-<script>
-    $(document).ready(function() {
-        $.fn.dataTable.moment('DD/MM/YYYY');
-        $.fn.dataTable.moment('DD/MM/YYYY h:mm A');
-        var table = $('#meetings_table').DataTable({
-            "ordering": true,
-            "responsive": true,
-            "searching": true,
-            lengthMenu: [
-                [10, 25, 50, -1],
-                [10, 25, 50, 'All']
-            ],
-            pageLength: 10,
-        });
+{% if page_obj.has_other_pages %}
+<nav class="div-container mt-4 flex flex-wrap items-center gap-2 text-sm" aria-label="Free 30 mins pagination">
+    {% if page_obj.has_previous %}
+        <a class="px-3 py-2 border rounded bg-white hover:bg-gray-50" href="?page=1&per_page={{ page_size }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">First</a>
+        <a class="px-3 py-2 border rounded bg-white hover:bg-gray-50" href="?page={{ page_obj.previous_page_number }}&per_page={{ page_size }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">Previous</a>
+    {% else %}
+        <span class="px-3 py-2 border rounded text-gray-400 bg-gray-50">First</span>
+        <span class="px-3 py-2 border rounded text-gray-400 bg-gray-50">Previous</span>
+    {% endif %}
 
+    {% for page_number in page_range %}
+        {% if page_number == page_obj.paginator.ELLIPSIS %}
+            <span class="px-2 py-2 text-gray-500">{{ page_number }}</span>
+        {% elif page_number == page_obj.number %}
+            <span class="px-3 py-2 border rounded bg-blue-600 text-white" aria-current="page">{{ page_number }}</span>
+        {% else %}
+            <a class="px-3 py-2 border rounded bg-white hover:bg-gray-50" href="?page={{ page_number }}&per_page={{ page_size }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">{{ page_number }}</a>
+        {% endif %}
+    {% endfor %}
 
-
-
-        $('#meetings_table tfoot th').each(function() {
-            var title = $(this).text();
-            $(this).html('<input class="form-input" type="text" placeholder="Search ' + title + '" />');
-        });
-
-
-        table.columns().every(function() {
-            var that = this;
-            $('input', this.footer()).on('keyup change', function() {
-                if (that.search() !== this.value) {
-                    that
-                        .search(this.value)
-                        .draw();
-                }
-            });
-        });
-
-
-        $('#meetings_table th').hover(
-            function() {
-                $(this).css('cursor', 'pointer');
-            },
-            function() {
-                $(this).css('cursor', 'auto');
-            }
-        );
-
-        table.on('order.dt', function() {
-            $('#meetings_table thead th').each(function() {
-                $(this).removeClass('asc desc');
-            });
-
-            var order = table.order();
-            if (order.length) {
-                var th = $('#meetings_table thead th:eq(' + order[0][0] + ')');
-                th.addClass(order[0][1]);
-            }
-        });
-    });
-</script>
+    {% if page_obj.has_next %}
+        <a class="px-3 py-2 border rounded bg-white hover:bg-gray-50" href="?page={{ page_obj.next_page_number }}&per_page={{ page_size }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">Next</a>
+        <a class="px-3 py-2 border rounded bg-white hover:bg-gray-50" href="?page={{ paginator.num_pages }}&per_page={{ page_size }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">Last</a>
+    {% else %}
+        <span class="px-3 py-2 border rounded text-gray-400 bg-gray-50">Next</span>
+        <span class="px-3 py-2 border rounded text-gray-400 bg-gray-50">Last</span>
+    {% endif %}
+</nav>
+{% endif %}
 {% endblock %}

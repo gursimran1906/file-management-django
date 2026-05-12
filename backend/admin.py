@@ -23,7 +23,7 @@ from .models import (Memo, Modifications, ClientContactDetails, AuthorisedPartie
                      FileLocation, FileStatus, MatterType, WIP, NextWork, LastWork, PmtsSlips,
                      LedgerAccountTransfers, Policy, PolicyVersion, TempSlips, Invoices, MatterEmails, MatterLetters,
                      MatterAttendanceNotes, RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees, Undertaking,
-                     CreditNote, MatterFileReview,
+                     CreditNote, MatterFileReview, PricingItem,
                      Bundle, BundleSection, BundleDocument)
 
 
@@ -64,6 +64,15 @@ class FileStatusAdmin(admin.ModelAdmin):
 @admin.register(MatterType)
 class MatterTypeAdmin(admin.ModelAdmin):
     list_display = ['id', 'type', 'created_by', 'timestamp']
+
+
+@admin.register(PricingItem)
+class PricingItemAdmin(admin.ModelAdmin):
+    list_display = ['id', 'name', 'category', 'matter_type', 'pricing_type', 'price', 'minimum_price', 'maximum_price', 'vat_treatment', 'manager_only',
+                    'is_active', 'created_by', 'updated_by', 'updated_at']
+    list_filter = ['category', 'pricing_type', 'vat_treatment', 'manager_only', 'is_active', 'matter_type']
+    search_fields = ['name', 'matter_type__type', 'notes']
+    ordering = ['category', 'matter_type__type', 'name']
 
 
 @admin.register(WIP)

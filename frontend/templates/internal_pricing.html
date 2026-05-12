@@ -1,0 +1,500 @@
+{% extends 'base.html' %}
+{% block title %}Internal Pricing{% endblock %}
+{% block container %}
+
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-4 mt-2">
+  <section class="xl:col-span-8 space-y-4">
+    <div class="div-container">
+      <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-3xl font-medium text-gray-900">Internal Pricing</h1>
+            <span class="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 font-medium">Beta/Test</span>
+          </div>
+          <p class="text-sm text-gray-600 mt-1">Standard prices, matter-specific quotes, Veriphy checks, and fee-earner time estimates.</p>
+        </div>
+        <div class="flex flex-col gap-3">
+          {% if can_create %}
+          <button class="btn-primary w-full lg:w-fit lg:self-end" type="button" onclick="toggleNormalCollapse('pricingEntryForm');">Add Price</button>
+          {% endif %}
+          <div class="flex flex-wrap justify-start lg:justify-end gap-2 text-sm max-w-full">
+            <button type="button" class="pricing-filter px-3 py-2 rounded border bg-gray-900 text-white whitespace-nowrap" data-filter="all">All</button>
+            <button type="button" class="pricing-filter px-3 py-2 rounded border bg-white text-gray-700 whitespace-nowrap" data-filter="conveyancing">Conveyancing</button>
+            <button type="button" class="pricing-filter px-3 py-2 rounded border bg-white text-gray-700 whitespace-nowrap" data-filter="wills">Wills</button>
+            <button type="button" class="pricing-filter px-3 py-2 rounded border bg-white text-gray-700 whitespace-nowrap" data-filter="lpa">LPA</button>
+            <button type="button" class="pricing-filter px-3 py-2 rounded border bg-white text-gray-700 whitespace-nowrap" data-filter="divorce_family">Divorce</button>
+            <button type="button" class="pricing-filter px-3 py-2 rounded border bg-white text-gray-700 whitespace-nowrap" data-filter="probate">Probate</button>
+            <button type="button" class="pricing-filter px-3 py-2 rounded border bg-white text-gray-700 whitespace-nowrap" data-filter="veriphy">Veriphy</button>
+            <button type="button" class="pricing-filter px-3 py-2 rounded border bg-white text-gray-700 whitespace-nowrap" data-filter="standard">Standard</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if can_create %}
+    <form method="post" id="pricingEntryForm" class="hidden" action="{% url 'internal_pricing' %}">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create">
+      <div class="div-container">
+        <div class="flex items-center justify-between gap-3 mb-4">
+          <h2 class="text-xl font-medium text-gray-900">Quick Price Entry</h2>
+          <span class="text-xs text-gray-500">Veriphy checks are standard and do not use matter type.</span>
+        </div>
+        <div class="grid md:grid-cols-12 gap-3">
+          <div class="md:col-span-3">
+            <label for="{{ create_form.category.id_for_label }}">Category</label>
+            {{ create_form.category }}
+          </div>
+          <div class="md:col-span-3" data-matter-type-wrapper>
+            <label for="{{ create_form.matter_type.id_for_label }}">Matter Type <span class="text-gray-400">(optional)</span></label>
+            {{ create_form.matter_type }}
+          </div>
+          <div class="md:col-span-6">
+            <label for="{{ create_form.name.id_for_label }}">Item</label>
+            {{ create_form.name }}
+          </div>
+          <div class="md:col-span-3">
+            <label for="{{ create_form.pricing_type.id_for_label }}">Pricing Type</label>
+            {{ create_form.pricing_type }}
+          </div>
+          <div class="md:col-span-3">
+            <label for="{{ create_form.vat_treatment.id_for_label }}">VAT</label>
+            {{ create_form.vat_treatment }}
+          </div>
+          <div class="md:col-span-3" data-fixed-price-wrapper>
+            <label for="{{ create_form.price.id_for_label }}">Fixed Price</label>
+            {{ create_form.price }}
+          </div>
+          <div class="md:col-span-3" data-range-price-wrapper>
+            <label for="{{ create_form.minimum_price.id_for_label }}">Minimum</label>
+            {{ create_form.minimum_price }}
+          </div>
+          <div class="md:col-span-3" data-range-price-wrapper>
+            <label for="{{ create_form.maximum_price.id_for_label }}">Maximum</label>
+            {{ create_form.maximum_price }}
+          </div>
+          <div class="md:col-span-12">
+            <label for="{{ create_form.notes.id_for_label }}">Internal Notes</label>
+            {{ create_form.notes }}
+          </div>
+          <label class="md:col-span-4 flex items-center gap-3">
+            {{ create_form.manager_only }}
+            <span>Manager-only edit</span>
+          </label>
+          <label class="md:col-span-3 flex items-center gap-3">
+            {{ create_form.is_active }}
+            <span>Active</span>
+          </label>
+          <div class="md:col-span-5 flex md:justify-end">
+            <button class="btn-primary w-full md:w-fit" type="submit">Add Price</button>
+          </div>
+        </div>
+      </div>
+    </form>
+    {% endif %}
+
+    <div class="div-container">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+        <h2 class="text-xl font-medium text-gray-900">Price List</h2>
+        <input id="pricingSearch" type="search" class="form-input md:max-w-sm" placeholder="Search pricing items">
+      </div>
+      <div class="max-h-[calc(100vh-22rem)] min-h-96 overflow-auto border rounded">
+        <table class="table">
+          <thead class="text-gray-600 sticky top-0 z-10 bg-white">
+            <tr class="border-b">
+              <th class="td text-left">Use</th>
+              <th class="td text-left">Category</th>
+              <th class="td text-left">Item</th>
+              <th class="td text-left">Matter</th>
+              <th class="td text-left">Price</th>
+              <th class="td text-left">VAT</th>
+              <th class="td text-left">Quoted Amount</th>
+              <th class="td text-left">Access</th>
+              <th class="td text-left">Audit</th>
+              <th class="td text-left">Edit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pricing in pricing_entries %}
+            <tr class="pricing-row border-b align-top"
+                data-pricing-id="{{ pricing.id }}"
+                data-category="{{ pricing.category }}"
+                data-category-label="{{ pricing.get_category_display }}"
+                data-search="{{ pricing.name|lower }} {{ pricing.get_category_display|lower }} {{ pricing.matter_type|default:'standard'|lower }}"
+                data-name="{{ pricing.name }}"
+                data-matter="{{ pricing.matter_type|default:'Standard' }}"
+                data-type="{{ pricing.pricing_type }}"
+                data-vat="{{ pricing.vat_treatment }}"
+                data-vat-label="{{ pricing.get_vat_treatment_display }}"
+                data-fixed="{{ pricing.price|default:'' }}"
+                data-min="{{ pricing.minimum_price|default:'' }}"
+                data-max="{{ pricing.maximum_price|default:'' }}">
+              <td class="td">
+                <input type="checkbox" class="quote-checkbox w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500">
+              </td>
+              <td class="td min-w-36">
+                <span class="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700">{{ pricing.get_category_display }}</span>
+              </td>
+              <td class="td min-w-56">
+                <div class="font-medium text-gray-900">{{ pricing.name }}</div>
+                {% if pricing.notes %}
+                <div class="text-xs text-gray-500 mt-1">{{ pricing.notes }}</div>
+                {% endif %}
+              </td>
+              <td class="td text-gray-700 min-w-32">
+                {% if pricing.category == 'veriphy' %}
+                  Standard
+                {% else %}
+                  {{ pricing.matter_type|default:"Standard" }}
+                {% endif %}
+              </td>
+              <td class="td min-w-36 font-medium text-gray-900">{{ pricing.display_price }}</td>
+              <td class="td min-w-32">
+                {% if pricing.vat_treatment == 'excluding' %}
+                <span class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700">+ VAT</span>
+                {% elif pricing.vat_treatment == 'including' %}
+                <span class="text-xs px-2 py-1 rounded bg-sky-50 text-sky-700">Inc VAT</span>
+                {% else %}
+                <span class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">No VAT</span>
+                {% endif %}
+              </td>
+              <td class="td min-w-40">
+                {% if pricing.pricing_type == 'range' %}
+                  <input type="number" min="{{ pricing.minimum_price }}" max="{{ pricing.maximum_price }}" step="0.01"
+                         value="{{ pricing.minimum_price }}" class="quote-amount form-input">
+                {% else %}
+                  <span class="text-gray-500">Fixed</span>
+                {% endif %}
+              </td>
+              <td class="td min-w-32">
+                {% if pricing.manager_only %}
+                <span class="text-xs px-2 py-1 rounded bg-amber-50 text-amber-700">Manager edit</span>
+                {% else %}
+                <span class="text-xs px-2 py-1 rounded bg-green-50 text-green-700">Team edit</span>
+                {% endif %}
+              </td>
+              <td class="td min-w-48">
+                <details>
+                  <summary class="cursor-pointer text-sm text-gray-700">{{ pricing.audit_entries|length }} changes</summary>
+                  <div class="mt-2 space-y-2 max-h-56 overflow-auto">
+                    {% for audit in pricing.audit_entries %}
+                    <div class="border rounded p-2 bg-gray-50">
+                      <div class="text-xs text-gray-500">{{ audit.timestamp|date:"d M Y H:i" }} by {{ audit.modified_by|default:"-" }}</div>
+                      <ul class="mt-1 text-xs text-gray-700 list-disc ms-4">
+                        {% for field, change in audit.changes.items %}
+                        <li><span class="font-medium">{{ field|capfirst }}:</span> {{ change.old_value|default:"-" }} to {{ change.new_value|default:"-" }}</li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                    {% empty %}
+                    <p class="text-sm text-gray-500">No changes recorded.</p>
+                    {% endfor %}
+                  </div>
+                </details>
+              </td>
+              <td class="td min-w-56">
+                <details>
+                  <summary class="cursor-pointer text-sm text-gray-700">{% if pricing.user_can_edit %}Edit{% else %}Locked{% endif %}</summary>
+                  {% if pricing.user_can_edit %}
+                  <form method="post" action="{% url 'internal_pricing' %}" class="grid gap-2 mt-3 min-w-80 pricing-edit-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="update">
+                    <input type="hidden" name="pricing_id" value="{{ pricing.id }}">
+                    <div>
+                      <label for="{{ pricing.edit_form.category.id_for_label }}">Category</label>
+                      {{ pricing.edit_form.category }}
+                    </div>
+                    <div data-matter-type-wrapper>
+                      <label for="{{ pricing.edit_form.matter_type.id_for_label }}">Matter Type <span class="text-gray-400">(optional)</span></label>
+                      {{ pricing.edit_form.matter_type }}
+                    </div>
+                    <div>
+                      <label for="{{ pricing.edit_form.name.id_for_label }}">Item</label>
+                      {{ pricing.edit_form.name }}
+                    </div>
+                    <div>
+                      <label for="{{ pricing.edit_form.pricing_type.id_for_label }}">Pricing Type</label>
+                      {{ pricing.edit_form.pricing_type }}
+                    </div>
+                    <div>
+                      <label for="{{ pricing.edit_form.vat_treatment.id_for_label }}">VAT</label>
+                      {{ pricing.edit_form.vat_treatment }}
+                    </div>
+                    <div data-fixed-price-wrapper>
+                      <label for="{{ pricing.edit_form.price.id_for_label }}">Fixed Price</label>
+                      {{ pricing.edit_form.price }}
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                      <div data-range-price-wrapper>
+                        <label for="{{ pricing.edit_form.minimum_price.id_for_label }}">Minimum</label>
+                        {{ pricing.edit_form.minimum_price }}
+                      </div>
+                      <div data-range-price-wrapper>
+                        <label for="{{ pricing.edit_form.maximum_price.id_for_label }}">Maximum</label>
+                        {{ pricing.edit_form.maximum_price }}
+                      </div>
+                    </div>
+                    <div>
+                      <label for="{{ pricing.edit_form.notes.id_for_label }}">Notes</label>
+                      {{ pricing.edit_form.notes }}
+                    </div>
+                    <label class="flex items-center gap-3">
+                      {{ pricing.edit_form.manager_only }}
+                      <span>Manager-only edit</span>
+                    </label>
+                    {% if request.user.is_manager %}
+                    <label class="flex items-center gap-3">
+                      {{ pricing.edit_form.is_active }}
+                      <span>Active</span>
+                    </label>
+                    {% endif %}
+                    <button class="btn-primary" type="submit">Save</button>
+                  </form>
+                  {% else %}
+                  <p class="text-sm text-gray-500 mt-3">Manager-only item.</p>
+                  {% endif %}
+                </details>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td class="td text-gray-500" colspan="9">No pricing entries have been added yet.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <aside class="xl:col-span-4">
+    <div class="div-container xl:sticky xl:top-24 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xl font-medium text-gray-900">Quote Builder</h2>
+        <button type="button" id="clearQuote" class="btn-secondary text-sm">Clear</button>
+      </div>
+      <div id="quoteItems" class="mt-4 space-y-2 text-sm text-gray-700">
+        <p class="text-gray-500">Select prices from the list.</p>
+      </div>
+      <div class="border-t mt-4 pt-4">
+        <h3 class="text-sm font-medium text-gray-900">Fee Earner Time</h3>
+        <div class="grid grid-cols-1 gap-3 mt-3">
+          <div>
+            <label for="feeEarnerSelect">Fee Earner</label>
+            <select id="feeEarnerSelect" class="form-input">
+              <option value="" data-rate="0">Select fee earner</option>
+              {% for fee_earner in fee_earners %}
+              <option value="{{ fee_earner.id }}" data-rate="{{ fee_earner.hourly_rate.hourly_amount|default:'0' }}">
+                {{ fee_earner.first_name }} {{ fee_earner.last_name }}{% if fee_earner.hourly_rate %} - £{{ fee_earner.hourly_rate.hourly_amount }}/hr{% else %} - no rate{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="feeEarnerHours">Hours</label>
+            <input id="feeEarnerHours" type="number" min="0" step="0.1" class="form-input" placeholder="0">
+          </div>
+          <label class="flex items-center gap-3">
+            <input id="feeEarnerVat" type="checkbox" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" checked>
+            <span class="text-sm text-gray-700">Add VAT to fee-earner time</span>
+          </label>
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-gray-600">Time net</span>
+            <span id="feeEarnerCost" class="font-semibold text-gray-900">£0.00</span>
+          </div>
+        </div>
+      </div>
+      <div class="border-t mt-4 pt-4">
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-600">Subtotal excluding VAT</span>
+            <span id="quoteSubtotal" class="font-semibold text-gray-900">£0.00</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-600">VAT at {{ current_vat_rate_percent }}%</span>
+            <span id="quoteVat" class="font-semibold text-gray-900">£0.00</span>
+          </div>
+          <div class="flex items-center justify-between border-t pt-3">
+            <span class="text-sm text-gray-600">Total including VAT</span>
+            <span id="quoteTotal" class="text-3xl font-semibold text-gray-900">£0.00</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+  const VAT_RATE = {{ current_vat_rate_percent }} / 100;
+
+  function formatCurrency(value) {
+    return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value || 0);
+  }
+
+  function syncPricingForm(form) {
+    const category = form.querySelector('[name="category"]');
+    const pricingType = form.querySelector('[name="pricing_type"]');
+    const matterWrapper = form.querySelector('[data-matter-type-wrapper]');
+    const matterSelect = form.querySelector('[name="matter_type"]');
+    const fixedWrapper = form.querySelector('[data-fixed-price-wrapper]');
+    const rangeWrappers = form.querySelectorAll('[data-range-price-wrapper]');
+
+    if (!category || !pricingType) return;
+
+    const isVeriphy = category.value === 'veriphy';
+    if (matterWrapper) matterWrapper.classList.toggle('hidden', isVeriphy);
+    if (isVeriphy && matterSelect) matterSelect.value = '';
+
+    const isRange = pricingType.value === 'range';
+    if (fixedWrapper) fixedWrapper.classList.toggle('hidden', isRange);
+    rangeWrappers.forEach(function (wrapper) {
+      wrapper.classList.toggle('hidden', !isRange);
+    });
+  }
+
+  function getRowAmount(row) {
+    if (row.dataset.type === 'range') {
+      const input = row.querySelector('.quote-amount');
+      return Number(input && input.value ? input.value : row.dataset.min || 0);
+    }
+    return Number(row.dataset.fixed || 0);
+  }
+
+  function splitVat(amount, treatment) {
+    const value = Number(amount || 0);
+    if (treatment === 'including') {
+      const net = value / (1 + VAT_RATE);
+      return { net: net, vat: value - net, gross: value };
+    }
+    if (treatment === 'excluding') {
+      return { net: value, vat: value * VAT_RATE, gross: value * (1 + VAT_RATE) };
+    }
+    return { net: value, vat: 0, gross: value };
+  }
+
+  function getFeeEarnerCost() {
+    const select = document.getElementById('feeEarnerSelect');
+    const hoursInput = document.getElementById('feeEarnerHours');
+    const selectedOption = select.options[select.selectedIndex];
+    const rate = Number(selectedOption ? selectedOption.dataset.rate || 0 : 0);
+    const hours = Number(hoursInput.value || 0);
+    return rate * hours;
+  }
+
+  function renderQuote() {
+    const quoteItems = document.getElementById('quoteItems');
+    const selectedRows = Array.from(document.querySelectorAll('.pricing-row')).filter(function (row) {
+      const checkbox = row.querySelector('.quote-checkbox');
+      return checkbox && checkbox.checked;
+    });
+    const feeCost = getFeeEarnerCost();
+    const feeHasVat = document.getElementById('feeEarnerVat').checked;
+
+    if (!selectedRows.length && !feeCost) {
+      quoteItems.innerHTML = '<p class="text-gray-500">Select prices from the list.</p>';
+      document.getElementById('quoteSubtotal').textContent = formatCurrency(0);
+      document.getElementById('quoteVat').textContent = formatCurrency(0);
+      document.getElementById('quoteTotal').textContent = formatCurrency(0);
+      document.getElementById('feeEarnerCost').textContent = formatCurrency(0);
+      return;
+    }
+
+    let subtotal = 0;
+    let vatTotal = 0;
+    let total = 0;
+    quoteItems.innerHTML = '';
+    selectedRows.forEach(function (row) {
+      const amount = getRowAmount(row);
+      const split = splitVat(amount, row.dataset.vat);
+      subtotal += split.net;
+      vatTotal += split.vat;
+      total += split.gross;
+      const item = document.createElement('div');
+      item.className = 'border rounded p-3 bg-gray-50';
+      item.innerHTML = '<div class="flex justify-between gap-3"><div><div class="font-medium text-gray-900"></div><div class="text-xs text-gray-500 mt-1"></div><div class="text-xs text-gray-500 mt-1"></div></div><div class="font-semibold text-gray-900"></div></div>';
+      item.querySelector('.font-medium').textContent = row.dataset.name;
+      item.querySelector('.text-xs').textContent = row.dataset.categoryLabel + ' | ' + row.dataset.matter;
+      item.querySelectorAll('.text-xs')[1].textContent = row.dataset.vatLabel;
+      item.querySelector('.font-semibold').textContent = formatCurrency(split.gross);
+      quoteItems.appendChild(item);
+    });
+
+    if (feeCost) {
+      const feeVat = feeHasVat ? feeCost * VAT_RATE : 0;
+      subtotal += feeCost;
+      vatTotal += feeVat;
+      total += feeCost + feeVat;
+      const feeSelect = document.getElementById('feeEarnerSelect');
+      const feeText = feeSelect.options[feeSelect.selectedIndex].textContent.trim();
+      const hours = Number(document.getElementById('feeEarnerHours').value || 0);
+      const feeItem = document.createElement('div');
+      feeItem.className = 'border rounded p-3 bg-blue-50';
+      feeItem.innerHTML = '<div class="flex justify-between gap-3"><div><div class="font-medium text-gray-900"></div><div class="text-xs text-gray-500 mt-1"></div><div class="text-xs text-gray-500 mt-1"></div></div><div class="font-semibold text-gray-900"></div></div>';
+      feeItem.querySelector('.font-medium').textContent = 'Fee earner time';
+      feeItem.querySelector('.text-xs').textContent = feeText + ' | ' + hours + ' hours';
+      feeItem.querySelectorAll('.text-xs')[1].textContent = feeHasVat ? 'Excluding VAT' : 'No VAT';
+      feeItem.querySelector('.font-semibold').textContent = formatCurrency(feeCost + feeVat);
+      quoteItems.appendChild(feeItem);
+    }
+
+    document.getElementById('feeEarnerCost').textContent = formatCurrency(feeCost);
+    document.getElementById('quoteSubtotal').textContent = formatCurrency(subtotal);
+    document.getElementById('quoteVat').textContent = formatCurrency(vatTotal);
+    document.getElementById('quoteTotal').textContent = formatCurrency(total);
+  }
+
+  function applyFilters() {
+    const activeFilter = document.querySelector('.pricing-filter.bg-gray-900').dataset.filter;
+    const search = document.getElementById('pricingSearch').value.trim().toLowerCase();
+
+    document.querySelectorAll('.pricing-row').forEach(function (row) {
+      const category = row.dataset.category;
+      const filterMatch =
+        activeFilter === 'all' ||
+        category === activeFilter ||
+        (activeFilter === 'standard' && ['searches', 'disbursements', 'general', 'other'].includes(category));
+      const searchMatch = !search || row.dataset.search.includes(search);
+      row.classList.toggle('hidden', !(filterMatch && searchMatch));
+    });
+  }
+
+  document.querySelectorAll('#pricingEntryForm, .pricing-edit-form').forEach(function (form) {
+    syncPricingForm(form);
+    form.querySelectorAll('[name="category"], [name="pricing_type"]').forEach(function (input) {
+      input.addEventListener('change', function () { syncPricingForm(form); });
+    });
+  });
+
+  document.querySelectorAll('.quote-checkbox, .quote-amount').forEach(function (input) {
+    input.addEventListener('input', renderQuote);
+    input.addEventListener('change', renderQuote);
+  });
+
+  document.querySelectorAll('.pricing-filter').forEach(function (button) {
+    button.addEventListener('click', function () {
+      document.querySelectorAll('.pricing-filter').forEach(function (btn) {
+        btn.classList.remove('bg-gray-900', 'text-white');
+        btn.classList.add('bg-white', 'text-gray-700');
+      });
+      button.classList.add('bg-gray-900', 'text-white');
+      button.classList.remove('bg-white', 'text-gray-700');
+      applyFilters();
+    });
+  });
+
+  document.getElementById('pricingSearch').addEventListener('input', applyFilters);
+  document.getElementById('feeEarnerSelect').addEventListener('change', renderQuote);
+  document.getElementById('feeEarnerHours').addEventListener('input', renderQuote);
+  document.getElementById('feeEarnerVat').addEventListener('change', renderQuote);
+  document.getElementById('clearQuote').addEventListener('click', function () {
+    document.querySelectorAll('.quote-checkbox').forEach(function (checkbox) {
+      checkbox.checked = false;
+    });
+    document.getElementById('feeEarnerSelect').value = '';
+    document.getElementById('feeEarnerHours').value = '';
+    document.getElementById('feeEarnerVat').checked = true;
+    renderQuote();
+  });
+</script>
+
+{% endblock %}

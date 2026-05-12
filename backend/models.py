@@ -121,6 +121,82 @@ class MatterType(models.Model):
         return str(self.type)
 
 
+class PricingItem(models.Model):
+    CATEGORY_CHOICES = [
+        ('conveyancing', 'Conveyancing'),
+        ('wills', 'Wills'),
+        ('lpa', 'LPA'),
+        ('probate', 'Probate'),
+        ('divorce_family', 'Divorce and Family'),
+        ('veriphy', 'Veriphy Checks'),
+        ('searches', 'Searches'),
+        ('disbursements', 'Disbursements'),
+        ('general', 'General'),
+        ('other', 'Other'),
+    ]
+
+    PRICING_TYPE_CHOICES = [
+        ('fixed', 'Fixed price'),
+        ('range', 'Range'),
+    ]
+
+    VAT_TREATMENT_CHOICES = [
+        ('excluding', 'Excluding VAT'),
+        ('including', 'Including VAT'),
+        ('none', 'No VAT'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    category = models.CharField(
+        max_length=30, choices=CATEGORY_CHOICES, default='general'
+    )
+    matter_type = models.ForeignKey(
+        MatterType, on_delete=models.SET_NULL, null=True, blank=True, related_name='pricing'
+    )
+    name = models.CharField(max_length=255)
+    pricing_type = models.CharField(
+        max_length=10, choices=PRICING_TYPE_CHOICES, default='fixed'
+    )
+    price = models.DecimalField(decimal_places=2, max_digits=10, null=True, blank=True)
+    minimum_price = models.DecimalField(decimal_places=2, max_digits=10, null=True, blank=True)
+    maximum_price = models.DecimalField(decimal_places=2, max_digits=10, null=True, blank=True)
+    vat_treatment = models.CharField(
+        max_length=10, choices=VAT_TREATMENT_CHOICES, default='excluding'
+    )
+    notes = models.TextField(null=True, blank=True)
+    manager_only = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, related_name='pricing_item_created_by', null=True, blank=True
+    )
+    updated_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, related_name='pricing_item_updated_by', null=True, blank=True
+    )
+    timestamp = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['category', 'matter_type__type', 'name']
+        verbose_name = 'Pricing item'
+        verbose_name_plural = 'Pricing items'
+
+    def __str__(self):
+        return f'{self.name} - {self.display_price}'
+
+    @property
+    def display_price(self):
+        if self.pricing_type == 'range':
+            if self.minimum_price is not None and self.maximum_price is not None:
+                return f'£{self.minimum_price} - £{self.maximum_price}'
+            return 'Range'
+        if self.price is not None:
+            return f'£{self.price}'
+        return 'Price not set'
+
+    def can_edit(self, user):
+        return bool(getattr(user, 'is_manager', False) or (self.is_active and not self.manager_only))
+
+
 class WIP(models.Model):
     def convert_on_to_bool(self, value):
         return value.lower() == 'on' if value else False
@@ -926,6 +1002,14 @@ class Free30Mins(models.Model):
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
                                    related_name='free30_mins_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=['-date', '-start_time', '-id'],
+                name='free30mins_latest_idx',
+            ),
+        ]
 
 
 class Bundle(models.Model):

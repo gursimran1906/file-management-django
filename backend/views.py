@@ -6,18 +6,19 @@ from django.urls import reverse
 from django.db import transaction
 from django.db.models import Q, F, OuterRef, Subquery, Max, CharField, TextField, BooleanField, Exists, Count, Sum, Case, When, Value, DateField
 from django.db.models.functions import Cast, Coalesce, Greatest, Concat
-from .models import WIP, Memo, NextWork, LastWork, FileStatus, FileLocation, MatterType, ClientContactDetails, AuthorisedParties
+from .models import WIP, Memo, NextWork, LastWork, FileStatus, FileLocation, MatterType, PricingItem, ClientContactDetails, AuthorisedParties
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
 from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
 from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
-from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm
+from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm
 from .utils import create_modification
 from django.utils import timezone
 from users.models import CPDTrainingLog, CustomUser, HolidayRecord
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
+from django.core.paginator import Paginator
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 import json
@@ -1884,6 +1885,115 @@ def download_matter_file_review(request, id):
         f'attachment; filename="file_review_{review.matter.file_number}_{id}.pdf"'
     )
     return response
+
+
+@login_required
+def internal_pricing(request):
+    pricing_content_type = ContentType.objects.get_for_model(PricingItem)
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+
+        if action == 'create':
+            if not request.user.is_manager:
+                messages.error(request, 'Only managers can add pricing entries.')
+                return redirect('internal_pricing')
+
+            form = PricingItemForm(request.POST, user=request.user)
+            if form.is_valid():
+                pricing = form.save(commit=False)
+                pricing.created_by = request.user
+                pricing.updated_by = request.user
+                pricing.save()
+                create_modification(
+                    user=request.user,
+                    modified_obj=pricing,
+                    changes={
+                        'created': {
+                            'old_value': '',
+                            'new_value': 'Pricing entry created',
+                        }
+                    }
+                )
+                messages.success(request, 'Pricing entry added.')
+                return redirect('internal_pricing')
+
+            messages.error(request, 'Please correct the pricing entry form.')
+
+        elif action == 'update':
+            pricing = get_object_or_404(PricingItem, id=request.POST.get('pricing_id'))
+
+            if not pricing.can_edit(request.user):
+                messages.error(request, 'Only managers can edit this pricing entry.')
+                return redirect('internal_pricing')
+
+            duplicate_obj = copy.deepcopy(pricing)
+            form = PricingItemForm(request.POST, instance=pricing, user=request.user)
+            if form.is_valid():
+                changed_fields = form.changed_data
+                changes = {}
+                for field in changed_fields:
+                    changes[field] = {
+                        'old_value': str(getattr(duplicate_obj, field)),
+                        'new_value': None,
+                    }
+
+                pricing = form.save(commit=False)
+                pricing.updated_by = request.user
+                pricing.save()
+
+                for field in changed_fields:
+                    changes[field]['new_value'] = str(getattr(pricing, field))
+
+                if changes:
+                    create_modification(
+                        user=request.user,
+                        modified_obj=pricing,
+                        changes=changes
+                    )
+                    messages.success(request, 'Pricing entry updated.')
+                else:
+                    messages.info(request, 'No pricing changes were made.')
+
+                return redirect('internal_pricing')
+
+            messages.error(request, 'Please correct the pricing update form.')
+
+    pricing_entries = PricingItem.objects.select_related(
+        'matter_type', 'created_by', 'updated_by'
+    )
+    if not request.user.is_manager:
+        pricing_entries = pricing_entries.filter(is_active=True)
+
+    pricing_entries = list(pricing_entries)
+
+    audit_entries = Modifications.objects.filter(
+        content_type=pricing_content_type,
+        object_id__in=[pricing.id for pricing in pricing_entries]
+    ).select_related('modified_by').order_by('-timestamp')
+
+    audit_by_pricing = {}
+    for audit in audit_entries:
+        audit_by_pricing.setdefault(audit.object_id, []).append(audit)
+
+    for pricing in pricing_entries:
+        pricing.edit_form = PricingItemForm(instance=pricing, user=request.user)
+        pricing.audit_entries = audit_by_pricing.get(pricing.id, [])
+        pricing.user_can_edit = pricing.can_edit(request.user)
+
+    return render(request, 'internal_pricing.html', {
+        'pricing_entries': pricing_entries,
+        'create_form': PricingItemForm(user=request.user),
+        'can_create': request.user.is_manager,
+        'current_vat_rate_percent': CURRENT_VAT_RATE_PERCENT,
+        'fee_earners': CustomUser.objects.filter(
+            is_matter_fee_earner=True,
+            is_active=True,
+        ).select_related('hourly_rate').order_by('first_name', 'last_name', 'username'),
+    })
+
+
+matter_pricing = internal_pricing
 
 
 @login_required
@@ -6720,7 +6830,6 @@ def download_document(request):
 
 
 def free30mins(request):
-    free_30mins_meetings = Free30Mins.objects.all().order_by('-date')
     free30_mins_form = Free30MinsForm()
     free30_mins_attendees_form = Free30MinsAttendeesForm()
 
@@ -6785,10 +6894,45 @@ def free30mins(request):
         except Exception as e:
             messages.error(request, f"An error occurred: {e}")
 
+    search_query = request.GET.get('q', '').strip()
+    allowed_page_sizes = [10, 25, 50, 100]
+    try:
+        page_size = int(request.GET.get('per_page', 25))
+    except (TypeError, ValueError):
+        page_size = 25
+    if page_size not in allowed_page_sizes:
+        page_size = 25
+
+    free_30mins_meetings = (
+        Free30Mins.objects
+        .select_related('matter_type', 'created_by')
+        .prefetch_related('attendees')
+        .order_by('-date', '-start_time', '-id')
+    )
+
+    if search_query:
+        free_30mins_meetings = free_30mins_meetings.filter(
+            Q(attendees__name__icontains=search_query)
+            | Q(attendees__email__icontains=search_query)
+            | Q(matter_type__type__icontains=search_query)
+            | Q(created_by__username__icontains=search_query)
+            | Q(created_by__first_name__icontains=search_query)
+            | Q(created_by__last_name__icontains=search_query)
+        ).distinct()
+
+    paginator = Paginator(free_30mins_meetings, page_size)
+    meetings_page = paginator.get_page(request.GET.get('page'))
+
     return render(request, 'free_30mins.html', {
         'free30_mins_form': free30_mins_form,
         'free30_mins_attendees_form': free30_mins_attendees_form,
-        'meetings': free_30mins_meetings
+        'meetings': meetings_page,
+        'page_obj': meetings_page,
+        'paginator': paginator,
+        'page_range': paginator.get_elided_page_range(meetings_page.number),
+        'search_query': search_query,
+        'page_size': page_size,
+        'allowed_page_sizes': allowed_page_sizes,
     })
 
 

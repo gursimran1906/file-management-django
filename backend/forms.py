@@ -212,6 +212,73 @@ class LedgerAccountTransfersHalfForm(forms.ModelForm):
         for field_name, field in self.fields.items():
             field.widget.attrs['class'] = 'form-input'
 
+
+class PricingItemForm(forms.ModelForm):
+    class Meta:
+        model = PricingItem
+        fields = [
+            'category',
+            'matter_type',
+            'name',
+            'pricing_type',
+            'price',
+            'minimum_price',
+            'maximum_price',
+            'vat_treatment',
+            'notes',
+            'manager_only',
+            'is_active',
+        ]
+        labels = {
+            'manager_only': 'Only managers can edit this price',
+            'is_active': 'Active',
+            'minimum_price': 'Minimum',
+            'maximum_price': 'Maximum',
+            'vat_treatment': 'VAT',
+        }
+        widgets = {
+            'notes': forms.Textarea(attrs={'rows': 2}),
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super(PricingItemForm, self).__init__(*args, **kwargs)
+        is_manager = bool(getattr(user, 'is_manager', False))
+
+        for field_name, field in self.fields.items():
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs['class'] = 'w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500'
+            else:
+                field.widget.attrs['class'] = 'form-input'
+
+        if not is_manager:
+            for field_name in ['category', 'matter_type', 'name', 'pricing_type', 'manager_only', 'is_active']:
+                self.fields[field_name].disabled = True
+
+    def clean(self):
+        cleaned_data = super().clean()
+        category = cleaned_data.get('category')
+        pricing_type = cleaned_data.get('pricing_type')
+        price = cleaned_data.get('price')
+        minimum_price = cleaned_data.get('minimum_price')
+        maximum_price = cleaned_data.get('maximum_price')
+
+        if category == 'veriphy':
+            cleaned_data['matter_type'] = None
+
+        if pricing_type == 'fixed' and price is None:
+            self.add_error('price', 'Enter a fixed price.')
+
+        if pricing_type == 'range':
+            if minimum_price is None:
+                self.add_error('minimum_price', 'Enter a minimum price.')
+            if maximum_price is None:
+                self.add_error('maximum_price', 'Enter a maximum price.')
+            if minimum_price is not None and maximum_price is not None and minimum_price > maximum_price:
+                self.add_error('maximum_price', 'Maximum price must be greater than or equal to minimum price.')
+
+        return cleaned_data
+
+
 class InvoicesForm(forms.ModelForm):
     class Meta:
         model = Invoices

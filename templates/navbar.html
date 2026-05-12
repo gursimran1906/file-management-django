@@ -315,6 +315,10 @@
           <span class="ms-3">Document Bundles</span>
         </a>
       </li>
+      {% comment %}
+      Internal Pricing is hidden from the sidebar for this push.
+      The route remains available at /internal_pricing/ while the feature is in beta.
+      {% endcomment %}
       {% if request.user.is_manager %}
       <hr>
       <li>
