@@ -36,7 +36,7 @@ class ModificationsAdmin(admin.ModelAdmin):
 
 @admin.register(ClientContactDetails)
 class ClientContactDetailsAdmin(admin.ModelAdmin):
-    list_display = ['id', 'name', 'dob', 'address_line1', 'address_line2', 'county', 'postcode',
+    list_display = ['id', 'name', 'is_business', 'dob', 'address_line1', 'address_line2', 'county', 'postcode',
                     'email', 'contact_number', 'date_of_last_aml', 'id_verified',
                     'terms_of_engagement_signed', 'ncba_signed', 'pep_signed',
                     'source_of_funds_signed', 'timestamp', 'created_by']

@@ -324,7 +324,7 @@ class CreditNoteHalfForm(forms.ModelForm):
 class ClientForm(forms.ModelForm):
     class Meta:
         model = ClientContactDetails
-        fields = ['name', 'dob', 'occupation','address_line1', 'address_line2',
+        fields = ['name', 'is_business', 'dob', 'occupation','address_line1', 'address_line2',
                   'county', 'postcode', 'email', 'contact_number', 'date_of_last_aml',
                   'id_verified', 'terms_of_engagement_signed', 'ncba_signed',
                   'pep_signed', 'source_of_funds_signed']
@@ -336,6 +336,8 @@ class ClientForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super(ClientForm, self).__init__(*args, **kwargs)
+        self.fields['is_business'].label = 'Business client'
+        self.fields['date_of_last_aml'].label = 'Date of last AML / UK Business Check'
         for field_name, field in self.fields.items():
             if isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs['class'] = 'h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'

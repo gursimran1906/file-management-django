@@ -8,6 +8,12 @@
     value="{{client.name}}"
   />
 </div>
+<div class="col-span-8 mt-2">
+  <div class="form-check">
+    <input class="form-check-input" type="checkbox" name="Client{{ client_number }}IsBusiness" {% if client.is_business %} checked {% endif %}/>
+    <label class="form-check-label">Business Client {{ client_number }}</label>
+  </div>
+</div>
 <div class="col-span-8">
   <label class="form-label">Date of Birth</label>
   <input
@@ -89,7 +95,7 @@
   />
 </div>
 <div class="col-span-8">
-  <label class="form-label">Date of Last AML Check</label>
+  <label class="form-label">Date of Last AML / UK Business Check</label>
   <input
     type="date"
     class="form-input"

@@ -1,0 +1,393 @@
+{% extends 'base.html' %}
+{% block title %}Key Dates{% endblock %}
+{% block styles %}
+<style>
+  .calendar-entry-highlight {
+    outline: 3px solid #2563eb;
+    outline-offset: 2px;
+  }
+
+  @media print {
+    nav,
+    #alert-policies,
+    .no-print,
+    dialog {
+      display: none !important;
+    }
+
+    #content {
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    body.print-calendar .print-list-section,
+    body.print-list .print-calendar-section {
+      display: none !important;
+    }
+
+    .div-container {
+      border: 0 !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+    }
+
+    .print-calendar-section,
+    .print-list-section {
+      break-inside: avoid;
+      max-height: none !important;
+      overflow: visible !important;
+    }
+
+    .print-month {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+  }
+</style>
+{% endblock %}
+{% block container_class %}container{% endblock %}
+{% block container %}
+
+<div class="mt-4 space-y-4">
+  <div class="div-container">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <p class="text-sm uppercase text-gray-500">Central Calendar</p>
+        <h1 class="text-3xl font-medium text-gray-900">Key Dates & Availability</h1>
+      </div>
+      <div class="no-print flex flex-wrap gap-2">
+        <a class="btn-secondary" href="{% url 'download_central_key_dates' 'pdf' 'calendar' %}?{{ request.GET.urlencode }}">Calendar PDF</a>
+        <a class="btn-secondary" href="{% url 'download_central_key_dates' 'csv' 'calendar' %}?{{ request.GET.urlencode }}">Calendar CSV</a>
+        <a class="btn-secondary" href="{% url 'download_central_key_dates' 'pdf' 'list' %}?{{ request.GET.urlencode }}">Entries PDF</a>
+        <a class="btn-secondary" href="{% url 'download_central_key_dates' 'csv' 'list' %}?{{ request.GET.urlencode }}">Entries CSV</a>
+        <a class="btn-secondary" href="?{{ previous_month_query }}">Previous Month</a>
+        <span class="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-900">{{ month_label }}</span>
+        <a class="btn-secondary" href="?{{ next_month_query }}">Next Month</a>
+      </div>
+    </div>
+  </div>
+
+  <form class="no-print div-container" method="get">
+    <input id="calendar_year" type="hidden" name="year" value="{{ current_year }}">
+    <input id="calendar_month" type="hidden" name="month" value="{{ current_month }}">
+    <input type="hidden" name="sources_submitted" value="1">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+      <div>
+        <label class="form-label" for="fee_earner">Fee Earner</label>
+        <select id="fee_earner" name="fee_earner" class="form-input">
+          <option value="">All fee earners</option>
+          {% for fee_earner in fee_earners %}
+          <option value="{{ fee_earner.id }}" {% if filters.fee_earner|add:"0" == fee_earner.id %}selected{% endif %}>{{ fee_earner }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="matter_type">Matter Type</label>
+        <select id="matter_type" name="matter_type" class="form-input">
+          <option value="">All matter types</option>
+          {% for matter_type in matter_types %}
+          <option value="{{ matter_type.id }}" {% if filters.matter_type|add:"0" == matter_type.id %}selected{% endif %}>{{ matter_type }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="file_status">File Status</label>
+        <select id="file_status" name="file_status" class="form-input">
+          <option value="all" {% if filters.file_status == 'all' %}selected{% endif %}>All statuses</option>
+          {% for status in file_statuses %}
+          <option value="{{ status.id }}" {% if filters.file_status|add:"0" == status.id %}selected{% endif %}>{{ status }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="date_type">Date Type</label>
+        <select id="date_type" name="date_type" class="form-input">
+          <option value="">All date types</option>
+          {% for value, label in date_type_choices %}
+          <option value="{{ value }}" {% if filters.date_type == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="matter">Matter</label>
+        <select id="matter" name="matter" class="form-input">
+          <option value="">All matters</option>
+          {% for matter in matters %}
+          <option value="{{ matter.id }}" {% if filters.matter|add:"0" == matter.id %}selected{% endif %}>
+            {{ matter.file_number }} - {{ matter.client1.name }}{% if matter.client2 %} / {{ matter.client2.name }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="matter_search">Matter Search</label>
+        <input id="matter_search" name="matter_search" class="form-input" type="search" value="{{ filters.matter_search }}" placeholder="File no. or description">
+      </div>
+      <div>
+        <label class="form-label" for="client_search">Client Search</label>
+        <input id="client_search" name="client_search" class="form-input" type="search" value="{{ filters.client_search }}" placeholder="Client name">
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="form-label" for="date_from">From</label>
+          <input id="date_from" name="date_from" class="form-input" type="date" value="{{ filters.date_from }}">
+        </div>
+        <div>
+          <label class="form-label" for="date_to">To</label>
+          <input id="date_to" name="date_to" class="form-input" type="date" value="{{ filters.date_to }}">
+        </div>
+      </div>
+      <div>
+        <label class="form-label" for="view_months">Calendar View</label>
+        <select id="view_months" name="view_months" class="form-input">
+          {% for view_month_count in view_month_choices %}
+          <option value="{{ view_month_count }}" {% if filters.view_months == view_month_count %}selected{% endif %}>{% if view_month_count == 1 %}31 days{% else %}{{ view_month_count }} months{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="mt-4 rounded border border-gray-200 bg-gray-50 p-3">
+      <p class="text-xs uppercase text-gray-500 mb-2">Include date sources</p>
+      <div class="flex flex-wrap gap-3 text-sm">
+        {% for value, label in source_choices %}
+        <label class="inline-flex items-center gap-2">
+          <input class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" type="checkbox" name="source" value="{{ value }}" {% if value in filters.sources %}checked{% endif %}>
+          <span>{{ label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="mt-4 flex flex-wrap gap-2">
+      <button class="btn-primary" type="submit">Apply Filters</button>
+      <a class="btn-secondary" href="{% url 'central_key_dates' %}">Reset</a>
+    </div>
+  </form>
+
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+    <div class="print-calendar-section div-container xl:col-span-2">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-900">{{ month_label }}</h2>
+        <span class="text-xs text-gray-500">Calendar view</span>
+      </div>
+      <div class="space-y-4">
+        {% for calendar_month in calendar_months %}
+        <div class="print-month">
+          <h3 class="mb-2 text-sm font-semibold text-gray-700">{{ calendar_month.label }}</h3>
+          <div class="grid grid-cols-7 border border-gray-200 rounded-t bg-gray-50 text-center text-xs font-medium uppercase text-gray-500">
+            <div class="py-2 border-r">Mon</div>
+            <div class="py-2 border-r">Tue</div>
+            <div class="py-2 border-r">Wed</div>
+            <div class="py-2 border-r">Thu</div>
+            <div class="py-2 border-r">Fri</div>
+            <div class="py-2 border-r">Sat</div>
+            <div class="py-2">Sun</div>
+          </div>
+          <div class="grid grid-cols-7 border-l border-gray-200">
+            {% for week in calendar_month.weeks %}
+              {% for day in week %}
+              <div class="min-h-32 border-r border-b border-gray-200 p-2 {% if not day.is_current_month %}bg-gray-50 text-gray-400{% else %}bg-white{% endif %}">
+                <div class="mb-2 flex items-center justify-between">
+                  <span class="text-sm font-medium {% if day.is_today %}rounded-full bg-blue-600 px-2 py-0.5 text-white{% endif %}">{{ day.date|date:"j" }}</span>
+                  {% if day.events %}
+                  <span class="text-[11px] text-gray-500">{{ day.events|length }}</span>
+                  {% endif %}
+                </div>
+                {% if day.source_counts %}
+                <div class="mb-2 flex flex-wrap gap-1">
+                  {% for source_count in day.source_counts %}
+                  <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold {% if source_count.source == 'matter_key_date' %}bg-blue-100 text-blue-800{% elif source_count.source == 'risk_assessment_due' %}bg-red-100 text-red-800{% elif source_count.source == 'ongoing_monitoring_due' %}bg-amber-100 text-amber-800{% elif source_count.source == 'aml_due' %}bg-purple-100 text-purple-800{% elif source_count.source == 'id_expiry' %}bg-gray-200 text-gray-800{% elif source_count.source == 'staff_leave' %}bg-emerald-100 text-emerald-800{% elif source_count.source == 'sickness' %}bg-rose-100 text-rose-800{% elif source_count.source == 'office_closure' %}bg-teal-100 text-teal-800{% elif source_count.source == 'bank_holiday' %}bg-cyan-100 text-cyan-800{% else %}bg-gray-200 text-gray-800{% endif %}" title="{{ source_count.label }}">
+                    {{ source_count.count }}
+                  </span>
+                  {% endfor %}
+                </div>
+                {% endif %}
+                <div class="space-y-1">
+                  {% for event in day.visible_events %}
+                  <a class="calendar-scroll-link block rounded border px-2 py-1 text-xs hover:bg-blue-100 {% if event.source == 'matter_key_date' %}border-blue-100 bg-blue-50 text-blue-900{% elif event.source == 'risk_assessment_due' %}border-red-100 bg-red-50 text-red-900{% elif event.source == 'ongoing_monitoring_due' %}border-amber-100 bg-amber-50 text-amber-900{% elif event.source == 'aml_due' %}border-purple-100 bg-purple-50 text-purple-900{% elif event.source == 'id_expiry' %}border-gray-200 bg-gray-50 text-gray-900{% elif event.source == 'staff_leave' %}border-emerald-100 bg-emerald-50 text-emerald-900{% elif event.source == 'sickness' %}border-rose-100 bg-rose-50 text-rose-900{% elif event.source == 'office_closure' %}border-teal-100 bg-teal-50 text-teal-900{% elif event.source == 'bank_holiday' %}border-cyan-100 bg-cyan-50 text-cyan-900{% else %}border-gray-200 bg-gray-50 text-gray-900{% endif %}" href="#{{ event.list_id }}" data-target="{{ event.list_id }}">
+                    <span class="block font-medium truncate">{{ event.title }}</span>
+                    <span class="block truncate">{{ event.source_label }}{% if event.matter %} | {{ event.matter.file_number }}{% endif %}{% if event.time %} | {{ event.time|time:"H:i" }}{% endif %}</span>
+                  </a>
+                  {% endfor %}
+                  {% if day.hidden_event_count %}
+                  <button class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-left text-xs font-medium text-gray-700 hover:bg-gray-50" type="button" onclick="document.getElementById('day-events-{{ day.date|date:"Ymd" }}').showModal()">
+                    View all {{ day.events|length }}
+                  </button>
+                  <dialog id="day-events-{{ day.date|date:"Ymd" }}" class="w-full max-w-2xl rounded border border-gray-200 bg-white p-0 shadow-xl backdrop:bg-gray-900/50">
+                    <div class="border-b border-gray-200 p-4">
+                      <div class="flex items-start justify-between gap-3">
+                        <div>
+                          <p class="text-xs uppercase text-gray-500">{{ day.date|date:"l" }}</p>
+                          <h3 class="text-lg font-semibold text-gray-900">{{ day.date|date:"d M Y" }}</h3>
+                        </div>
+                        <form method="dialog">
+                          <button class="btn-secondary text-xs" type="submit">Close</button>
+                        </form>
+                      </div>
+                    </div>
+                    <div class="max-h-[70vh] space-y-2 overflow-y-auto p-4">
+                      {% for event in day.events %}
+                      <a class="calendar-scroll-link block rounded border px-3 py-2 text-sm {% if event.source == 'matter_key_date' %}border-blue-100 bg-blue-50 text-blue-900{% elif event.source == 'risk_assessment_due' %}border-red-100 bg-red-50 text-red-900{% elif event.source == 'ongoing_monitoring_due' %}border-amber-100 bg-amber-50 text-amber-900{% elif event.source == 'aml_due' %}border-purple-100 bg-purple-50 text-purple-900{% elif event.source == 'staff_leave' %}border-emerald-100 bg-emerald-50 text-emerald-900{% elif event.source == 'sickness' %}border-rose-100 bg-rose-50 text-rose-900{% elif event.source == 'office_closure' %}border-teal-100 bg-teal-50 text-teal-900{% elif event.source == 'bank_holiday' %}border-cyan-100 bg-cyan-50 text-cyan-900{% else %}border-gray-200 bg-gray-50 text-gray-900{% endif %}" href="#{{ event.list_id }}" data-target="{{ event.list_id }}">
+                        <span class="block font-semibold">{{ event.title }}</span>
+                        <span class="block text-xs">{{ event.source_label }}{% if event.matter %} | {{ event.matter.file_number }}{% endif %}{% if event.time %} | {{ event.time|time:"H:i" }}{% endif %}</span>
+                        {% if event.subtitle %}
+                        <span class="mt-1 block text-xs">{{ event.subtitle }}</span>
+                        {% endif %}
+                      </a>
+                      {% endfor %}
+                    </div>
+                  </dialog>
+                  {% endif %}
+                </div>
+              </div>
+              {% endfor %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="print-list-section div-container max-h-[80vh]">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-900">Calendar Entries</h2>
+        <span class="text-xs text-gray-500">{{ key_dates|length }} found</span>
+      </div>
+      <div class="space-y-3">
+        {% for key_date in key_dates %}
+        <div id="{{ key_date.list_id }}" class="key-date-list-item scroll-mt-24 rounded border border-gray-200 bg-white p-3 text-sm transition-shadow">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="font-semibold text-gray-900">{{ key_date.title }}</p>
+              <p class="text-xs text-gray-500">{{ key_date.source_label }} | {{ key_date.date|date:"d/m/Y" }}{% if key_date.time %} at {{ key_date.time|time:"H:i" }}{% endif %}</p>
+            </div>
+            {% if key_date.edit_url %}
+            <a class="btn-secondary text-xs" href="{{ key_date.edit_url }}">{% if key_date.source == 'matter_key_date' %}Edit{% else %}Open{% endif %}</a>
+            {% endif %}
+          </div>
+          <div class="mt-2">
+            <span class="rounded-full px-2 py-0.5 text-xs font-semibold {% if key_date.source == 'matter_key_date' %}bg-blue-100 text-blue-800{% elif key_date.source == 'risk_assessment_due' %}bg-red-100 text-red-800{% elif key_date.source == 'ongoing_monitoring_due' %}bg-amber-100 text-amber-800{% elif key_date.source == 'aml_due' %}bg-purple-100 text-purple-800{% elif key_date.source == 'id_expiry' %}bg-gray-200 text-gray-800{% elif key_date.source == 'staff_leave' %}bg-emerald-100 text-emerald-800{% elif key_date.source == 'sickness' %}bg-rose-100 text-rose-800{% elif key_date.source == 'office_closure' %}bg-teal-100 text-teal-800{% elif key_date.source == 'bank_holiday' %}bg-cyan-100 text-cyan-800{% else %}bg-gray-200 text-gray-800{% endif %}">
+              {{ key_date.source_label }}
+            </span>
+          </div>
+          <dl class="mt-3 grid grid-cols-1 gap-2 text-xs">
+            {% if key_date.matter %}
+            <div>
+              <dt class="text-gray-500">Matter</dt>
+              <dd><a class="link" href="{% url 'home' key_date.matter.file_number %}">{{ key_date.matter.file_number }}</a> - {{ key_date.matter.matter_description|default:"No description" }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Client</dt>
+              <dd>{{ key_date.matter.client1.name }}{% if key_date.matter.client2 %} / {{ key_date.matter.client2.name }}{% endif %}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Fee Earner</dt>
+              <dd>{{ key_date.matter.fee_earner|default:"-" }}</dd>
+            </div>
+            {% endif %}
+            {% if key_date.person_label %}
+            <div>
+              <dt class="text-gray-500">Person</dt>
+              <dd>{{ key_date.person_label }}</dd>
+            </div>
+            {% endif %}
+            {% if key_date.subtitle %}
+            <div>
+              <dt class="text-gray-500">Detail</dt>
+              <dd>{{ key_date.subtitle }}</dd>
+            </div>
+            {% endif %}
+            {% if key_date.location %}
+            <div>
+              <dt class="text-gray-500">Location</dt>
+              <dd>{{ key_date.location }}</dd>
+            </div>
+            {% endif %}
+            {% if key_date.notes %}
+            <div>
+              <dt class="text-gray-500">Notes</dt>
+              <dd class="whitespace-pre-line">{{ key_date.notes }}</dd>
+            </div>
+            {% endif %}
+          </dl>
+        </div>
+        {% empty %}
+        <p class="rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-500">No key dates match these filters.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function printKeyDates(mode) {
+    document.body.classList.remove('print-calendar', 'print-list');
+    document.body.classList.add(mode === 'list' ? 'print-list' : 'print-calendar');
+    window.print();
+  }
+
+  window.addEventListener('afterprint', function () {
+    document.body.classList.remove('print-calendar', 'print-list');
+  });
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const viewSelect = document.getElementById('view_months');
+    const dateFromInput = document.getElementById('date_from');
+    const dateToInput = document.getElementById('date_to');
+    const calendarYearInput = document.getElementById('calendar_year');
+    const calendarMonthInput = document.getElementById('calendar_month');
+
+    function updateViewDateRange() {
+      if (!viewSelect || !dateFromInput || !dateToInput || !dateFromInput.value) {
+        return;
+      }
+      const months = parseInt(viewSelect.value, 10);
+      const startDate = new Date(dateFromInput.value + 'T00:00:00');
+      if (Number.isNaN(startDate.getTime())) {
+        return;
+      }
+      if (calendarYearInput && calendarMonthInput) {
+        calendarYearInput.value = startDate.getFullYear();
+        calendarMonthInput.value = startDate.getMonth() + 1;
+      }
+      const endDate = new Date(startDate);
+      if (months === 1) {
+        endDate.setDate(endDate.getDate() + 30);
+      } else {
+        endDate.setMonth(endDate.getMonth() + months);
+        endDate.setDate(endDate.getDate() - 1);
+      }
+      dateToInput.value = endDate.toISOString().slice(0, 10);
+    }
+
+    if (viewSelect) {
+      viewSelect.addEventListener('change', updateViewDateRange);
+    }
+    if (dateFromInput) {
+      dateFromInput.addEventListener('change', updateViewDateRange);
+    }
+
+    document.querySelectorAll('.calendar-scroll-link').forEach(function (link) {
+      link.addEventListener('click', function (event) {
+        event.preventDefault();
+        const target = document.getElementById(link.dataset.target);
+        if (!target) {
+          return;
+        }
+        const openDialog = link.closest('dialog');
+        if (openDialog) {
+          openDialog.close();
+        }
+        document.querySelectorAll('.key-date-list-item').forEach(function (item) {
+          item.classList.remove('calendar-entry-highlight');
+        });
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.classList.add('calendar-entry-highlight');
+        window.setTimeout(function () {
+          target.classList.remove('calendar-entry-highlight');
+        }, 2500);
+      });
+    });
+  });
+</script>
+
+{% endblock %}

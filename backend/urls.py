@@ -3,17 +3,20 @@ from django.urls import path
 from .views import add_memo, delete_memo, display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, edit_memo, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work, read_memo, update_task_status, load_initial_tasks, load_more_tasks, get_files, get_users, create_task
 from .views import attendance_note_view, add_attendance_note, bulk_upload_attendance_notes, download_attendance_notes_bulk_template, download_attendance_notes_bulk, download_attendance_note, edit_attendance_note, correspondence_view, add_letter, edit_letter, download_sowc
 from .views import finance_view, add_blue_slip, add_pink_slip, add_green_slip, edit_pmts_slip, download_pmts_slip, edit_green_slip, download_green_slip, add_invoice, add_credit_note, approve_credit_note, reject_credit_note, edit_credit_note
-from .views import allocate_monies, download_statement_account, download_invoice, download_credit_note, edit_invoice, download_estate_accounts, unallocated_emails, allocate_emails
+from .views import allocate_monies, download_statement_account, download_invoice, download_credited_invoice, download_credit_note, edit_invoice, download_estate_accounts, unallocated_emails, allocate_emails
 from .views import download_cashier_data, edit_file, edit_client, edit_authorised_party, download_file_logs, download_frontsheet, generate_ledgers_report, user_dashboard, download_risk_assessment
 from .views import add_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring
 from .views import edit_ongoing_monitoring, download_document, onboarding_documents_display, edit_otherside, free30mins, download_free30mins, edit_free30mins
 from .views import undertakings, edit_undertaking, add_policy, edit_policy, download_policy_pdf, management_reports, weekly_report_view, policies_read_per_user
 from .views import bundle_create, bundle_edit, bundle_section_add, bundle_section_delete, bundle_section_reorder, bundle_document_upload, bundle_document_delete, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_delete
 from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, download_user_key_documents_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review, internal_pricing
-from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date
+from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, central_key_dates, download_central_key_dates
 
 urlpatterns = [
     path('dashboard/', user_dashboard, name='user_dashboard'),
+    path('key_dates/', central_key_dates, name='central_key_dates'),
+    path('key_dates/download/<str:export_format>/<str:export_kind>/',
+         download_central_key_dates, name='download_central_key_dates'),
     path('index/display_data/', display_data_index_page,
          name='display_data_index_page'),
     path('index/search/download/', download_search_report,
@@ -131,6 +134,8 @@ urlpatterns = [
     path('credit_note/download/<int:id>/',
          download_credit_note, name='download_credit_note'),
     path('invoice/download/<int:id>/', download_invoice, name='download_invoice'),
+    path('invoice/download/credited/<int:id>/',
+         download_credited_invoice, name='download_credited_invoice'),
     path('invoice/edit/<int:id>/', edit_invoice, name='edit_invoice'),
 
     path('allocate/monies_in/invoice/', allocate_monies, name='allocate_monies'),

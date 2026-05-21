@@ -76,6 +76,8 @@
                     <div class='mt-2 '>
                         <a class='link' href="{% url 'download_invoice' invoice.id %}">Download Invoice</a>
                         &nbsp;&nbsp;&nbsp;
+                        <a class='link' href="{% url 'download_credited_invoice' invoice.id %}">Download Credited Invoice</a>
+                        &nbsp;&nbsp;&nbsp;
                         <a class='link' href="{% url 'edit_invoice' invoice.id %}">Edit Invoice</a>
                     </div>
                 </div>

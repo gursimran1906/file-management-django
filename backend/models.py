@@ -36,6 +36,7 @@ class Modifications(models.Model):
 class ClientContactDetails(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=255)
+    is_business = models.BooleanField(default=False)
     dob = models.DateField(null=True, blank=True)
     occupation = models.CharField(max_length=255)
     address_line1 = models.CharField(max_length=255)

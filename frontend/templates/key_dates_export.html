@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Key Dates Export</title>
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 14mm;
+    }
+
+    body {
+      color: #111827;
+      font-family: Arial, sans-serif;
+      font-size: 10px;
+    }
+
+    h1 {
+      font-size: 20px;
+      margin: 0 0 4px;
+    }
+
+    h2 {
+      font-size: 14px;
+      margin: 14px 0 6px;
+    }
+
+    .meta {
+      color: #4b5563;
+      margin-bottom: 12px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    th,
+    td {
+      border: 1px solid #d1d5db;
+      padding: 5px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f3f4f6;
+      font-weight: 700;
+    }
+
+    .calendar {
+      table-layout: fixed;
+      margin-bottom: 14px;
+    }
+
+    .calendar td {
+      height: 72px;
+    }
+
+    .date {
+      color: #374151;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .entry {
+      border-radius: 3px;
+      margin-bottom: 3px;
+      padding: 2px 3px;
+    }
+
+    .matter_key_date { background: #dbeafe; }
+    .risk_assessment_due { background: #fee2e2; }
+    .ongoing_monitoring_due { background: #fef3c7; }
+    .aml_due { background: #f3e8ff; }
+    .id_expiry { background: #e5e7eb; }
+    .staff_leave { background: #d1fae5; }
+    .sickness { background: #ffe4e6; }
+    .office_closure { background: #ccfbf1; }
+    .bank_holiday { background: #cffafe; }
+  </style>
+</head>
+<body>
+  <h1>Key Dates & Availability</h1>
+  <div class="meta">{{ month_label }} | {{ key_dates|length }} entries</div>
+
+  {% if export_kind == 'calendar' %}
+    {% for calendar_month in calendar_months %}
+    <h2>{{ calendar_month.label }}</h2>
+    <table class="calendar">
+      <thead>
+        <tr>
+          <th>Mon</th>
+          <th>Tue</th>
+          <th>Wed</th>
+          <th>Thu</th>
+          <th>Fri</th>
+          <th>Sat</th>
+          <th>Sun</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for week in calendar_month.weeks %}
+        <tr>
+          {% for day in week %}
+          <td>
+            {% if day.is_current_month %}
+            <div class="date">{{ day.date|date:"j" }}</div>
+            {% for event in day.events %}
+            <div class="entry {{ event.source }}">
+              <strong>{{ event.source_label }}</strong>: {{ event.title }}
+              {% if event.matter %}<br>{{ event.matter.file_number }}{% endif %}
+            </div>
+            {% endfor %}
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endfor %}
+  {% else %}
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Time</th>
+          <th>Source</th>
+          <th>Title</th>
+          <th>Matter</th>
+          <th>Client / Person</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in key_dates %}
+        <tr>
+          <td>{{ event.date|date:"d/m/Y" }}</td>
+          <td>{% if event.time %}{{ event.time|time:"H:i" }}{% endif %}</td>
+          <td>{{ event.source_label }}</td>
+          <td>{{ event.title }}</td>
+          <td>{% if event.matter %}{{ event.matter.file_number }}{% endif %}</td>
+          <td>
+            {% if event.person_label %}
+              {{ event.person_label }}
+            {% elif event.matter %}
+              {{ event.matter.client1.name }}{% if event.matter.client2 %} / {{ event.matter.client2.name }}{% endif %}
+            {% endif %}
+          </td>
+          <td>{{ event.subtitle }}{% if event.location %}<br>{{ event.location }}{% endif %}{% if event.notes %}<br>{{ event.notes }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</body>
+</html>

@@ -15,7 +15,7 @@ from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, Ledge
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm
 from .utils import create_modification
 from django.utils import timezone
-from users.models import CPDTrainingLog, CustomUser, HolidayRecord
+from users.models import CPDTrainingLog, CustomUser, HolidayRecord, SicknessRecord
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
 from django.core.paginator import Paginator
@@ -26,6 +26,8 @@ from weasyprint import HTML
 from django.utils.safestring import mark_safe
 from django.contrib.contenttypes.models import ContentType
 import csv
+import calendar as calendar_module
+import holidays
 from datetime import date, datetime, timedelta, time
 from dateutil.relativedelta import relativedelta
 import copy
@@ -41,6 +43,7 @@ import io
 from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, Http404
 from django.conf import settings
+from django.utils.dateparse import parse_date
 import os
 import PyPDF2
 import zipfile
@@ -1342,6 +1345,629 @@ def delete_matter_key_date(request, id):
     return redirect('home', file_number=file_number)
 
 
+def _month_bounds(year, month):
+    last_day = calendar_module.monthrange(year, month)[1]
+    return date(year, month, 1), date(year, month, last_day)
+
+
+def _coerce_calendar_month(request):
+    today = timezone.localdate()
+    try:
+        year = int(request.GET.get('year', today.year))
+        month = int(request.GET.get('month', today.month))
+        first_day, last_day = _month_bounds(year, month)
+    except (TypeError, ValueError):
+        year = today.year
+        month = today.month
+        first_day, last_day = _month_bounds(year, month)
+
+    return year, month, first_day, last_day
+
+
+def _range_query_string(request, start_date, end_date, view_months=1):
+    params = request.GET.copy()
+    params['year'] = start_date.year
+    params['month'] = start_date.month
+    params['date_from'] = start_date.isoformat()
+    params['date_to'] = end_date.isoformat()
+    params['view_months'] = view_months
+    return params.urlencode()
+
+
+KEY_DATE_SOURCE_CHOICES = [
+    ('matter_key_date', 'Matter key dates'),
+    ('risk_assessment_due', 'Risk assessments due'),
+    ('ongoing_monitoring_due', 'Ongoing monitoring due'),
+    ('aml_due', 'AML checks due'),
+    ('id_expiry', 'ID/address expiry or review'),
+    ('staff_leave', 'Staff leave'),
+    ('sickness', 'Sickness'),
+    ('office_closure', 'Office closures'),
+    ('bank_holiday', 'Bank holidays'),
+]
+
+
+DEFAULT_KEY_DATE_SOURCES = [
+    'matter_key_date',
+    'staff_leave',
+    'sickness',
+    'office_closure',
+    'bank_holiday',
+]
+
+
+VIEW_MONTH_CHOICES = [1, 2, 6]
+
+
+def _make_central_calendar_event(
+    *,
+    event_date,
+    title,
+    matter=None,
+    source,
+    source_label,
+    subtitle='',
+    time_value=None,
+    edit_url='',
+    detail_url='',
+    person_label='',
+    location='',
+    notes='',
+):
+    if not detail_url and matter:
+        detail_url = reverse('home', args=[matter.file_number])
+    return {
+        'date': event_date,
+        'time': time_value,
+        'title': title,
+        'matter': matter,
+        'source': source,
+        'source_label': source_label,
+        'subtitle': subtitle,
+        'edit_url': edit_url,
+        'detail_url': detail_url,
+        'person_label': person_label,
+        'location': location,
+        'notes': notes,
+    }
+
+
+def _event_date(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return timezone.localtime(value).date()
+    return value
+
+
+def _iter_event_dates(start_value, end_value, lower_bound, upper_bound):
+    start_date = _event_date(start_value)
+    end_date = _event_date(end_value) or start_date
+    if not start_date:
+        return
+
+    current = max(start_date, lower_bound)
+    last_date = min(end_date, upper_bound)
+    while current <= last_date:
+        yield current
+        current += timedelta(days=1)
+
+
+def _source_counts_for_day(events):
+    count_lookup = {}
+    for event in events:
+        count_lookup[event['source']] = count_lookup.get(event['source'], 0) + 1
+
+    counts = []
+    for source, label in KEY_DATE_SOURCE_CHOICES:
+        count = count_lookup.get(source)
+        if count:
+            counts.append({
+                'source': source,
+                'label': label,
+                'count': count,
+            })
+    return counts
+
+
+def _build_central_key_dates_context(request):
+    year, month, month_start, month_end = _coerce_calendar_month(request)
+
+    try:
+        selected_view_months = int(request.GET.get('view_months', 1))
+    except (TypeError, ValueError):
+        selected_view_months = 1
+    if selected_view_months not in VIEW_MONTH_CHOICES:
+        selected_view_months = 1
+
+    today = timezone.localdate()
+    has_custom_date_range = 'date_from' in request.GET or 'date_to' in request.GET
+    default_end = (month_start + relativedelta(months=selected_view_months)) - timedelta(days=1)
+    if selected_view_months == 1 and not has_custom_date_range:
+        default_start = today - timedelta(days=15)
+        default_end = today + timedelta(days=15)
+    else:
+        default_start = month_start
+
+    date_from = parse_date(request.GET.get('date_from') or '') or default_start
+    date_to = parse_date(request.GET.get('date_to') or '') or default_end
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+    open_status = FileStatus.objects.filter(status__iexact='Open').first()
+    selected_file_status = request.GET.get('file_status')
+    if selected_file_status is None and open_status:
+        selected_file_status = str(open_status.id)
+
+    selected_fee_earner = request.GET.get('fee_earner', '')
+    selected_matter_type = request.GET.get('matter_type', '')
+    selected_matter = request.GET.get('matter', '')
+    selected_date_type = request.GET.get('date_type', '')
+    matter_search = request.GET.get('matter_search', '').strip()
+    client_search = request.GET.get('client_search', '').strip()
+    selected_sources = request.GET.getlist('source')
+    if 'sources_submitted' not in request.GET:
+        selected_sources = DEFAULT_KEY_DATE_SOURCES.copy()
+
+    base_matters = WIP.objects.select_related(
+        'fee_earner',
+        'matter_type',
+        'file_status',
+        'client1',
+        'client2',
+        'authorised_party1',
+        'authorised_party2',
+    )
+
+    if selected_fee_earner:
+        base_matters = base_matters.filter(fee_earner_id=selected_fee_earner)
+    if selected_matter_type:
+        base_matters = base_matters.filter(matter_type_id=selected_matter_type)
+    if selected_file_status and selected_file_status != 'all':
+        base_matters = base_matters.filter(file_status_id=selected_file_status)
+    if selected_matter:
+        base_matters = base_matters.filter(id=selected_matter)
+    if matter_search:
+        base_matters = base_matters.filter(
+            Q(file_number__icontains=matter_search)
+            | Q(matter_description__icontains=matter_search)
+        )
+    if client_search:
+        base_matters = base_matters.filter(
+            Q(client1__name__icontains=client_search)
+            | Q(client2__name__icontains=client_search)
+        )
+
+    matter_ids = base_matters.values_list('id', flat=True)
+
+    key_dates = MatterKeyDate.objects.select_related(
+        'matter',
+        'matter__fee_earner',
+        'matter__matter_type',
+        'matter__file_status',
+        'matter__client1',
+        'matter__client2',
+        'created_by',
+    ).filter(
+        matter_id__in=matter_ids,
+        date__gte=date_from,
+        date__lte=date_to,
+    )
+
+    if selected_date_type:
+        key_dates = key_dates.filter(date_type=selected_date_type)
+
+    key_dates = key_dates.order_by('date', 'time', 'matter__file_number', 'title')
+
+    events = []
+    if 'matter_key_date' in selected_sources:
+        for key_date in key_dates:
+            events.append(_make_central_calendar_event(
+                event_date=key_date.date,
+                time_value=key_date.time,
+                title=key_date.title,
+                matter=key_date.matter,
+                source='matter_key_date',
+                source_label=key_date.get_date_type_display(),
+                subtitle=key_date.get_date_type_display(),
+                edit_url=reverse('edit_matter_key_date', args=[key_date.id]),
+                location=key_date.location,
+                notes=key_date.notes,
+            ))
+
+    latest_assessment_subquery = RiskAssessment.objects.filter(
+        matter=OuterRef('pk')
+    ).order_by('-due_diligence_date').values('due_diligence_date')[:1]
+    latest_monitoring_subquery = OngoingMonitoring.objects.filter(
+        file_number=OuterRef('pk')
+    ).order_by('-date_due_diligence_conducted').values('date_due_diligence_conducted')[:1]
+
+    annotated_matters = base_matters.annotate(
+        latest_assessment_date=Subquery(latest_assessment_subquery),
+        latest_monitoring_date=Subquery(latest_monitoring_subquery),
+    )
+
+    if 'risk_assessment_due' in selected_sources:
+        for matter in annotated_matters:
+            if matter.latest_assessment_date:
+                continue
+            due_date = timezone.localdate()
+            if date_from <= due_date <= date_to:
+                events.append(_make_central_calendar_event(
+                    event_date=due_date,
+                    title='Risk assessment due',
+                    matter=matter,
+                    source='risk_assessment_due',
+                    source_label='Risk due',
+                    subtitle='Initial matter risk assessment',
+                    edit_url=reverse('add_risk_assessment', args=[matter.file_number]),
+                ))
+
+    if 'ongoing_monitoring_due' in selected_sources:
+        for matter in annotated_matters:
+            last_review_date = matter.latest_monitoring_date or matter.latest_assessment_date
+            if not last_review_date:
+                continue
+            due_date = last_review_date + relativedelta(years=1)
+            if date_from <= due_date <= date_to:
+                events.append(_make_central_calendar_event(
+                    event_date=due_date,
+                    title='Ongoing monitoring due',
+                    matter=matter,
+                    source='ongoing_monitoring_due',
+                    source_label='Monitoring',
+                    subtitle='Annual ongoing monitoring review',
+                    edit_url=reverse('add_ongoing_monitoring', args=[matter.file_number]),
+                ))
+
+    if 'aml_due' in selected_sources:
+        for matter in base_matters:
+            parties = [
+                (matter.client1, 'Client'),
+                (matter.client2, 'Client'),
+                (matter.authorised_party1, 'Authorised party'),
+                (matter.authorised_party2, 'Authorised party'),
+            ]
+            for party, party_type in parties:
+                if not party:
+                    continue
+                due_date = (
+                    party.date_of_last_aml + relativedelta(years=1)
+                    if party.date_of_last_aml
+                    else timezone.localdate()
+                )
+                if date_from <= due_date <= date_to:
+                    events.append(_make_central_calendar_event(
+                        event_date=due_date,
+                        title=f'AML check due - {party.name}',
+                        matter=matter,
+                        source='aml_due',
+                        source_label='AML',
+                        subtitle=party_type,
+                        person_label=party.name,
+                        edit_url=reverse('edit_client', args=[party.id]) if party_type == 'Client' else reverse('edit_authorised_party', args=[party.id]),
+                    ))
+
+    if 'id_expiry' in selected_sources:
+        client_ids = set(base_matters.values_list('client1_id', flat=True))
+        client_ids.update(
+            base_matters.exclude(client2_id__isnull=True).values_list('client2_id', flat=True)
+        )
+        client_ids.discard(None)
+        documents = ClientKeyDocument.objects.filter(
+            client_id__in=client_ids,
+            expiry_date__gte=date_from,
+            expiry_date__lte=date_to,
+        ).select_related('client').order_by('expiry_date', 'client__name', 'category')
+        client_matters = {}
+        for matter in base_matters:
+            client_matters.setdefault(matter.client1_id, []).append(matter)
+            if matter.client2_id:
+                client_matters.setdefault(matter.client2_id, []).append(matter)
+        for document in documents:
+            for matter in client_matters.get(document.client_id, []):
+                events.append(_make_central_calendar_event(
+                    event_date=document.expiry_date,
+                    title=f'{document.get_category_display()} expiring - {document.client.name}',
+                    matter=matter,
+                    source='id_expiry',
+                    source_label='ID expiry',
+                    subtitle=document.document_type or document.get_category_display(),
+                    person_label=document.client.name,
+                    edit_url=reverse('edit_client', args=[document.client_id]),
+                    notes=document.document_reference,
+                ))
+
+        annual_review_documents = ClientKeyDocument.objects.filter(
+            client_id__in=client_ids,
+            verified_on__isnull=False,
+        ).select_related('client').order_by('verified_on', 'client__name', 'category')
+        for document in annual_review_documents:
+            review_due_date = document.verified_on + relativedelta(years=1)
+            if not (date_from <= review_due_date <= date_to):
+                continue
+            for matter in client_matters.get(document.client_id, []):
+                events.append(_make_central_calendar_event(
+                    event_date=review_due_date,
+                    title=f'{document.get_category_display()} review due - {document.client.name}',
+                    matter=matter,
+                    source='id_expiry',
+                    source_label='ID review',
+                    subtitle=document.document_type or document.get_category_display(),
+                    person_label=document.client.name,
+                    edit_url=reverse('edit_client', args=[document.client_id]),
+                    notes=document.document_reference,
+                ))
+
+    selected_staff_id = selected_fee_earner or None
+
+    if 'staff_leave' in selected_sources or 'office_closure' in selected_sources:
+        holiday_records = HolidayRecord.objects.select_related('employee').filter(
+            start_date__date__lte=date_to,
+            end_date__date__gte=date_from,
+            approved=True,
+        ).order_by('start_date', 'employee__username')
+        if selected_staff_id:
+            holiday_records = holiday_records.filter(employee_id=selected_staff_id)
+
+        for holiday in holiday_records:
+            is_office_closure = holiday.reason == 'Office Closure'
+            source = 'office_closure' if is_office_closure else 'staff_leave'
+            if source not in selected_sources:
+                continue
+
+            if is_office_closure:
+                title = f'Office closure - {holiday.employee}'
+                source_label = 'Office closure'
+                subtitle = holiday.reason
+            else:
+                leave_type = 'Annual leave' if holiday.type == 'Paid' else 'Unpaid leave'
+                title = f'{holiday.employee} off'
+                source_label = leave_type
+                subtitle = holiday.reason or leave_type
+
+            for event_date in _iter_event_dates(holiday.start_date, holiday.end_date, date_from, date_to):
+                events.append(_make_central_calendar_event(
+                    event_date=event_date,
+                    title=title,
+                    source=source,
+                    source_label=source_label,
+                    subtitle=subtitle,
+                    person_label=str(holiday.employee),
+                    edit_url=reverse('profile_page'),
+                    detail_url=reverse('profile_page'),
+                ))
+
+    if 'sickness' in selected_sources:
+        sickness_records = SicknessRecord.objects.select_related('employee').filter(
+            start_date__date__lte=date_to,
+        ).filter(
+            Q(end_date__isnull=True) | Q(end_date__date__gte=date_from)
+        ).order_by('start_date', 'employee__username')
+        if selected_staff_id:
+            sickness_records = sickness_records.filter(employee_id=selected_staff_id)
+        elif not request.user.is_manager:
+            sickness_records = sickness_records.filter(employee=request.user)
+
+        for sickness in sickness_records:
+            for event_date in _iter_event_dates(sickness.start_date, sickness.end_date or sickness.start_date, date_from, date_to):
+                events.append(_make_central_calendar_event(
+                    event_date=event_date,
+                    title=f'{sickness.employee} off sick',
+                    source='sickness',
+                    source_label='Sickness',
+                    subtitle=sickness.description,
+                    person_label=str(sickness.employee),
+                    edit_url=reverse('profile_page'),
+                    detail_url=reverse('profile_page'),
+                    notes=sickness.description,
+                ))
+
+    if 'bank_holiday' in selected_sources:
+        holiday_list = holidays.country_holidays(
+            'GB',
+            subdiv='ENG',
+            years=range(date_from.year, date_to.year + 1),
+        )
+        for holiday_date, holiday_name in holiday_list.items():
+            if date_from <= holiday_date <= date_to:
+                events.append(_make_central_calendar_event(
+                    event_date=holiday_date,
+                    title=f'Bank holiday - {holiday_name}',
+                    source='bank_holiday',
+                    source_label='Bank holiday',
+                    subtitle=holiday_name,
+                    notes=holiday_name,
+                ))
+
+    events = sorted(events, key=lambda event: (
+        event['date'],
+        event['time'] or time.min,
+        event['matter'].file_number if event['matter'] else '',
+        event['title'],
+    ))
+
+    for index, event in enumerate(events, start=1):
+        event['list_id'] = f'calendar-entry-{index}'
+
+    calendar_events = {}
+    for event in events:
+        if date_from <= event['date'] <= date_to:
+            calendar_events.setdefault(event['date'], []).append(event)
+
+    calendar_start = date_from - timedelta(days=date_from.weekday())
+    calendar_end = date_to + timedelta(days=(6 - date_to.weekday()))
+    calendar_weeks = []
+    current_day = calendar_start
+    while current_day <= calendar_end:
+        week_days = []
+        for offset in range(7):
+            day = current_day + timedelta(days=offset)
+            is_in_range = date_from <= day <= date_to
+            day_events = calendar_events.get(day, []) if is_in_range else []
+            week_days.append({
+                'date': day,
+                'is_current_month': is_in_range,
+                'is_today': day == timezone.localdate(),
+                'events': day_events,
+                'visible_events': day_events[:2],
+                'hidden_event_count': max(len(day_events) - 2, 0),
+                'source_counts': _source_counts_for_day(day_events),
+            })
+        calendar_weeks.append(week_days)
+        current_day += timedelta(days=7)
+
+    calendar_months = [{
+        'label': f"{date_from.strftime('%d %b %Y')} - {date_to.strftime('%d %b %Y')}",
+        'weeks': calendar_weeks,
+    }]
+
+    if selected_view_months == 1:
+        period_delta = (date_to - date_from) + timedelta(days=1)
+        previous_start = date_from - period_delta
+        previous_end = date_to - period_delta
+        next_start = date_from + period_delta
+        next_end = date_to + period_delta
+    else:
+        previous_start = date_from - relativedelta(months=selected_view_months)
+        previous_end = date_to - relativedelta(months=selected_view_months)
+        next_start = date_from + relativedelta(months=selected_view_months)
+        next_end = date_to + relativedelta(months=selected_view_months)
+    month_label = f"{date_from.strftime('%d %b %Y')} - {date_to.strftime('%d %b %Y')}"
+
+    context = {
+        'key_dates': events,
+        'calendar_months': calendar_months,
+        'current_year': date_from.year,
+        'current_month': date_from.month,
+        'month_label': month_label,
+        'previous_month_query': _range_query_string(request, previous_start, previous_end, selected_view_months),
+        'next_month_query': _range_query_string(request, next_start, next_end, selected_view_months),
+        'fee_earners': CustomUser.objects.filter(
+            is_matter_fee_earner=True,
+            is_active=True,
+        ).order_by('first_name', 'last_name', 'username'),
+        'matter_types': MatterType.objects.all().order_by('type'),
+        'file_statuses': FileStatus.objects.all().order_by('status'),
+        'matters': WIP.objects.select_related('client1', 'client2').order_by('file_number'),
+        'date_type_choices': MatterKeyDate.DATE_TYPE_CHOICES,
+        'source_choices': KEY_DATE_SOURCE_CHOICES,
+        'view_month_choices': VIEW_MONTH_CHOICES,
+        'filters': {
+            'fee_earner': selected_fee_earner,
+            'matter_type': selected_matter_type,
+            'file_status': selected_file_status or 'all',
+            'matter': selected_matter,
+            'date_type': selected_date_type,
+            'sources': selected_sources,
+            'matter_search': matter_search,
+            'client_search': client_search,
+            'date_from': date_from.isoformat(),
+            'date_to': date_to.isoformat(),
+            'view_months': selected_view_months,
+        },
+    }
+    return context
+
+
+@login_required
+def central_key_dates(request):
+    context = _build_central_key_dates_context(request)
+    return render(request, 'key_dates.html', context)
+
+
+def _key_date_event_row(event):
+    matter = event['matter']
+    client = ''
+    fee_earner = ''
+    matter_description = ''
+    file_number = ''
+    if matter:
+        file_number = matter.file_number
+        matter_description = matter.matter_description or ''
+        client = matter.client1.name
+        if matter.client2:
+            client = f'{client} / {matter.client2.name}'
+        fee_earner = str(matter.fee_earner or '')
+
+    return [
+        event['date'].isoformat(),
+        event['date'].strftime('%A'),
+        event['time'].strftime('%H:%M') if event['time'] else '',
+        event['source_label'],
+        event['title'],
+        file_number,
+        matter_description,
+        client,
+        fee_earner,
+        event['person_label'],
+        event['location'],
+        event['subtitle'],
+        event['notes'],
+    ]
+
+
+@login_required
+def download_central_key_dates(request, export_format, export_kind):
+    if export_format not in {'csv', 'pdf'} or export_kind not in {'calendar', 'list'}:
+        raise Http404
+
+    context = _build_central_key_dates_context(request)
+    filename_base = f"key-dates-{export_kind}-{context['filters']['date_from']}-to-{context['filters']['date_to']}"
+
+    if export_format == 'csv':
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{filename_base}.csv"'
+        writer = csv.writer(response)
+        if export_kind == 'calendar':
+            writer.writerow(['Date', 'Day', 'Total Entries', 'Source Counts', 'Entries'])
+            for calendar_month in context['calendar_months']:
+                for week in calendar_month['weeks']:
+                    for day in week:
+                        if not day['events']:
+                            continue
+                        source_counts = ', '.join(
+                            f"{source_count['label']}: {source_count['count']}"
+                            for source_count in day['source_counts']
+                        )
+                        entries = '; '.join(
+                            f"{event['source_label']} - {event['title']}"
+                            for event in day['events']
+                        )
+                        writer.writerow([
+                            day['date'].isoformat(),
+                            day['date'].strftime('%A'),
+                            len(day['events']),
+                            source_counts,
+                            entries,
+                        ])
+        else:
+            writer.writerow([
+                'Date',
+                'Day',
+                'Time',
+                'Source',
+                'Title',
+                'Matter',
+                'Matter Description',
+                'Client',
+                'Fee Earner',
+                'Person',
+                'Location',
+                'Detail',
+                'Notes',
+            ])
+            for event in context['key_dates']:
+                writer.writerow(_key_date_event_row(event))
+        return response
+
+    context['export_kind'] = export_kind
+    html = render_to_string('key_dates_export.html', context, request=request)
+    pdf = HTML(string=html, base_url=request.build_absolute_uri('/')).write_pdf()
+    response = HttpResponse(pdf, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename_base}.pdf"'
+    return response
+
+
 def _display_change_value(value):
     """Render a single old/new value for a Modifications log item."""
     if value is None or value == '' or value == 'None':
@@ -1738,6 +2364,7 @@ def get_file_logs(file_number, limit=None):
 
 def add_new_client(request_post_copy, client_prefix, user):
     name = request_post_copy[f'ClientName{client_prefix}']
+    is_business = f'Client{client_prefix}IsBusiness' in request_post_copy
     dob = request_post_copy[f'Client{client_prefix}DOB']
     occupation = request_post_copy[f'Client{client_prefix}Occupation']
 
@@ -1756,6 +2383,7 @@ def add_new_client(request_post_copy, client_prefix, user):
 
     client_contact = ClientContactDetails(
         name=name,
+        is_business=is_business,
         dob=dob if dob != '' else None,
         occupation=occupation,
         address_line1=address_line1,
@@ -4385,10 +5013,11 @@ def download_invoice(request, id):
             .logoDiv{
                 position: absolute;
                 top: 15px;
+                left: 40px;
                 right: 40px;
                 z-index: 1000;
-                width: 75px;
-                height: 50px;
+                width: auto;
+                text-align: right;
                 margin: 0;
                 padding: 0;
             }
@@ -4404,7 +5033,10 @@ def download_invoice(request, id):
                 .logoDiv {
                     position: absolute;
                     top: 15px;
+                    left: 40px;
                     right: 40px;
+                    width: auto;
+                    text-align: right;
                 }
                 /* First page: no top margin, content can start at top */
                 @page :first {
@@ -4423,12 +5055,12 @@ def download_invoice(request, id):
                     margin-right: 40px;
                 }
             }
-            img {
-                width: 75px;
-                height: 50px;
+            .logoDiv img {
+                width: 180px;
+                height: auto;
                 margin: 0;
                 padding: 0;
-                display: block;
+                display: inline-block;
             }
             
             """
@@ -4451,6 +5083,370 @@ def download_invoice(request, id):
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="Invoice {invoice.invoice_number} - {
         invoice.file_number.client1.name} ({invoice.file_number.matter_description}).pdf"'
+    return response
+
+
+@login_required
+def download_credited_invoice(request, id):
+    invoice = get_object_or_404(
+        Invoices.objects.select_related(
+            'file_number',
+            'file_number__client1',
+            'file_number__client2',
+        ).prefetch_related(
+            'disbs_ids',
+            'moa_ids',
+            'green_slip_ids',
+            'cash_allocated_slips',
+            'credit_notes',
+        ),
+        id=id,
+    )
+
+    def parse_json_dict(value):
+        if isinstance(value, str):
+            return json.loads(value) if value else {}
+        if isinstance(value, (bytes, bytearray)):
+            return json.loads(value.decode('utf-8'))
+        if isinstance(value, dict):
+            return value
+        if value in (None, ''):
+            return {}
+        raise ValueError("Unsupported JSON value type")
+
+    file_details_display = f"<tr><td><b>Our Ref:</b>{invoice.file_number.file_number}</td><td></td></tr>"
+    file_details_display = file_details_display + \
+        f"<tr><td><b>Invoice No:</b>{invoice.invoice_number}</td><td></td></tr>"
+    file_details_display = file_details_display + \
+        f"<tr><td><b>Date:</b>{invoice.date.strftime('%d/%m/%Y')}</td><td></td></tr>"
+    file_details_display = file_details_display + \
+        f"<tr><td>&nbsp;</td><td></td></tr>"
+    file_details_display = file_details_display + \
+        f"<tr><td><b>Private & Confidential</b></td><td></td></tr>"
+    file_details_display = file_details_display + \
+        f"""<tr><td class='d-flex flex-row'>
+        <div class="me-4 " >{invoice.file_number.client1.name}<br>
+        {invoice.file_number.client1.address_line1}<br>
+        {invoice.file_number.client1.address_line2}<br>
+        {invoice.file_number.client1.county}, {invoice.file_number.client1.postcode}
+        </div>"""
+    if invoice.file_number.client2:
+        file_details_display = file_details_display + f"""
+            <div class="border-start ps-4">{invoice.file_number.client2.name}<br>
+            {invoice.file_number.client2.address_line1}<br>
+            {invoice.file_number.client2.address_line2}<br>
+            {invoice.file_number.client2.county}, {invoice.file_number.client2.postcode}
+            </div>"""
+    file_details_display = file_details_display + """ </td><td></td></tr>"""
+    if invoice.payable_by == 'Client':
+        payable_by = "&nbsp;"
+    else:
+        payable_by = invoice.payable_by
+        payable_by = f"<tr><td><b>Payable by: </b>{payable_by}</td><td></td></tr>"
+
+    file_details_display = file_details_display + payable_by
+    if invoice.by_email == True and invoice.by_post == True:
+        send_via = f'<b>By post and email to: </b>{invoice.file_number.client1.email}'
+    elif invoice.by_email == True:
+        send_via = f'<b>By email to: </b>{invoice.file_number.client1.email}'
+    elif invoice.by_post == True:
+        send_via = f'<b>By post</b>'
+    else:
+        send_via = ""
+
+    file_details_display = file_details_display + \
+        f"<tr><td><b>Re: </b>{invoice.file_number.matter_description}</td><td></td></tr>"
+    file_details_display = file_details_display + \
+        f"<tr><td colspan='2' style='text-align: right;'>{send_via}</td></tr>"
+
+    desc_and_cost_display = "<tr><td>&nbsp;</td><td></td></tr>"
+    desc_and_cost_display = desc_and_cost_display + \
+        f"<tr><td style='text-align: justify; text-justify: inter-word;' colspan='2'>{invoice.description}</td></tr>"
+    desc_and_cost_display = desc_and_cost_display + \
+        "<tr><td>&nbsp;</td><td></td></tr>"
+
+    costs = ast.literal_eval(invoice.our_costs) if type(
+        invoice.our_costs) != type([]) else invoice.our_costs
+    our_costs_desc = ast.literal_eval(invoice.our_costs_desc) if type(
+        invoice.our_costs_desc) != type([]) else invoice.our_costs_desc
+    costs_display = ""
+    for i in range(len(costs)):
+        costs_display = costs_display + \
+            f"<tr><td><b>{our_costs_desc[i]}</b>:</td><td style='text-align: center;"
+        if i == 0:
+            costs_display = costs_display + "border-top: solid; border-top-width: thin;'"
+        else:
+            costs_display = costs_display + "'"
+        costs_display = costs_display + \
+            f">£{round(Decimal(costs[i]), 2)}</td></tr>"
+    _, vat_inv, total_cost_and_vat = calculate_invoice_total_with_vat(invoice)
+    costs_display = costs_display + \
+        f"<tr><td >Add VAT @{CURRENT_VAT_RATE_PERCENT}%:</td><td style='text-align: center; border-top: solid; border-top-width: thin;'>£{round(vat_inv, 2)}</td></tr>"
+    total_cost_and_vat = round(total_cost_and_vat, 2)
+    costs_display = costs_display + \
+        f"<tr><td ><b>Total Costs and VAT:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{total_cost_and_vat}</td></tr>"
+    costs_display = costs_display + f"<tr><td>&nbsp;</td><td></td></tr>"
+    desc_and_cost_display = desc_and_cost_display + costs_display
+
+    total_pink_slips = Decimal('0')
+    if invoice.disbs_ids.exists():
+        pink_slips_display = "<tr><td colspan='2'><b>Add Disbursement</b></td><tr>"
+        for slip in invoice.disbs_ids.all():
+            date = slip.date.strftime('%d/%m/%Y')
+            pink_slips_display = pink_slips_display + \
+                f"<tr><td>{slip.description} - {date}</td><td style='text-align: center;"
+            if total_pink_slips == 0:
+                pink_slips_display = pink_slips_display + \
+                    "border-top: solid; border-top-width: thin;'"
+            else:
+                pink_slips_display = pink_slips_display + "'"
+
+            total_pink_slips = total_pink_slips + slip.amount
+            pink_slips_display = pink_slips_display + \
+                f">£{slip.amount}</td></tr>"
+        pink_slips_display = pink_slips_display + \
+            f"<tr><td><b>Total Disbursements:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{total_pink_slips}</td></tr>"
+        pink_slips_display = pink_slips_display + f"<tr><td>&nbsp;</td><td></td></tr>"
+    else:
+        pink_slips_display = ''
+
+    total_blue_slips = Decimal('0')
+    if invoice.moa_ids.exists():
+        blue_slips_display = "<tr><td colspan='2'><b>Less Monies Received</b></td></tr>"
+        for slip in invoice.moa_ids.all():
+            amount_invoiced = parse_json_dict(slip.amount_invoiced)
+            date = slip.date.strftime('%d/%m/%Y')
+            amt = Decimal(str(amount_invoiced[f"{invoice.id}"]['amt_invoiced']))
+
+            blue_slips_display = blue_slips_display + f"<tr><td>Remittance {date} - balance of monies remaining on account</td><td style='text-align: center;"
+            if total_blue_slips == 0:
+                blue_slips_display = blue_slips_display + \
+                    f"border-top: solid; border-top-width: thin;'"
+            else:
+                blue_slips_display = blue_slips_display + f"'"
+            total_blue_slips = total_blue_slips + amt
+            blue_slips_display = blue_slips_display + f" >£{amt}</td></tr>"
+        blue_slips_display = blue_slips_display + \
+            f"<tr><td><b>Total Monies Received:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{round(total_blue_slips, 2)}</td></tr>"
+        blue_slips_display = blue_slips_display + f"<tr><td>&nbsp;</td><td></td></tr>"
+    else:
+        blue_slips_display = ''
+
+    total_green_slips = Decimal('0')
+    if invoice.green_slip_ids.exists():
+        green_slips_display = "<tr><td colspan='2'><b>Inter Matter(s) Transfers</b></td></tr>"
+        for slip in invoice.green_slip_ids.all():
+            date = slip.date.strftime('%d/%m/%Y')
+            if slip.file_number_from.file_number == invoice.file_number.file_number:
+                green_slips_display = green_slips_display + \
+                    f"<tr><td>Transfer to {slip.file_number_to} - {date}</td><td style='text-align: center;"
+                if total_green_slips == 0:
+                    green_slips_display = green_slips_display + \
+                        "border-top: solid; border-top-width: thin;'"
+                else:
+                    green_slips_display = green_slips_display + "'"
+                total_green_slips = total_green_slips - slip.amount
+                green_slips_display = green_slips_display + \
+                    f">£{slip.amount}</td></tr>"
+            else:
+                amount_invoiced = parse_json_dict(slip.amount_invoiced_to)
+                amt = Decimal(str(amount_invoiced[f"{invoice.id}"]['amt_invoiced']))
+                total_green_slips = total_green_slips + amt
+                green_slips_display = green_slips_display + f"<tr><td>Transfer from {slip.file_number_from} - {date}</td><td style='text-align: center;"
+                if total_green_slips == 0:
+                    green_slips_display = green_slips_display + \
+                        "border-top: solid; border-top-width: thin;'"
+                else:
+                    green_slips_display = green_slips_display + "'"
+                green_slips_display = green_slips_display + \
+                    f">£{amt}</td></tr>"
+        green_slips_display = green_slips_display + \
+            f"<tr><td ><b>Total Green Slips:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{total_green_slips}</td></tr>"
+        green_slips_display = green_slips_display + f"<tr><td>&nbsp;</td><td></td></tr>"
+    else:
+        green_slips_display = ""
+
+    total_cash_allocated_slips = Decimal('0')
+    if invoice.cash_allocated_slips.exists():
+        cash_allocated_slips_display = "<tr><td colspan='2'><b>Less Monies Received After Invoice Creation</b></td></tr>"
+        for slip in invoice.cash_allocated_slips.all():
+            amount_allocated = parse_json_dict(slip.amount_allocated)
+            invoice_id_str = f"{invoice.id}"
+            if invoice_id_str not in amount_allocated:
+                continue
+            date = slip.date.strftime('%d/%m/%Y')
+            amt = Decimal(str(amount_allocated[invoice_id_str]))
+            cash_allocated_slips_display = cash_allocated_slips_display + \
+                f"<tr><td>Payment from {slip.pmt_person} - {date}</td><td style='text-align: center;"
+            if total_cash_allocated_slips == 0:
+                cash_allocated_slips_display = cash_allocated_slips_display + \
+                    "border-top: solid; border-top-width: thin;'"
+            else:
+                cash_allocated_slips_display = cash_allocated_slips_display + "'"
+            total_cash_allocated_slips = total_cash_allocated_slips + amt
+            cash_allocated_slips_display = cash_allocated_slips_display + \
+                f">£{amt}</td></tr>"
+        cash_allocated_slips_display = cash_allocated_slips_display + \
+            f"<tr><td><b>Total Post-Invoice Monies Received:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{round(total_cash_allocated_slips, 2)}</td></tr>"
+        cash_allocated_slips_display = cash_allocated_slips_display + \
+            f"<tr><td>&nbsp;</td><td></td></tr>"
+    else:
+        cash_allocated_slips_display = ""
+
+    approved_credit_notes = invoice.credit_notes.filter(status='F').order_by('date', 'id')
+    approved_credit_total = Decimal('0')
+    if approved_credit_notes.exists():
+        credit_notes_display = "<tr><td colspan='2'><b>Less Approved Credit Notes</b></td></tr>"
+        for note in approved_credit_notes:
+            approved_credit_total = approved_credit_total + note.amount
+            credit_notes_display = credit_notes_display + \
+                f"<tr><td>Credit Note CN-{note.id} - {note.date.strftime('%d/%m/%Y')}</td><td style='text-align: center;"
+            if approved_credit_total == note.amount:
+                credit_notes_display = credit_notes_display + \
+                    "border-top: solid; border-top-width: thin;'"
+            else:
+                credit_notes_display = credit_notes_display + "'"
+            credit_notes_display = credit_notes_display + \
+                f">£{note.amount}</td></tr>"
+        credit_notes_display = credit_notes_display + \
+            f"<tr><td><b>Total Approved Credit Notes:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{round(approved_credit_total, 2)}</td></tr>"
+        credit_notes_display = credit_notes_display + f"<tr><td>&nbsp;</td><td></td></tr>"
+    else:
+        credit_notes_display = ""
+
+    balance = (total_cost_and_vat + total_pink_slips) - \
+        total_blue_slips - total_green_slips - \
+        total_cash_allocated_slips - approved_credit_total
+    balance = round(balance, 2)
+    if balance >= 0:
+        total_due_display = f"<tr class='mt-5'><td><b>Total Due:</b></td><td style='text-align: center; border-top: solid; border-top-width: thin; border-bottom: solid;  border-bottom-style:double;'>£{balance}</td></tr>"
+        bank_details = f"""
+                <tr>
+                        <td>&nbsp;</td>
+                        <td></td>
+
+                        </tr>
+                    <tr>
+                    <td style=" font-size: 12px"><b>Account Name:</b> ANP Solicitors Limited; <b>Sort Code:</b> 20-70-93; <b>Account No:</b> 13065049;  <b>Ref:</b>{invoice.file_number.file_number}<td>
+                    </tr>
+                 """
+    else:
+        balance = balance * -1
+        bank_details = ""
+        total_due_display = f"<tr><td><b>Balance Remaining on Account</b>&nbsp;</td><td style='text-align: center; border-top: solid; border-top-width: thin; border-bottom: solid;  border-bottom-style:double;'>£{balance}</td></tr>"
+
+    if invoice.state == "D":
+        state = """
+                <div>
+                    <h1 class="position-fixed top-50 start-50 translate-middle z-n1 text-secondary opacity-50 text-center strong" style="font-size: 1200%;">
+                        DRAFT
+                    <h1>
+                </div>
+                """
+    else:
+        state = ""
+
+    footer = """
+            ANP Solicitors is a trading name of ANP Solicitors Limited<br>
+            Registered in England and Wales - Company No: 6948759 | Registered office at 290 Kiln Road, Benfleet, Essex SS7 1QT<br>
+            T: 01702 556688 | F: 01702 556696 | E: info@anpsolicitors.com | www.anpsolicitors.com<br>
+            This firm is authorised and regulated by the Solicitors Regulation Authority<br>
+            A list of directors is open to inspection at the office<br>
+            VAT No. 977 542 767 | SRA No. 515388<br>
+            """
+    style = """
+            @page :first {
+                    size: A4;
+                    margin-top: 0mm;
+                    margin-bottom: 4px;
+                    margin-left: 40px;
+                    margin-right: 40px;
+            }
+            @page {
+                    size: A4;
+                    margin-top: 20px;
+                    margin-bottom: 4px;
+                    margin-left: 40px;
+                    margin-right: 40px;
+            }
+            .logoDiv{
+                position: absolute;
+                top: 15px;
+                left: 40px;
+                right: 40px;
+                z-index: 1000;
+                width: auto;
+                text-align: right;
+                margin: 0;
+                padding: 0;
+            }
+            .docTitle {
+                text-align: center;
+                font-size: 28px;
+                font-weight: bold;
+                margin-top: 4px;
+                margin-bottom: 8px;
+            }
+            .overflow-auto {
+                padding-top: 0;
+            }
+            table {
+                margin-top: 0;
+            }
+            @media print {
+                .logoDiv {
+                    position: absolute;
+                    top: 15px;
+                    left: 40px;
+                    right: 40px;
+                    width: auto;
+                    text-align: right;
+                }
+                @page :first {
+                    size: A4;
+                    margin-top: 0mm;
+                    margin-bottom: 4px;
+                    margin-left: 40px;
+                    margin-right: 40px;
+                }
+                @page {
+                    size: A4;
+                    margin-top: 20px;
+                    margin-bottom: 4px;
+                    margin-left: 40px;
+                    margin-right: 40px;
+                }
+            }
+            .logoDiv img {
+                width: 180px;
+                height: auto;
+                margin: 0;
+                padding: 0;
+                display: inline-block;
+            }
+            """
+
+    html = render_to_string('download_templates/credited_invoice.html', {
+        'invoice_number': invoice.invoice_number,
+        'style': style,
+        'state': mark_safe(state),
+        'file_details_display': mark_safe(file_details_display),
+        'desc_and_cost_display': mark_safe(desc_and_cost_display),
+        'pink_slips_display': mark_safe(pink_slips_display),
+        'blue_slips_display': mark_safe(blue_slips_display),
+        'green_slips_display': mark_safe(green_slips_display),
+        'cash_allocated_slips_display': mark_safe(cash_allocated_slips_display),
+        'credit_notes_display': mark_safe(credit_notes_display),
+        'total_due_display': mark_safe(total_due_display),
+        'bank_details': mark_safe(bank_details),
+        'footer': mark_safe(footer),
+    })
+
+    pdf_file = HTML(
+        string=html, base_url=request.build_absolute_uri()).write_pdf()
+
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="Credited Invoice {invoice.invoice_number} - {invoice.file_number.client1.name} ({invoice.file_number.matter_description}).pdf"'
     return response
 
 
@@ -6408,21 +7404,27 @@ def download_frontsheet(request, file_number):
     page_style = '@page { margin-top: 24pt; margin-bottom:0; font-size:7pt !important; size: A4;}'
     title = f"Frontsheet - {file_number}"
 
+    def format_date(value):
+        return value.strftime('%d/%m/%Y') if value else ''
+
+    def client_check_label(client):
+        return 'UK Business Check' if client and client.is_business else 'AML Check'
+
+    client1_check_label = client_check_label(file.client1)
     if file.client2:
         client2_name = file.client2.name
         client2_address = f'{file.client2.address_line1},{
             file.client2.address_line2},<br>{file.client2.county}, {file.client2.postcode}'
         client2_contact_number = file.client2.contact_number
         client2_email = file.client2.email
-        client2_dob = file.client2.dob.strftime(
-            '%d/%m/%Y') if file.client2.dob != None else None
+        client2_dob = format_date(file.client2.dob)
         client2_id_verified = 'Yes' if file.client2.id_verified else 'No'
-        client2_date_of_last_aml = file.client2.date_of_last_aml.strftime(
-            '%d/%m/%Y') if file.client2.date_of_last_aml else ''
+        client2_date_of_last_aml = format_date(file.client2.date_of_last_aml)
         client2_terms_signed = 'Yes' if file.client2.terms_of_engagement_signed else 'No'
         client2_ncba_signed = 'Yes' if file.client2.ncba_signed else 'No'
         client2_pep_signed = 'Yes' if file.client2.pep_signed else 'No'
         client2_sof_signed = 'Yes' if file.client2.source_of_funds_signed else 'No'
+        client2_check_label = client_check_label(file.client2)
     else:
         client2_name = ''
         client2_address = ''
@@ -6435,6 +7437,7 @@ def download_frontsheet(request, file_number):
         client2_ncba_signed = ''
         client2_pep_signed = ''
         client2_sof_signed = ''
+        client2_check_label = ''
 
     if file.authorised_party1:
         ap1_name = file.authorised_party1.name
@@ -6442,8 +7445,8 @@ def download_frontsheet(request, file_number):
             file.authorised_party1.county}, {file.authorised_party1.postcode}'
         ap1_email = file.authorised_party1.email
         ap1_contact_number = file.authorised_party1.contact_number
-        ap1_date_id_check = file.authorised_party1.date_of_id_check
-        ap1_date_aml_check = file.authorised_party1.date_of_last_aml
+        ap1_date_id_check = format_date(file.authorised_party1.date_of_id_check)
+        ap1_date_aml_check = format_date(file.authorised_party1.date_of_last_aml)
         ap1_relationship = file.authorised_party1.relationship_to_client
     else:
         ap1_name = ''
@@ -6460,8 +7463,8 @@ def download_frontsheet(request, file_number):
             file.authorised_party2.county}, {file.authorised_party2.postcode}'
         ap2_email = file.authorised_party2.email
         ap2_contact_number = file.authorised_party2.contact_number
-        ap2_date_id_check = file.authorised_party2.date_of_id_check
-        ap2_date_aml_check = file.authorised_party2.date_of_last_aml
+        ap2_date_id_check = format_date(file.authorised_party2.date_of_id_check)
+        ap2_date_aml_check = format_date(file.authorised_party2.date_of_last_aml)
         ap2_relationship = file.authorised_party2.relationship_to_client
     else:
         ap2_name = ''
@@ -6487,16 +7490,6 @@ def download_frontsheet(request, file_number):
         other_side_email = ''
         other_side_solicitors = ''
         other_side_solicitors_email = ''
-    undertakings = ''
-    undertakings_obj = Undertaking.objects.filter(file_number=file)
-
-    for undertaking in undertakings_obj:
-        if undertaking.date_discharged:
-            undertakings += f'''<li><s>{undertaking.description} to {undertaking.given_to} by {undertaking.given_by}</s>
-              Discharged by {undertaking.discharged_by} on {undertaking.date_discharged.strftime('%d/%m/%Y')}
-            </li>'''
-        else:
-            undertakings += f'<li>{undertaking.description} to {undertaking.given_to} by {undertaking.given_by}</li>'
 
     html = f"""
     <html>
@@ -6551,14 +7544,19 @@ def download_frontsheet(request, file_number):
                     <td class='text-center'>{file.client1.email}</td>
                     <td class='text-center'>{client2_email}</td>
                 </tr>
-                 <tr >
+                <tr >
                     <td>DATE OF BIRTH</td>
-                    <td class='text-center'>{file.client1.dob.strftime('%d/%m/%Y') if file.client1.dob != None else None}</td>
+                    <td class='text-center'>{format_date(file.client1.dob)}</td>
                     <td class='text-center'>{client2_dob}</td>
                 </tr>
+                <tr>
+                    <td>CHECK TYPE</td>
+                    <td class='text-center'>{client1_check_label}</td>
+                    <td class='text-center'>{client2_check_label}</td>
+                </tr>
                 <tr >
-                    <td>DATE OF LAST AML CHECK</td>
-                    <td class='text-center'>{file.client1.date_of_last_aml.strftime('%d/%m/%Y') if file.client1.date_of_last_aml else None}</td>
+                    <td>DATE OF LAST CHECK</td>
+                    <td class='text-center'>{format_date(file.client1.date_of_last_aml)}</td>
                     <td class='text-center'>{client2_date_of_last_aml}</td>
                 </tr>
                 <tr>
@@ -6588,21 +7586,6 @@ def download_frontsheet(request, file_number):
                 </tr>
                 <tr>
                     <td style="background-color:grey;"  colspan='3'></td>
-                </tr>
-                <tr>
-                    <td></td>
-                    <td class='text-center'><b>SENT</b></td>
-                    <td class='text-center'><b>RECEIVED</b></td>
-                </tr>
-                <tr>
-                    <td>TERMS OF ENGAGEMENT</td>
-                    <td class='text-center'>{file.date_of_toe_sent.strftime('%d/%m/%Y') if file.date_of_toe_sent else ''}</td>
-                    <td class='text-center'>{file.date_of_toe_rcvd.strftime('%d/%m/%Y') if file.date_of_toe_rcvd else ''}</td>
-                </tr>
-                <tr>
-                    <td>NCBA</td>
-                    <td class='text-center'>{file.date_of_ncba_sent.strftime('%d/%m/%Y') if file.date_of_ncba_sent else ''}</td>
-                    <td class='text-center'>{file.date_of_ncba_rcvd.strftime('%d/%m/%Y') if file.date_of_ncba_rcvd else ''}</td>
                 </tr>
                 <tr>
                     <td>CLIENT CARE LETTER SENT</td>
@@ -6687,15 +7670,6 @@ def download_frontsheet(request, file_number):
                 <tr>
                     <td>SOLICITORS - EMAIL</td>
                     <td class='text-center' colspan='2'>{other_side_solicitors_email}</td>
-                </tr>
-                <tr>
-                    <td style="background-color:grey;"  colspan='3'></td>
-                </tr>
-                <tr>
-                    <td class='' colspan='3'><b>UNDERTAKINGS</b> (discharged undertakings will be striked through)</td>
-                </tr>
-                <tr>
-                    <td class='' colspan='3'><ul>{undertakings}</ul></td>
                 </tr>
                 <tr>
                     <td style="background-color:grey;"  colspan='3'></td>
