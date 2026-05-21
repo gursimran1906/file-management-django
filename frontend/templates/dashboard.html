@@ -562,14 +562,15 @@
       <ul>
         {% for check in aml_checks_due %}
         <li class="border-b py-2">
-          <a class="link" href="{% url 'edit_client' check.client_id %}"
-            >{{ check.client_name }}</a
+          <a class="link" href="{{ check.edit_url }}"
+            >{{ check.entity_name }}</a
           >
+          <span class="text-xs text-gray-500">({{ check.entity_type }})</span>
           - {{ check.date_of_last_aml|date:"d/m/Y" }}
         </li>
         {% empty %}
         <li class="text-sm border-t border-b py-2 text-green-700">
-          No Client AML Checks Due
+          No AML Checks Due
         </li>
         {% endfor %}
       </ul>

@@ -11,7 +11,12 @@ from django_quill.forms import QuillFormField
 class OpenFileForm(forms.ModelForm):
     class Meta:
         model = WIP
-        fields = '__all__'
+        exclude = [
+            'terms_of_engagement_client1',
+            'terms_of_engagement_client2',
+            'ncba_client1',
+            'ncba_client2',
+        ]
 
     undertakings = forms.CharField(widget=forms.Textarea(attrs={'rows': 3}), required=False)
 
@@ -320,7 +325,9 @@ class ClientForm(forms.ModelForm):
     class Meta:
         model = ClientContactDetails
         fields = ['name', 'dob', 'occupation','address_line1', 'address_line2',
-                  'county', 'postcode', 'email', 'contact_number', 'date_of_last_aml', 'id_verified']
+                  'county', 'postcode', 'email', 'contact_number', 'date_of_last_aml',
+                  'id_verified', 'terms_of_engagement_signed', 'ncba_signed',
+                  'pep_signed', 'source_of_funds_signed']
         
         widgets = {
             'dob': forms.DateInput(attrs={'type': 'date'}),
@@ -330,7 +337,10 @@ class ClientForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super(ClientForm, self).__init__(*args, **kwargs)
         for field_name, field in self.fields.items():
-            field.widget.attrs['class'] = 'form-input'
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs['class'] = 'h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
+            else:
+                field.widget.attrs['class'] = 'form-input'
 
 
 class ClientKeyDocumentForm(forms.ModelForm):
@@ -380,17 +390,22 @@ class AuthorisedPartyForm(forms.ModelForm):
     class Meta:
         model = AuthorisedParties
         fields = ['name', 'relationship_to_client', 'address_line1', 'address_line2',
-                  'county', 'postcode', 'email', 'contact_number', 'id_check', 'date_of_id_check', ]
+                  'county', 'postcode', 'email', 'contact_number', 'id_check',
+                  'date_of_id_check', 'date_of_last_aml']
         
         widgets = {
 
-            'date_of_id_check': forms.DateInput(attrs={'type': 'date'})
+            'date_of_id_check': forms.DateInput(attrs={'type': 'date'}),
+            'date_of_last_aml': forms.DateInput(attrs={'type': 'date'}),
         }
 
     def __init__(self, *args, **kwargs):
         super(AuthorisedPartyForm, self).__init__(*args, **kwargs)
         for field_name, field in self.fields.items():
-            field.widget.attrs['class'] = 'form-input'
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs['class'] = 'h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
+            else:
+                field.widget.attrs['class'] = 'form-input'
 
 class OtherSideForm(forms.ModelForm):
     

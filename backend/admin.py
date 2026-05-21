@@ -37,7 +37,9 @@ class ModificationsAdmin(admin.ModelAdmin):
 @admin.register(ClientContactDetails)
 class ClientContactDetailsAdmin(admin.ModelAdmin):
     list_display = ['id', 'name', 'dob', 'address_line1', 'address_line2', 'county', 'postcode',
-                    'email', 'contact_number', 'date_of_last_aml', 'id_verified', 'timestamp', 'created_by']
+                    'email', 'contact_number', 'date_of_last_aml', 'id_verified',
+                    'terms_of_engagement_signed', 'ncba_signed', 'pep_signed',
+                    'source_of_funds_signed', 'timestamp', 'created_by']
 
 
 @admin.register(ClientKeyDocument)
@@ -51,7 +53,8 @@ class ClientKeyDocumentAdmin(admin.ModelAdmin):
 @admin.register(AuthorisedParties)
 class AuthorisedPartiesAdmin(admin.ModelAdmin):
     list_display = ['id', 'name', 'relationship_to_client', 'address_line1', 'address_line2', 'county',
-                    'postcode', 'email', 'contact_number', 'id_check', 'date_of_id_check', 'timestamp', 'created_by']
+                    'postcode', 'email', 'contact_number', 'id_check', 'date_of_id_check',
+                    'date_of_last_aml', 'timestamp', 'created_by']
 
 
 @admin.register(OthersideDetails)
@@ -87,7 +90,8 @@ class PricingItemAdmin(admin.ModelAdmin):
 @admin.register(WIP)
 class WIPAdmin(admin.ModelAdmin):
     list_display = ['id', 'file_number', 'fee_earner', 'matter_description', 'client1', 'client2',
-                    'matter_type', 'file_status', 'file_location', 'other_side', 'timestamp', 'created_by']
+                    'matter_type', 'file_status', 'file_location', 'zdrive_location',
+                    'other_side', 'timestamp', 'created_by']
 
 
 @admin.register(MatterKeyDate)

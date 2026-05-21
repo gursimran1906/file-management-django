@@ -106,6 +106,30 @@
     >
   </div>
 </div>
+<div class="col-span-8 mt-2">
+  <div class="form-check">
+    <input class="form-check-input" type="checkbox" name="Client{{ client_number }}TermsOfEngagementSigned" {% if client.terms_of_engagement_signed %} checked {% endif %}/>
+    <label class="form-check-label">Signed Terms of Engagement Client {{ client_number }}</label>
+  </div>
+</div>
+<div class="col-span-8 mt-2">
+  <div class="form-check">
+    <input class="form-check-input" type="checkbox" name="Client{{ client_number }}NCBASigned" {% if client.ncba_signed %} checked {% endif %}/>
+    <label class="form-check-label">Signed NCBA Client {{ client_number }}</label>
+  </div>
+</div>
+<div class="col-span-8 mt-2">
+  <div class="form-check">
+    <input class="form-check-input" type="checkbox" name="Client{{ client_number }}PEPSigned" {% if client.pep_signed %} checked {% endif %}/>
+    <label class="form-check-label">Signed PEP Client {{ client_number }}</label>
+  </div>
+</div>
+<div class="col-span-8 mt-2">
+  <div class="form-check">
+    <input class="form-check-input" type="checkbox" name="Client{{ client_number }}SourceOfFundsSigned" {% if client.source_of_funds_signed %} checked {% endif %}/>
+    <label class="form-check-label">Signed SOF Client {{ client_number }}</label>
+  </div>
+</div>
 <div class="col-span-8">
   <h3 class="text-lg font-medium mt-4 mb-2">Proof of ID</h3>
 </div>

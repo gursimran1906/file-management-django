@@ -93,14 +93,16 @@
             <table class="min-w-full table-auto">
                 <thead>
                     <tr class="border-b">
-                        <th class="py-2 text-left text-sm font-medium text-gray-600">Client Name</th>
+                        <th class="py-2 text-left text-sm font-medium text-gray-600">Name</th>
+                        <th class="py-2 text-left text-sm font-medium text-gray-600">Type</th>
                         <th class="py-2 text-left text-sm font-medium text-gray-600">Date of Last AML</th>
                     </tr>
                 </thead>
                 <tbody class="overflow-y-auto" >
                     {% for check in aml_checks_due %}
                     <tr class="border-b">
-                        <td class="py-2 text-sm">{{ check.client_name }}</td>
+                        <td class="py-2 text-sm"><a class="link" href="{{ check.edit_url }}">{{ check.entity_name }}</a></td>
+                        <td class="py-2 text-sm">{{ check.entity_type }}</td>
                         <td class=" py-2 text-sm">{{ check.date_of_last_aml|date:'d/m/Y' }}</td>
                     </tr>
                     {% endfor %}

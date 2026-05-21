@@ -7,7 +7,30 @@
 </div>
 <form class="div-container mt-4" method="post">
   {% csrf_token %}
-  {{ form.as_p }}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {% for field in form %}
+      {% if field.field.widget.input_type == 'checkbox' %}
+        <label class="flex items-center gap-3 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
+          {{ field }}
+          <span>{{ field.label }}</span>
+        </label>
+        {% if field.errors %}
+          <div class="text-sm text-red-700 md:col-span-2">{{ field.errors }}</div>
+        {% endif %}
+      {% else %}
+        <div class="{% if field.field.widget.input_type == 'textarea' %}md:col-span-2{% endif %}">
+          <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}
+            <p class="mt-1 text-xs text-gray-500">{{ field.help_text }}</p>
+          {% endif %}
+          {% if field.errors %}
+            <div class="mt-1 text-sm text-red-700">{{ field.errors }}</div>
+          {% endif %}
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
   {% if key_document_formset %}
   <div class="mt-6">
     <h2 class="text-xl mb-2">Key Documents</h2>

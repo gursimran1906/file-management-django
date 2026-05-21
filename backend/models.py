@@ -46,6 +46,10 @@ class ClientContactDetails(models.Model):
     contact_number = models.CharField(max_length=50)
     date_of_last_aml = models.DateField(null=True, blank=True)
     id_verified = models.BooleanField(null=True, blank=True)
+    terms_of_engagement_signed = models.BooleanField(default=False)
+    ncba_signed = models.BooleanField(default=False)
+    pep_signed = models.BooleanField(default=False)
+    source_of_funds_signed = models.BooleanField(default=False)
     timestamp = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, related_name='client_created_by', null=True, blank=True)
@@ -89,7 +93,8 @@ class AuthorisedParties(models.Model):
     email = models.CharField(max_length=50)
     contact_number = models.CharField(max_length=50)
     id_check = models.BooleanField(null=True, blank=True)
-    date_of_id_check = models.DateField(null=True)
+    date_of_id_check = models.DateField(null=True, blank=True)
+    date_of_last_aml = models.DateField(null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, related_name='ap_created_by', null=True, blank=True)
@@ -262,6 +267,7 @@ class WIP(models.Model):
     ncba_client2 = models.BooleanField(null=True, blank=True)
     date_of_ncba_sent = models.DateField(null=True, blank=True)
     date_of_ncba_rcvd = models.DateField(null=True, blank=True)
+    zdrive_location = models.CharField(max_length=500, null=True, blank=True)
 
     funding = models.CharField(max_length=3)
     authorised_party1 = models.ForeignKey(

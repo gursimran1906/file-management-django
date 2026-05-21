@@ -58,6 +58,10 @@
     </select>
   </div>
   <div class="md:col-span-2">
+    <label class="form-label">Z Drive Location</label>
+    <input type="text" class="form-input" name="zdrive_location" value="{{form.zdrive_location.value}}" />
+  </div>
+  <div class="md:col-span-2">
     <label class="form-label">Funding</label>
     <select name="funding" class="form-input">
       <option {% if form.funding.value == 'PF' %}selected{% endif %} value="PF">Private Funding</option>
@@ -221,32 +225,6 @@
     <input type="date" class="form-input" name="date_of_client_care_sent" value="{{form.date_of_client_care_sent.value|date:'Y-m-d'}}"/>
   </div>
 
-  <div class="md:col-span-3">
-    <div class="form-check">
-      <input
-        class="form-check-input"
-        name="terms_of_engagement_client1"
-        type="checkbox"
-        {% if form.terms_of_engagement_client1.value %} checked {% endif %}
-      />
-      <label class="form-check-label">
-        Signed Terms Of Engagement Client 1
-      </label>
-    </div>
-  </div>
-  <div class="md:col-span-3">
-    <div class="form-check">
-      <input
-        class="form-check-input"
-        type="checkbox"
-        name="terms_of_engagement_client2"
-        {% if form.terms_of_engagement_client2.value %} checked {% endif %}
-      />
-      <label class="form-check-label">
-        Signed Terms Of Engagement Client 2
-      </label>
-    </div>
-  </div>
   <div class="md:col-span-2">
     <label class="form-label">Date Terms Of Engagement sent</label>
     <input type="date" class="form-input" name="date_of_toe_sent" value="{{form.date_of_toe_sent.value|date:'Y-m-d'}}" />
@@ -256,26 +234,12 @@
     <input type="date" class="form-input" name="date_of_toe_rcvd" value="{{form.date_of_toe_rcvd.value|date:'Y-m-d'}}" />
   </div>
   <div class="md:col-span-3">
-    <div class="form-check">
-      <input class="form-check-input" type="checkbox" name="ncba_client1" 
-      {% if form.ncba_client1.value %} checked {% endif %} />
-      <label class="form-check-label"> Signed NCBA Client 1 </label>
-    </div>
-  </div>
-  <div class="md:col-span-3">
-    <div class="form-check">
-      <input class="form-check-input" type="checkbox" name="ncba_client2"
-      {% if form.ncba_client2.value %} checked {% endif %} />
-      <label class="form-check-label"> Signed NCBA Client 2 </label>
-    </div>
-  </div>
-  <div class="md:col-span-3">
     <label class="form-label">Date NCBA sent</label>
-    <input type="date" class="form-input" name="date_of_ncba_sent" value="{{form.ncba_sent.value|date:'Y-m-d'}}" />
+    <input type="date" class="form-input" name="date_of_ncba_sent" value="{{form.date_of_ncba_sent.value|date:'Y-m-d'}}" />
   </div>
   <div class="md:col-span-3">
     <label class="form-label">Date NCBA received</label>
-    <input type="date" class="form-input" name="date_of_ncba_rcvd" value="{{form.ncba_rcvd.value|date:'Y-m-d'}}"/>
+    <input type="date" class="form-input" name="date_of_ncba_rcvd" value="{{form.date_of_ncba_rcvd.value|date:'Y-m-d'}}"/>
   </div>
   <div class="md:col-span-6" id="KeyInfoDiv">
   

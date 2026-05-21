@@ -754,47 +754,8 @@ def user_dashboard(request):
     # Calculate the date 11 months ago
     eleven_months_ago = timezone.now() - relativedelta(months=11)
 
-    aml_checks_due_client1 = unique_wips.filter(
-        Q(file_status__status='Open') &
-        Q(client1__date_of_last_aml__lte=eleven_months_ago) &
-        Q(fee_earner=user)
-    ).annotate(
-        client_id=F('client1__id'),
-        client_name=F('client1__name'),
-        date_of_last_aml=F('client1__date_of_last_aml')
-    ).values('client_id', 'client_name', 'date_of_last_aml')
-
-    # Filter WIPs where AML checks are due for client2
-    aml_checks_due_client2 = unique_wips.filter(
-        Q(file_status__status='Open') &
-        Q(client2__date_of_last_aml__lte=eleven_months_ago) &
-        Q(fee_earner=user)
-    ).annotate(
-        client_id=F('client2__id'),
-        client_name=F('client2__name'),
-        date_of_last_aml=F('client2__date_of_last_aml')
-    ).values('client_id', 'client_name', 'date_of_last_aml')
-
-    # Fetch the results from the database
-    client1_results = list(aml_checks_due_client1)
-    client2_results = list(aml_checks_due_client2)
-
-    # Combine and ensure uniqueness
-    unique_clients = {}
-    for result in client1_results + client2_results:
-        unique_clients[result['client_id']] = {
-            'client_name': result['client_name'],
-            'date_of_last_aml': result['date_of_last_aml']
-        }
-
-    # Convert the dictionary back to a list of dictionaries
-    unique_aml_checks_due = [
-        {'client_id': client_id,
-            'client_name': data['client_name'], 'date_of_last_aml': data['date_of_last_aml']}
-        for client_id, data in unique_clients.items()
-    ]
-    unique_aml_checks_due = sorted(
-        unique_aml_checks_due, key=lambda x: x['date_of_last_aml'])
+    unique_aml_checks_due = get_aml_checks_due_from_wips(
+        unique_wips, eleven_months_ago, user=user)
     key_document_expiry_alerts = get_key_document_expiry_alerts(
         key_doc_scope_wips)
     missing_key_document_alerts = get_missing_key_document_alerts(
@@ -1788,6 +1749,10 @@ def add_new_client(request_post_copy, client_prefix, user):
     contact_number = request_post_copy[f'Client{client_prefix}ContactNumber']
     date_of_last_aml = request_post_copy[f'Client{client_prefix}AMLCheckDate']
     id_verified = f'IDVer{client_prefix}' in request_post_copy
+    terms_of_engagement_signed = f'Client{client_prefix}TermsOfEngagementSigned' in request_post_copy
+    ncba_signed = f'Client{client_prefix}NCBASigned' in request_post_copy
+    pep_signed = f'Client{client_prefix}PEPSigned' in request_post_copy
+    source_of_funds_signed = f'Client{client_prefix}SourceOfFundsSigned' in request_post_copy
 
     client_contact = ClientContactDetails(
         name=name,
@@ -1801,6 +1766,10 @@ def add_new_client(request_post_copy, client_prefix, user):
         contact_number=contact_number,
         date_of_last_aml=date_of_last_aml if date_of_last_aml != '' else None,
         id_verified=id_verified,
+        terms_of_engagement_signed=terms_of_engagement_signed,
+        ncba_signed=ncba_signed,
+        pep_signed=pep_signed,
+        source_of_funds_signed=source_of_funds_signed,
         created_by=user
     )
 
@@ -1857,6 +1826,7 @@ def add_new_authorised_party(request_post_copy, ap_prefix, user):
     contact_number = request_post_copy[f'AP{ap_prefix}ContactNumber']
     id_check = f'AP{ap_prefix}IDCheck' in request_post_copy
     date_of_id_check = request_post_copy[f'AP{ap_prefix}IDCheckDate']
+    date_of_last_aml = request_post_copy[f'AP{ap_prefix}AMLCheckDate']
 
     try:
         authorised_party = AuthorisedParties(
@@ -1869,7 +1839,8 @@ def add_new_authorised_party(request_post_copy, ap_prefix, user):
             email=email,
             contact_number=contact_number,
             id_check=id_check,
-            date_of_id_check=date_of_id_check,
+            date_of_id_check=date_of_id_check if date_of_id_check != '' else None,
+            date_of_last_aml=date_of_last_aml if date_of_last_aml != '' else None,
             created_by=user
         )
     except Exception as e:
@@ -1930,6 +1901,43 @@ def update_checkbox_values(data, *fields):
     return data
 
 
+def get_aml_checks_due_from_wips(wips, threshold_date, user=None, sort_by='date'):
+    base_filter = Q(file_status__status='Open')
+    if user is not None:
+        base_filter &= Q(fee_earner=user)
+
+    relation_configs = [
+        ('client1', 'Client', 'edit_client'),
+        ('client2', 'Client', 'edit_client'),
+        ('authorised_party1', 'Authorised Party', 'edit_authorised_party'),
+        ('authorised_party2', 'Authorised Party', 'edit_authorised_party'),
+    ]
+
+    results = {}
+    for relation, entity_type, edit_url_name in relation_configs:
+        relation_results = wips.filter(
+            base_filter & Q(**{f'{relation}__date_of_last_aml__lte': threshold_date})
+        ).annotate(
+            entity_id=F(f'{relation}__id'),
+            entity_name=F(f'{relation}__name'),
+            date_of_last_aml=F(f'{relation}__date_of_last_aml'),
+        ).values('entity_id', 'entity_name', 'date_of_last_aml')
+
+        for result in relation_results:
+            key = (entity_type, result['entity_id'])
+            results[key] = {
+                'entity_id': result['entity_id'],
+                'entity_name': result['entity_name'],
+                'entity_type': entity_type,
+                'date_of_last_aml': result['date_of_last_aml'],
+                'edit_url': reverse(edit_url_name, args=[result['entity_id']]),
+            }
+
+    if sort_by == 'name':
+        return sorted(results.values(), key=lambda x: (x['entity_name'] or '', x['entity_type']))
+    return sorted(results.values(), key=lambda x: x['date_of_last_aml'])
+
+
 def get_standard_data():
     fee_earners = CustomUser.objects.filter(is_matter_fee_earner=True)
     file_status = FileStatus.objects.all()
@@ -1978,11 +1986,6 @@ def open_new_file_page(request):
             if request_post_copy['other_side'] == '-1':
                 request_post_copy['other_side'] = add_new_otherside_details(
                     request_post_copy, request.user)
-
-            update_checkbox_values(
-                request_post_copy, 'terms_of_engagement_client1', 'terms_of_engagement_client2')
-            update_checkbox_values(
-                request_post_copy, 'ncba_client1', 'ncba_client2')
 
             request_post_copy['created_by'] = request.user
 
@@ -2322,7 +2325,7 @@ def edit_authorised_party(request, id):
     ap = AuthorisedParties.objects.get(id=id)
     if request.method == 'POST':
         duplicate_obj = copy.deepcopy(ap)
-        form = ClientForm(request.POST, instance=ap)
+        form = AuthorisedPartyForm(request.POST, instance=ap)
         if form.is_valid():
             changed_fields = form.changed_data
             changes = {}
@@ -2414,11 +2417,6 @@ def edit_file(request, file_number):
             if request_post_copy['other_side'] == '-1':
                 request_post_copy['other_side'] = add_new_otherside_details(
                     request_post_copy, request.user)
-            update_checkbox_values(
-                request_post_copy, 'terms_of_engagement_client1', 'terms_of_engagement_client2')
-            update_checkbox_values(
-                request_post_copy, 'ncba_client1', 'ncba_client2')
-
             request_post_copy['created_by'] = file.created_by
 
             form = OpenFileForm(request_post_copy, instance=file)
@@ -6420,7 +6418,11 @@ def download_frontsheet(request, file_number):
             '%d/%m/%Y') if file.client2.dob != None else None
         client2_id_verified = 'Yes' if file.client2.id_verified else 'No'
         client2_date_of_last_aml = file.client2.date_of_last_aml.strftime(
-            '%d/%m/%Y')
+            '%d/%m/%Y') if file.client2.date_of_last_aml else ''
+        client2_terms_signed = 'Yes' if file.client2.terms_of_engagement_signed else 'No'
+        client2_ncba_signed = 'Yes' if file.client2.ncba_signed else 'No'
+        client2_pep_signed = 'Yes' if file.client2.pep_signed else 'No'
+        client2_sof_signed = 'Yes' if file.client2.source_of_funds_signed else 'No'
     else:
         client2_name = ''
         client2_address = ''
@@ -6429,6 +6431,10 @@ def download_frontsheet(request, file_number):
         client2_dob = ''
         client2_id_verified = ''
         client2_date_of_last_aml = ''
+        client2_terms_signed = ''
+        client2_ncba_signed = ''
+        client2_pep_signed = ''
+        client2_sof_signed = ''
 
     if file.authorised_party1:
         ap1_name = file.authorised_party1.name
@@ -6437,6 +6443,7 @@ def download_frontsheet(request, file_number):
         ap1_email = file.authorised_party1.email
         ap1_contact_number = file.authorised_party1.contact_number
         ap1_date_id_check = file.authorised_party1.date_of_id_check
+        ap1_date_aml_check = file.authorised_party1.date_of_last_aml
         ap1_relationship = file.authorised_party1.relationship_to_client
     else:
         ap1_name = ''
@@ -6444,6 +6451,7 @@ def download_frontsheet(request, file_number):
         ap1_email = ''
         ap1_contact_number = ''
         ap1_date_id_check = ''
+        ap1_date_aml_check = ''
         ap1_relationship = ''
 
     if file.authorised_party2:
@@ -6453,6 +6461,7 @@ def download_frontsheet(request, file_number):
         ap2_email = file.authorised_party2.email
         ap2_contact_number = file.authorised_party2.contact_number
         ap2_date_id_check = file.authorised_party2.date_of_id_check
+        ap2_date_aml_check = file.authorised_party2.date_of_last_aml
         ap2_relationship = file.authorised_party2.relationship_to_client
     else:
         ap2_name = ''
@@ -6460,6 +6469,7 @@ def download_frontsheet(request, file_number):
         ap2_email = ''
         ap2_contact_number = ''
         ap2_date_id_check = ''
+        ap2_date_aml_check = ''
         ap2_relationship = ''
 
     if file.other_side:
@@ -6507,6 +6517,10 @@ def download_frontsheet(request, file_number):
 
                 </tr>
                 <tr>
+                    <td>Z DRIVE LOCATION</td>
+                    <td class='text-center' colspan='2'>{file.zdrive_location or ''}</td>
+                </tr>
+                <tr>
                     <td style="background-color:grey;"  colspan='3'></td>
                 </tr>
                 <tr>
@@ -6551,6 +6565,26 @@ def download_frontsheet(request, file_number):
                     <td>ID VERIFIED</td>
                     <td class='text-center'>{'Yes' if file.client1.id_verified else 'No'}</td>
                     <td class='text-center'>{client2_id_verified}</td>
+                </tr>
+                <tr>
+                    <td>SIGNED TERMS OF ENGAGEMENT</td>
+                    <td class='text-center'>{'Yes' if file.client1.terms_of_engagement_signed else 'No'}</td>
+                    <td class='text-center'>{client2_terms_signed}</td>
+                </tr>
+                <tr>
+                    <td>SIGNED NCBA</td>
+                    <td class='text-center'>{'Yes' if file.client1.ncba_signed else 'No'}</td>
+                    <td class='text-center'>{client2_ncba_signed}</td>
+                </tr>
+                <tr>
+                    <td>SIGNED PEP</td>
+                    <td class='text-center'>{'Yes' if file.client1.pep_signed else 'No'}</td>
+                    <td class='text-center'>{client2_pep_signed}</td>
+                </tr>
+                <tr>
+                    <td>SIGNED SOF</td>
+                    <td class='text-center'>{'Yes' if file.client1.source_of_funds_signed else 'No'}</td>
+                    <td class='text-center'>{client2_sof_signed}</td>
                 </tr>
                 <tr>
                     <td style="background-color:grey;"  colspan='3'></td>
@@ -6618,6 +6652,11 @@ def download_frontsheet(request, file_number):
                     <td>DATE OF ID CHECK</td>
                     <td class='text-center'>{ap1_date_id_check}</td>
                     <td class='text-center'>{ap2_date_id_check}</td>
+                </tr>
+                <tr>
+                    <td>DATE OF LAST AML CHECK</td>
+                    <td class='text-center'>{ap1_date_aml_check}</td>
+                    <td class='text-center'>{ap2_date_aml_check}</td>
                 </tr>
                 <tr>
                     <td style="background-color:grey;"  colspan='3'></td>
@@ -7399,41 +7438,8 @@ def management_reports(request):
     users = CustomUser.objects.filter(is_active=True).order_by('username')
 
     twelve_months_ago = timezone.now() - relativedelta(months=11)
-    aml_checks_due_client1 = WIP.objects.filter(
-        Q(file_status__status='Open') &
-        Q(client1__date_of_last_aml__lte=twelve_months_ago)
-    ).annotate(
-        client_id=F('client1__id'),
-        client_name=F('client1__name'),
-        date_of_last_aml=F('client1__date_of_last_aml')
-    ).values('client_id', 'client_name', 'date_of_last_aml')
-
-    aml_checks_due_client2 = WIP.objects.filter(
-        Q(file_status__status='Open') &
-        Q(client2__date_of_last_aml__lte=twelve_months_ago)
-    ).annotate(
-        client_id=F('client2__id'),
-        client_name=F('client2__name'),
-        date_of_last_aml=F('client2__date_of_last_aml')
-    ).values('client_id', 'client_name', 'date_of_last_aml')
-
-    client1_results = list(aml_checks_due_client1)
-    client2_results = list(aml_checks_due_client2)
-
-    unique_clients = {}
-    for result in client1_results + client2_results:
-        unique_clients[result['client_id']] = {
-            'client_name': result['client_name'],
-            'date_of_last_aml': result['date_of_last_aml']
-        }
-
-    unique_aml_checks_due = [
-        {'client_id': client_id,
-            'client_name': data['client_name'], 'date_of_last_aml': data['date_of_last_aml']}
-        for client_id, data in unique_clients.items()
-    ]
-    unique_aml_checks_due = sorted(
-        unique_aml_checks_due, key=lambda x: x['client_name'])
+    unique_aml_checks_due = get_aml_checks_due_from_wips(
+        WIP.objects.all(), twelve_months_ago, sort_by='name')
 
     risk_assessments_due = get_risk_assessments_due_queryset(WIP.objects.all())
     cpds = CPDTrainingLog.objects.all()
@@ -7682,41 +7688,8 @@ def policies_read_per_user(request):
 @login_required
 def download_aml_checks_due(request):
     twelve_months_ago = timezone.now() - relativedelta(months=11)
-    aml_checks_due_client1 = WIP.objects.filter(
-        Q(file_status__status='Open') &
-        Q(client1__date_of_last_aml__lte=twelve_months_ago)
-    ).annotate(
-        client_id=F('client1__id'),
-        client_name=F('client1__name'),
-        date_of_last_aml=F('client1__date_of_last_aml')
-    ).values('client_id', 'client_name', 'date_of_last_aml')
-
-    aml_checks_due_client2 = WIP.objects.filter(
-        Q(file_status__status='Open') &
-        Q(client2__date_of_last_aml__lte=twelve_months_ago)
-    ).annotate(
-        client_id=F('client2__id'),
-        client_name=F('client2__name'),
-        date_of_last_aml=F('client2__date_of_last_aml')
-    ).values('client_id', 'client_name', 'date_of_last_aml')
-
-    client1_results = list(aml_checks_due_client1)
-    client2_results = list(aml_checks_due_client2)
-
-    unique_clients = {}
-    for result in client1_results + client2_results:
-        unique_clients[result['client_id']] = {
-            'client_name': result['client_name'],
-            'date_of_last_aml': result['date_of_last_aml']
-        }
-
-    unique_aml_checks_due = [
-        {'client_id': client_id,
-            'client_name': data['client_name'], 'date_of_last_aml': data['date_of_last_aml']}
-        for client_id, data in unique_clients.items()
-    ]
-    unique_aml_checks_due = sorted(
-        unique_aml_checks_due, key=lambda x: x['client_name'])
+    unique_aml_checks_due = get_aml_checks_due_from_wips(
+        WIP.objects.all(), twelve_months_ago, sort_by='name')
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="aml_checks_due_{timezone.now()}.csv"'
@@ -7724,10 +7697,11 @@ def download_aml_checks_due(request):
     writer = csv.writer(response)
 
     writer.writerow(['AML Checks Due'])
-    writer.writerow(['Client Name', 'Date of Last AML Check'])
+    writer.writerow(['Name', 'Type', 'Date of Last AML Check'])
 
-    for client in unique_aml_checks_due:
-        writer.writerow([client['client_name'], client['date_of_last_aml']])
+    for check in unique_aml_checks_due:
+        writer.writerow([check['entity_name'], check['entity_type'],
+                         check['date_of_last_aml']])
 
     return response
 

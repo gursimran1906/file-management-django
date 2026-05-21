@@ -5,41 +5,36 @@
 {% load utils %}
 {% block container_class %}container{% endblock %} 
 {% block container %}
-<div class='grid grid-cols-1 md:grid-cols-2 mt-2 gap-4'>
-    <h1 class='div-container md:w-fit h-fit text-3xl font-medium'>{{ file_number }} | Finances</h1>
-    <div class="div-container flex flex-col gap-2 md:justify-self-end ">
-        <h3 class='text-2xl text-center'>Actions</h3>
-        
-        <div class="flex gap-2">
-           
-            
-                
-            <a class='btn btn-primary ' href="{% url 'download_statement_account' file_number %}">Statement of Account</a>
-            <a class='btn btn-primary relative' href="{% url 'download_ledger_account' file_number %}">Download Ledger
-               
+<div class='div-container mt-2'>
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+            <p class="text-sm uppercase text-gray-500">Matter finances</p>
+            <h1 class='text-3xl font-medium text-gray-900'>{{ file_number }}</h1>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a class='btn-primary' href="{% url 'download_statement_account' file_number %}">Statement of Account</a>
+            <a class='btn-secondary relative' href="{% url 'download_ledger_account' file_number %}">
+                Download Ledger
                 <span data-popover-target="beta-description-download-ledger" data-popover-placement="bottom-end" type="button" class="absolute top-0 right-0 bg-red-500 text-white text-xs px-2 py-1 rounded-full transform translate-x-1/2 -translate-y-1/2">
                   *
                 </span>
             </a>
-
-          
             <div data-popover id="beta-description-download-ledger" role="tooltip" class="absolute z-10 invisible inline-block text-sm text-gray-500 transition-opacity duration-300 bg-white border border-gray-200 rounded-lg shadow-sm opacity-0 w-72 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400">
-                <div class="p-3 space-y-2 ">
+                <div class="p-3 space-y-2">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Beta Feature</h3>
-                    <p>
-                        This feature is still in Beta. Please do not <span class="underline">rely</span> upon it.
-                    </p>
+                    <p>This feature is still in Beta. Please do not <span class="underline">rely</span> upon it.</p>
                 </div>
-                
             </div>
-
-         
         </div>
     </div>
 </div>
 <div class='mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 '>
     
     <div class='div-container h-fit' id="accordion-color" data-accordion="collapse" data-active-classes="bg-blue-100 dark:bg-gray-800 text-blue-600 dark:text-white rounded-b-none">
+        <div class="mb-3 flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-gray-900">Finance Activity</h2>
+            <span class="text-xs text-gray-500">Invoices, slips and credit notes</span>
+        </div>
         {% for invoice in invoices %}
         
             <h2 id="accordion-color-heading-invoice-{{ invoice.id }}">
@@ -290,56 +285,39 @@
     </div>
 
     <div class='h-fit grid grid-cols-1 gap-4'>
-        <div class='grid grid-cols-1 '>
-            <div class="relative border overflow-x-auto shadow-sm sm:rounded-lg">
-                <table class="bg-white w-full text-sm text-center rtl:text-right text-gray-500">
-                <thead>
-                    <tr class='border-b bg-gray-50 text-gray-700 uppercase'>
-                    <th class='td border-e'>
-                        Monies In
-                    </th>
-                    <th class='td border-e'>
-                        Monies Out
-                    </th>
-                    <th class='td'>
-                        Net Balance
-                    </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr class='text-center' >
-                    <td class="td border-e">
-                        £{{total_monies_in|intcomma}}
-                    </td>
-                    <td class='td border-e'>
-                        £{{total_monies_out|intcomma}}
-                    </td>
-    
-                    <td class="td {% if total_monies_balance < 0%}text-red-500 {% else %} text-green-700 {% endif %}">
-                        £{{total_monies_balance|intcomma}}
-                    </td>
-                    </tr>
-                </tbody>
-                </table>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="rounded border border-gray-200 bg-white p-4">
+                <p class="text-xs uppercase text-gray-500">Monies In</p>
+                <p class="mt-1 text-2xl font-semibold text-gray-900">£{{total_monies_in|intcomma}}</p>
             </div>
-            
+            <div class="rounded border border-gray-200 bg-white p-4">
+                <p class="text-xs uppercase text-gray-500">Monies Out</p>
+                <p class="mt-1 text-2xl font-semibold text-gray-900">£{{total_monies_out|intcomma}}</p>
+            </div>
+            <div class="rounded border border-gray-200 bg-white p-4">
+                <p class="text-xs uppercase text-gray-500">Net Balance</p>
+                <p class="mt-1 text-2xl font-semibold {% if total_monies_balance < 0%}text-red-600{% else %}text-green-700{% endif %}">£{{total_monies_balance|intcomma}}</p>
+            </div>
         </div>
-        <div class="div-container flex justify-between">
-            <button class="btn-primary border shadow-sm  text-black me-1" style="background-color: {{colors.invoice}} !important;" type="button" onclick="toggleCollapse('invoiceForm');" aria-expanded="true" >
-              Add Invoice
-            </button>
-            <button class="btn-primary border shadow-sm text-black me-1" style="background-color: {{colors.credit_note}} !important;" type="button" onclick="toggleCollapse('creditNoteForm');"  aria-expanded="true" >
-              Add Credit Note
-            </button>
-            <button class="btn-primary border shadow-sm text-black me-1" style="background-color: pink !important;" type="button" onclick="toggleCollapse('pinkSlipForm');"  aria-expanded="true" >
-              Add Pink Slip
-            </button>
-            <button class="btn-primary border shadow-sm  text-black me-1" style="background-color: lightblue !important;" type="button" onclick="toggleCollapse('blueSlipForm');"  aria-expanded="true" >
-              Add Blue Slip
-            </button>
-            <button class="btn-primary border shadow-sm  text-black me-1" style="background-color: {{colors.green}} !important;" type="button" onclick="toggleCollapse('greenSlipForm');"  aria-expanded="true">
-              Add Green Slip
-            </button>
+        <div class="div-container">
+            <h2 class="text-lg font-semibold text-gray-900 mb-3">Add Finance Item</h2>
+            <div class="grid grid-cols-2 lg:grid-cols-5 gap-2">
+                <button class="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-black shadow-sm hover:bg-gray-50" style="background-color: {{colors.invoice}} !important;" type="button" onclick="toggleCollapse('invoiceForm');" aria-expanded="true">
+                  Invoice
+                </button>
+                <button class="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-black shadow-sm hover:bg-gray-50" style="background-color: {{colors.credit_note}} !important;" type="button" onclick="toggleCollapse('creditNoteForm');" aria-expanded="true">
+                  Credit Note
+                </button>
+                <button class="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-black shadow-sm hover:bg-gray-50" style="background-color: pink !important;" type="button" onclick="toggleCollapse('pinkSlipForm');" aria-expanded="true">
+                  Pink Slip
+                </button>
+                <button class="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-black shadow-sm hover:bg-gray-50" style="background-color: lightblue !important;" type="button" onclick="toggleCollapse('blueSlipForm');" aria-expanded="true">
+                  Blue Slip
+                </button>
+                <button class="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-black shadow-sm hover:bg-gray-50 col-span-2 lg:col-span-1" style="background-color: {{colors.green}} !important;" type="button" onclick="toggleCollapse('greenSlipForm');" aria-expanded="true">
+                  Green Slip
+                </button>
+            </div>
             {% comment %} <button class="col btn m-1" style="background-color: {{colors.temp}} !important;" type="button" data-bs-toggle="collapse" data-bs-target="#TempSlipForm" aria-expanded="true" aria-controls="FileSummary">
               Add Temp Slip
             </button> {% endcomment %}
