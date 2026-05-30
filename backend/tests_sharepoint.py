@@ -16,7 +16,8 @@ from backend.sharepoint.client import SharePointClient
 from backend.sharepoint.paths import (
     bundle_document_upload_path,
     bundle_final_pdf_upload_path,
-    sanitize_filename,
+    normalize_storage_path,
+    resolve_storage_path,
     undertaking_file_upload_path,
 )
 from backend.views import _collect_bundle_documents, _generate_bundle_pdf
@@ -41,7 +42,40 @@ class SharePointPathTests(TestCase):
         shutil.rmtree(media_root, ignore_errors=True)
 
     def test_sanitize_filename_strips_unsafe_characters(self):
+        from backend.sharepoint.paths import sanitize_filename
         self.assertEqual(sanitize_filename('letter (final).pdf'), 'letter _final.pdf')
+
+    def test_normalize_storage_path_maps_legacy_prefixes(self):
+        self.assertEqual(
+            normalize_storage_path('undertakings/WEB0060002/file.pdf'),
+            'Undertakings/WEB0060002/file.pdf',
+        )
+        self.assertEqual(
+            normalize_storage_path('bundle_documents/WEB0060002/b1/d1.pdf'),
+            'BundleSources/WEB0060002/b1/d1.pdf',
+        )
+
+    @patch('backend.sharepoint.paths.get_sharepoint_client')
+    def test_resolve_storage_path_falls_back_to_folder_basename(self, mock_get_client):
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.exists.return_value = False
+        mock_client.list_children.return_value = [
+            {
+                'name': 'abc12345-6789-6789-6789-6789abcdef01_letter.pdf',
+                'path': 'Undertakings/WEB0060002/abc12345-6789-6789-6789-6789abcdef01_letter.pdf',
+                'is_folder': False,
+            }
+        ]
+
+        resolved = resolve_storage_path(
+            'undertakings/WEB0060002/letter.pdf',
+            client=mock_client,
+        )
+        self.assertEqual(
+            resolved,
+            'Undertakings/WEB0060002/abc12345-6789-6789-6789-6789abcdef01_letter.pdf',
+        )
 
     def test_bundle_document_path_uses_uuids(self):
         bundle = Bundle.objects.create(name='Bundle')

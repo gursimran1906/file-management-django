@@ -48,3 +48,70 @@ LEGACY_PATH_PREFIXES = {
     'bundle_documents/': 'BundleSources/',
     'bundles/': 'BundleFinal/',
 }
+
+UUID_FILE_PREFIX = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_',
+    re.I,
+)
+
+
+def normalize_storage_path(name):
+    """Map legacy local media paths to SharePoint library paths."""
+    normalized = (name or '').replace('\\', '/')
+    for legacy_prefix, new_prefix in LEGACY_PATH_PREFIXES.items():
+        if normalized.startswith(legacy_prefix):
+            return new_prefix + normalized[len(legacy_prefix):]
+    return normalized
+
+
+def storage_basename_key(name):
+    return UUID_FILE_PREFIX.sub('', os.path.basename(name or '')).lower()
+
+
+def resolve_storage_path(name, client=None):
+    """Resolve the SharePoint path to use for reads/deletes.
+
+    Handles legacy DB paths and files uploaded under a different name in the
+    same folder (for example UUID-prefixed filenames after migration).
+    """
+    if not name:
+        return name
+
+    from backend.sharepoint.client import SharePointClientError, get_sharepoint_client
+
+    if client is None:
+        client = get_sharepoint_client()
+
+    normalized = normalize_storage_path(name)
+    try:
+        if client.exists(normalized):
+            return normalized
+    except SharePointClientError:
+        pass
+
+    parts = normalized.split('/')
+    if len(parts) < 3:
+        return normalized
+
+    library = parts[0]
+    if library not in ('Undertakings', 'StaffDocuments', 'BundleSources', 'BundleFinal'):
+        return normalized
+
+    target_name = parts[-1]
+    target_key = storage_basename_key(target_name)
+    folder_path = '/'.join(parts[:-1])
+
+    try:
+        items = client.list_children(folder_path)
+    except SharePointClientError:
+        return normalized
+
+    for item in items or []:
+        if item.get('is_folder'):
+            continue
+        if item['name'] == target_name:
+            return item['path']
+        if storage_basename_key(item['name']) == target_key:
+            return item['path']
+
+    return normalized

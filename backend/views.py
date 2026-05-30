@@ -8751,12 +8751,24 @@ def undertaking_file_download(request, pk, field):
 
     undertaking = get_object_or_404(Undertaking, pk=pk)
     file_field = getattr(undertaking, field, None)
-    if not file_field:
+    if not file_field or not file_field.name:
         raise Http404('File not found')
 
     filename = os.path.basename(file_field.name)
+    try:
+        file_handle = file_field.open('rb')
+    except Exception as exc:
+        logger.exception(
+            'Failed to open undertaking %s %s at %s: %s',
+            pk,
+            field,
+            file_field.name,
+            exc,
+        )
+        raise Http404('File not found') from exc
+
     response = FileResponse(
-        file_field.open('rb'),
+        file_handle,
         content_type='application/octet-stream',
     )
     response['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -9379,14 +9391,11 @@ def _bundle_pdf_is_current(bundle, verify_file=True):
         return False
     if not verify_file:
         return True
-    if not bundle.final_pdf:
+    if not bundle.final_pdf or not bundle.final_pdf.name:
         return False
     try:
-        if default_storage.exists(bundle.final_pdf.name):
-            return True
-        # SharePoint can lag between upload and exists(); opening verifies readiness.
-        with bundle.final_pdf.open('rb'):
-            pass
+        with bundle.final_pdf.open('rb') as handle:
+            handle.read(1)
         return True
     except Exception:
         return False
@@ -9431,15 +9440,16 @@ def _ensure_bundle_final_pdf(bundle, user=None, progress_callback=None):
                     'Could not delete previous final PDF for bundle %s', bundle.id)
 
         bundle.final_pdf.save(f'{bundle.uuid}.pdf', ContentFile(pdf_content))
-        bundle.refresh_from_db(fields=['updated_at'])
+        saved_name = bundle.final_pdf.name
         now = timezone.now()
-        if bundle.updated_at and bundle.updated_at > now:
-            now = bundle.updated_at
         Bundle.objects.filter(pk=bundle.pk).update(
-            final_pdf=bundle.final_pdf.name,
+            final_pdf=saved_name,
             pdf_generated_at=now,
+            updated_at=now,
         )
+        bundle.final_pdf.name = saved_name
         bundle.pdf_generated_at = now
+        bundle.updated_at = now
         if user:
             log_bundle_event(
                 user,
@@ -9982,12 +9992,23 @@ def bundle_document_file(request, document_id):
     document = get_object_or_404(
         BundleDocument, id=document_id, section__bundle__created_by=request.user)
 
-    if not document.file:
+    if not document.file or not document.file.name:
         raise Http404('Document file not found')
 
     filename = os.path.basename(document.file.name)
+    try:
+        file_handle = document.file.open('rb')
+    except Exception as exc:
+        logger.exception(
+            'Failed to open bundle document %s at %s: %s',
+            document.id,
+            document.file.name,
+            exc,
+        )
+        raise Http404('Document file not found') from exc
+
     response = FileResponse(
-        document.file.open('rb'),
+        file_handle,
         content_type='application/pdf',
     )
     response['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -10295,24 +10316,40 @@ def bundle_download(request, bundle_id):
     serve_only = request.headers.get('X-Bundle-Serve-Only') == '1'
     regenerated = False
     pdf_file = None
-    if serve_only:
-        if not bundle.pdf_is_current():
-            return JsonResponse({'error': 'PDF is not ready yet.'}, status=409)
+
+    progress = cache.get(_bundle_pdf_progress_key(request.user.id, bundle_id))
+    if serve_only and progress and progress.get('status') == 'running':
+        return JsonResponse({'error': 'PDF is not ready yet.'}, status=409)
+
+    if _bundle_pdf_is_current(bundle):
         try:
             pdf_file = bundle.final_pdf.open('rb')
-        except Exception:
-            return JsonResponse({'error': 'PDF is not ready yet.'}, status=409)
-    else:
+        except Exception as exc:
+            logger.warning(
+                'Could not open current bundle PDF for %s (%s): %s',
+                bundle.id,
+                bundle.final_pdf.name,
+                exc,
+            )
+
+    if pdf_file is None:
         success, error, regenerated = _ensure_bundle_final_pdf(
             bundle, user=request.user)
         if not success:
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return JsonResponse({'error': error}, status=400)
-            messages.error(request, error)
+                return JsonResponse({'error': error or 'Could not generate PDF.'}, status=400)
+            messages.error(request, error or 'Could not generate PDF.')
             return redirect('bundle_edit', bundle_id=bundle.id)
-
-    if pdf_file is None:
-        pdf_file = bundle.final_pdf.open('rb')
+        bundle.refresh_from_db()
+        try:
+            pdf_file = bundle.final_pdf.open('rb')
+        except Exception as exc:
+            logger.exception(
+                'Could not open generated bundle PDF for %s: %s', bundle.id, exc)
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'error': 'Could not read generated PDF.'}, status=500)
+            messages.error(request, 'Could not read generated PDF.')
+            return redirect('bundle_edit', bundle_id=bundle.id)
 
     response = FileResponse(
         pdf_file,

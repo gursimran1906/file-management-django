@@ -192,14 +192,14 @@
             'X-Bundle-Serve-Only': '1',
         };
         let lastError = null;
-        for (let attempt = 0; attempt < 5; attempt += 1) {
+        for (let attempt = 0; attempt < 10; attempt += 1) {
             const response = await fetch(url, {
                 credentials: 'same-origin',
                 headers,
             });
             const contentType = response.headers.get('Content-Type') || '';
-            if (response.status === 409 && attempt < 4) {
-                await sleep(400);
+            if (response.status === 409 && attempt < 9) {
+                await sleep(800);
                 continue;
             }
             if (!response.ok) {

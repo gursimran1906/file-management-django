@@ -11,7 +11,7 @@ from backend.models import Bundle, BundleDocument, Undertaking
 from backend.sharepoint.paths import (
     bundle_document_upload_path,
     bundle_final_pdf_upload_path,
-    LEGACY_PATH_PREFIXES,
+    normalize_storage_path,
 )
 from users.models import UserDocument
 
@@ -125,11 +125,7 @@ class Command(BaseCommand):
         return os.path.join(self.local_media_root, name)
 
     def _map_legacy_path(self, name):
-        normalized = name.replace('\\', '/')
-        for legacy_prefix, new_prefix in LEGACY_PATH_PREFIXES.items():
-            if normalized.startswith(legacy_prefix):
-                return new_prefix + normalized[len(legacy_prefix):]
-        return normalized
+        return normalize_storage_path(name)
 
     def _resolve_local_path(self, name):
         """Return disk path if the file exists, trying legacy prefix mapping."""
@@ -377,9 +373,18 @@ class Command(BaseCommand):
         matter_code = self._matter_code_for(instance) if isinstance(instance, Undertaking) else None
         if skip_existing:
             if default_storage.exists(target_name):
+                if current_name != target_name and not dry_run:
+                    file_field.name = target_name
+                    instance.save(update_fields=[field_name])
+                    stats['updated'] += 1
                 stats['skipped'] += 1
                 return
             if matter_code and self._sharepoint_already_has_file(current_name, matter_code):
+                match_type, sp_path = self._find_sharepoint_match(current_name, matter_code)
+                if sp_path and sp_path != current_name and not dry_run:
+                    file_field.name = sp_path
+                    instance.save(update_fields=[field_name])
+                    stats['updated'] += 1
                 stats['skipped'] += 1
                 self.stdout.write(
                     f'Skipping (already in SharePoint folder {matter_code}): {current_name}'

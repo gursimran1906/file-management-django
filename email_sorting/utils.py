@@ -78,6 +78,9 @@ class Graph:
         self.app_client = GraphServiceClient(
             self.client_credential)  # type: ignore
 
+    async def close(self):
+        await self.client_credential.close()
+
     async def get_app_only_token(self):
         graph_scope = 'https://graph.microsoft.com/.default'
         access_token = await self.client_credential.get_token(graph_scope)
@@ -100,8 +103,7 @@ class Graph:
         return users
 
     async def close_all_sessions(self):
-        # Close all open client sessions
-        httpx._client._pool_map.clear()
+        await self.close()
 
     async def get_shared_mailbox_messages(self, shared_mailbox_email):
         # Specify the shared mailbox's email address in the request URL
@@ -396,6 +398,9 @@ class Setup:
         # Use self.graph consistently
         self.graph = Graph(azure_settings)
 
+    async def close(self):
+        await self.graph.close()
+
     async def display_access_token(self):
         # Use self.graph consistently
         token = await self.graph.get_app_only_token()
@@ -536,6 +541,8 @@ class Sorting:
 
         except Exception as e:
             print(f"Error fetching emails: {str(e)}")
+        finally:
+            await setup_instance.close()
 
     async def get_emails_from_all_mailboxes(self):
         setup_instance = Setup()
@@ -566,11 +573,16 @@ class Sorting:
         except Exception as e:
             print(f"Error fetching emails: {str(e)}")
             await setup_instance.send_error_email(f"Dear ND, \n Error fetching emails: {e}\n Kind regards\nGB")
+        finally:
+            await setup_instance.close()
 
     async def diplay_access_token(self):
         setup_instance = Setup()
-        token = await setup_instance.display_access_token()
-        print(token)
+        try:
+            token = await setup_instance.display_access_token()
+            print(token)
+        finally:
+            await setup_instance.close()
 
     async def get_all_emails_from_date(self):
         setup_instance = Setup()
@@ -589,6 +601,8 @@ class Sorting:
 
         except Exception as e:
             print(f"Error fetching emails: {str(e)}")
+        finally:
+            await setup_instance.close()
 
     async def get_shared_mailbox_folders(self):
         setup_instance = Setup()
@@ -599,6 +613,8 @@ class Sorting:
             pprint(folders)
         except Exception as e:
             print(e)
+        finally:
+            await setup_instance.close()
 
     def convert_datetime_to_db_str(self, rcvd_time_str):
 
@@ -625,6 +641,8 @@ class Sorting:
 
         except Exception as e:
             print(e)
+        finally:
+            await setup_instance.close()
 
 
 def get_emails_and_store():
