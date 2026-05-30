@@ -6,11 +6,20 @@
 
 
 
-<div class="h-full space-y-4">
-    <div class='h-1/4 grid md:grid-cols-3 gap-4 '>
-        <div class="div-container md:w-fit h-fit ">
-            <h1 class="text-3xl font-medium">Invoices</h1>
-            <form class="flex flex-col space-y-2 mt-4" method="GET">
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Invoices</h1>
+        <p class="text-sm text-gray-600 mt-1">Filter, export, and review invoice data</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid md:grid-cols-3 gap-4">
+        <div class="div-container">
+            <h2 class="text-base font-semibold text-gray-900 mb-3 pb-2 border-b border-gray-100">Financial year</h2>
+            <form class="flex flex-col space-y-2" method="GET">
                 
                 <select 
                     id="financialYear" 
@@ -19,10 +28,11 @@
                 >
                     <!-- Options will be populated dynamically -->
                 </select>
-                <button class="btn-secondary mt-auto">Filter</button>
+                <button class="btn-primary text-xs mt-auto">Filter</button>
             </form>
         </div>
-        <div class=' div-container'>
+        <div class="div-container">
+            <h2 class="text-base font-semibold text-gray-900 mb-3 pb-2 border-b border-gray-100">Selected totals</h2>
             <table class="table">
                 <thead>
                     <tr>
@@ -48,10 +58,10 @@
         </div>
         
         
-        <div class='div-container   md:justify-self-end '>
+        <div class="div-container">
             <form method="POST" action="{% url 'download_invoices' %}">
                 {% csrf_token %}
-                <h3 class='text-2xl mb-4 text-center'>Actions</h3>
+                <h2 class="text-base font-semibold text-gray-900 mb-3 pb-2 border-b border-gray-100">Export</h2>
                 <div class="flex flex-col gap-4">
             
                     <div date-rangepicker datepicker-buttons datepicker-autoselect-today datepicker-format="dd/mm/yyyy" datepicker-title="Choose date range" class="flex items-center">
@@ -79,8 +89,8 @@
         </div>
 
     </div>
-    <div class="h-3/4 div-container overflow-auto">
-        <div class="overflow-auto">
+
+    <div class="div-container max-h-[70vh] overflow-auto">
             <table id="invoicesTable" class="table">
                 <thead>
                     <tr class='border-b'>
@@ -130,7 +140,6 @@
                     </tr>
                 </tfoot>
             </table>
-        </div>
     </div>
 </div>
 <script>

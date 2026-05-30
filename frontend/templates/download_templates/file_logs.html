@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Activity log — {{ file_number }}</title>
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 1.2cm 1.4cm;
+            @top-right {
+                content: "Page " counter(page) " of " counter(pages);
+                font-size: 8pt;
+                color: #6b7280;
+            }
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            font-size: 9pt;
+            line-height: 1.45;
+            color: #111827;
+        }
+
+        .header {
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .header h1 {
+            margin: 0 0 4px;
+            font-size: 16pt;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .header-meta {
+            font-size: 8.5pt;
+            color: #6b7280;
+        }
+
+        .header-meta span + span::before {
+            content: " · ";
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead th {
+            text-align: left;
+            font-size: 7.5pt;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #6b7280;
+            padding: 8px 10px;
+            border-bottom: 1px solid #e5e7eb;
+            background: #f9fafb;
+        }
+
+        tbody td {
+            vertical-align: top;
+            padding: 10px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .col-when {
+            width: 12%;
+            white-space: nowrap;
+            font-size: 8.5pt;
+            color: #6b7280;
+        }
+
+        .col-event {
+            width: 14%;
+        }
+
+        .col-by {
+            width: 12%;
+            color: #374151;
+        }
+
+        .event-type {
+            margin: 0;
+            font-size: 9pt;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .event-action {
+            margin: 2px 0 0;
+            font-size: 8pt;
+            color: #6b7280;
+        }
+
+        .details-desc {
+            margin: 0;
+            color: #1f2937;
+        }
+
+        .changes {
+            margin: 8px 0 0;
+            padding-left: 10px;
+            border-left: 1px solid #e5e7eb;
+        }
+
+        .change-item {
+            margin: 0 0 6px;
+            font-size: 8pt;
+            color: #4b5563;
+        }
+
+        .change-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .change-label {
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .change-old {
+            text-decoration: line-through;
+            color: #9ca3af;
+        }
+
+        .change-arrow {
+            color: #d1d5db;
+            padding: 0 2px;
+        }
+
+        .change-new {
+            color: #1f2937;
+        }
+
+        .change-add {
+            color: #4b5563;
+        }
+
+        .change-remove {
+            text-decoration: line-through;
+            color: #9ca3af;
+        }
+
+        .empty {
+            padding: 24px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 9pt;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Activity log — {{ file_number }}</h1>
+        <div class="header-meta">
+            <span>{{ log_meta.total }} entries</span>
+            <span>Downloaded by {{ downloaded_by }}</span>
+            <span>{{ downloaded_at }}</span>
+        </div>
+    </div>
+
+    {% if logs %}
+    <table>
+        <thead>
+            <tr>
+                <th class="col-when">When</th>
+                <th class="col-event">Event</th>
+                <th>Details</th>
+                <th class="col-by">By</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td class="col-when">{{ log.timestamp }}</td>
+                <td class="col-event">
+                    <p class="event-type">{{ log.type_label }}</p>
+                    <p class="event-action">{{ log.action_label }}</p>
+                </td>
+                <td>
+                    <p class="details-desc">{{ log.desc }}</p>
+                    {% if log.changes_list %}
+                    <div class="changes">
+                        {% for c in log.changes_list %}
+                        <div class="change-item">
+                            <span class="change-label">{{ c.label }}</span>
+                            {% if c.kind == 'add' %}
+                            <div class="change-add">{{ c.new_display }}</div>
+                            {% elif c.kind == 'remove' %}
+                            <div class="change-remove">{{ c.old_display }}</div>
+                            {% else %}
+                            <div>
+                                <span class="change-old">{{ c.old_display }}</span>
+                                <span class="change-arrow">→</span>
+                                <span class="change-new">{{ c.new_display }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </td>
+                <td class="col-by">{{ log.user_display }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No activity recorded for this matter.</p>
+    {% endif %}
+</body>
+</html>

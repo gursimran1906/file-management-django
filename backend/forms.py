@@ -372,6 +372,32 @@ ClientKeyDocumentFormSet = inlineformset_factory(
 )
 
 
+class MatterClientKeyDocumentForm(forms.ModelForm):
+    class Meta:
+        model = ClientKeyDocument
+        fields = [
+            'client', 'category', 'document_type', 'document_reference',
+            'issue_date', 'expiry_date', 'verified_on', 'notes',
+        ]
+        widgets = {
+            'issue_date': forms.DateInput(attrs={'type': 'date'}),
+            'expiry_date': forms.DateInput(attrs={'type': 'date'}),
+            'verified_on': forms.DateInput(attrs={'type': 'date'}),
+            'notes': forms.Textarea(attrs={'rows': 2}),
+        }
+
+    def __init__(self, matter=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        client_ids = [matter.client1_id]
+        if matter.client2_id:
+            client_ids.append(matter.client2_id)
+        self.fields['client'].queryset = ClientContactDetails.objects.filter(
+            id__in=client_ids
+        )
+        for field_name, field in self.fields.items():
+            field.widget.attrs['class'] = 'form-input'
+
+
 class MatterKeyDateForm(forms.ModelForm):
     class Meta:
         model = MatterKeyDate

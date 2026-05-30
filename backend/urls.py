@@ -7,10 +7,10 @@ from .views import allocate_monies, download_statement_account, download_invoice
 from .views import download_cashier_data, edit_file, edit_client, edit_authorised_party, download_file_logs, download_frontsheet, generate_ledgers_report, user_dashboard, download_risk_assessment
 from .views import add_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring
 from .views import edit_ongoing_monitoring, download_document, onboarding_documents_display, edit_otherside, free30mins, download_free30mins, edit_free30mins
-from .views import undertakings, edit_undertaking, add_policy, edit_policy, download_policy_pdf, management_reports, weekly_report_view, policies_read_per_user
-from .views import bundle_create, bundle_edit, bundle_section_add, bundle_section_delete, bundle_section_reorder, bundle_document_upload, bundle_document_delete, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_delete
+from .views import undertakings, edit_undertaking, undertaking_file_download, add_policy, edit_policy, download_policy_pdf, management_reports, weekly_report_view, policies_read_per_user
+from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundle_court_update, bundle_section_add, bundle_section_delete, bundle_section_update, bundle_section_reorder, bundle_document_upload, bundle_document_file, bundle_document_update, bundle_document_delete, bundle_document_pages_update, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_pdf_prepare, bundle_pdf_status, bundle_delete
 from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, download_user_key_documents_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review, internal_pricing
-from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, central_key_dates, download_central_key_dates
+from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, add_matter_key_document, central_key_dates, download_central_key_dates
 
 urlpatterns = [
     path('dashboard/', user_dashboard, name='user_dashboard'),
@@ -47,6 +47,8 @@ urlpatterns = [
 
     path('<str:file_number>/key_dates/add/',
          add_matter_key_date, name='add_matter_key_date'),
+    path('<str:file_number>/key_documents/add/',
+         add_matter_key_document, name='add_matter_key_document'),
     path('key_dates/<int:id>/edit/',
          edit_matter_key_date, name='edit_matter_key_date'),
     path('key_dates/<int:id>/delete/',
@@ -166,6 +168,8 @@ urlpatterns = [
     path('free30mins/edit/<int:id>/', edit_free30mins, name='edit_free30mins'),
 
     path('undertakings/', undertakings, name='undertakings'),
+    path('undertakings/file/<int:pk>/<str:field>/',
+         undertaking_file_download, name='undertaking_file_download'),
     path('undertakings/edit/<int:id>/',
          edit_undertaking, name='edit_undertaking'),
 
@@ -196,13 +200,24 @@ urlpatterns = [
     path('memos/<int:memo_id>/read/', read_memo, name='read_memo'),
 
     # Bundle URLs
-    path('bundles/', bundle_create, name='bundle_create'),
+    path('home/<str:file_number>/bundles/',
+         bundle_list, name='matter_bundle_list'),
+    path('home/<str:file_number>/bundles/create/',
+         bundle_create, name='matter_bundle_create'),
+    path('bundles/', bundle_list, name='bundle_list'),
+    path('bundles/create/', bundle_create, name='bundle_create'),
     path('bundles/<str:file_number>/', bundle_create,
          name='bundle_create_with_file'),
     path('bundle/<int:bundle_id>/', bundle_edit, name='bundle_edit'),
+    path('bundle/<int:bundle_id>/update/', bundle_update, name='bundle_update'),
+    path('bundle/<int:bundle_id>/court/', bundle_court_update, name='bundle_court_update'),
     path('bundle/<int:bundle_id>/view/', bundle_view, name='bundle_view'),
     path('bundle/<int:bundle_id>/generate/',
          bundle_generate, name='bundle_generate'),
+    path('bundle/<int:bundle_id>/pdf/prepare/',
+         bundle_pdf_prepare, name='bundle_pdf_prepare'),
+    path('bundle/<int:bundle_id>/pdf/status/',
+         bundle_pdf_status, name='bundle_pdf_status'),
     path('bundle/<int:bundle_id>/download/',
          bundle_download, name='bundle_download'),
     path('bundle/<int:bundle_id>/delete/', bundle_delete, name='bundle_delete'),
@@ -212,14 +227,22 @@ urlpatterns = [
          bundle_section_add, name='bundle_section_add'),
     path('bundle/section/<int:section_id>/delete/',
          bundle_section_delete, name='bundle_section_delete'),
+    path('bundle/section/<int:section_id>/update/',
+         bundle_section_update, name='bundle_section_update'),
     path('bundle/<int:bundle_id>/section/reorder/',
          bundle_section_reorder, name='bundle_section_reorder'),
 
     # Bundle Document URLs
     path('bundle/section/<int:section_id>/document/upload/',
          bundle_document_upload, name='bundle_document_upload'),
+    path('bundle/document/<int:document_id>/file/',
+         bundle_document_file, name='bundle_document_file'),
+    path('bundle/document/<int:document_id>/update/',
+         bundle_document_update, name='bundle_document_update'),
     path('bundle/document/<int:document_id>/delete/',
          bundle_document_delete, name='bundle_document_delete'),
+    path('bundle/document/<int:document_id>/pages/',
+         bundle_document_pages_update, name='bundle_document_pages_update'),
     path('bundle/section/<int:section_id>/document/reorder/',
          bundle_document_reorder, name='bundle_document_reorder'),
 

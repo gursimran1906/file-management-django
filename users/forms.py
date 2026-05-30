@@ -96,6 +96,16 @@ class UserDocumentForm(forms.ModelForm):
         model = UserDocument
         fields = ['document', 'employee', 'description']
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            if isinstance(field.widget, forms.FileInput):
+                field.widget.attrs['class'] = 'form-input'
+            elif isinstance(field.widget, forms.Select):
+                field.widget.attrs['class'] = 'form-input'
+            else:
+                field.widget.attrs['class'] = 'form-input'
+
 class CPDTrainingLogForm(forms.ModelForm):
     class Meta:
         model = CPDTrainingLog

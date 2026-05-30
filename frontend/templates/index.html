@@ -2,157 +2,298 @@
 
 {% block title %}Search matters {% endblock %}
 
+{% block styles %}
+<style>
+  body.index-page #content {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  body.index-page #content > .px-4 {
+    min-height: 0;
+    padding-bottom: 0.5rem;
+  }
+
+  .index-page-root {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  #index-results-table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  #index-table-scroll thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: rgb(255 255 255);
+    border-bottom: 1px solid rgb(229 231 235);
+    box-shadow: 0 1px 0 0 rgb(243 244 246);
+    padding: 0.625rem 1rem;
+    text-align: left;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgb(107 114 128);
+    white-space: nowrap;
+  }
+
+  #index-results-table tbody td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid rgb(243 244 246);
+    font-size: 0.8125rem;
+    color: rgb(55 65 81);
+    vertical-align: top;
+  }
+
+  #index-results-table tbody tr {
+    transition: background-color 0.12s ease;
+  }
+
+  #index-results-table tbody tr:hover {
+    background-color: rgb(249 250 251);
+  }
+
+  #index-results-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  #index-results-table .col-file a {
+    font-weight: 600;
+  }
+
+  #index-results-table .col-desc,
+  #index-results-table .col-task,
+  #index-results-table .comment-text {
+    white-space: pre-line;
+    line-height: 1.4;
+  }
+
+  #index-results-table .col-date {
+    color: rgb(107 114 128);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #index-results-table .col-muted {
+    color: rgb(107 114 128);
+  }
+
+  #index-results-table .index-sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  #index-results-table .index-sort-btn:hover {
+    color: rgb(17 24 39);
+  }
+
+  #index-results-table .index-sort-btn svg {
+    width: 0.875rem;
+    height: 0.875rem;
+    color: rgb(156 163 175);
+    transition: transform 0.15s ease;
+  }
+
+  #index-results-table .comment-display {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.375rem;
+  }
+
+  #index-results-table .comment-text {
+    flex: 1;
+    min-width: 0;
+    line-height: 1.4;
+    white-space: pre-line;
+  }
+
+  #index-results-table .edit-comment-btn {
+    flex-shrink: 0;
+    margin-top: 0.125rem;
+    color: rgb(156 163 175);
+  }
+
+  #index-results-table .edit-comment-btn:hover {
+    color: rgb(75 85 99);
+  }
+
+  .index-results-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+</style>
+{% endblock %}
+
 {% block container %}
 
-<div class='flex mt-2 place-content-between'> 
-  <form method="POST" action="{% url 'display_data_index_page' %}">
-    {% csrf_token %}
-    <div class="md:flex grid md:w-fit div-container gap-2 md:gap-0">
-      
-        <div class="flex ">
-            <select id="searchBy" name="searchBy" 
-            class="py-2 px-1 text-sm font-medium text-center text-gray-900 bg-gray-100 
-            border md:border-e-0  border-gray-300 dark:border-gray-700 dark:text-white rounded md:rounded-s md:rounded-e-none
-            w-full hover:bg-gray-200 focus:ring-4 focus:outline-none  dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800">
-                <option value="FileNumber" {% if search_by == 'FileNumber' %}selected{% endif %}>Alpha Code</option>
-                <option value="ClientName" {% if search_by == 'ClientName' %}selected{% endif %}>Client Name</option>
-                <option value="FeeEarner" {% if search_by == 'FeeEarner' %}selected{% endif %}>FeeEarner</option>
-                <option value="ToBeClosed" {% if search_by == 'ToBeClosed' %}selected{% endif %}>
-                    Files to be Closed
-                </option>
-            </select>
-        </div>
-        <div class="md:me-2">
-            <input
-                id="valToSearch"
-                name="valToSearch"
-                class="border border-gray-300  text-gray-900 text-sm rounded md:rounded-none md:rounded-e focus:ring-blue-100 focus:border-blue-100 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500;"
-                placeholder="Search Value"
-                value="{{ val_to_search }}"
-            />
-        </div>
-        <div class="md:me-2 flex items-center gap-1">
-            
-            <input type="checkbox" name="showArchived" {% if show_archived %}checked{% endif %} />
-            <label>Show Archived Files</label>
-        </div>
-        <div class=" flex items-center">
-            <button type="submit" class="btn-primary w-full ">Search</button>
-        </div>
-    </div> 
-  </form>
-
-  <div class='div-container h-fit'>
-    <form method="POST" action="{% url 'download_search_report' %}">
-      {% csrf_token %}
-      
-        <select hidden id="searchBy" name="searchBy" 
-        class="py-2 px-1 text-sm font-medium text-center text-gray-900 bg-gray-100 
-        border md:border-e-0  border-gray-300 dark:border-gray-700 dark:text-white rounded md:rounded-s md:rounded-e-none
-        w-full hover:bg-gray-200 focus:ring-4 focus:outline-none  dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800">
-            <option value="FileNumber" {% if search_by == 'FileNumber' %}selected{% endif %}>Alpha Code</option>
-            <option value="ClientName" {% if search_by == 'ClientName' %}selected{% endif %}>Client Name</option>
-            <option value="FeeEarner" {% if search_by == 'FeeEarner' %}selected{% endif %}>FeeEarner</option>
-            <option value="ToBeClosed" {% if search_by == 'ToBeClosed' %}selected{% endif %}>
-                Files to be Closed
-            </option>
+<div class="index-page-root gap-4">
+  <div class="div-container shrink-0 !overflow-visible" data-index-toolbar>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-3 pb-3 border-b border-gray-100">
+      <div>
+        <h1 class="text-xl font-semibold text-gray-900">Search matters</h1>
+        <p class="text-sm text-gray-600 mt-0.5">Find files by alpha code, client, fee earner, or closure status</p>
+      </div>
+      <form method="POST" action="{% url 'download_search_report' %}" class="shrink-0">
+        {% csrf_token %}
+        <select hidden name="searchBy">
+          <option value="FileNumber" {% if search_by == 'FileNumber' %}selected{% endif %}>Alpha Code</option>
+          <option value="ClientName" {% if search_by == 'ClientName' %}selected{% endif %}>Client Name</option>
+          <option value="FeeEarner" {% if search_by == 'FeeEarner' %}selected{% endif %}>Fee Earner</option>
+          <option value="ToBeClosed" {% if search_by == 'ToBeClosed' %}selected{% endif %}>Files to be Closed</option>
         </select>
+        <input hidden name="valToSearch" value="{{ val_to_search }}">
+        <input hidden type="checkbox" name="showArchived" {% if show_archived %}checked{% endif %}>
+        <button class="btn-secondary text-xs" type="submit">Download report</button>
+      </form>
+    </div>
 
-        <input 
-            id="valToSearch"
-            name="valToSearch"
-            class="hidden border border-gray-300  text-gray-900 text-sm rounded md:rounded-none md:rounded-e focus:ring-blue-100 focus:border-blue-100 w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500;"
-            placeholder="Search Value"
-            value="{{ val_to_search }}"
-        />
-
-
-        <input hidden type="checkbox" name="showArchived" {% if show_archived %}checked{% endif %} />
-        <button class='btn-primary'>Download</button>
+    <form method="POST" action="{% url 'display_data_index_page' %}" class="max-w-xl">
+      {% csrf_token %}
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+        <div class="flex min-w-0 w-full sm:w-auto sm:max-w-md">
+          <select id="searchBy" name="searchBy" class="form-input !w-auto shrink-0 rounded-r-none border-r-0 text-sm">
+            <option value="FileNumber" {% if search_by == 'FileNumber' %}selected{% endif %}>Alpha code</option>
+            <option value="ClientName" {% if search_by == 'ClientName' %}selected{% endif %}>Client name</option>
+            <option value="FeeEarner" {% if search_by == 'FeeEarner' %}selected{% endif %}>Fee earner</option>
+            <option value="ToBeClosed" {% if search_by == 'ToBeClosed' %}selected{% endif %}>Files to be closed</option>
+          </select>
+          <input id="valToSearch" name="valToSearch" class="form-input rounded-l-none text-sm min-w-0 w-full sm:w-48" placeholder="Search value" value="{{ val_to_search }}">
+        </div>
+        <label class="flex items-center gap-2 text-xs text-gray-600 shrink-0">
+          <input type="checkbox" name="showArchived" class="rounded border-gray-300" {% if show_archived %}checked{% endif %}>
+          Show archived
+        </label>
+        <button type="submit" class="btn-primary text-xs shrink-0 sm:ml-auto">Search</button>
+      </div>
     </form>
   </div>
-</div>
 
-<div class='div-container mt-4 w-full '>
-  {% if data %}
-  <div class='rounded-lg relative overflow-x-auto w-full'>
-    <table
-      id="tblUser"
-      
-      class=" w-full"
-      >
-      <thead class='mt-2 thead'>
-        <tr>
-          <!-- Adjust the headers based on your model fields -->
-          <th class='td'>File Number</th>
-          <th class='td'>Fee Earner</th>
-          <th class='td'>Matter Description</th>
-          <th class='td'>Client 1 Name</th>
-          <th class='td'>Client 2 Name</th>
-          <th class='td'>Last Work Done By</th>
-          <th class='td'>Desc Of Last Work</th>
-          <th class='td'>
-            <button id="sortLastActivityBtn" type="button" class="flex items-center gap-2 rounded border border-gray-300 px-2 py-1 hover:bg-gray-100">
-              <span>Date Of Last Activity</span>
-              <svg id="sortLastActivityIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="transition: transform 0.15s ease;">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7l4-4 4 4M16 17l-4 4-4-4M12 3v18" />
-              </svg>
-              <span id="sortLastActivityState" class="text-xs text-gray-600">Newest</span>
-            </button>
-          </th>
-
-          <th class='td'>Comments</th>
-        </tr>
-      </thead>
-      <tbody class='text-sm'>
-        {% for row in data %}
-        <tr class='tbody-striped'>
-          <!-- Adjust the table cells based on your model fields -->
-          <td class='td'>
-            <a class='link' href="{% url 'home' row.file_number %}"
-              >{{ row.file_number }}</a
-            >
-          </td>
-          <td class='td'>{{ row.fee_earner__username|default:'-' }}</td>
-          <td class='td'>{{ row.matter_description|default:'-' }}</td>
-          <td class='td'>{{ row.client1__name|default:'-' }}</td>
-          <td class='td'>{{ row.client2__name|default:'-' }}</td>
-          <td class='td'>{{ row.latest_last_work_person|default:'-' }}</td>
-          <td class='td'>{{ row.latest_last_work_task|default:'-' }}</td>
-          <td class='td' data-last-activity="{{ row.latest_last_work_date|date:'Y-m-d' }}">{{ row.latest_last_work_date|date:"d/m/Y"|default:'-' }}</td>
-          <td class='td comment-cell' data-file-number="{{ row.file_number }}">
-            <div class="comment-display">
-              <span class="comment-text">{{ row.comments|default:'-' }}</span>
-              <button class="ml-2 text-blue-600 hover:text-blue-800 edit-comment-btn" title="Edit comment">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+  <div class="div-container index-results-panel !overflow-hidden !p-0">
+    {% if data %}
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-b border-gray-100 shrink-0" data-index-results-header>
+      <div>
+        <h2 class="text-base font-semibold text-gray-900">Results</h2>
+        <p class="text-xs text-gray-500 mt-0.5">Scroll the table to browse all matches</p>
+      </div>
+      <span class="badge-zinc shrink-0">{{ data|length }} file{{ data|length|pluralize }}</span>
+    </div>
+    <div id="index-table-scroll" class="overflow-auto">
+      <table id="index-results-table" class="w-full min-w-[72rem]">
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Fee earner</th>
+            <th>Matter</th>
+            <th>Client 1</th>
+            <th>Client 2</th>
+            <th>Last work by</th>
+            <th>Last work</th>
+            <th>
+              <button id="sortLastActivityBtn" type="button" class="index-sort-btn">
+                <span>Last activity</span>
+                <svg id="sortLastActivityIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7l4-4 4 4M16 17l-4 4-4-4M12 3v18" />
                 </svg>
+                <span id="sortLastActivityState" class="normal-case tracking-normal font-medium text-gray-400">Newest</span>
               </button>
-            </div>
-            <div class="comment-edit hidden">
-              <textarea class="comment-textarea w-full p-2 border border-gray-300 rounded text-sm" rows="3">{{ row.comments|default:'' }}</textarea>
-              <div class="mt-2 flex gap-2">
-                <button class="save-comment-btn btn-primary text-xs py-1 px-3">Save</button>
-                <button class="cancel-comment-btn bg-gray-500 hover:bg-gray-600 text-white text-xs py-1 px-3 rounded">Cancel</button>
+            </th>
+            <th>Comments</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data %}
+          <tr>
+            <td class="col-file">
+              <a class="link" href="{% url 'home' row.file_number %}">{{ row.file_number }}</a>
+            </td>
+            <td class="col-muted">{{ row.fee_earner__username|default:'—' }}</td>
+            <td class="col-desc">{% if row.matter_description %}{{ row.matter_description }}{% else %}—{% endif %}</td>
+            <td>{{ row.client1__name|default:'—' }}</td>
+            <td class="col-muted">{{ row.client2__name|default:'—' }}</td>
+            <td class="col-muted">{{ row.latest_last_work_person|default:'—' }}</td>
+            <td class="col-task">{% if row.latest_last_work_task %}{{ row.latest_last_work_task }}{% else %}—{% endif %}</td>
+            <td class="col-date" data-last-activity="{{ row.latest_last_work_date|date:'Y-m-d' }}">{{ row.latest_last_work_date|date:"d/m/Y"|default:'—' }}</td>
+            <td class="comment-cell min-w-[12rem]" data-file-number="{{ row.file_number }}">
+              <div class="comment-display">
+                <span class="comment-text">{% if row.comments %}{{ row.comments }}{% else %}—{% endif %}</span>
+                <button class="edit-comment-btn" title="Edit comment" aria-label="Edit comment">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
               </div>
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+              <div class="comment-edit hidden mt-1">
+                <textarea class="comment-textarea form-input text-xs" rows="3">{{ row.comments|default:'' }}</textarea>
+                <div class="mt-2 flex gap-2">
+                  <button class="save-comment-btn btn-primary text-xs py-1 px-3">Save</button>
+                  <button class="cancel-comment-btn btn-secondary text-xs py-1 px-3">Cancel</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-4">
+      <p class="rounded-lg bg-red-50 text-red-800 border text-sm p-4">No matters found. Check your search values above.</p>
+    </div>
+    {% endif %}
   </div>
-  
-
-  {% else %}
-  <p class='p-4 rounded-lg bg-red-50 text-red-800 border '>No Matters found. Check your search values above.</p>
-  {% endif %}
 </div>
-
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  // Get CSRF token
+  document.body.classList.add('index-page');
+
+  const indexToolbar = document.querySelector('[data-index-toolbar]');
+  const resultsHeader = document.querySelector('[data-index-results-header]');
+  const tableScroll = document.getElementById('index-table-scroll');
+  const EMPTY_DISPLAY = '—';
+
+  function syncIndexTableMaxHeight() {
+    if (!tableScroll) return;
+    const navbarHeight = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--navbar-height')
+    ) || 64;
+    const toolbarHeight = indexToolbar ? indexToolbar.offsetHeight : 0;
+    const headerHeight = resultsHeader ? resultsHeader.offsetHeight : 0;
+    const pagePadding = 24;
+    const sectionGap = 16;
+    const maxHeight = window.innerHeight - navbarHeight - toolbarHeight - headerHeight - pagePadding - sectionGap;
+    tableScroll.style.maxHeight = `${Math.max(maxHeight, 120)}px`;
+  }
+
+  syncIndexTableMaxHeight();
+  window.addEventListener('resize', syncIndexTableMaxHeight);
+  if (typeof ResizeObserver !== 'undefined') {
+    if (indexToolbar) new ResizeObserver(syncIndexTableMaxHeight).observe(indexToolbar);
+    if (resultsHeader) new ResizeObserver(syncIndexTableMaxHeight).observe(resultsHeader);
+  }
+
+  function setCommentDisplayText(element, value) {
+    element.textContent = value || EMPTY_DISPLAY;
+  }
+
+  function getCommentDisplayText(element) {
+    const text = element.textContent;
+    return text === EMPTY_DISPLAY ? '' : text;
+  }
+
   function getCookie(name) {
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
@@ -176,9 +317,7 @@ document.addEventListener('DOMContentLoaded', function() {
   function getLastActivityTimestamp(row) {
     const activityCell = row.querySelector('td[data-last-activity]');
     const activityDate = activityCell ? activityCell.dataset.lastActivity : '';
-
     if (!activityDate) return null;
-
     const timestamp = Date.parse(`${activityDate}T00:00:00`);
     return Number.isNaN(timestamp) ? null : timestamp;
   }
@@ -189,37 +328,23 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function sortTableByLastActivity(descending) {
-    const table = document.getElementById('tblUser');
+    const table = document.getElementById('index-results-table');
     if (!table) return;
-
     const tableBody = table.querySelector('tbody');
     if (!tableBody) return;
-
     const rows = Array.from(tableBody.querySelectorAll('tr'));
-
     rows.sort((rowA, rowB) => {
       const timeA = getLastActivityTimestamp(rowA);
       const timeB = getLastActivityTimestamp(rowB);
-
-      if (timeA === null && timeB === null) {
-        return getFileNumberText(rowA).localeCompare(getFileNumberText(rowB));
-      }
+      if (timeA === null && timeB === null) return getFileNumberText(rowA).localeCompare(getFileNumberText(rowB));
       if (timeA === null) return 1;
       if (timeB === null) return -1;
-      if (timeA === timeB) {
-        return getFileNumberText(rowA).localeCompare(getFileNumberText(rowB));
-      }
-
+      if (timeA === timeB) return getFileNumberText(rowA).localeCompare(getFileNumberText(rowB));
       return descending ? timeB - timeA : timeA - timeB;
     });
-
     rows.forEach((row) => tableBody.appendChild(row));
-    if (sortLastActivityState) {
-      sortLastActivityState.textContent = descending ? 'Newest' : 'Oldest';
-    }
-    if (sortLastActivityIcon) {
-      sortLastActivityIcon.style.transform = descending ? 'rotate(0deg)' : 'rotate(180deg)';
-    }
+    if (sortLastActivityState) sortLastActivityState.textContent = descending ? 'Newest' : 'Oldest';
+    if (sortLastActivityIcon) sortLastActivityIcon.style.transform = descending ? 'rotate(0deg)' : 'rotate(180deg)';
   }
 
   if (sortLastActivityBtn) {
@@ -229,151 +354,57 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // Function to show toast notification
   function showToast(message, type = 'success') {
-    // Create toast container if it doesn't exist
-    let toastContainer = document.getElementById('toast-container');
-    if (!toastContainer) {
-      toastContainer = document.createElement('div');
-      toastContainer.id = 'toast-container';
-      toastContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;';
-      document.body.appendChild(toastContainer);
-    }
-
-    // Create toast element
-    const toast = document.createElement('div');
-    const bgColor = type === 'success' ? '#10b981' : '#ef4444';
-    const icon = type === 'success' 
-      ? '<svg style="width: 20px; height: 20px; flex-shrink: 0;" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>'
-      : '<svg style="width: 20px; height: 20px; flex-shrink: 0;" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>';
-    
-    toast.style.cssText = `
-      background-color: ${bgColor};
-      color: white;
-      padding: 12px 24px;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 300px;
-      max-width: 500px;
-      opacity: 0;
-      transform: translateX(400px);
-      transition: all 0.3s ease;
-    `;
-    
-    toast.innerHTML = `
-      ${icon}
-      <span style="flex: 1;">${message}</span>
-    `;
-
-    toastContainer.appendChild(toast);
-
-    // Trigger animation
-    setTimeout(() => {
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateX(0)';
-    }, 10);
-
-    // Auto remove after 3 seconds
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateX(400px)';
-      setTimeout(() => {
-        toast.remove();
-        // Remove container if empty
-        if (toastContainer.children.length === 0) {
-          toastContainer.remove();
-        }
-      }, 300);
-    }, 3000);
+    if (window.showAppToast) window.showAppToast(message, type);
   }
 
-  // Handle edit button clicks
   document.querySelectorAll('.edit-comment-btn').forEach(btn => {
     btn.addEventListener('click', function(e) {
       e.preventDefault();
       const cell = this.closest('.comment-cell');
-      const displayDiv = cell.querySelector('.comment-display');
-      const editDiv = cell.querySelector('.comment-edit');
-      
-      displayDiv.classList.add('hidden');
-      editDiv.classList.remove('hidden');
+      cell.querySelector('.comment-display').classList.add('hidden');
+      cell.querySelector('.comment-edit').classList.remove('hidden');
     });
   });
 
-  // Handle cancel button clicks
   document.querySelectorAll('.cancel-comment-btn').forEach(btn => {
     btn.addEventListener('click', function(e) {
       e.preventDefault();
       const cell = this.closest('.comment-cell');
-      const displayDiv = cell.querySelector('.comment-display');
-      const editDiv = cell.querySelector('.comment-edit');
-      
-      // Reset textarea to original value
-      const originalText = cell.querySelector('.comment-text').textContent;
-      const textarea = cell.querySelector('.comment-textarea');
-      textarea.value = originalText === '-' ? '' : originalText;
-      
-      editDiv.classList.add('hidden');
-      displayDiv.classList.remove('hidden');
+      const commentText = cell.querySelector('.comment-text');
+      cell.querySelector('.comment-textarea').value = getCommentDisplayText(commentText);
+      cell.querySelector('.comment-edit').classList.add('hidden');
+      cell.querySelector('.comment-display').classList.remove('hidden');
     });
   });
 
-  // Handle save button clicks
   document.querySelectorAll('.save-comment-btn').forEach(btn => {
     btn.addEventListener('click', function(e) {
       e.preventDefault();
       const cell = this.closest('.comment-cell');
       const fileNumber = cell.dataset.fileNumber;
-      const textarea = cell.querySelector('.comment-textarea');
-      const newComment = textarea.value;
-      
-      // Disable button during save
+      const newComment = cell.querySelector('.comment-textarea').value;
       this.disabled = true;
       this.textContent = 'Saving...';
 
-      // Send AJAX request
       fetch('/update-comment/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': csrftoken
-        },
-        body: JSON.stringify({
-          file_number: fileNumber,
-          comment: newComment
-        })
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ file_number: fileNumber, comment: newComment })
       })
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          // Update the display text
-          const commentText = cell.querySelector('.comment-text');
-          commentText.textContent = newComment || '-';
-          
-          // Switch back to display mode
-          const displayDiv = cell.querySelector('.comment-display');
-          const editDiv = cell.querySelector('.comment-edit');
-          editDiv.classList.add('hidden');
-          displayDiv.classList.remove('hidden');
-          
-          // Show success toast notification
+          setCommentDisplayText(cell.querySelector('.comment-text'), newComment);
+          cell.querySelector('.comment-edit').classList.add('hidden');
+          cell.querySelector('.comment-display').classList.remove('hidden');
           showToast('Comment saved successfully!', 'success');
         } else {
           showToast('Error saving comment: ' + (data.error || 'Unknown error'), 'error');
         }
       })
-      .catch(error => {
-        console.error('Error:', error);
-        showToast('Error saving comment. Please try again.', 'error');
-      })
-      .finally(() => {
-        // Re-enable button
-        this.disabled = false;
-        this.textContent = 'Save';
-      });
+      .catch(() => showToast('Error saving comment. Please try again.', 'error'))
+      .finally(() => { this.disabled = false; this.textContent = 'Save'; });
     });
   });
 });

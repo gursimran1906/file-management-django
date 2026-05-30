@@ -1,26 +1,23 @@
 {% extends 'base.html' %}
-{% load utils %} 
-{% block title %}Edit CPD{% endblock %} 
+{% load utils %}
+{% block title %}Edit CPD{% endblock %}
 {% block container %}
 
-<div class="div-container">
-   
-    <div class="">
-        
-        <div class="flex">
-            <h3 class="text-lg font-semibold text-gray-900">
-                Edit CPD Record
-            </h3>
-        </div>
-        <form method="POST" action="{% url 'edit_cpd' cpd.id %}" class="space-y-4">
-          {% csrf_token %}
-          
-            {{ form.as_p }}
-          <div class="flex items-center">
-            <button type="submit" class="btn-primary w-full">Update</button>
-          </div>
-        </form>
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Edit CPD record</h1>
+        <p class="text-sm text-gray-600 mt-1">Update continuing professional development details</p>
+      </div>
+      <a href="{% url 'profile_page' %}" class="btn-secondary text-xs shrink-0">Back to profile</a>
     </div>
-</div>
+  </div>
 
+  <form class="div-container max-w-2xl" method="POST" action="{% url 'edit_cpd' cpd.id %}">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="btn-primary text-xs mt-4">Save changes</button>
+  </form>
+</div>
 {% endblock %}

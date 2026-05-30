@@ -4,11 +4,10 @@
 {% block title %}Management Reports{% endblock %}
 {% block container_class %}container {% endblock %}
 {% block container %}
-<div class="space-y-4">
-    <!-- Page Title -->
-    <div class="div-container">
-        <h1 class="text-3xl font-bold text-gray-800">Management Reports</h1>
-        <p class="text-sm text-gray-500 mt-2">Monitor key metrics and statuses</p>
+<div class="space-y-5">
+    <div class="div-container py-3">
+        <h1 class="text-2xl font-semibold text-gray-900">Management reports</h1>
+        <p class="text-sm text-gray-600 mt-1">Monitor key metrics and statuses</p>
     </div>
 
     <!-- Work Per User Report -->
@@ -25,7 +24,7 @@
                 {% endfor %}
                 </select>
             </div>
-            <h2 class="text-lg font-semibold text-gray-800  pb-2 text-center">Weekly Work per user</h2>
+            <h2 class="text-base font-semibold text-gray-900 pb-2 text-center">Weekly work per user</h2>
             
             <!-- Week Navigation -->
             <div class="flex items-center gap-2 ">
@@ -1130,5 +1129,6 @@ document.addEventListener('DOMContentLoaded', function() {
     kanbanUserFilter.addEventListener('change', loadKanbanTasks);
 });
 </script>
-    
+
+</div>
 {% endblock %}

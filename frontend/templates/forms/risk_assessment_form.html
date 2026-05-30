@@ -1,6 +1,13 @@
-<div class='grid md:grid-cols-2 gap-4 mt-2'>
-    <h1 class='div-container md:w-fit h-fit text-3xl font-medium '>{{ file_number }} | Risk Assessment | {{title}}</h1>
-</div>
+<div class='mt-4 space-y-5'>
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Risk assessment</h1>
+        <p class="text-sm text-gray-600 mt-1">{{ file_number }} · {{ title }}</p>
+      </div>
+      <a href="{% url 'home' file_number %}" class="btn-secondary text-xs shrink-0">Back to file</a>
+    </div>
+  </div>
 <form method="post">
     {% csrf_token %}
     <div class=' space-y-4 text-sm mt-4 '>
@@ -388,9 +395,8 @@
             </div>
         </div>
         
-        <button type="submit" class="btn-primary ">
-            Submit
-        </button>
-    
+        <button type="submit" class="btn-primary text-xs">Save</button>
+
     </div>
 </form>
+</div>

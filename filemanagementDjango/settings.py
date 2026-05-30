@@ -18,6 +18,9 @@ import logging.config
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+load_dotenv(BASE_DIR / 'filemanagementDjango' / '.env')
+load_dotenv(BASE_DIR / '.env')
+
 # Create logs directory if it doesn't exist
 LOGS_DIR = BASE_DIR / 'logs'
 try:
@@ -57,6 +60,13 @@ LOGIN_URL = '/login/'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_COOKIE_AGE = 36000
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'file-management-django',
+    }
+}
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 2048
 
@@ -103,6 +113,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'backend.context_processors.matter_nav',
             ],
         },
     },
@@ -213,6 +224,40 @@ STATICFILES_DIRS = [
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# SharePoint storage (see plan: dedicated Azure app + four document libraries)
+USE_SHAREPOINT = os.getenv('USE_SHAREPOINT', 'False').lower() in ('true', '1', 'yes')
+SHAREPOINT_AZURE_CLIENT_ID = os.getenv('SHAREPOINT_AZURE_CLIENT_ID', '')
+SHAREPOINT_AZURE_CLIENT_SECRET = os.getenv('SHAREPOINT_AZURE_CLIENT_SECRET', '')
+SHAREPOINT_AZURE_TENANT_ID = os.getenv('SHAREPOINT_AZURE_TENANT_ID', '')
+SHAREPOINT_SITE_ID = os.getenv('SHAREPOINT_SITE_ID', '')
+SHAREPOINT_DRIVE_IDS = os.getenv(
+    'SHAREPOINT_DRIVE_IDS',
+    '{"Undertakings":"","StaffDocuments":"","BundleSources":"","BundleFinal":""}',
+)
+
+if USE_SHAREPOINT:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'backend.storage.sharepoint.SharePointStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+else:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+            'OPTIONS': {
+                'location': MEDIA_ROOT,
+                'base_url': MEDIA_URL,
+            },
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
@@ -385,10 +430,36 @@ LOGGING = {
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
+        # Noisy third-party libraries — keep files, hide from console
+        'azure': {
+            'handlers': ['application_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'httpx': {
+            'handlers': ['application_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'httpcore': {
+            'handlers': ['application_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'msal': {
+            'handlers': ['application_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'urllib3': {
+            'handlers': ['application_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
         # Root logger
         '': {
             'handlers': ['console', 'application_file', 'error_file'],
-            'level': 'DEBUG' if DEBUG else 'INFO',
+            'level': 'INFO',
         },
     },
 }

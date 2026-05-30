@@ -1,13 +1,17 @@
 {% extends 'base.html' %} {% block title %}Dashboard{% endblock %}
- {% block container %} {% load utils %} {% csrf_token %}
+{% block container %} {% load utils %} {% csrf_token %}
+
+<div class="space-y-5">
  <!-- Kanban Board -->
- <div id="kanban-container" class="mb-6">
-   <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-4">
-     <div class="flex items-center gap-4">
-       <h2 class="text-2xl font-semibold text-gray-800">Task Board</h2>
-       
+ <div id="kanban-container" class="div-container">
+   <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-4 pb-3 border-b border-gray-100">
+     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
+       <div>
+         <h3 class="text-base font-semibold text-gray-900">Task board</h3>
+         <p class="text-xs text-gray-500 mt-0.5">Your tasks across all files</p>
+       </div>
       <!-- Filter Toggle -->
-      <div class="flex items-center gap-4">
+      <div class="flex flex-wrap items-center gap-4">
         <div class="flex items-center gap-2">
           <label class="relative inline-flex items-center cursor-pointer">
             <input 
@@ -15,15 +19,15 @@
               class="sr-only peer" 
               id="filter-created-by-me"
             >
-            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-zinc-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-zinc-700"></div>
           </label>
-          <span class="text-sm text-gray-600">Show only tasks I created</span>
+          <span class="text-xs text-gray-600">Tasks I created</span>
         </div>
         
         <!-- Task Limit Filter -->
         <div class="flex items-center gap-2">
-          <label for="task-limit" class="text-sm text-gray-600">Show:</label>
-          <select id="task-limit" class="text-sm border border-gray-300 rounded-md px-3 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          <label for="task-limit" class="text-xs text-gray-600">Show</label>
+          <select id="task-limit" class="form-input text-xs !w-auto !py-1 !px-2">
             <option value="5" selected>5 tasks</option>
             <option value="10">10 tasks</option>
             <option value="20">20 tasks</option>
@@ -34,20 +38,15 @@
      </div>
 
      <div class="flex items-center gap-2">
-     <!-- Add Task Button -->
-     <button
-     id="add-task-btn"
-     class="btn-primary flex items-center gap-2"
-   >
+     <button id="add-task-btn" class="btn-primary text-xs flex items-center gap-2">
      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
      </svg>
-     Add Task
+     Add task
    </button>
-     <!-- Improved Minimize Button -->
      <button
        id="kanban-toggle"
-       class="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-900 focus:z-10 focus:ring-2 focus:ring-blue-500 focus:text-blue-700 transition-all duration-200"
+       class="btn-secondary text-xs inline-flex items-center gap-2"
         >
        <svg id="toggle-icon" class="w-4 h-4 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
@@ -57,65 +56,65 @@
      </div>
    </div>
    
-  <div id="kanban-board" class="div-container">
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+  <div id="kanban-board">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <!-- To Do Column -->
-      <div class="kanban-column">
-        <div class="flex justify-between items-center mb-4">
-          <div class="flex flex-col">
-            <h3 class="text-lg font-medium text-gray-700 flex items-center">
-              <span class="w-3 h-3 bg-red-500 rounded-full mr-2"></span>
-              To Do
+      <div class="kanban-column rounded-lg border border-gray-100 bg-gray-50/60 p-3">
+        <div class="flex justify-between items-center mb-2">
+          <div class="flex flex-col min-w-0">
+            <h3 class="text-sm font-semibold text-gray-900 flex items-center">
+              <span class="w-2 h-2 bg-red-500 rounded-full mr-1.5 shrink-0"></span>
+              To do
             </h3>
-            <p class="text-xs text-gray-500 ml-5">Sorted by urgency & due date</p>
+            <p class="text-[11px] text-gray-500 ml-3.5">By urgency & due date</p>
           </div>
           <span
-            class="bg-red-100 text-red-800 px-2 py-1 rounded-full text-sm"
+            class="bg-red-100 text-red-800 px-1.5 py-0.5 rounded-full text-xs font-medium shrink-0"
             id="to-do-count"
             >0</span
           >
         </div>
-        <div class="space-y-3 min-h-80 max-h-[70vh] overflow-y-auto" id="to-do-tasks">
+        <div class="space-y-2 min-h-64 max-h-[60vh] overflow-y-auto pr-0.5" id="to-do-tasks">
           <!-- Tasks will be loaded here -->
         </div>
       </div>
       <!-- In Progress Column -->
-      <div class="kanban-column">
-        <div class="flex justify-between items-center mb-4">
-          <div class="flex flex-col">
-            <h3 class="text-lg font-medium text-gray-700 flex items-center">
-              <span class="w-3 h-3 bg-yellow-500 rounded-full mr-2"></span>
-              In Progress
+      <div class="kanban-column rounded-lg border border-gray-100 bg-gray-50/60 p-3">
+        <div class="flex justify-between items-center mb-2">
+          <div class="flex flex-col min-w-0">
+            <h3 class="text-sm font-semibold text-gray-900 flex items-center">
+              <span class="w-2 h-2 bg-yellow-500 rounded-full mr-1.5 shrink-0"></span>
+              In progress
             </h3>
-            <p class="text-xs text-gray-500 ml-5">Sorted by urgency & due date</p>
+            <p class="text-[11px] text-gray-500 ml-3.5">By urgency & due date</p>
           </div>
           <span
-            class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-sm"
+            class="bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full text-xs font-medium shrink-0"
             id="in-progress-count"
             >0</span
           >
         </div>
-        <div class="space-y-3 min-h-80 max-h-[70vh] overflow-y-auto" id="in-progress-tasks">
+        <div class="space-y-2 min-h-64 max-h-[60vh] overflow-y-auto pr-0.5" id="in-progress-tasks">
           <!-- Tasks will be loaded here -->
         </div>
       </div>
       <!-- Completed This Week Column -->
-      <div class="kanban-column">
-        <div class="flex justify-between items-center mb-4">
-          <div class="flex flex-col">
-            <h3 class="text-lg font-medium text-gray-700 flex items-center">
-              <span class="w-3 h-3 bg-green-500 rounded-full mr-2"></span>
-               Completed This Week
+      <div class="kanban-column rounded-lg border border-gray-100 bg-gray-50/60 p-3">
+        <div class="flex justify-between items-center mb-2">
+          <div class="flex flex-col min-w-0">
+            <h3 class="text-sm font-semibold text-gray-900 flex items-center">
+              <span class="w-2 h-2 bg-green-500 rounded-full mr-1.5 shrink-0"></span>
+              Completed this week
             </h3>
-            <p class="text-xs text-gray-500 ml-5">Recently completed tasks</p>
+            <p class="text-[11px] text-gray-500 ml-3.5">Recently completed</p>
           </div>
           <span
-            class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm"
+            class="bg-green-100 text-green-800 px-1.5 py-0.5 rounded-full text-xs font-medium shrink-0"
             id="completed-count"
             >0</span
           >
         </div>
-        <div class="space-y-3 min-h-80 max-h-[70vh] overflow-y-auto" id="completed-tasks">
+        <div class="space-y-2 min-h-64 max-h-[60vh] overflow-y-auto pr-0.5" id="completed-tasks">
           <!-- Tasks will be loaded here -->
         </div>
       </div>
@@ -123,30 +122,30 @@
   </div>
   <!-- Minimized state -->
   <div id="kanban-minimized" class="hidden">
-    <div class="div-container py-4 flex justify-between items-center">
-      <div class="flex items-center space-x-4">
-        <span class="text-gray-700">Task Board:</span>
+    <div class="py-3 flex flex-wrap justify-between items-center gap-3">
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="text-gray-600 font-medium">Task board</span>
         <span
-          class="bg-red-100 text-red-800 px-2 py-1 rounded text-sm"
+          class="bg-red-100 text-red-800 px-1.5 py-0.5 rounded-full font-medium"
           id="minimized-to-do-count"
-          >0 To Do</span
+          >0 to do</span
         >
         <span
-          class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-sm"
+          class="bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full font-medium"
           id="minimized-in-progress-count"
-          >0 In Progress</span
+          >0 in progress</span
         >
         <span
-          class="bg-green-100 text-green-800 px-2 py-1 rounded text-sm"
+          class="bg-green-100 text-green-800 px-1.5 py-0.5 rounded-full font-medium"
           id="minimized-completed-count"
-          >0 Completed</span
+          >0 completed</span
         >
       </div>
         <button
           id="kanban-expand"
-          class="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-900 focus:z-10 focus:ring-2 focus:ring-blue-500 focus:text-blue-700 transition-all duration-200"
+          class="btn-secondary text-xs inline-flex items-center gap-1.5"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
           </svg>
           Expand
@@ -154,549 +153,321 @@
     </div>
   </div>
 </div>
-<div class="space-y-4">
-  {% comment %}
-  <div class="grid md:grid-cols-2 gap-4">
-    <h1 class="div-container md:w-fit h-fit text-3xl font-medium">
-      Hello 👋 {{ request.user.first_name }}
-    </h1>
-  </div>
-  {% endcomment %}
-  <div class="grid grid-cols-1 md:grid-cols-9 gap-4">
-    <!-- Recent Files -->
-    <div class="overflow-y-auto max-h-96 div-container md:col-span-3">
-      <h2 class="text-xl mb-2">Files</h2>
-      <div class="overflow-x-auto rounded-lg border">
-        <table class="text-gray-600 w-full">
-          <tr
-            class="w-full border-b rounded-t-lg even:bg-white odd:bg-gray-50 font-medium"
-          >
-            <td class="py-2 px-2">File number</td>
-            <td class="py-2 px-2">Description</td>
-            <td class="py-2 px-2">Client(s)</td>
-          </tr>
-          {% for file in files %}
-          <tr
-            class="{% if forloop.last %}rounded-b-lg border-b-0 {% endif %}border-b even:bg-white odd:bg-gray-50"
-          >
-            <td class="py-2 px-2">
-              <a class="link" href="{% url 'home' file.file_number %}"
-                >{{ file.file_number }}</a
-              >
-            </td>
-            <td class="py-2 px-2">{{ file.matter_description }}</td>
-            <td class="py-2 px-2">
-              {{ file.client1.name }} {{ file.client2.name }}
-            </td>
-          </tr>
-          {% empty %}
-          <tr class="text-green-700">
-            <td class="py-2 px-2" colspan="3">No files to show</td>
-          </tr>
-          {% endfor %}
-        </table>
+
+  <!-- Recent files & emails -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="div-container flex flex-col max-h-[28rem] !overflow-hidden">
+      <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between mb-3 pb-3 border-b border-gray-100 shrink-0">
+        <div>
+          <h3 class="text-base font-semibold text-gray-900">Recent files</h3>
+          <p class="text-xs text-gray-500 mt-0.5">
+            Your active files{% if overdue_invoice_file_count %} · {{ overdue_invoice_file_count }} with overdue invoice{{ overdue_invoice_file_count|pluralize }}{% endif %}
+          </p>
+        </div>
+        {% if dashboard_files %}<span class="badge-zinc shrink-0">{{ dashboard_files|length }}</span>{% endif %}
       </div>
-    </div>
-    <!-- Next Work -->
-    <div class="overflow-auto max-h-96 div-container md:col-span-3">
-      <h2 class="text-xl mb-2">Upcoming Tasks</h2>
-      <ul>
-        {% for work in user_next_works %}
-        <ul class="mt-4 list">
-          <li class="list-item bg-gray-50 rounded-t-lg">
-            File Number: {{ work.file_number }}
-          </li>
-          <li class="list-item">Task(s) Required: {{ work.task }}</li>
-          <li class="list-item bg-gray-50">
-            Date: {{ work.date|date:"d/m/Y" }}
-          </li>
-          <li class="list-item">
-            Assigned on: {{ work.timestamp|date:"d/m/Y @ h:iA" }}
-          </li>
-          <li class="list-item bg-gray-50 rounded-b-lg">
-            <a class="link" href="{% url 'edit_next_work' work.id %}">Edit</a>
-          </li>
-        </ul>
+      <div class="overflow-y-auto flex-1 min-h-0 -mx-1 px-1">
+        {% for entry in dashboard_files %}
+        {% with file=entry.wip invoices=entry.overdue_invoices %}
+        <div class="group py-3 border-b border-gray-100 last:border-0">
+          <div class="flex items-start justify-between gap-2">
+            <a class="link text-sm font-medium min-w-0 truncate" href="{% url 'home' file.file_number %}">{{ file.file_number }}</a>
+            {% if invoices %}
+            <span class="badge-red shrink-0 whitespace-nowrap">
+              Overdue{% if invoices|length > 1 %} ({{ invoices|length }}){% endif %}
+            </span>
+            {% endif %}
+          </div>
+          <p class="text-sm text-gray-900 mt-0.5 leading-snug line-clamp-2">{{ file.matter_description|default:"No description" }}</p>
+          <p class="mt-1 text-xs text-gray-500">
+            {% if file.client1 %}{{ file.client1.name }}{% endif %}{% if file.client2 %} · {{ file.client2.name }}{% endif %}
+          </p>
+          {% if invoices %}
+          <div class="mt-1.5 flex flex-wrap gap-2">
+            {% for invoice in invoices %}
+            <a class="link text-xs" href="{% url 'download_invoice' invoice.id %}">Inv. {{ invoice.invoice_number }}</a>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endwith %}
+        {% empty %}
+        <p class="py-6 text-center text-sm text-gray-400">No recent files to show.</p>
         {% endfor %}
-      </ul>
-    </div>
-    <!-- Recent Emails -->
-    <div class="overflow-auto max-h-96 div-container md:col-span-3">
-      <div class="mb-4 flex justify-between">
-        <h2 class="text-xl">Emails</h2>
-        <span
-          class="text-sm text-right text-gray-500 p-2 rounded-lg align-middle"
-          >Latest 100 emails</span
-        >
       </div>
-      <div
-        id="accordion-color"
-        data-accordion="collapse"
-        data-active-classes="bg-blue-100 dark:bg-gray-800 text-blue-600 dark:text-white rounded-b-none"
-      >
+    </div>
+
+    <div class="div-container flex flex-col max-h-[28rem] !overflow-hidden">
+      <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between mb-3 pb-3 border-b border-gray-100 shrink-0">
+        <div>
+          <h3 class="text-base font-semibold text-gray-900">Recent emails</h3>
+          <p class="text-xs text-gray-500 mt-0.5">Latest 100 from your mailbox</p>
+        </div>
+      </div>
+      <div class="overflow-y-auto flex-1 min-h-0 -mx-1 px-1" id="accordion-color" data-accordion="collapse" data-active-classes="bg-gray-50 text-gray-900">
         {% for email in last_100_emails %}
-        <h2 id="accordion-color-heading-{{ email.id }}">
-          <button
-            type="button"
-            class="flex items-center justify-between text-left w-full p-4 rtl:text-right bg-white text-gray-900 border border-gray-200 {% if forloop.first %}rounded-t-lg{% endif %} {% if forloop.last %}rounded-b-lg{% endif %} hover:shadow dark:border-gray-700 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 gap-3"
-            data-accordion-target="#accordion-color-body-{{ email.id }}"
-            aria-expanded="false"
-            aria-controls="accordion-color-body-{{ email.id }}"
-          >
-            {{ email.time|date:'d/m/Y @ H:i' }} Email {% if email.is_sent %} to
-            {% with email.receiver|jsonify as receiver %} {{ receiver.0.emailAddress.name }} 
-            {% endwith %} {% else %} from {% with email.sender|jsonify as sender %} {{ sender.emailAddress.name }} 
-            {% endwith %} {% endif %} - Subject: {{ email.subject }}
-            <svg
-              data-accordion-icon
-              class="w-3 h-3 rotate-180 shrink-0"
-              aria-hidden="true"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 10 6"
-            >
-              <path
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 5 5 1 1 5"
-              />
-            </svg>
-          </button>
-        </h2>
-        <div
-          id="accordion-color-body-{{ email.id }}"
-          class="hidden overflow-auto bg-white dark:bg-gray-900"
-          aria-labelledby="accordion-color-heading-{{ email.id }}"
-        >
-          <div
-            class="overflow-auto {% if forloop.last %}rounded-b-lg shadow{% endif %} p-4 border border-gray-200 dark:border-gray-700"
-          >
-            <table class="w-full table-auto">
-              <tr class="border-b hover:bg-gray-50 dark:hover:bg-gray-800">
-                <td class="px-1 py-2">
-                  <b>From:</b>
-                </td>
-                <td class="px-1 py-2 break-words">
-                  {% with email.sender|jsonify as sender %}
-                  <p class="break-words">
-                    {{ sender.emailAddress.name }} ({{
-                    sender.emailAddress.address }});
-                  </p>
-                  {% endwith %}
-                </td>
-              </tr>
-              <tr class="border-b hover:bg-gray-50 dark:hover:bg-gray-800">
-                <td class="px-1 py-2">
-                  <b>To:</b>
-                </td>
-                <td class="px-1 py-2 break-words">
-                  {% with email.receiver|jsonify as receivers %} {% for receiver in receivers %}
-                  <p class="break-words">
-                    {{ receiver.emailAddress.name }} ({{receiver.emailAddress.address }});
-                  </p>
-                  {% endfor %} {% endwith %}
-                </td>
-              </tr>
-              <tr class="border-b hover:bg-gray-50 dark:hover:bg-gray-800">
-                <td class="px-1 py-2">
-                  <b>Time:</b>
-                </td>
-                <td class="px-1 py-2 break-words">
-                  {{ email.time|date:'d/m/Y @ H:i' }}
-                </td>
-              </tr>
-              <tr class="border-b hover:bg-gray-50 dark:hover:bg-gray-800">
-                <td class="px-1 py-2 break-words">
-                  <b>Subject:</b>
-                </td>
-                <td class="px-1 py-2 break-words">{{ email.subject }}</td>
-              </tr>
-              <tr class="border-b hover:bg-gray-50 dark:hover:bg-gray-800">
-                <td class="px-1 py-2">
-                  <b>Link:</b>
-                </td>
-                <td class="px-1 py-2 break-words">
-                  <a class="link break-words" href="{{ email.link }}"
-                    >See Email</a
-                  >
-                </td>
-              </tr>
-              <tr class="border-b hover:bg-gray-50 dark:hover:bg-gray-800">
-                <td class="px-1 py-2">
-                  <b>Body:</b>
-                </td>
-                <td class="px-1 py-2 break-words">{{ email.body }}</td>
-              </tr>
-            </table>
+        <div class="border-b border-gray-100 last:border-0">
+          <h2 id="accordion-color-heading-{{ email.id }}">
+            <button type="button"
+              class="flex items-center justify-between text-left w-full py-2.5 px-1 text-xs text-gray-800 hover:bg-gray-50 gap-2 rounded"
+              data-accordion-target="#accordion-color-body-{{ email.id }}"
+              aria-expanded="false"
+              aria-controls="accordion-color-body-{{ email.id }}">
+              <span class="min-w-0 flex-1 leading-snug">
+                <span class="text-gray-500">{{ email.time|date:'d/m/Y @ H:i' }}</span>
+                {% if email.is_sent %} to {% with email.receiver|jsonify as receiver %}{{ receiver.0.emailAddress.name }}{% endwith %}
+                {% else %} from {% with email.sender|jsonify as sender %}{{ sender.emailAddress.name }}{% endwith %}{% endif %}
+                — {{ email.subject|truncatechars:60 }}
+              </span>
+              <svg data-accordion-icon class="w-3 h-3 shrink-0 text-gray-400 rotate-180" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/></svg>
+            </button>
+          </h2>
+          <div id="accordion-color-body-{{ email.id }}" class="hidden" aria-labelledby="accordion-color-heading-{{ email.id }}">
+            <div class="pb-3 px-1 text-xs text-gray-700 space-y-2">
+              <div><span class="text-gray-500">From:</span> {% with email.sender|jsonify as sender %}{{ sender.emailAddress.name }} ({{ sender.emailAddress.address }}){% endwith %}</div>
+              <div><span class="text-gray-500">To:</span> {% with email.receiver|jsonify as receivers %}{% for receiver in receivers %}{{ receiver.emailAddress.name }} ({{ receiver.emailAddress.address }}){% if not forloop.last %}; {% endif %}{% endfor %}{% endwith %}</div>
+              <div><span class="text-gray-500">Subject:</span> {{ email.subject }}</div>
+              <div><a class="link" href="{{ email.link }}">Open in Outlook</a></div>
+              {% if email.body %}<div class="text-gray-600 line-clamp-4">{{ email.body }}</div>{% endif %}
+            </div>
           </div>
         </div>
+        {% empty %}
+        <p class="py-6 text-center text-sm text-gray-400">No recent emails.</p>
         {% endfor %}
       </div>
     </div>
-    <!-- Chart.js Visualization -->
-    {% comment %}
-    <div class="bg-white p-4 rounded-lg shadow-md col-span-1 lg:col-span-2">
-      <h2 class="text-xl font-semibold mb-2">Work Statistics</h2>
-      <canvas id="workChart"></canvas>
-    </div>
-    {% endcomment %}
   </div>
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <!-- Risk Assessment -->
-    <div class="div-container overflow-auto max-h-96">
-      <div class="mb-2 flex justify-between items-center gap-2">
-        <div class="flex items-center gap-2">
-          <h2 class="text-xl">Risk Assessments</h2>
-          <span
-            id="risk-count-badge"
-            class="text-xs font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded-full"
-          >
-            {{ risk_assessments_due_files|length }}
-          </span>
+
+  <!-- Compliance & finance -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <!-- Risk assessments -->
+    <div class="div-container flex flex-col max-h-96 !overflow-hidden">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-3 pb-3 border-b border-gray-100 shrink-0">
+        <div>
+          <div class="flex items-center gap-2">
+            <h3 class="text-base font-semibold text-gray-900">Risk assessments</h3>
+            <span id="risk-count-badge" class="badge-zinc">{{ risk_assessments_due_files|length }}</span>
+          </div>
+          <p class="text-xs text-gray-500 mt-0.5">No RA or no ongoing monitoring in 12 months</p>
         </div>
-        <a
-          id="risk-download-link"
-          href="{% url 'download_user_risk_assessments_due' %}?risk_scope={{ risk_scope }}"
-          class="btn-secondary text-xs"
-          >Download CSV</a
-        >
+        <a id="risk-download-link" href="{% url 'download_user_risk_assessments_due' %}?risk_scope={{ risk_scope }}" class="btn-secondary text-xs shrink-0">Download CSV</a>
       </div>
-      <div class="mb-3 border rounded-lg bg-gray-50 px-3 py-2">
+      <div class="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 shrink-0">
         <div class="flex justify-between items-center gap-3">
           <div>
-            <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Scope</p>
-            <p id="risk-scope-label" class="text-sm text-gray-800">
-              {% if risk_scope == 'all_active' %}
-              All Open/To Be Closed files
-              {% else %}
-              My associated files
-              {% endif %}
+            <p class="text-xs uppercase text-gray-500">Scope</p>
+            <p id="risk-scope-label" class="text-sm font-medium text-gray-900">
+              {% if risk_scope == 'all_active' %}All open / to be closed{% else %}My associated files{% endif %}
             </p>
           </div>
           <label class="inline-flex items-center cursor-pointer select-none">
-            <span class="me-3 text-xs text-gray-600">My Files</span>
-            <input
-              id="risk-scope-toggle"
-              type="checkbox"
-              class="sr-only peer"
-              {% if risk_scope == 'all_active' %}checked{% endif %}
-            >
-            <div class="relative w-9 h-5 bg-gray-300 rounded-full transition-colors peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-200 peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4 rtl:peer-checked:after:-translate-x-4"></div>
-            <span class="ms-3 text-xs text-gray-600">All Active</span>
+            <span class="me-2 text-xs text-gray-600">Mine</span>
+            <input id="risk-scope-toggle" type="checkbox" class="sr-only peer" {% if risk_scope == 'all_active' %}checked{% endif %}>
+            <div class="relative w-9 h-5 bg-gray-200 rounded-full peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-zinc-300 peer-checked:bg-zinc-700 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4"></div>
+            <span class="ms-2 text-xs text-gray-600">All active</span>
           </label>
         </div>
       </div>
-      <div class="mb-2">
-        <span class="text-sm text-gray-500 p-2 rounded-lg align-middle"
-          >due if no risk assessment, or no ongoing monitoring in last 12 months</span
-        >
-      </div>
-      <p id="risk-loading-state" class="hidden text-sm text-gray-500 px-2 py-1">
-        Updating risk assessments...
-      </p>
-      <ul id="risk-assessments-list" class="rounded-lg">
+      <p id="risk-loading-state" class="hidden text-xs text-gray-500 mb-2">Updating…</p>
+      <ul id="risk-assessments-list" class="overflow-y-auto flex-1 min-h-0 -mx-1 px-1">
         {% for file in risk_assessments_due_files %}
-        <li class="border rounded-lg mb-2 p-3 bg-white hover:bg-gray-50">
+        <li class="py-3 border-b border-gray-100 last:border-0">
           <div class="flex justify-between items-start gap-2">
-            <a class="link font-medium" href="{% url 'home' file.file_number %}">{{ file.file_number }}</a>
+            <a class="link text-sm font-medium" href="{% url 'home' file.file_number %}">{{ file.file_number }}</a>
             {% if file.latest_assessment_date %}
-            <span class="text-[11px] px-2 py-1 rounded-full bg-amber-100 text-amber-800">No ongoing monitoring in last year</span>
+            <span class="badge-yellow shrink-0">No monitoring (12m)</span>
             {% else %}
-            <span class="text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-800">No risk assessment completed</span>
+            <span class="badge-red shrink-0">No RA</span>
             {% endif %}
           </div>
-          <div class="text-sm text-gray-700 mt-1">
-            Last RA:
-            {% if file.latest_assessment_date %}
-            {{ file.latest_assessment_date|date:"d/m/Y" }}
-            {% else %}
-            <span class="text-red-700">None done</span>
-            {% endif %}
-          </div>
-          <div class="text-sm text-gray-700 mt-1">
-            Last Ongoing Monitoring:
-            {% if file.latest_monitoring_date %}
-            {{ file.latest_monitoring_date|date:"d/m/Y" }}
-            {% else %}
-            <span class="text-red-700">None done</span>
-            {% endif %}
+          <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+            <span>Last RA: {% if file.latest_assessment_date %}{{ file.latest_assessment_date|date:"d/m/Y" }}{% else %}<span class="text-red-600">None</span>{% endif %}</span>
+            <span>Last OM: {% if file.latest_monitoring_date %}{{ file.latest_monitoring_date|date:"d/m/Y" }}{% else %}<span class="text-red-600">None</span>{% endif %}</span>
           </div>
         </li>
         {% empty %}
-        <li class="text-sm border rounded-lg py-3 px-2 text-green-700 bg-green-50">
-          No Risk Assessments due
-        </li>
+        <li class="py-6 text-center text-sm text-gray-400">No risk assessments due.</li>
         {% endfor %}
       </ul>
     </div>
-    <!-- File Reviews Due -->
-    <div class="div-container overflow-auto max-h-96">
-      <div class="mb-2 flex justify-between items-center gap-2">
+
+    <!-- File reviews -->
+    <div class="div-container flex flex-col max-h-96 !overflow-hidden">
+      <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between mb-3 pb-3 border-b border-gray-100 shrink-0">
         <div class="flex items-center gap-2">
-          <h2 class="text-xl">File Reviews</h2>
-          <span class="text-xs font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
-            {{ file_reviews_due_files|length }}
-          </span>
+          <div>
+            <h3 class="text-base font-semibold text-gray-900">File reviews</h3>
+            <p class="text-xs text-gray-500 mt-0.5">Missing or older than 3 months</p>
+          </div>
+          <span class="badge-zinc">{{ file_reviews_due_files|length }}</span>
         </div>
       </div>
-      <div class="mb-2">
-        <span class="text-sm text-gray-500 p-2 rounded-lg align-middle">due if no file review, or last review older than 3 months</span>
-      </div>
-      <ul class="rounded-lg">
+      <ul class="overflow-y-auto flex-1 min-h-0 -mx-1 px-1">
         {% for file in file_reviews_due_files %}
-        <li class="border rounded-lg mb-2 p-3 bg-white hover:bg-gray-50">
+        <li class="py-3 border-b border-gray-100 last:border-0">
           <div class="flex justify-between items-start gap-2">
-            <a class="link font-medium" href="{% url 'home' file.file_number %}">{{ file.file_number }}</a>
+            <a class="link text-sm font-medium" href="{% url 'home' file.file_number %}">{{ file.file_number }}</a>
             {% if file.latest_review_date %}
-            <span class="text-[11px] px-2 py-1 rounded-full bg-amber-100 text-amber-800">Review older than 3 months</span>
+            <span class="badge-yellow shrink-0">Over 3 months</span>
             {% else %}
-            <span class="text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-800">No file review done</span>
+            <span class="badge-red shrink-0">Not done</span>
             {% endif %}
           </div>
-          <div class="text-sm text-gray-700 mt-1">
-            Last Review:
-            {% if file.latest_review_date %}
-            {{ file.latest_review_date|date:"d/m/Y" }}
-            {% else %}
-            <span class="text-red-700">None done</span>
-            {% endif %}
-          </div>
-          {% if file.latest_review_by %}
-          <div class="text-sm text-gray-500 mt-1">
-            By: {{ file.latest_review_by }}
-          </div>
-          {% endif %}
+          <p class="mt-1.5 text-xs text-gray-500">
+            Last review: {% if file.latest_review_date %}{{ file.latest_review_date|date:"d/m/Y" }}{% if file.latest_review_by %} · {{ file.latest_review_by }}{% endif %}{% else %}<span class="text-red-600">None</span>{% endif %}
+          </p>
         </li>
         {% empty %}
-        <li class="text-sm border rounded-lg py-3 px-2 text-green-700 bg-green-50">
-          No File Reviews due
-        </li>
+        <li class="py-6 text-center text-sm text-gray-400">No file reviews due.</li>
         {% endfor %}
       </ul>
     </div>
-    <!-- Key Document Expiries -->
-    <div class="div-container overflow-auto max-h-96">
-      <div class="mb-2 flex justify-between items-center gap-2">
+
+    <!-- Key documents -->
+    <div class="div-container flex flex-col max-h-96 !overflow-hidden">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-3 pb-3 border-b border-gray-100 shrink-0">
         <div>
-          <h2 class="text-xl">Key Documents</h2>
-          <span class="text-sm text-gray-500">missing, expired or due in 30 days</span>
+          <h3 class="text-base font-semibold text-gray-900">Key documents</h3>
+          <p class="text-xs text-gray-500 mt-0.5">Missing, expired, or due within 30 days</p>
         </div>
-        <div class="flex items-center gap-3">
-          <a
-            href="{% url 'download_user_key_documents_due' %}?key_doc_scope={{ key_doc_scope }}"
-            class="btn-secondary text-xs"
-          >Download CSV</a>
+        <div class="flex items-center gap-2 shrink-0">
+          <a href="{% url 'download_user_key_documents_due' %}?key_doc_scope={{ key_doc_scope }}" class="btn-secondary text-xs">Download CSV</a>
           <label class="inline-flex items-center cursor-pointer select-none">
-            <span class="me-3 text-xs text-gray-600">My Files</span>
-            <input
-              id="key-doc-scope-toggle"
-              type="checkbox"
-              class="sr-only peer"
-              {% if key_doc_scope == 'all_active' %}checked{% endif %}
-            >
-            <div class="relative w-9 h-5 bg-gray-300 rounded-full transition-colors peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-200 peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4 rtl:peer-checked:after:-translate-x-4"></div>
-            <span class="ms-3 text-xs text-gray-600">All Active</span>
+            <span class="me-2 text-xs text-gray-600">Mine</span>
+            <input id="key-doc-scope-toggle" type="checkbox" class="sr-only peer" {% if key_doc_scope == 'all_active' %}checked{% endif %}>
+            <div class="relative w-9 h-5 bg-gray-200 rounded-full peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-zinc-300 peer-checked:bg-zinc-700 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4"></div>
+            <span class="ms-2 text-xs text-gray-600">All active</span>
           </label>
         </div>
       </div>
-      <ul>
+      <ul class="overflow-y-auto flex-1 min-h-0 -mx-1 px-1">
         {% for alert in missing_key_document_alerts %}
-        <li class="border-b py-2">
-          <div class="flex justify-between gap-2">
-            <a class="link" href="{% url 'edit_client' alert.client_id %}">{{ alert.client_name }}</a>
-            <span class="text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-800">Missing</span>
+        <li class="py-3 border-b border-gray-100 last:border-0">
+          <div class="flex justify-between items-start gap-2">
+            <a class="link text-sm font-medium" href="{% url 'edit_client' alert.client_id %}?file_number={{ alert.file_number }}">{{ alert.client_name }}</a>
+            <span class="badge-red shrink-0">Missing</span>
           </div>
-          <div class="text-sm text-gray-700 mt-1">
-            {{ alert.document_category }} needs adding
-          </div>
-          <div class="text-xs text-gray-500 mt-1">
-            File: <a class="link" href="{% url 'home' alert.file_number %}">{{ alert.file_number }}</a>
-          </div>
+          <p class="text-sm text-gray-900 mt-0.5 leading-snug">{{ alert.document_category }} needs adding</p>
+          <p class="mt-1 text-xs text-gray-500">File <a class="link" href="{% url 'home' alert.file_number %}">{{ alert.file_number }}</a></p>
         </li>
         {% endfor %}
         {% for alert in key_document_expiry_alerts %}
-        <li class="border-b py-2">
-          <div class="flex justify-between gap-2">
-            <a class="link" href="{% url 'edit_client' alert.client_id %}"
-              >{{ alert.client_name }}</a
-            >
-            {% if alert.status == 'expired' %}
-            <span class="text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-800">Expired</span>
-            {% else %}
-            <span class="text-[11px] px-2 py-1 rounded-full bg-amber-100 text-amber-800">Due soon</span>
-            {% endif %}
+        <li class="py-3 border-b border-gray-100 last:border-0">
+          <div class="flex justify-between items-start gap-2">
+            <a class="link text-sm font-medium" href="{% url 'edit_client' alert.client_id %}{% if alert.file_numbers %}?file_number={{ alert.file_numbers.0 }}{% endif %}">{{ alert.client_name }}</a>
+            {% if alert.status == 'expired' %}<span class="badge-red shrink-0">Expired</span>{% else %}<span class="badge-yellow shrink-0">Due soon</span>{% endif %}
           </div>
-          <div class="text-sm text-gray-700 mt-1">
-            {{ alert.document_category }}{% if alert.document_type %}: {{ alert.document_type }}{% endif %}
-            expires {{ alert.expiry_date|date:"d/m/Y" }}
-          </div>
-          {% if alert.document_reference %}
-          <div class="text-xs text-gray-500 mt-1">
-            Ref: {{ alert.document_reference }}
-          </div>
-          {% endif %}
-          <div class="text-xs text-gray-500 mt-1">
-            File(s): {{ alert.file_numbers|join:", " }}
-          </div>
+          <p class="text-sm text-gray-900 mt-0.5 leading-snug">{{ alert.document_category }}{% if alert.document_type %}: {{ alert.document_type }}{% endif %} · expires {{ alert.expiry_date|date:"d/m/Y" }}</p>
+          {% if alert.document_reference %}<p class="mt-1 text-xs text-gray-500">Ref: {{ alert.document_reference }}</p>{% endif %}
+          <p class="mt-1 text-xs text-gray-500">Files: {{ alert.file_numbers|join:", " }}</p>
         </li>
         {% empty %}
         {% if not missing_key_document_alerts %}
-        <li class="text-sm border-t border-b py-2 text-green-700">
-          No Key Document Issues
-        </li>
+        <li class="py-6 text-center text-sm text-gray-400">No key document issues.</li>
         {% endif %}
         {% endfor %}
       </ul>
     </div>
-    <!-- AML Checks Due -->
-    <div class="div-container overflow-auto max-h-96">
-      <div class="mb-2 flex justify-between">
-        <h2 class="text-xl">AML Checks</h2>
-        <span
-          class="text-sm text-right text-gray-500 p-2 rounded-lg align-middle"
-          >older than 11 months</span
-        >
+
+    <!-- AML checks -->
+    <div class="div-container flex flex-col max-h-96 !overflow-hidden">
+      <div class="mb-3 pb-3 border-b border-gray-100 shrink-0">
+        <h3 class="text-base font-semibold text-gray-900">AML checks</h3>
+        <p class="text-xs text-gray-500 mt-0.5">Last check older than 11 months</p>
       </div>
-      <ul>
+      <ul class="overflow-y-auto flex-1 min-h-0 -mx-1 px-1">
         {% for check in aml_checks_due %}
-        <li class="border-b py-2">
-          <a class="link" href="{{ check.edit_url }}"
-            >{{ check.entity_name }}</a
-          >
-          <span class="text-xs text-gray-500">({{ check.entity_type }})</span>
-          - {{ check.date_of_last_aml|date:"d/m/Y" }}
+        <li class="py-3 border-b border-gray-100 last:border-0">
+          <a class="link text-sm font-medium" href="{{ check.edit_url }}">{{ check.entity_name }}</a>
+          <p class="mt-1.5 text-xs text-gray-500">{{ check.entity_type }} · last AML {{ check.date_of_last_aml|date:"d/m/Y" }}</p>
         </li>
         {% empty %}
-        <li class="text-sm border-t border-b py-2 text-green-700">
-          No AML Checks Due
-        </li>
-        {% endfor %}
-      </ul>
-    </div>
-    <!-- Overdue Invoices -->
-    <div class="div-container overflow-auto max-h-96">
-      <h2 class="text-xl mb-2">Overdue Invoices</h2>
-      <ul>
-        {% for invoice in unsettled_invoices %}
-        <li class="border-b py-2">
-          {{ invoice.file_number.file_number }} -
-          <a class="link" href="{% url 'download_invoice' invoice.id %}"
-            >{{ invoice.invoice_number }}</a
-          >
-          - {% for cost, cost_desc in invoice.our_costs|zip:invoice.our_costs_desc %} {{ cost_desc }} - {{
-          cost }}
-          <br />
-          {% endfor %}
-        </li>
-        {% empty %}
-        <li class="text-sm border-t border-b py-2 text-green-700">
-          No Invoices Overdue
-        </li>
+        <li class="py-6 text-center text-sm text-gray-400">No AML checks due.</li>
         {% endfor %}
       </ul>
     </div>
   </div>
 
+</div>
+
   <!-- Add Task Modal -->
-  <div id="add-task-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-    <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 xl:w-1/3 shadow-lg rounded-md bg-white">
-      <!-- Modal Header -->
-      <div class="flex justify-between items-center pb-3">
-        <h3 class="text-lg font-semibold text-gray-900">Add New Task</h3>
-        <button id="close-modal" class="text-gray-400 hover:text-gray-600">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <div id="add-task-modal" class="fixed inset-0 bg-black/40 overflow-y-auto h-full w-full hidden z-50 flex items-start justify-center p-4 pt-16">
+    <div class="relative w-full max-w-md border shadow-lg rounded-lg bg-white">
+      <div class="flex justify-between items-center px-4 py-3 border-b border-gray-100">
+        <h3 class="text-base font-semibold text-gray-900">Add task</h3>
+        <button id="close-modal" class="text-gray-400 hover:text-gray-600 p-1" aria-label="Close">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
           </svg>
         </button>
       </div>
       
-      <!-- Modal Body -->
-      <div class="py-4">
-        <form id="add-task-form">
-          <!-- File Number -->
-          <div class="mb-4">
-            <label for="file_number" class="block text-sm font-medium text-gray-700 mb-2">File Number</label>
+      <div class="p-4">
+        <form id="add-task-form" class="space-y-3">
+          <div>
+            <label for="file_number_search" class="form-label">File number</label>
             <div class="relative">
               <input
                 type="text"
                 id="file_number_search"
                 placeholder="Search for a file..."
-                class="form-input pr-10"
+                class="form-input pr-10 text-sm"
                 autocomplete="off"
               >
               <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                 </svg>
               </div>
-              <!-- Hidden input to store the actual file ID -->
               <input type="hidden" id="file_number" name="file_number" required>
-              
-              
-              <!-- Dropdown results -->
-              <div id="file_dropdown" class="absolute z-50 w-full bg-white border border-gray-300 rounded-md shadow-lg mt-1 max-h-60 overflow-auto hidden">
-                <div id="file_options" class="py-1">
-                  <!-- Options will be populated via JavaScript -->
-                </div>
-                <div id="no_files_found" class="px-3 py-2 text-sm text-gray-500 hidden">
-                  No files found
-                </div>
+              <div id="file_dropdown" class="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg mt-1 max-h-48 overflow-auto hidden">
+                <div id="file_options" class="py-1"></div>
+                <div id="no_files_found" class="px-3 py-2 text-xs text-gray-500 hidden">No files found</div>
               </div>
             </div>
           </div>
 
-          <!-- Person (Assigned To) -->
-          <div class="mb-4">
-            <label for="person" class="block text-sm font-medium text-gray-700 mb-2">Assigned To</label>
-            <select id="person" name="person" class="form-input" required>
+          <div>
+            <label for="person" class="form-label">Assigned to</label>
+            <select id="person" name="person" class="form-input text-sm" required>
               <option value="">Select a person...</option>
-              <!-- Options will be populated via JavaScript -->
             </select>
           </div>
 
-          <!-- Task Description -->
-          <div class="mb-4">
-            <label for="task" class="block text-sm font-medium text-gray-700 mb-2">Task Description</label>
-            <textarea id="task" name="task" rows="3" class="form-input" placeholder="Describe the task..." required></textarea>
+          <div>
+            <label for="task" class="form-label">Task description</label>
+            <textarea id="task" name="task" rows="2" class="form-input text-sm" placeholder="Describe the task..." required></textarea>
           </div>
 
-          <!-- Due Date -->
-          <div class="mb-4">
-            <label for="date" class="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
-            <input type="date" id="date" name="date" class="form-input">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="date" class="form-label">Due date</label>
+              <input type="date" id="date" name="date" class="form-input text-sm">
+            </div>
+            <div>
+              <label for="urgency" class="form-label">Urgency</label>
+              <select id="urgency" name="urgency" class="form-input text-sm" required>
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
           </div>
 
-          <!-- Urgency -->
-          <div class="mb-4">
-            <label for="urgency" class="block text-sm font-medium text-gray-700 mb-2">Urgency</label>
-            <select id="urgency" name="urgency" class="form-input" required>
-              <option value="low">Low</option>
-              <option value="medium" selected>Medium</option>
-              <option value="high">High</option>
-              <option value="urgent">Urgent</option>
-            </select>
-          </div>
-
-          <!-- Status -->
-          <div class="mb-6">
-            <label for="status" class="block text-sm font-medium text-gray-700 mb-2">Status</label>
-            <select id="status" name="status" class="form-input" required>
-              <option value="to_do" selected>To Do</option>
-              <option value="in_progress">In Progress</option>
+          <div>
+            <label for="status" class="form-label">Status</label>
+            <select id="status" name="status" class="form-input text-sm" required>
+              <option value="to_do" selected>To do</option>
+              <option value="in_progress">In progress</option>
               <option value="completed">Completed</option>
             </select>
           </div>
 
-          <!-- Modal Footer -->
-          <div class="flex justify-end gap-3">
-            <button type="button" id="cancel-task" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors">
-              Cancel
-            </button>
-            <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors">
-              Create Task
-            </button>
+          <div class="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <button type="button" id="cancel-task" class="btn-secondary text-xs">Cancel</button>
+            <button type="submit" class="btn-primary text-xs">Create task</button>
           </div>
         </form>
       </div>
@@ -821,7 +592,7 @@
         function setRiskScopeLabel(scope) {
             if (!riskScopeLabel) return;
             riskScopeLabel.textContent = scope === 'all_active'
-                ? 'All Open/To Be Closed files'
+                ? 'All open / to be closed'
                 : 'My associated files';
         }
 
@@ -849,41 +620,32 @@
             if (!riskList) return;
 
             if (!items.length) {
-                riskList.innerHTML = `
-                    <li class="text-sm border rounded-lg py-3 px-2 text-green-700 bg-green-50">
-                        No Risk Assessments due
-                    </li>
-                `;
-                if (riskCountBadge) {
-                    riskCountBadge.textContent = '0';
-                }
+                riskList.innerHTML = `<li class="py-6 text-center text-sm text-gray-400">No risk assessments due.</li>`;
+                if (riskCountBadge) riskCountBadge.textContent = '0';
                 return;
             }
 
             const html = items.map(item => {
                 const hasRiskAssessment = !!item.latest_assessment_date_display;
                 const reasonBadge = hasRiskAssessment
-                    ? `<span class="text-[11px] px-2 py-1 rounded-full bg-amber-100 text-amber-800">No ongoing monitoring in last year</span>`
-                    : `<span class="text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-800">No risk assessment completed</span>`;
-
+                    ? `<span class="badge-yellow shrink-0">No monitoring (12m)</span>`
+                    : `<span class="badge-red shrink-0">No RA</span>`;
                 const lastRa = hasRiskAssessment
                     ? escapeHtml(item.latest_assessment_date_display)
-                    : '<span class="text-red-700">None done</span>';
+                    : '<span class="text-red-600">None</span>';
                 const lastMonitoring = item.latest_monitoring_date_display
                     ? escapeHtml(item.latest_monitoring_date_display)
-                    : '<span class="text-red-700">None done</span>';
+                    : '<span class="text-red-600">None</span>';
 
                 return `
-                    <li class="border rounded-lg mb-2 p-3 bg-white hover:bg-gray-50">
+                    <li class="py-3 border-b border-gray-100 last:border-0">
                         <div class="flex justify-between items-start gap-2">
-                            <a class="link font-medium" href="${escapeHtml(item.home_url)}">${escapeHtml(item.file_number)}</a>
+                            <a class="link text-sm font-medium" href="${escapeHtml(item.home_url)}">${escapeHtml(item.file_number)}</a>
                             ${reasonBadge}
                         </div>
-                        <div class="text-sm text-gray-700 mt-1">
-                            Last RA: ${lastRa}
-                        </div>
-                        <div class="text-sm text-gray-700 mt-1">
-                            Last Ongoing Monitoring: ${lastMonitoring}
+                        <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+                            <span>Last RA: ${lastRa}</span>
+                            <span>Last OM: ${lastMonitoring}</span>
                         </div>
                     </li>
                 `;
@@ -897,11 +659,7 @@
 
         function renderRiskError() {
             if (!riskList) return;
-            riskList.innerHTML = `
-                <li class="text-sm border rounded-lg py-3 px-2 text-red-700 bg-red-50">
-                    Unable to refresh risk assessments right now.
-                </li>
-            `;
+            riskList.innerHTML = `<li class="py-6 text-center text-sm text-red-600">Unable to refresh risk assessments.</li>`;
         }
 
         function loadRiskAssessments(scope) {
@@ -1140,9 +898,9 @@
                 counts[status].textContent = total;
             }
             if (minimizedCounts[status]) {
-                const statusText = status === 'to_do' ? 'To Do' :
-                                status === 'in_progress' ? 'In Progress' :
-                                'Completed';
+                const statusText = status === 'to_do' ? 'to do' :
+                                status === 'in_progress' ? 'in progress' :
+                                'completed';
                 minimizedCounts[status].textContent = `${total} ${statusText}`;
             }
         }
@@ -1168,7 +926,7 @@
             if (!container) return;
 
             const emptyDiv = document.createElement('div');
-            emptyDiv.className = 'text-center text-gray-500 py-8';
+            emptyDiv.className = 'text-center text-xs text-gray-500 py-6';
 
             const emptyText = status === 'to_do' ? 'No tasks to do' :
                             status === 'in_progress' ? 'No tasks in progress' :
@@ -1185,7 +943,7 @@
             if (!container) return;
 
             const loadMoreBtn = document.createElement('button');
-            loadMoreBtn.className = 'load-more-btn w-full py-2 text-blue-600 hover:text-blue-800';
+            loadMoreBtn.className = 'load-more-btn w-full py-1.5 text-xs text-gray-600 hover:text-gray-900';
             loadMoreBtn.dataset.status = status;
             loadMoreBtn.textContent = 'Load More...';
             container.appendChild(loadMoreBtn);
@@ -1271,60 +1029,57 @@
             });
         }
 
-        // Create task element from data
         function createTaskElement(task, status) {
             const div = document.createElement('div');
-            div.className = `kanban-task bg-white border-l-4 border-${getBorderColor(status, task.urgency)}-500 p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow`;
+            div.className = 'kanban-task bg-white border border-gray-200 p-2.5 rounded-md shadow-sm hover:shadow transition-shadow';
             div.dataset.taskId = task.id;
             div.dataset.status = status;
 
+            const fileNumberHtml = task.home_url
+                ? `<a class="link text-xs font-semibold truncate" href="${escapeHtml(task.home_url)}">${escapeHtml(task.file_number)}</a>`
+                : `<span class="text-xs font-semibold text-gray-900 truncate">${escapeHtml(task.file_number)}</span>`;
+            const editHtml = task.can_edit && task.edit_url
+                ? `<a class="text-[11px] text-gray-500 underline hover:text-gray-800 shrink-0" href="${escapeHtml(task.edit_url)}">Edit</a>`
+                : '';
+            const taskText = escapeHtml(task.task);
+            const metaLine = getTaskMetaLine(task);
+
             if (status === 'completed') {
                 div.innerHTML = `
-                    <div class="flex justify-between items-start mb-2">
-                        <h4 class="font-medium text-gray-800 truncate">${task.file_number}</h4>
-                        <span class="text-sm text-gray-500 whitespace-nowrap ml-2">
+                    <div class="flex justify-between items-start gap-2 mb-1">
+                        ${fileNumberHtml}
+                        <span class="text-[11px] text-gray-400 whitespace-nowrap shrink-0">
                             ${task.timestamp ? formatDate(task.timestamp) : ''}
                         </span>
                     </div>
-                    <p class="text-sm text-gray-600 mb-3">${task.task}</p>
-                    <div class="flex items-center gap-2 mb-3">
-                        ${currentFilterState ? `<span class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-                            Assigned to: ${task.assigned_to}
-                        </span>` : ''}
-                        ${task.is_created_by_me ? '<span class="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">Created by me</span>' : 
-                          `<span class="text-xs px-2 py-1 bg-gray-100 text-gray-800 rounded-full">Created by: ${task.created_by}</span>`}
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm text-green-600 font-medium">Completed</span>
-                        <span class="text-sm text-gray-500">
-                            ${task.timestamp ? formatDateTime(task.timestamp) : ''}
-                        </span>
+                    <p class="text-xs text-gray-600 mb-1 leading-snug">${taskText}</p>
+                    ${metaLine}
+                    <div class="flex justify-between items-center pt-1.5 border-t border-gray-100 gap-2">
+                        <span class="text-[11px] text-gray-500">Completed</span>
+                        <div class="flex items-center gap-2 shrink-0">
+                            ${editHtml}
+                        </div>
                     </div>
                 `;
             } else {
                 div.innerHTML = `
-                    <div class="flex justify-between items-start mb-2">
-                        <div class="flex items-center gap-2 flex-1">
-                            <h4 class="font-medium text-gray-800 truncate">${task.file_number}</h4>
+                    <div class="flex justify-between items-start gap-2 mb-1">
+                        <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                            ${fileNumberHtml}
                             ${getUrgencyBadge(task.urgency)}
                         </div>
-                        <span class="text-sm text-gray-500 whitespace-nowrap ml-2">
+                        <span class="text-[11px] text-gray-400 whitespace-nowrap shrink-0">
                             ${task.timestamp ? formatDate(task.timestamp) : ''}
                         </span>
                     </div>
-                    <p class="text-sm text-gray-600 mb-3">${task.task}</p>
-                    <div class="flex flex-wrap items-center gap-1 mb-3">
-                        ${currentFilterState ? `<span class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-                            Assigned to: ${task.assigned_to}
-                        </span>` : ''}
-                        ${task.is_created_by_me ? '<span class="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">Created by me</span>' : 
-                          `<span class="text-xs px-2 py-1 bg-gray-100 text-gray-800 rounded-full">Created by: ${task.created_by}</span>`}
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm ${getDateStatusColor(task.date)}">
-                            ${getDateStatus(task.date)}
-                        </span>
-                        ${getStatusButtons(status)}
+                    <p class="text-xs text-gray-600 mb-1 leading-snug">${taskText}</p>
+                    ${metaLine}
+                    <div class="flex justify-between items-center pt-1.5 border-t border-gray-100 gap-2">
+                        <span class="text-[11px] text-gray-500">${getDateStatus(task.date)}</span>
+                        <div class="flex items-center gap-2 shrink-0">
+                            ${editHtml}
+                            ${getStatusButtons(status)}
+                        </div>
                     </div>
                 `;
             }
@@ -1332,58 +1087,32 @@
             return div;
         }
 
-        function getBorderColor(status, urgency = 'medium') {
-            if (status === 'completed') return 'green';
-            
-            // For to_do and in_progress, use urgency colors
-            switch(urgency) {
-                case 'urgent': return 'red';
-                case 'high': return 'orange';
-                case 'medium': return 'yellow';
-                case 'low': return 'blue';
-                default: return 'gray';
+        function getTaskMetaLine(task) {
+            const parts = [];
+            if (currentFilterState && task.assigned_to) {
+                parts.push(escapeHtml(task.assigned_to));
+            } else if (task.is_created_by_me) {
+                parts.push('Created by me');
+            } else if (task.created_by) {
+                parts.push(escapeHtml(task.created_by));
             }
+            if (!parts.length) return '';
+            return `<p class="text-[11px] text-gray-400 mb-1.5">${parts.join(' · ')}</p>`;
         }
 
         function getUrgencyBadge(urgency) {
             const badges = {
-                'urgent': '<span class="text-xs px-2 py-1 bg-red-100 text-red-800 rounded-full font-medium">🔥 Urgent</span>',
-                'high': '<span class="text-xs px-2 py-1 bg-orange-100 text-orange-800 rounded-full font-medium">⚠️ High</span>',
-                'medium': '<span class="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full font-medium">📋 Medium</span>',
-                'low': '<span class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full font-medium">📝 Low</span>'
+                'urgent': '<span class="text-[10px] px-1.5 py-0.5 bg-red-50 text-red-700 rounded-full font-medium shrink-0">Urgent</span>',
+                'high': '<span class="text-[10px] px-1.5 py-0.5 bg-orange-50 text-orange-700 rounded-full font-medium shrink-0">High</span>',
+                'medium': '<span class="text-[10px] px-1.5 py-0.5 bg-yellow-50 text-yellow-700 rounded-full font-medium shrink-0">Medium</span>',
+                'low': '<span class="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium shrink-0">Low</span>'
             };
             return badges[urgency] || badges['medium'];
-        }
-
-        function getDateStatusColor(dateStr) {
-            if (!dateStr) return 'text-gray-500';
-            
-            const today = new Date();
-            const taskDate = new Date(dateStr);
-            const diffTime = taskDate.getTime() - today.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            
-            if (diffDays < 0) return 'text-red-600 font-medium'; // Overdue
-            if (diffDays === 0) return 'text-red-500 font-medium'; // Due today
-            if (diffDays === 1) return 'text-orange-500 font-medium'; // Due tomorrow
-            if (diffDays <= 3) return 'text-yellow-600'; // Due soon
-            return 'text-gray-500'; // Future
         }
 
         function formatDate(dateStr) {
             const date = new Date(dateStr);
             return date.toLocaleDateString('en-UK', { month: 'short', day: 'numeric' ,year: 'numeric'});
-        }
-
-        function formatDateTime(dateStr) {
-            const date = new Date(dateStr);
-            return date.toLocaleDateString('en-UK', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
         }
 
         function getDateStatus(dateStr) {
@@ -1395,22 +1124,23 @@
             date.setHours(0, 0, 0, 0);
 
             if (date < today) {
-                return '<span class="text-red-600 font-medium">Overdue</span>';
+                return 'Overdue';
             } else if (date.getTime() === today.getTime()) {
-                return '<span class="text-orange-600 font-medium">Due Today</span>';
+                return 'Due today';
             } else {
                 return 'Due ' + formatDate(dateStr);
             }
         }
 
         function getStatusButtons(status) {
+            const btnClass = 'task-status-btn px-2 py-0.5 text-[11px] font-medium border border-gray-200 bg-white text-gray-700 rounded hover:bg-gray-50 shrink-0';
             switch(status) {
                 case 'to_do':
-                    return '<button class="task-status-btn px-2 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600" data-new-status="in_progress">Start</button>';
+                    return `<button class="${btnClass}" data-new-status="in_progress">Start</button>`;
                 case 'in_progress':
-                    return `<div class="flex gap-1">
-                        <button class="task-status-btn px-2 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600" data-new-status="to_do">Back</button>
-                        <button class="task-status-btn px-2 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600" data-new-status="completed">Done</button>
+                    return `<div class="flex gap-1 shrink-0">
+                        <button class="${btnClass}" data-new-status="to_do">Back</button>
+                        <button class="${btnClass}" data-new-status="completed">Done</button>
                     </div>`;
                 default:
                     return '';
@@ -1535,10 +1265,10 @@
                 }
                 filteredFiles.forEach(file => {
                     const option = document.createElement('div');
-                    option.className = 'px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 border-b border-gray-100 last:border-b-0';
+                    option.className = 'px-3 py-1.5 text-xs cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0';
                     option.innerHTML = `
                         <div class="font-medium text-gray-900">${file.file_number || 'N/A'}</div>
-                        <div class="text-gray-500 text-xs mt-1">${file.description || 'No description'}</div>
+                        <div class="text-gray-500 text-[11px] mt-0.5 truncate">${file.description || 'No description'}</div>
                     `;
                     option.addEventListener('click', function() {
                         selectFile(file);
@@ -1574,5 +1304,5 @@
         }
     });
   </script>
-  {% endblock %}
 </div>
+{% endblock %}

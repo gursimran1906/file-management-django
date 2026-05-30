@@ -412,10 +412,10 @@ class BundleSectionInline(admin.TabularInline):
 
 @admin.register(Bundle)
 class BundleAdmin(admin.ModelAdmin):
-    list_display = ('name', 'file_number', 'created_by', 'is_finalized', 'created_at')
-    list_filter = ('is_finalized', 'created_at', 'created_by')
+    list_display = ('name', 'file_number', 'created_by', 'pdf_generated_at', 'created_at')
+    list_filter = ('created_at', 'created_by')
     search_fields = ('name', 'file_number__file_number', 'created_by__username')
-    readonly_fields = ('created_at', 'updated_at')
+    readonly_fields = ('created_at', 'updated_at', 'pdf_generated_at')
     inlines = [BundleSectionInline]
     
     def get_queryset(self, request):

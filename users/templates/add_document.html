@@ -1,8 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Add document{% endblock %}
+{% block container %}
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Add document</h1>
+        <p class="text-sm text-gray-600 mt-1">Upload an employee document</p>
+      </div>
+      <a href="{% url 'profile_page' %}" class="btn-secondary text-xs shrink-0">Back to profile</a>
+    </div>
+  </div>
 
-  <h2>Add Document</h2>
-  <form method="post" enctype="multipart/form-data">
+  <form method="post" enctype="multipart/form-data" class="div-container max-w-2xl space-y-4">
     {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Add Document</button>
-  </form>
 
+    <div>
+      <label for="{{ form.employee.id_for_label }}" class="form-label">Employee</label>
+      {{ form.employee }}
+    </div>
+
+    <div>
+      <label for="{{ form.description.id_for_label }}" class="form-label">Description</label>
+      {{ form.description }}
+    </div>
+
+    <div>
+      <label for="{{ form.document.id_for_label }}" class="form-label">Document</label>
+      {{ form.document }}
+    </div>
+
+    <button type="submit" class="btn-primary text-xs">Add document</button>
+  </form>
+</div>
+{% endblock %}

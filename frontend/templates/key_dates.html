@@ -48,26 +48,55 @@
 {% block container_class %}container{% endblock %}
 {% block container %}
 
-<div class="mt-4 space-y-4">
-  <div class="div-container">
-    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+<div class="space-y-4">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
       <div>
-        <p class="text-sm uppercase text-gray-500">Central Calendar</p>
-        <h1 class="text-3xl font-medium text-gray-900">Key Dates & Availability</h1>
+        <h1 class="text-2xl font-semibold text-gray-900">Key dates & availability</h1>
+        <p class="text-sm text-gray-600 mt-1">Central calendar across matters and staff</p>
       </div>
       <div class="no-print flex flex-wrap gap-2">
-        <a class="btn-secondary" href="{% url 'download_central_key_dates' 'pdf' 'calendar' %}?{{ request.GET.urlencode }}">Calendar PDF</a>
-        <a class="btn-secondary" href="{% url 'download_central_key_dates' 'csv' 'calendar' %}?{{ request.GET.urlencode }}">Calendar CSV</a>
-        <a class="btn-secondary" href="{% url 'download_central_key_dates' 'pdf' 'list' %}?{{ request.GET.urlencode }}">Entries PDF</a>
-        <a class="btn-secondary" href="{% url 'download_central_key_dates' 'csv' 'list' %}?{{ request.GET.urlencode }}">Entries CSV</a>
-        <a class="btn-secondary" href="?{{ previous_month_query }}">Previous Month</a>
-        <span class="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-900">{{ month_label }}</span>
-        <a class="btn-secondary" href="?{{ next_month_query }}">Next Month</a>
+        <a class="btn-secondary text-xs" href="{% url 'download_central_key_dates' 'pdf' 'calendar' %}?{{ request.GET.urlencode }}">Calendar PDF</a>
+        <a class="btn-secondary text-xs" href="{% url 'download_central_key_dates' 'csv' 'calendar' %}?{{ request.GET.urlencode }}">Calendar CSV</a>
+        <a class="btn-secondary text-xs" href="{% url 'download_central_key_dates' 'pdf' 'list' %}?{{ request.GET.urlencode }}">Entries PDF</a>
+        <a class="btn-secondary text-xs" href="{% url 'download_central_key_dates' 'csv' 'list' %}?{{ request.GET.urlencode }}">Entries CSV</a>
       </div>
     </div>
   </div>
 
-  <form class="no-print div-container" method="get">
+  <div class="no-print div-container">
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <span class="text-sm font-medium text-gray-900 shrink-0">Filters</span>
+      {% if filters.fee_earner %}
+        {% for fee_earner in fee_earners %}{% if filters.fee_earner|add:"0" == fee_earner.id %}<span class="badge-zinc">Fee earner: {{ fee_earner }}</span>{% endif %}{% endfor %}
+      {% endif %}
+      {% if filters.matter_type %}
+        {% for matter_type in matter_types %}{% if filters.matter_type|add:"0" == matter_type.id %}<span class="badge-zinc">Matter type: {{ matter_type }}</span>{% endif %}{% endfor %}
+      {% endif %}
+      {% if filters.file_status and filters.file_status != 'all' %}
+        {% for status in file_statuses %}{% if filters.file_status|add:"0" == status.id %}<span class="badge-zinc">Status: {{ status }}</span>{% endif %}{% endfor %}
+      {% endif %}
+      {% if filters.matter %}
+        {% for matter in matters %}{% if filters.matter|add:"0" == matter.id %}<span class="badge-zinc">Matter: {{ matter.file_number }}</span>{% endif %}{% endfor %}
+      {% endif %}
+      {% if filters.date_type %}
+        {% for value, label in date_type_choices %}{% if filters.date_type == value %}<span class="badge-zinc">Date type: {{ label }}</span>{% endif %}{% endfor %}
+      {% endif %}
+      {% if filters.matter_search %}<span class="badge-zinc">Matter search: {{ filters.matter_search }}</span>{% endif %}
+      {% if filters.client_search %}<span class="badge-zinc">Client search: {{ filters.client_search }}</span>{% endif %}
+      {% if filters.date_from or filters.date_to %}<span class="badge-zinc">{{ filters.date_from|date:"d/m/Y" }} – {{ filters.date_to|date:"d/m/Y" }}</span>{% endif %}
+      {% if filters.view_months %}<span class="badge-zinc">View: {% if filters.view_months == 1 %}31 days{% else %}{{ filters.view_months }} months{% endif %}</span>{% endif %}
+      {% for value, label in source_choices %}{% if value in filters.sources %}<span class="badge-zinc">{{ label }}</span>{% endif %}{% endfor %}
+    </div>
+
+    <details class="group">
+      <summary class="cursor-pointer list-none text-sm font-medium text-gray-700 hover:text-gray-900 [&::-webkit-details-marker]:hidden">
+        <span class="inline-flex items-center gap-2">
+          <svg class="h-4 w-4 text-gray-400 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 5 7 7-7 7"/></svg>
+          Edit filters
+        </span>
+      </summary>
+  <form class="mt-4 pt-4 border-t border-gray-100" method="get">
     <input id="calendar_year" type="hidden" name="year" value="{{ current_year }}">
     <input id="calendar_month" type="hidden" name="month" value="{{ current_month }}">
     <input type="hidden" name="sources_submitted" value="1">
@@ -158,15 +187,21 @@
       </div>
     </div>
     <div class="mt-4 flex flex-wrap gap-2">
-      <button class="btn-primary" type="submit">Apply Filters</button>
-      <a class="btn-secondary" href="{% url 'central_key_dates' %}">Reset</a>
+      <button class="btn-primary text-xs" type="submit">Apply filters</button>
+      <a class="btn-secondary text-xs" href="{% url 'central_key_dates' %}">Reset</a>
     </div>
   </form>
+    </details>
+  </div>
 
   <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
     <div class="print-calendar-section div-container xl:col-span-2">
-      <div class="mb-3 flex items-center justify-between">
-        <h2 class="text-lg font-semibold text-gray-900">{{ month_label }}</h2>
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <a class="btn-secondary text-xs no-print" href="?{{ previous_month_query }}" aria-label="Previous period">←</a>
+          <h2 class="text-lg font-semibold text-gray-900">{{ month_label }}</h2>
+          <a class="btn-secondary text-xs no-print" href="?{{ next_month_query }}" aria-label="Next period">→</a>
+        </div>
         <span class="text-xs text-gray-500">Calendar view</span>
       </div>
       <div class="space-y-4">
@@ -247,7 +282,7 @@
       </div>
     </div>
 
-    <div class="print-list-section div-container max-h-[80vh]">
+    <div class="print-list-section div-container max-h-[80vh] overflow-y-auto">
       <div class="mb-3 flex items-center justify-between">
         <h2 class="text-lg font-semibold text-gray-900">Calendar Entries</h2>
         <span class="text-xs text-gray-500">{{ key_dates|length }} found</span>

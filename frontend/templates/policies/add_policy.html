@@ -2,10 +2,15 @@
 {% load utils %}
 {% block title %}Add Policy{% endblock %}
 {% block container %}
-<h2 class="div-container text-xl w-fit font-medium">Add Policy</h2>
-<form method="post" class="space-y-2 div-container mt-4">
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <h1 class="text-2xl font-semibold text-gray-900">Add policy</h1>
+    <p class="text-sm text-gray-600 mt-1">Create a new firm policy</p>
+  </div>
+  <form method="post" class="div-container max-w-2xl">
     {% csrf_token %}
     {{ form.as_p }}
-    <button class="btn-primary " type="submit">Add Policy</button>
-</form>
+    <button class="btn-primary text-xs mt-4" type="submit">Add policy</button>
+  </form>
+</div>
 {% endblock %}

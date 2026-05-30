@@ -1,11 +1,20 @@
 
-{% extends 'base.html' %} {% block title %}Edit File {{form.file_number.value}}{% endblock %} 
-{% block container_class %}container{% endblock %} 
+{% extends 'base.html' %} {% block title %}Edit file{% endblock %} 
 {% block container %}
 {% load utils %}
 
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Edit file</h1>
+        <p class="text-sm text-gray-600 mt-1">{{ file_number }}</p>
+      </div>
+      <a href="{% url 'home' file_number %}" class="btn-secondary text-xs shrink-0">Back to file</a>
+    </div>
+  </div>
 
-<form class="mt-2 div-container grid grid-cols-1 md:grid-cols-12 gap-2" method="post" action="{% url 'edit_file' file_number %}">
+<form class="div-container grid grid-cols-1 md:grid-cols-12 gap-2" method="post" action="{% url 'edit_file' file_number %}">
   {% csrf_token %}
 
 
@@ -262,8 +271,8 @@
   </div>
 
   <div class="md:col-span-12 mb-3">
-    <button type="submit" class="btn btn-primary">Edit File</button>
+    <button type="submit" class="btn-primary text-xs">Save changes</button>
   </div>
 </form>
-
+</div>
 {% endblock %}

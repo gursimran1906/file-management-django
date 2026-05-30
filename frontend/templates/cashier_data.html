@@ -6,20 +6,25 @@
 {% block container %}
 {% now "Y-m-d" as today_date %}
 
-<div class="mt-2 div-container">
-  <div class="flex items-center justify-between flex-wrap gap-3">
-    <legend class="text-xl mb-0">Transfers</legend>
-    <div class="flex flex-wrap gap-2">
-      <button type="button" onclick="document.getElementById('pendingSlipsModal').classList.remove('hidden')" class="btn-secondary">
-        Pending Slips
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Transfers</h1>
+        <p class="text-sm text-gray-600 mt-1">Cashier transfers and slip management</p>
+      </div>
+      <div class="flex flex-wrap gap-2 shrink-0">
+      <button type="button" onclick="document.getElementById('pendingSlipsModal').classList.remove('hidden')" class="btn-secondary text-xs">
+        Pending slips
       </button>
-      <button type="button" onclick="document.getElementById('auditSlipsModal').classList.remove('hidden')" class="btn-secondary">
-        Audit Slips
+      <button type="button" onclick="document.getElementById('auditSlipsModal').classList.remove('hidden')" class="btn-secondary text-xs">
+        Audit slips
       </button>
+      </div>
     </div>
   </div>
 
-  <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <details class="border rounded-lg bg-white p-3" open>
       <summary class="cursor-pointer font-medium text-gray-800">Add C-O Transfers</summary>
       <form class="mt-3" method="post" action="{% url 'download_cashier_data' %}">
@@ -315,7 +320,7 @@
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
       </button>
     </div>
-    <form action="{% url 'download_cashier_data' %}" method="post" class="mt-4 space-y-4">
+    <form action="{% url 'download_cashier_data' %}" method="post" class="space-y-4">
       {% csrf_token %}
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Date of Cashier's last visit</label>
@@ -335,7 +340,7 @@
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
       </button>
     </div>
-    <form action="{% url 'download_cashier_data' %}" method="post" class="mt-4 space-y-4">
+    <form action="{% url 'download_cashier_data' %}" method="post" class="space-y-4">
       {% csrf_token %}
       <div class="grid grid-cols-2 gap-3">
         <div>
@@ -431,5 +436,5 @@
   });
 })();
 </script>
-
+</div>
 {% endblock %}

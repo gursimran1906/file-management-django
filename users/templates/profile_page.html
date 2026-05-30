@@ -1,260 +1,114 @@
 {% extends 'base.html' %} {% load utils %} {% block title %}Profile{% endblock %} {% block container %}
-<div class="flex flex-col md:flex-row  justify-between gap-4">
-  <h1 class="div-container md:w-fit h-fit text-3xl font-medium">Profile</h1>
-  <div class="div-container">
-    <table class="table">
-      <thead>
-        <tr>
-          <th
-            colspan="2"
-            class="text-lg px-2 pb-2 text-gray-900 text-center font-normal"
-          >
-            Paid Holidays Summary
-            <span class="text-xs font-light">for current year</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody class="" >
-        <tr class="border-b ">
-          <th class="py-2 px-2 font-normal text-gray-800">Allowance</th>
-          <td class="py-2 px-2 font-light text-gray-700">{{request.user.max_holidays_in_year}}</td>
-        </tr>
-        <tr class="border-b bg-gray-50">
-          <th class="py-2 px-2 font-normal text-gray-800">Taken</th>
-          <td class="py-2 px-2 font-light text-gray-700">{{total_paid_holidays}}</td>
-        </tr>
-        <tr class="border-b ">
-          <th class="py-2 px-2 font-normal text-gray-800">Office Closure</th>
-          <td class="py-2 px-2 font-light text-gray-700">{{total_office_closure_holidays}}</td>
-        </tr>
-        <tr class="border-b">
-          <th class="py-2 px-2 font-normal text-gray-800">Bank Holidays</th>
-          <td class="py-2 px-2 font-light text-gray-700">{{total_bank_holidays}}</td>
-        </tr>
-        <tr class="border-b  bg-gray-50">
-          <th class="py-2 px-2 font-normal text-gray-800 flex flex-row items-center gap-2">
-            Remaining 
-            <a data-popover-target="holidays_remaining">
-              <svg class="w-4 h-4 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
-                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 11h2v5m-2 0h4m-2.592-8.5h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
-              </svg>
-        
-            </a>
-          </th>
-          <td class="py-2 px-2 text-gray-800">
-            {{total_paid_holidays_remaining}}
-          </td>
 
-          <div id="holidays_remaining" role="tooltip" class="absolute z-50 invisible inline-block w-72 text-sm transition-opacity duration-300 border rounded-lg shadow-sm opacity-0 text-gray-200 border-gray-600 bg-gray-800">
-            <div class="px-3 py-2 border-b rounded-t-lg border-gray-600 bg-gray-700 flex items-center">
-                
-                <h3 class="font-medium text-white">Paid Holidays Remaining</h3>
-            </div>
-            <div class="px-3 py-2 font-light text-gray-200">
-              <p>
-                <b class="text-gray-50">Paid Holidays Remaining</b> are calculated by taking the 
-                <b class="text-gray-50">Total Paid Holidays Allowance</b> for the year, subtracting the 
-                <b class="text-gray-50">Total Paid Holidays Taken</b>, and further subtracting both 
-                <b class="text-gray-50">Bank Holidays</b> and <b class="text-gray-50">Office Closure Holidays.</b>
-            </p>
-            </div>
-            <div data-popper-arrow></div>
-        </div>
-        
-        
-        </tr>
-      </tbody>
-    </table>
-  </div>
-  
-  <div class="div-container h-fit">
-    <table class="table">
-     
-      <tbody class="" >
-        <tr class="border-b ">
-          <th colsapn='2' class="text-lg px-2 pb-2 text-gray-900 text-center font-normal">Unpaid Holidays <span class="text-xs font-light">for current year</span></th>
-        </tr>
-        <tr class="border-b bg-gray-50">
-          <th class="py-2 px-2 font-normal text-gray-800">Taken</th>
-          <td class="py-2 px-2 text-gray-700">{{total_unpaid_holidays}}</td>
-        </tr>
-      
-      </tbody>
-    </table>
-  </div>
-  
-
-  
-  {% if request.user.is_manager %}
-  <div class="flex flex-col gap-4">
-    <div class="div-container flex flex-col gap-2 md:justify-self-end h-fit">
-      <h3 class="text-2xl text-center">Actions</h3>
-      <div class="flex gap-2">
-        
-        <a
-          id="dropdownDefaultButton"
-          data-dropdown-toggle="dropdown-actions"
-          class="text-black bg-white cursor-pointer hover:bg-blue-600 hover:text-white focus:ring-4 focus:outline-none focus:ring-blue-300 rounded-lg border text-sm px-2 py-2 text-center inline-flex items-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
-          type="button"
-          >
-          View All
-          <svg
-            class="w-2.5 h-2.5 ms-3"
-            aria-hidden="true"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 10 6"
-          >
-            <path
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="m1 1 4 4 4-4"
-            />
-          </svg>
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div class="min-w-0">
+        <h1 class="text-2xl font-semibold text-gray-900">{{ request.user.first_name|capfirst }} {{ request.user.last_name|capfirst }}</h1>
+        <p class="text-sm text-gray-600 mt-1">Profile</p>
+        <p class="text-xs text-gray-400 mt-0.5">{{ request.user.email }}</p>
+      </div>
+      {% if request.user.is_manager %}
+      <div class="flex flex-wrap items-center gap-2 shrink-0">
+        <a id="dropdownDefaultButton" data-dropdown-toggle="dropdown-actions" class="btn-secondary text-xs inline-flex items-center gap-1 cursor-pointer" type="button">
+          View all
+          <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 10 6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/></svg>
         </a>
-        <div
-          id="dropdown-actions"
-          class="z-10 hidden border bg-white divide-y divide-gray-100 rounded-lg shadow w-44 dark:bg-gray-700"
-          >
-          <ul
-            class="py-2 text-sm text-gray-700 dark:text-gray-200 divide-y divide-gray-100"
-            aria-labelledby="dropdownDefaultButton"
-          >
-            <li>
-              <a
-                href="{% url 'holiday_records' %}"
-                target="_blank"
-                class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                >Holiday Records</a
-              >
-            </li>
-            <li>
-              <a
-                href="{% url 'sickness_records'%}"
-                target="_blank"
-                class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                >Sickness Records</a
-              >
-            </li>
+        <div id="dropdown-actions" class="z-10 hidden border bg-white divide-y divide-gray-100 rounded-lg shadow-lg w-48">
+          <ul class="py-1 text-sm text-gray-700">
+            <li><a href="{% url 'holiday_records' %}" target="_blank" class="block px-4 py-2 hover:bg-gray-50">Holiday records</a></li>
+            <li><a href="{% url 'sickness_records' %}" target="_blank" class="block px-4 py-2 hover:bg-gray-50">Sickness records</a></li>
           </ul>
         </div>
-        <button
-          class="btn btn-primary"
-          data-modal-target="office-closure-crud-modal" data-modal-toggle="office-closure-crud-modal"
-        >
-          Add Office Closure
-        </button>
-        <button
-          class="btn btn-primary"
-          data-modal-target="sickness-crud-modal" data-modal-toggle="sickness-crud-modal"
-        >
-          Add Sick Leave
-        </button>
-       
+        <button class="btn-primary text-xs" data-modal-target="office-closure-crud-modal" data-modal-toggle="office-closure-crud-modal">Office closure</button>
+        <button class="btn-primary text-xs" data-modal-target="sickness-crud-modal" data-modal-toggle="sickness-crud-modal">Add sick leave</button>
       </div>
+      {% endif %}
     </div>
-    <div class='div-container'>
-      <div class="flex flex-row gap-2 items-center mb-2 justify-center">
-        <h2 class="text-xl ">Download Payroll Reports</h2>
-        <a data-popover-target="payroll_reports">
-        <svg class="w-4 h-4 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
-          <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 11h2v5m-2 0h4m-2.592-8.5h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
-        </svg>
-  
-      </a>
-      <div id="payroll_reports" role="tooltip" class="absolute z-50 invisible inline-block w-72 text-sm transition-opacity duration-300 border rounded-lg shadow-sm opacity-0 text-gray-200 border-gray-600 bg-gray-800">
-        <div class="px-3 py-2 border-b rounded-t-lg border-gray-600 bg-gray-700 flex items-center">
-            
-            <h3 class="font-medium text-white">Payroll Reports</h3>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="div-container">
+      <div class="pb-3 mb-3 border-b border-gray-100">
+        <h2 class="text-base font-semibold text-gray-900">Paid holidays</h2>
+        <p class="text-xs text-gray-500 mt-0.5">Current year</p>
+      </div>
+      <dl class="space-y-2 text-sm">
+        <div class="flex justify-between gap-2"><dt class="text-gray-500">Allowance</dt><dd class="font-medium text-gray-900">{{ request.user.max_holidays_in_year }}</dd></div>
+        <div class="flex justify-between gap-2"><dt class="text-gray-500">Taken</dt><dd class="font-medium text-gray-900">{{ total_paid_holidays }}</dd></div>
+        <div class="flex justify-between gap-2"><dt class="text-gray-500">Office closure</dt><dd class="font-medium text-gray-900">{{ total_office_closure_holidays }}</dd></div>
+        <div class="flex justify-between gap-2"><dt class="text-gray-500">Bank holidays</dt><dd class="font-medium text-gray-900">{{ total_bank_holidays }}</dd></div>
+        <div class="flex justify-between gap-2 pt-2 border-t border-gray-100">
+          <dt class="text-gray-700 font-medium flex items-center gap-1">
+            Remaining
+            <a data-popover-target="holidays_remaining" class="text-gray-400 hover:text-gray-600">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 11h2v5m-2 0h4m-2.592-8.5h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+            </a>
+          </dt>
+          <dd class="font-semibold text-gray-900">{{ total_paid_holidays_remaining }}</dd>
         </div>
-        <div class="px-3 py-2 font-light text-gray-200">
-          <p>
-            This generates and downloads a zip file containing payroll reports for employees with attendance records in a specified month, including their attendance, holidays, and sickness data.
-        </p>
-        </div>
+      </dl>
+      <div id="holidays_remaining" role="tooltip" class="absolute z-50 invisible inline-block w-72 text-sm opacity-0 transition-opacity border rounded-lg shadow-sm bg-gray-800 text-gray-200 border-gray-600">
+        <div class="px-3 py-2 border-b border-gray-600 font-medium text-white">Paid holidays remaining</div>
+        <div class="px-3 py-2 text-xs leading-relaxed">Calculated from your annual allowance minus taken leave, bank holidays, and office closure days.</div>
         <div data-popper-arrow></div>
       </div>
+    </div>
+
+    <div class="div-container">
+      <div class="pb-3 mb-3 border-b border-gray-100">
+        <h2 class="text-base font-semibold text-gray-900">Unpaid holidays</h2>
+        <p class="text-xs text-gray-500 mt-0.5">Current year</p>
       </div>
-      <form method="POST" action="{% url 'payroll_reports_zip' %}" class="flex flex-col gap-2" id="payrollReportForm">
+      <dl class="text-sm">
+        <div class="flex justify-between gap-2"><dt class="text-gray-500">Taken</dt><dd class="font-medium text-gray-900">{{ total_unpaid_holidays }}</dd></div>
+      </dl>
+    </div>
+
+    {% if request.user.is_manager %}
+    <div class="div-container">
+      <div class="pb-3 mb-3 border-b border-gray-100">
+        <h2 class="text-base font-semibold text-gray-900">Payroll reports</h2>
+        <p class="text-xs text-gray-500 mt-0.5">Download monthly zip</p>
+      </div>
+      <form method="POST" action="{% url 'payroll_reports_zip' %}" class="space-y-3" id="payrollReportForm">
         {% csrf_token %}
-        <input class="form-input" type="month" name="month_year"></input>
-        <button class="btn-secondary text-xs" type="submit" >Download</button>
-        
+        <input class="form-input text-sm" type="month" name="month_year">
+        <button class="btn-secondary text-xs w-full" type="submit">Download</button>
       </form>
       <script>
-        // Target the specific form by its ID
         const form = document.getElementById('payrollReportForm');
-      
         if (form) {
           form.addEventListener('submit', async function(event) {
-            event.preventDefault(); // Prevent the default form submission
-      
-            const link = form.querySelector('button'); // Select the button element to update state
-            const formData = new FormData(form); // Get the form data
-      
-            // Update the button text to "Downloading" and disable it
-            link.textContent = 'Downloading...';
-            link.classList.add('btn-primary');
-            link.classList.add('animate-pulse');
-            link.classList.remove('btn-secondary');
-            link.style.pointerEvents = 'none';
-      
+            event.preventDefault();
+            const link = form.querySelector('button');
+            link.textContent = 'Downloading…';
+            link.disabled = true;
             try {
-              // Send the form data using fetch
-              const response = await fetch(form.action, {
-                method: 'POST',
-                body: formData, // Send the form data in the request
-                headers: {
-                  'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, // CSRF token
-                },
-              });
-      
-              if (!response.ok) {
-                throw new Error('Download failed');
-              }
-      
-              // If the response is a file, handle the download
+              const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value } });
+              if (!response.ok) throw new Error('Download failed');
               const blob = await response.blob();
               const blobUrl = URL.createObjectURL(blob);
               const tempLink = document.createElement('a');
               tempLink.href = blobUrl;
-      
-              // Create a timestamp for the filename (UK date format)
               const now = new Date();
-              const timestamp = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-              tempLink.download = `payroll_report_${timestamp}.zip`; // Modify the file extension as needed
-      
-              // Trigger the download
+              tempLink.download = `payroll_report_${String(now.getDate()).padStart(2,'0')}-${String(now.getMonth()+1).padStart(2,'0')}-${now.getFullYear()}.zip`;
               document.body.appendChild(tempLink);
               tempLink.click();
-              document.body.removeChild(tempLink);
+              tempLink.remove();
               URL.revokeObjectURL(blobUrl);
-      
-              // Update button state to "Downloaded"
               link.textContent = 'Downloaded';
-              link.classList.remove('animate-pulse');
-            } catch (error) {
-              console.error('Download error:', error);
-      
-              // Update button state to "Error"
-              link.textContent = 'Error';
-              link.classList.remove('downloading');
-              link.classList.add('error');
+            } catch (e) {
+              link.textContent = 'Error — retry';
             } finally {
-              // Re-enable the button
-              link.style.pointerEvents = 'auto';
+              link.disabled = false;
             }
           });
         }
       </script>
-      
-      
     </div>
+    {% endif %}
   </div>
-  {% endif %}
-</div>
 
 <div id="holiday-crud-modal" tabindex="-1" aria-hidden="true" class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full">
   <div class="relative p-4 w-full max-w-md max-h-full">
@@ -480,12 +334,13 @@
 https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
 "></script>
 
-<div class="mt-4 h-screen pb-4 space-y-4">
+<div class="space-y-5">
   {% if request.user.is_manager %} {% if all_requests %}
-  <div class="div-container overflow-auto">
-    <h2 class="text-xl mb-4">Pending Holiday Requests</h2>
+  <div class="div-container max-h-96 flex flex-col">
+    <h2 class="text-base font-semibold text-gray-900 mb-3 shrink-0">Pending holiday requests</h2>
+    <div class="overflow-y-auto min-h-0 flex-1 -mx-1 px-1">
     <table class="w-full text-sm border-collapse">
-      <thead>
+      <thead class="sticky top-0 bg-white z-10">
         <tr class="border-b">
           <th class="px-4 py-2 text-left">Employee</th>
           <th class="px-4 py-2 text-left">Start Date</th>
@@ -543,6 +398,7 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
   {% endif %} {% endif %}
   <div class="grid md:grid-cols-2 h-1/2 gap-4">
@@ -550,7 +406,7 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
           <!-- User and Week Controls -->
           <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               
-              <h2 class="text-lg font-semibold text-gray-800 pb-2 text-center">Weekly Work</h2>
+              <h2 class="text-base font-semibold text-gray-900 pb-2 text-center">Weekly work</h2>
               
               <!-- Week Navigation -->
               <div class="flex items-center gap-2">
@@ -566,7 +422,7 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
           </div>
       </div>
       <div class="div-container h-full">
-        <h2 class="text-lg font-semibold text-gray-800 pb-2 text-center">Policies</h2>
+        <h2 class="text-base font-semibold text-gray-900 pb-2 text-center">Policies</h2>
         <canvas id="policies-chart"  ></canvas>
     </div>
     
@@ -679,19 +535,13 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
     </div>
     
   </div> {% endcomment %}
-  <div class="grid md:grid-cols-2 h-1/2 gap-4">
-    <div class="div-container overflow-auto">
-      <div class="flex flex-row justify-between bg-white">
-        <h2 class="text-2xl mb-4">My Holidays</h2>
-        <div>
-          <button
-          data-modal-target="holiday-crud-modal" data-modal-toggle="holiday-crud-modal" class="btn-primary text-xs"
-          
-          >
-            Request
-          </button>
-        </div>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="div-container max-h-96 flex flex-col">
+      <div class="flex flex-row justify-between items-center shrink-0 pb-3 mb-3 border-b border-gray-100">
+        <h2 class="text-base font-semibold text-gray-900">My holidays</h2>
+        <button data-modal-target="holiday-crud-modal" data-modal-toggle="holiday-crud-modal" class="btn-primary text-xs">Request</button>
       </div>
+      <div class="overflow-y-auto min-h-0 flex-1 -mx-1 px-1">
       <div class="grid grid-cols-1 gap-4">
         {% for holiday in holiday_requests %}
         <div class="div-container">
@@ -759,9 +609,11 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
         </div>
         {% endfor %}
       </div>
+      </div>
     </div>
-    <div class="div-container overflow-auto">
-      <h2 class="text-2xl mb-4">My Sickness Records</h2>
+    <div class="div-container max-h-96 flex flex-col">
+      <h2 class="text-base font-semibold text-gray-900 shrink-0 pb-3 mb-3 border-b border-gray-100">My sickness records</h2>
+      <div class="overflow-y-auto min-h-0 flex-1 -mx-1 px-1">
       <div class="grid grid-cols-1 gap-4">
         {% for record in sickness_records %}
         <div class="div-container">
@@ -790,6 +642,7 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
           </div>
         </div>
         {% endfor %}
+      </div>
       </div>
     </div>
   </div>
@@ -840,11 +693,12 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
         </div>
       </div>
     </div>
-  <div class="grid md:grid-cols-2 h-1/2 gap-4">
-    <div class="div-container overflow-auto col-span-2 h-full">
-      <h2 class="text-xl mb-4">Attendance Records</h2>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="div-container col-span-2 max-h-96 flex flex-col">
+      <h2 class="text-base font-semibold text-gray-900 mb-3 shrink-0">Attendance records</h2>
+      <div class="overflow-y-auto min-h-0 flex-1 -mx-1 px-1">
       <table class="w-full text-sm border-collapse">
-        <thead>
+        <thead class="sticky top-0 bg-white z-10">
           <tr class="text-left border-b">
             <th class="px-4 py-2">Date</th>
             <th class="px-4 py-2">Check-in</th>
@@ -871,6 +725,7 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
   </div>
   
@@ -879,19 +734,15 @@ https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js
       <div id="calendar"></div>
     </div>
   </div>
-  <div class="grid grid-cols-1 h-1/2 gap-4">
-  <div class="div-container ">
-    <div class="flex flex-row justify-between">
-      <h3 class="text-2xl mb-4">CPD Records</h3>
-      <div>
-        <button class="btn btn-primary" data-modal-target="cpd-crud-modal" data-modal-toggle="cpd-crud-modal">
-          Add CPD
-        </button>
-      </div>
-      </div>
-    <div class='overflow-auto mt-2 rounded border'>
+  <div class="grid grid-cols-1 gap-4">
+  <div class="div-container max-h-96 flex flex-col">
+    <div class="flex flex-row justify-between items-center shrink-0 pb-3 mb-3 border-b border-gray-100">
+      <h3 class="text-base font-semibold text-gray-900">CPD records</h3>
+      <button class="btn-primary text-xs" data-modal-target="cpd-crud-modal" data-modal-toggle="cpd-crud-modal">Add CPD</button>
+    </div>
+    <div class="overflow-y-auto min-h-0 flex-1 rounded border -mx-1 px-1">
       <table id="cpd-table" class="table">
-        <thead class="bg-gray-100 text-xs cursor-pointer">
+        <thead class="bg-gray-100 text-xs cursor-pointer sticky top-0 z-10">
             <tr class="border-b">
                 <th class="p-2  text-gray-600 text-sm">User</th>
                 <th class="p-2  text-gray-600 text-sm">Title</th>

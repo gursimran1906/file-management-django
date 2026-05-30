@@ -1,104 +1,122 @@
-
 {% extends 'base.html' %}
-{% block title %}Edit {{title}}{% endblock %} 
+{% block title %}Edit {{ title }}{% endblock %}
 {% block container %}
-<div class='grid grid-cols-1 mt-2'>
-  <h1 class='div-container md:w-fit h-fit text-3xl font-medium '>Edit {{title}}</h1>
-</div>
-<form class="div-container mt-4" method="post">
-  {% csrf_token %}
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-    {% for field in form %}
-      {% if field.field.widget.input_type == 'checkbox' %}
-        <label class="flex items-center gap-3 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
-          {{ field }}
-          <span>{{ field.label }}</span>
-        </label>
-        {% if field.errors %}
-          <div class="text-sm text-red-700 md:col-span-2">{{ field.errors }}</div>
-        {% endif %}
-      {% else %}
-        <div class="{% if field.field.widget.input_type == 'textarea' %}md:col-span-2{% endif %}">
-          <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-          {{ field }}
-          {% if field.help_text %}
-            <p class="mt-1 text-xs text-gray-500">{{ field.help_text }}</p>
-          {% endif %}
-          {% if field.errors %}
-            <div class="mt-1 text-sm text-red-700">{{ field.errors }}</div>
-          {% endif %}
+
+<div class="space-y-5">
+    <div class="div-container py-3">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <h1 class="text-2xl font-semibold text-gray-900">Edit {{ title }}</h1>
+                {% if file_number %}
+                <p class="text-sm text-gray-600 mt-1">{{ file_number }}</p>
+                {% endif %}
+            </div>
+            {% if file_number %}
+            <a href="{% url 'home' file_number %}" class="btn-secondary text-xs shrink-0">Back to file</a>
+            {% endif %}
         </div>
-      {% endif %}
-    {% endfor %}
-  </div>
-  {% if key_document_formset %}
-  <div class="mt-6">
-    <h2 class="text-xl mb-2">Key Documents</h2>
-    {{ key_document_formset.management_form }}
-    <div class="overflow-x-auto rounded-lg border">
-      <table class="w-full text-sm text-gray-700">
-        <thead>
-          <tr class="bg-gray-50 border-b">
-            <th class="text-left p-2">Category</th>
-            <th class="text-left p-2">Document Type</th>
-            <th class="text-left p-2">Document No./Reference</th>
-            <th class="text-left p-2">Issue Date</th>
-            <th class="text-left p-2">Expiry Date</th>
-            <th class="text-left p-2">Verified On</th>
-            <th class="text-left p-2">Notes</th>
-            <th class="text-left p-2">Delete</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for document_form in key_document_formset %}
-          <tr class="border-b align-top">
-            <td class="p-2">
-              {{ document_form.id }}
-              {{ document_form.category }}
-              {{ document_form.category.errors }}
-            </td>
-            <td class="p-2">
-              {{ document_form.document_type }}
-              {{ document_form.document_type.errors }}
-            </td>
-            <td class="p-2">
-              {{ document_form.document_reference }}
-              {{ document_form.document_reference.errors }}
-            </td>
-            <td class="p-2">
-              {{ document_form.issue_date }}
-              {{ document_form.issue_date.errors }}
-            </td>
-            <td class="p-2">
-              {{ document_form.expiry_date }}
-              {{ document_form.expiry_date.errors }}
-            </td>
-            <td class="p-2">
-              {{ document_form.verified_on }}
-              {{ document_form.verified_on.errors }}
-            </td>
-            <td class="p-2">
-              {{ document_form.notes }}
-              {{ document_form.notes.errors }}
-            </td>
-            <td class="p-2">
-              {% if document_form.instance.pk %}
-              <label class="inline-flex items-center gap-2">
-                {{ document_form.DELETE }}
-                <span>Delete</span>
-              </label>
-              {{ document_form.DELETE.errors }}
-              {% else %}
-              <span class="text-gray-400">New row</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
     </div>
-  </div>
-  {% endif %}
-  <button class='mt-2 btn-primary' type="submit">Save Changes</button>
-</form>
+
+    <form class="div-container" method="post">
+        {% csrf_token %}
+        {% if file_number %}
+        <input type="hidden" name="return_file_number" value="{{ file_number }}">
+        {% endif %}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {% for field in form %}
+                {% if field.field.widget.input_type == 'checkbox' %}
+                    <label class="flex items-center gap-3 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
+                        {{ field }}
+                        <span>{{ field.label }}</span>
+                    </label>
+                    {% if field.errors %}
+                        <div class="text-sm text-red-700 md:col-span-2">{{ field.errors }}</div>
+                    {% endif %}
+                {% else %}
+                    <div class="{% if field.field.widget.input_type == 'textarea' %}md:col-span-2{% endif %}">
+                        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.help_text %}
+                            <p class="mt-1 text-xs text-gray-500">{{ field.help_text }}</p>
+                        {% endif %}
+                        {% if field.errors %}
+                            <div class="mt-1 text-sm text-red-700">{{ field.errors }}</div>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+
+        {% if key_document_formset %}
+        <div class="mt-6 pt-6 border-t border-gray-100">
+            <h2 class="text-base font-semibold text-gray-900 mb-3">Key documents</h2>
+            {{ key_document_formset.management_form }}
+            <div class="overflow-x-auto rounded-lg border">
+                <table class="w-full text-sm text-gray-700">
+                    <thead>
+                        <tr class="bg-gray-50 border-b">
+                            <th class="text-left p-2">Category</th>
+                            <th class="text-left p-2">Document Type</th>
+                            <th class="text-left p-2">Document No./Reference</th>
+                            <th class="text-left p-2">Issue Date</th>
+                            <th class="text-left p-2">Expiry Date</th>
+                            <th class="text-left p-2">Verified On</th>
+                            <th class="text-left p-2">Notes</th>
+                            <th class="text-left p-2">Delete</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for document_form in key_document_formset %}
+                        <tr class="border-b align-top">
+                            <td class="p-2">
+                                {{ document_form.id }}
+                                {{ document_form.category }}
+                                {{ document_form.category.errors }}
+                            </td>
+                            <td class="p-2">
+                                {{ document_form.document_type }}
+                                {{ document_form.document_type.errors }}
+                            </td>
+                            <td class="p-2">
+                                {{ document_form.document_reference }}
+                                {{ document_form.document_reference.errors }}
+                            </td>
+                            <td class="p-2">
+                                {{ document_form.issue_date }}
+                                {{ document_form.issue_date.errors }}
+                            </td>
+                            <td class="p-2">
+                                {{ document_form.expiry_date }}
+                                {{ document_form.expiry_date.errors }}
+                            </td>
+                            <td class="p-2">
+                                {{ document_form.verified_on }}
+                                {{ document_form.verified_on.errors }}
+                            </td>
+                            <td class="p-2">
+                                {{ document_form.notes }}
+                                {{ document_form.notes.errors }}
+                            </td>
+                            <td class="p-2">
+                                {% if document_form.instance.pk %}
+                                <label class="inline-flex items-center gap-2">
+                                    {{ document_form.DELETE }}
+                                    <span>Delete</span>
+                                </label>
+                                {{ document_form.DELETE.errors }}
+                                {% else %}
+                                <span class="text-gray-400">New row</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <button class="mt-4 btn-primary text-xs" type="submit">Save changes</button>
+    </form>
+</div>
 {% endblock %}

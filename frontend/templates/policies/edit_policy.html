@@ -2,25 +2,29 @@
 {% load utils %}
 {% block title %}Edit Policy{% endblock %}
 {% block container %}
-<h2 class="div-container text-xl w-fit font-medium">Edit Policy</h2>
-<form method="post" id="editPolicyForm" class="div-container mt-4">
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Edit policy</h1>
+        <p class="text-sm text-gray-600 mt-1">Update policy content and metadata</p>
+      </div>
+      <a href="{% url 'policies_display' %}" class="btn-secondary text-xs shrink-0">Back to policies</a>
+    </div>
+  </div>
+  <form method="post" id="editPolicyForm" class="div-container max-w-2xl">
     {% csrf_token %}
     {{ form.as_p }}
-    <button class="btn-primary mt-2" type="submit" id="submitBtn">Save Changes</button>
-</form>
+    <button class="btn-primary text-xs mt-4" type="submit" id="submitBtn">Save changes</button>
+  </form>
+</div>
 
 <script>
-    
-    document.getElementById('submitBtn').addEventListener('click', function(event) {
-        event.preventDefault(); 
-        
-        
-        const userConfirmed = confirm("Are you sure you want to save these changes?");
-        
-        if (userConfirmed) {
-            
-            document.getElementById('editPolicyForm').submit();
-        }
-    });
+document.getElementById('submitBtn').addEventListener('click', function(event) {
+  event.preventDefault();
+  if (confirm('Save these policy changes?')) {
+    document.getElementById('editPolicyForm').submit();
+  }
+});
 </script>
 {% endblock %}

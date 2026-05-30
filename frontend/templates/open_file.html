@@ -1,10 +1,15 @@
 
 {% extends 'base.html' %} {% block title %} Open New File {% endblock %} 
-{% block container_class %}container{% endblock %} 
 {% block container %}
 {% load utils %}
 
-<form class="grid md:grid-cols-12 gap-2 div-container mt-2" method="post" action="{% url 'new_file' %}">
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <h1 class="text-2xl font-semibold text-gray-900">Open new file</h1>
+    <p class="text-sm text-gray-600 mt-1">Create a new matter record</p>
+  </div>
+
+<form class="div-container grid md:grid-cols-12 gap-2" method="post" action="{% url 'new_file' %}">
   {% csrf_token %}
 
   <div class=" md:col-span-2">
@@ -262,8 +267,8 @@
   </div>
 
   <div class=" md:col-span-12 mb-3">
-    <button type="submit" class="btn-primary">Make New Record</button>
+    <button type="submit" class="btn-primary text-xs">Create file</button>
   </div>
 </form>
-
+</div>
 {% endblock %}

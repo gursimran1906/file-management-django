@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+{% block title %}Document Bundles{% endblock %}
+{% load utils %}
+{% load static %}
+{% block container_class %}container{% endblock %}
+{% block container %}
+
+<div class="space-y-5">
+<div class="div-container py-3">
+  <h1 class="text-2xl font-semibold text-gray-900">Document bundles</h1>
+  {% if file_number %}
+  <p class="text-sm text-gray-600 mt-1">{{ file_number }}</p>
+  {% endif %}
+</div>
+
+<div class="div-container">
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-3 mb-3 border-b border-gray-100">
+            <p class="text-sm text-gray-600">Create and manage document bundles</p>
+            {% if file_number %}
+                <a href="{% url 'matter_bundle_create' file_number %}" class="btn-primary text-xs">New bundle</a>
+            {% else %}
+                <a href="{% url 'bundle_create' %}" class="btn-primary text-xs">New bundle</a>
+            {% endif %}
+        </div>
+    {% if bundles %}
+        <div class="max-h-96 flex flex-col overflow-hidden">
+        <div class="overflow-x-auto overflow-y-auto flex-1">
+            <table class="table">
+                <thead class="thead sticky top-0 bg-white z-10">
+                    <tr>
+                        <th class="td">Bundle Name</th>
+                        <th class="td">File Number</th>
+                        <th class="td">Created</th>
+                        <th class="td">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="text-black">
+                    {% for bundle in bundles %}
+                        <tr class="border-b hover:bg-gray-50">
+                            <td class="td">
+                                <div class="text-sm font-medium text-gray-900">{{ bundle.name }}</div>
+                            </td>
+                            <td class="td">
+                                <div class="text-sm text-gray-500">
+                                    {% if bundle.file_number %}
+                                        {{ bundle.file_number.file_number }}
+                                    {% else %}
+                                        <span class="text-gray-400">Not linked</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="td text-sm text-gray-500">
+                                {{ bundle.created_at|date:"d/m/Y H:i" }}
+                            </td>
+                            <td class="td text-sm font-medium space-x-2 whitespace-nowrap">
+                                <a href="{% url 'bundle_edit' bundle.id %}" class="link">Edit</a>
+                                <a href="{% url 'bundle_download' bundle.id %}" class="link" onclick="return downloadBundlePdfLink(event, '{{ bundle.name|escapejs }}.pdf', {{ bundle.id }})">Download</a>
+                                <button onclick="deleteBundle({{ bundle.id }}, '{{ bundle.name|escapejs }}')"
+                                        class="text-red-600 hover:text-red-900">Delete</button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        </div>
+    {% else %}
+        <div class="text-center py-8">
+            <div class="text-gray-500 text-lg mb-2">No bundles created yet</div>
+            {% if file_number %}
+                <a href="{% url 'matter_bundle_create' file_number %}" class="link">Create your first bundle</a>
+            {% else %}
+                <a href="{% url 'bundle_create' %}" class="link">Create your first bundle</a>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+</div>
+
+<script>
+function getCsrfToken() {
+    const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (csrfInput) {
+        return csrfInput.value;
+    }
+    return '{{ csrf_token }}';
+}
+
+function deleteBundle(bundleId, bundleName) {
+    if (confirm(`Are you sure you want to delete the bundle "${bundleName}"? This action cannot be undone.`)) {
+        fetch(`/bundle/${bundleId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success || data.error === undefined) {
+                location.reload();
+            } else {
+                alert('Error deleting bundle: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting bundle');
+        });
+    }
+}
+
+if (!document.querySelector('[name=csrfmiddlewaretoken]')) {
+    const csrfInput = document.createElement('input');
+    csrfInput.type = 'hidden';
+    csrfInput.name = 'csrfmiddlewaretoken';
+    csrfInput.value = '{{ csrf_token }}';
+    document.body.appendChild(csrfInput);
+}
+</script>
+<script src="{% static 'js/bundle-filename-utils.js' %}"></script>
+<script>
+function downloadBundlePdfLink(event, filename, bundleId) {
+    event.preventDefault();
+    const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    BundleDownload.prepareAndDownload({
+        prepareUrl: `/bundle/${bundleId}/pdf/prepare/`,
+        statusUrl: `/bundle/${bundleId}/pdf/status/`,
+        downloadUrl: event.currentTarget.href,
+        filename,
+        csrfToken: csrfInput ? csrfInput.value : '',
+        message: 'Preparing PDF download...',
+        subtext: 'Checking whether the bundle needs to be regenerated.',
+        progressTitle: 'Generating PDF...',
+    });
+    return false;
+}
+</script>
+
+{% endblock %}

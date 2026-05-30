@@ -4,45 +4,35 @@
 {% block title %}Management Task Review{% endblock %}
 {% block container_class %}container {% endblock %}
 {% block container %}
-<div class="space-y-6">
-    <!-- Page Title -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div class="flex items-center justify-between">
+<div class="space-y-5">
+    <div class="div-container py-3">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-                <h1 class="text-3xl font-bold text-gray-800">Management Task Review</h1>
-                <p class="text-sm text-gray-500 mt-2">Comprehensive task management and analytics dashboard</p>
+                <h1 class="text-2xl font-semibold text-gray-900">Management task review</h1>
+                <p class="text-sm text-gray-600 mt-1">Task management and analytics</p>
             </div>
-            <div class="flex items-center gap-3">
-                <button id="export-btn" class="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors duration-200">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
-                    Export Data
+            <div class="flex items-center gap-2 shrink-0">
+                <button id="export-btn" class="btn-secondary text-xs inline-flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    Export
                 </button>
-                <button id="refresh-btn" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors duration-200">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                    </svg>
+                <button id="refresh-btn" class="btn-primary text-xs inline-flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                     Refresh
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Filters -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div class="flex items-center gap-3 mb-6">
-            <div class="w-1 h-8 bg-blue-500 rounded-full"></div>
-            <h2 class="text-xl font-semibold text-gray-800">Filters & Search</h2>
-        </div>
+    <div class="div-container">
+        <h2 class="text-base font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Filters & search</h2>
         <form method="GET" class="space-y-6">
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <!-- User Selection -->
                 <div class="space-y-3">
-                    <label for="users" class="block text-sm font-semibold text-gray-700">Select Users</label>
+                    <label for="users" class="form-label">Select users</label>
                     <div class="relative">
-                        <select name="users" id="users" multiple 
-                                class="w-full h-auto px-4 py-3 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none cursor-pointer">
+                        <select name="users" id="users" multiple class="form-input h-auto min-h-[120px]">
                             {% for user in users %}
                             <option value="{{ user.id }}" {% if user.id|stringformat:"s" in selected_user_ids %}selected{% endif %}
                                     class="py-2 px-3 hover:bg-blue-50">
@@ -66,46 +56,28 @@
 
                 <!-- Date Range -->
                 <div class="space-y-3">
-                    <label for="start_date" class="block text-sm font-semibold text-gray-700">Start Date</label>
-                    <div class="relative">
-                        <input type="date" name="start_date" id="start_date" value="{{ start_date }}" 
-                               class="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200">
-                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                            </svg>
-                        </div>
-                    </div>
+                    <label for="start_date" class="form-label">Start date</label>
+                    <input type="date" name="start_date" id="start_date" value="{{ start_date }}" class="form-input">
                 </div>
 
                 <div class="space-y-3">
-                    <label for="end_date" class="block text-sm font-semibold text-gray-700">End Date</label>
-                    <div class="relative">
-                        <input type="date" name="end_date" id="end_date" value="{{ end_date }}" 
-                               class="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200">
-                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                            </svg>
-                        </div>
-                    </div>
+                    <label for="end_date" class="form-label">End date</label>
+                    <input type="date" name="end_date" id="end_date" value="{{ end_date }}" class="form-input">
                 </div>
             </div>
 
             <div class="flex gap-3 pt-4 border-t border-gray-100">
-                <button type="submit" 
-                        class="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 shadow-sm">
+                <button type="submit" class="btn-primary text-xs inline-flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                     </svg>
-                    Apply Filters
+                    Apply filters
                 </button>
-                <a href="{% url 'management_task_review' %}" 
-                   class="inline-flex items-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-200 focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors duration-200">
+                <a href="{% url 'management_task_review' %}" class="btn-secondary text-xs inline-flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                     </svg>
-                    Clear Filters
+                    Clear filters
                 </a>
             </div>
         </form>
@@ -113,7 +85,7 @@
 
     <!-- Summary Statistics -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center hover:shadow-md transition-shadow duration-200">
+        <div class="div-container text-center hover:shadow-md transition-shadow duration-200">
             <div class="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-lg mx-auto mb-3">
                 <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2"></path>
@@ -122,7 +94,7 @@
             <div class="text-3xl font-bold text-gray-900 mb-1">{{ task_stats.total_tasks }}</div>
             <div class="text-sm font-medium text-gray-600">Total Tasks</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center hover:shadow-md transition-shadow duration-200">
+        <div class="div-container text-center hover:shadow-md transition-shadow duration-200">
             <div class="flex items-center justify-center w-12 h-12 bg-green-100 rounded-lg mx-auto mb-3">
                 <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
@@ -131,7 +103,7 @@
             <div class="text-3xl font-bold text-gray-900 mb-1">{{ task_stats.completed_tasks }}</div>
             <div class="text-sm font-medium text-gray-600">Completed</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center hover:shadow-md transition-shadow duration-200">
+        <div class="div-container text-center hover:shadow-md transition-shadow duration-200">
             <div class="flex items-center justify-center w-12 h-12 bg-yellow-100 rounded-lg mx-auto mb-3">
                 <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -140,7 +112,7 @@
             <div class="text-3xl font-bold text-gray-900 mb-1">{{ task_stats.in_progress_tasks }}</div>
             <div class="text-sm font-medium text-gray-600">In Progress</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center hover:shadow-md transition-shadow duration-200">
+        <div class="div-container text-center hover:shadow-md transition-shadow duration-200">
             <div class="flex items-center justify-center w-12 h-12 bg-red-100 rounded-lg mx-auto mb-3">
                 <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
@@ -152,10 +124,10 @@
     </div>
 
     <!-- Completion Rate -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <div class="div-container">
         <div class="flex items-center gap-3 mb-6">
             <div class="w-1 h-8 bg-green-500 rounded-full"></div>
-            <h3 class="text-xl font-semibold text-gray-800">Overall Completion Rate</h3>
+            <h3 class="text-base font-semibold text-gray-900">Overall Completion Rate</h3>
         </div>
         <div class="flex items-center gap-6">
             <div class="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
@@ -172,11 +144,11 @@
     </div>
 
     <!-- View Toggle -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <div class="div-container">
         <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
             <div class="flex items-center gap-3">
                 <div class="w-1 h-8 bg-purple-500 rounded-full"></div>
-                <h2 class="text-xl font-semibold text-gray-800">Task Analysis</h2>
+                <h2 class="text-base font-semibold text-gray-900">Task Analysis</h2>
             </div>
             <div class="flex gap-2 bg-gray-100 p-1 rounded-lg">
                 <button id="table-view-btn" 
@@ -247,11 +219,11 @@
             </div>
 
             <!-- Enhanced Tasks DataTable -->
-            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="div-container">
                 <div class="flex items-center justify-between mb-6">
                     <div class="flex items-center gap-3">
                         <div class="w-1 h-8 bg-indigo-500 rounded-full"></div>
-                        <h3 class="text-xl font-semibold text-gray-800">Task Management Dashboard</h3>
+                        <h3 class="text-base font-semibold text-gray-900">Task Management Dashboard</h3>
                     </div>
                     <div class="flex gap-2">
                         <button id="bulk-actions-btn" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200">
@@ -419,10 +391,10 @@
     </div>
 
     <!-- Urgency Breakdown -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <div class="div-container">
         <div class="flex items-center gap-3 mb-6">
             <div class="w-1 h-8 bg-gradient-to-b from-red-500 to-orange-500 rounded-full"></div>
-            <h3 class="text-xl font-semibold text-gray-800">Tasks by Urgency</h3>
+            <h3 class="text-base font-semibold text-gray-900">Tasks by Urgency</h3>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
             <div class="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 text-center hover:shadow-md transition-shadow duration-200">
@@ -805,4 +777,5 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+</div>
 {% endblock %}

@@ -7,6 +7,14 @@ from math import ceil
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from decimal import Decimal
+import secrets
+import uuid
+
+from backend.sharepoint.paths import (
+    bundle_document_upload_path,
+    bundle_final_pdf_upload_path,
+    undertaking_file_upload_path,
+)
 
 
 CURRENT_VAT_RATE = Decimal('0.20')
@@ -1020,10 +1028,6 @@ class MemoRead(models.Model):
         return f"{self.read_by} read memo dated {self.memo.date}"
 
 
-def undertaking_file_upload_path(instance, filename):
-    return f'undertakings/{instance.file_number.file_number}/{filename}'
-
-
 class Undertaking(models.Model):
     id = models.AutoField(primary_key=True)
     file_number = models.ForeignKey(WIP, on_delete=models.SET_NULL, null=True)
@@ -1084,6 +1088,7 @@ class Free30Mins(models.Model):
 class Bundle(models.Model):
     """Model to represent a document bundle"""
     id = models.AutoField(primary_key=True)
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     name = models.CharField(max_length=255)
     file_number = models.ForeignKey(
         WIP, on_delete=models.CASCADE, null=True, blank=True)
@@ -1091,11 +1096,54 @@ class Bundle(models.Model):
         CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    is_finalized = models.BooleanField(default=False)
-    final_pdf = models.FileField(upload_to='bundles/', null=True, blank=True)
+    pdf_generated_at = models.DateTimeField(null=True, blank=True)
+    final_pdf = models.FileField(
+        upload_to=bundle_final_pdf_upload_path, max_length=255, null=True, blank=True)
+    share_code = models.CharField(
+        max_length=32, unique=True, db_index=True, null=True, blank=True)
+    is_court_bundle = models.BooleanField(default=False)
+    court_name = models.CharField(max_length=255, blank=True, default='')
+    CASE_NUMBER_CLAIM = 'claim'
+    CASE_NUMBER_CASE = 'case'
+    CASE_NUMBER_TYPE_CHOICES = (
+        (CASE_NUMBER_CLAIM, 'Claim No.'),
+        (CASE_NUMBER_CASE, 'Case No.'),
+    )
+    case_number_type = models.CharField(
+        max_length=8,
+        choices=CASE_NUMBER_TYPE_CHOICES,
+        default=CASE_NUMBER_CLAIM,
+        blank=True,
+    )
+    case_number = models.CharField(max_length=64, blank=True, default='')
+    index_title = models.CharField(
+        max_length=255, blank=True, default='Index to the Bundle')
+    hearing_line = models.CharField(max_length=255, blank=True, default='')
+    conference_line = models.CharField(max_length=255, blank=True, default='')
+    court_parties = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return f"{self.name} - {self.file_number}"
+
+    def save(self, *args, **kwargs):
+        if not self.share_code:
+            while True:
+                share_code = secrets.token_urlsafe(12)
+                if not Bundle.objects.filter(share_code=share_code).exists():
+                    self.share_code = share_code
+                    break
+        super().save(*args, **kwargs)
+
+    def pdf_is_current(self):
+        if not self.final_pdf or not self.pdf_generated_at:
+            return False
+        return self.pdf_generated_at >= self.updated_at
+
+    def court_parties_by_side(self):
+        parties = self.court_parties if isinstance(self.court_parties, list) else []
+        claimants = [party for party in parties if party.get('side') == 'claimant']
+        defendants = [party for party in parties if party.get('side') == 'defendant']
+        return claimants, defendants
 
     class Meta:
         ordering = ['-created_at']
@@ -1103,15 +1151,44 @@ class Bundle(models.Model):
 
 class BundleSection(models.Model):
     """Model to represent sections within a bundle"""
+    DATE_SORT_MANUAL = 'manual'
+    DATE_SORT_ASC = 'date_asc'
+    DATE_SORT_DESC = 'date_desc'
+    DATE_SORT_CHOICES = (
+        (DATE_SORT_MANUAL, 'Manual order'),
+        (DATE_SORT_ASC, 'Date (oldest first)'),
+        (DATE_SORT_DESC, 'Date (newest first)'),
+    )
+
     id = models.AutoField(primary_key=True)
     bundle = models.ForeignKey(
         Bundle, on_delete=models.CASCADE, related_name='sections')
     heading = models.CharField(max_length=255)
     order = models.PositiveIntegerField()
+    date_sort = models.CharField(
+        max_length=16,
+        choices=DATE_SORT_CHOICES,
+        default=DATE_SORT_ASC,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.bundle.name} - {self.heading}"
+
+    def ordered_documents(self):
+        documents = list(self.documents.all())
+        if self.date_sort == self.DATE_SORT_MANUAL:
+            return sorted(documents, key=lambda document: (document.order, document.id))
+
+        dated_documents = [document for document in documents if document.date]
+        undated_documents = [document for document in documents if not document.date]
+        reverse = self.date_sort == self.DATE_SORT_DESC
+        dated_documents.sort(
+            key=lambda document: (document.date, document.order, document.id),
+            reverse=reverse,
+        )
+        undated_documents.sort(key=lambda document: (document.order, document.id))
+        return dated_documents + undated_documents
 
     class Meta:
         ordering = ['order']
@@ -1121,12 +1198,14 @@ class BundleSection(models.Model):
 class BundleDocument(models.Model):
     """Model to represent documents within bundle sections"""
     id = models.AutoField(primary_key=True)
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     section = models.ForeignKey(
         BundleSection, on_delete=models.CASCADE, related_name='documents')
-    file = models.FileField(upload_to='bundle_documents/')
+    file = models.FileField(upload_to=bundle_document_upload_path, max_length=255)
     description = models.CharField(max_length=500)
     date = models.DateField(null=True, blank=True)
     order = models.PositiveIntegerField()
+    page_order = models.JSONField(null=True, blank=True)
     page_start = models.PositiveIntegerField(null=True, blank=True)
     page_end = models.PositiveIntegerField(null=True, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)

@@ -3,9 +3,18 @@
 {% block title %}Edit Invoice{% endblock %} 
 {% load utils %}
 {% block container %}
-<form method='post' action="{% url 'edit_invoice' invoice_id %}">
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Edit invoice</h1>
+        <p class="text-sm text-gray-600 mt-1">Update invoice details</p>
+      </div>
+    </div>
+  </div>
+<form method="post" action="{% url 'edit_invoice' invoice_id %}">
 {% csrf_token %}
-  <div class='div-container grid grid-cols-1 md:grid-cols-2 gap-4'>
+  <div class="div-container grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
         <label class="form-label">Date</label>
         <input required type="date" class="form-input" name="date" value={{date}}>
@@ -100,12 +109,13 @@
         {% endfor %}
       </div>
       
-      <div class='col-span-2 mt-2'>
-        <button class='btn btn-primary' type='submit'>Submit</button>
+      <div class="md:col-span-2">
+        <button class="btn-primary text-xs" type="submit">Save invoice</button>
       </div>
-      
+
   </div>
 </form>
+</div>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     const vatMode = document.getElementById("vat_mode");

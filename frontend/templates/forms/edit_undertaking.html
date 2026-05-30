@@ -1,75 +1,86 @@
 {% extends 'base.html' %}
-
-{% block title %}Edit Undertaking{% endblock %} 
+{% block title %}Edit Undertaking{% endblock %}
 {% block container %}
-<div class='grid grid-cols-1 mt-2'>
-  <h1 class='div-container md:w-fit h-fit text-3xl font-medium '>Edit Undertaking</h1>
-</div>
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Edit undertaking</h1>
+        <p class="text-sm text-gray-600 mt-1">Update undertaking details</p>
+      </div>
+      <a href="{% url 'undertakings' %}" class="btn-secondary text-xs shrink-0">Back to undertakings</a>
+    </div>
+  </div>
 
-<div class='div-container mt-4'>
-    <form method="POST" enctype="multipart/form-data">
-        {% csrf_token %}
-        
-        <!-- File Number -->
-        <label for="file_number" class="block text-sm font-medium text-gray-700">File Number</label>
-        <select id="file_number" name="file_number" class="form-input ">
-            {% for wip in wips %}
-                <option value="{{ wip.id }}" {% if wip.id == undertaking.file_number.id %}selected{% endif %}>{{ wip.file_number }}</option>
-            {% endfor %}
-        </select>
+  <form method="POST" enctype="multipart/form-data" class="div-container max-w-2xl space-y-4">
+    {% csrf_token %}
 
-        <!-- Date Given -->
-        <label for="date_given" class="block text-sm font-medium text-gray-700 mt-4">Date Given</label>
-        <input type="date" id="date_given" name="date_given" value="{{ undertaking.date_given|date:'Y-m-d' }}" class="form-input " required>
+    <div>
+      <label for="file_number" class="form-label">File number</label>
+      <select id="file_number" name="file_number" class="form-input">
+        {% for wip in wips %}
+        <option value="{{ wip.id }}" {% if wip.id == undertaking.file_number.id %}selected{% endif %}>{{ wip.file_number }}</option>
+        {% endfor %}
+      </select>
+    </div>
 
-        <!-- Given To -->
-        <label for="given_to" class="block text-sm font-medium text-gray-700 mt-4">Given To</label>
-        <textarea id="given_to" name="given_to" class="form-input " rows="3" required>{{ undertaking.given_to }}</textarea>
+    <div>
+      <label for="date_given" class="form-label">Date given</label>
+      <input type="date" id="date_given" name="date_given" value="{{ undertaking.date_given|date:'Y-m-d' }}" class="form-input" required>
+    </div>
 
-        <!-- Description -->
-        <label for="description" class="block text-sm font-medium text-gray-700 mt-4">Description</label>
-        <textarea id="description" name="description" class="form-input " rows="5" required>{{ undertaking.description }}</textarea>
+    <div>
+      <label for="given_to" class="form-label">Given to</label>
+      <textarea id="given_to" name="given_to" class="form-input" rows="3" required>{{ undertaking.given_to }}</textarea>
+    </div>
 
-        <!-- Given By -->
-        <label for="given_by" class="block text-sm font-medium text-gray-700 mt-4">Given By</label>
-        <select id="given_by" name="given_by" class="form-input ">
-            <option value="">Select User</option>
-            {% for user in users %}
-                <option value="{{ user.id }}" {% if user.id == undertaking.given_by.id %}selected{% endif %}>{{ user.username }}</option>
-            {% endfor %}
-        </select>
+    <div>
+      <label for="description" class="form-label">Description</label>
+      <textarea id="description" name="description" class="form-input" rows="5" required>{{ undertaking.description }}</textarea>
+    </div>
 
-        <!-- Document Given On -->
-        <label for="document_given_on" class="block text-sm font-medium text-gray-700 mt-4">Document Given On</label>
-        <input type="file" id="document_given_on" name="document_given_on" class="form-input ">
-        {% if undertaking.document_given_on %}
-            <p class="text-sm text-gray-500 mt-1">Current Document: <a href="{{ undertaking.document_given_on.url }}" class="link">{{ undertaking.document_given_on.name }}</a></p>
-        {% endif %}
+    <div>
+      <label for="given_by" class="form-label">Given by</label>
+      <select id="given_by" name="given_by" class="form-input">
+        <option value="">Select user</option>
+        {% for user in users %}
+        <option value="{{ user.id }}" {% if user.id == undertaking.given_by.id %}selected{% endif %}>{{ user.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
 
-        <!-- Date Discharged -->
-        <label for="date_discharged" class="block text-sm font-medium text-gray-700 mt-4">Date Discharged</label>
-        <input type="date" id="date_discharged" name="date_discharged" value="{{ undertaking.date_discharged|date:'Y-m-d' }}" class="form-input ">
+    <div>
+      <label for="document_given_on" class="form-label">Document given on</label>
+      <input type="file" id="document_given_on" name="document_given_on" class="form-input">
+      {% if undertaking.document_given_on %}
+      <p class="text-xs text-gray-500 mt-1">Current: <a href="{% url 'undertaking_file_download' undertaking.id 'document_given_on' %}" class="link">View document</a></p>
+      {% endif %}
+    </div>
 
-        <!-- Discharged Proof -->
-        <label for="discharged_proof" class="block text-sm font-medium text-gray-700 mt-4">Discharged Proof</label>
-        <input type="file" id="discharged_proof" name="discharged_proof" class="form-input ">
-        {% if undertaking.discharged_proof %}
-            <p class="text-sm text-gray-500 mt-1">Current Proof: <a href="{{ undertaking.discharged_proof.url }}" class="link">{{ undertaking.discharged_proof.name }}</a></p>
-        {% endif %}
+    <div>
+      <label for="date_discharged" class="form-label">Date discharged</label>
+      <input type="date" id="date_discharged" name="date_discharged" value="{{ undertaking.date_discharged|date:'Y-m-d' }}" class="form-input">
+    </div>
 
-        <!-- Discharged By -->
-        <label for="discharged_by" class="block text-sm font-medium text-gray-700 mt-4">Discharged By</label>
-        <select id="discharged_by" name="discharged_by" class="form-input ">
-            <option value="">Select User</option>
-            {% for user in users %}
-                <option value="{{ user.id }}" {% if user.id == undertaking.discharged_by.id %}selected{% endif %}>{{ user.username }}</option>
-            {% endfor %}
-        </select>
+    <div>
+      <label for="discharged_proof" class="form-label">Discharged proof</label>
+      <input type="file" id="discharged_proof" name="discharged_proof" class="form-input">
+      {% if undertaking.discharged_proof %}
+      <p class="text-xs text-gray-500 mt-1">Current: <a href="{% url 'undertaking_file_download' undertaking.id 'discharged_proof' %}" class="link">View document</a></p>
+      {% endif %}
+    </div>
 
-        <!-- Submit Button -->
-        <div class="mt-4">
-            <button type="submit" class="btn-primary">Save Changes</button>
-        </div>
-    </form>
+    <div>
+      <label for="discharged_by" class="form-label">Discharged by</label>
+      <select id="discharged_by" name="discharged_by" class="form-input">
+        <option value="">Select user</option>
+        {% for user in users %}
+        <option value="{{ user.id }}" {% if user.id == undertaking.discharged_by.id %}selected{% endif %}>{{ user.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" class="btn-primary text-xs">Save changes</button>
+  </form>
 </div>
 {% endblock %}

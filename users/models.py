@@ -64,8 +64,7 @@ class SicknessRecord(models.Model):
     created_by=models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='sickness_record_created_by')
     timestamp = models.DateTimeField(auto_now_add=True)
 
-def user_document_file_upload_path(instance, filename):
-    return f'undertakings/{instance.file_number.file_number}/{filename}'
+from backend.sharepoint.paths import staff_document_upload_path as user_document_file_upload_path
  
 class UserDocument(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)

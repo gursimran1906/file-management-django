@@ -1,34 +1,33 @@
 {% extends 'base.html' %} {% load utils %} {% block title %}Holiday Records{% endblock %} {% block container %}
 
-<div class="grid md:grid-cols-3 gap-4 mt-2">
-  <h1 class="div-container md:w-fit h-fit text-3xl font-medium">
-    All Holiday Records
-  </h1>
-  <div class="div-container">
-    <table class="table">
-      <thead>
-        <tr>
-          <th colspan="2" class="text-lg text-black font-normal text-center">
-            Selected Rows Totals
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr class="border-b text-black">
-          <th class="td" scope="row">Total Annual Leave:</th>
-          <td class="td"><span id="totalAnnualLeave">0.00</span></td>
-        </tr>
-        <tr class="border-b text-black">
-          <th class="td" scope="row">Total Unpaid Leave:</th>
-          <td class="td"><span id="totalUnpaidLeave">0.00</span></td>
-        </tr>
-      </tbody>
-    </table>
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Holiday records</h1>
+        <p class="text-sm text-gray-600 mt-1">All staff holiday requests</p>
+      </div>
+      <a href="{% url 'profile_page' %}" class="btn-secondary text-xs shrink-0">Back to profile</a>
+    </div>
   </div>
-  <div class="div-container md:justify-self-end">
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  <div class="div-container lg:col-span-1">
+    <div class="pb-3 mb-3 border-b border-gray-100">
+      <h2 class="text-base font-semibold text-gray-900">Selected totals</h2>
+    </div>
+    <dl class="space-y-2 text-sm">
+      <div class="flex justify-between gap-2"><dt class="text-gray-500">Annual leave</dt><dd class="font-medium text-gray-900"><span id="totalAnnualLeave">0.00</span></dd></div>
+      <div class="flex justify-between gap-2"><dt class="text-gray-500">Unpaid leave</dt><dd class="font-medium text-gray-900"><span id="totalUnpaidLeave">0.00</span></dd></div>
+    </dl>
+  </div>
+  <div class="div-container lg:col-span-2">
     <form method="POST" action="{% url 'holiday_record_csv'%}">
       {% csrf_token %}
-      <h3 class="text-2xl mb-4 text-center">Actions</h3>
+      <div class="pb-3 mb-3 border-b border-gray-100">
+        <h2 class="text-base font-semibold text-gray-900">Export</h2>
+        <p class="text-xs text-gray-500 mt-0.5">Download selected date range as CSV</p>
+      </div>
       <div class="flex flex-col gap-4">
         <div
           date-rangepicker
@@ -36,69 +35,22 @@
           datepicker-autoselect-today
           datepicker-format="dd/mm/yyyy"
           datepicker-title="Choose date range"
-          class="flex items-center"
+          class="flex flex-col gap-2 sm:flex-row sm:items-center"
         >
-          <div class="relative">
-            <div
-              class="absolute inset-y-0 start-0 flex items-center ps-2 pointer-events-none"
-            >
-              <svg
-                class="w-4 h-4 text-gray-500 dark:text-gray-400"
-                aria-hidden="true"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"
-                />
-              </svg>
-            </div>
-            <input
-              name="start_date"
-              type="text"
-              class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-              placeholder="Select date start"
-            />
-          </div>
-          <span class="mx-4 text-gray-500">to</span>
-          <div class="relative">
-            <div
-              class="absolute inset-y-0 start-0 flex items-center ps-2 pointer-events-none"
-            >
-              <svg
-                class="w-4 h-4 text-gray-500 dark:text-gray-400"
-                aria-hidden="true"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"
-                />
-              </svg>
-            </div>
-            <input
-              name="end_date"
-              type="text"
-              class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-              placeholder="Select date end"
-            />
-          </div>
+          <input name="start_date" type="text" class="form-input text-sm" placeholder="Start date">
+          <span class="text-xs text-gray-400 text-center">to</span>
+          <input name="end_date" type="text" class="form-input text-sm" placeholder="End date">
         </div>
-        <button class="btn-primary" type="submit">
-          Download Records as CSV
-        </button>
+        <button class="btn-primary text-xs" type="submit">Download CSV</button>
       </div>
     </form>
   </div>
-</div>
+  </div>
 
-<!-- Holidays Summary Section -->
-<div class="div-container mt-4">
+  <div class="div-container">
   <div class="flex flex-col gap-4">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <h2 class="text-xl font-semibold text-gray-700">Holidays Summary</h2>
+      <h2 class="text-base font-semibold text-gray-900">Holidays summary</h2>
       <div class="flex flex-col md:flex-row gap-2">
         <select id="holidays-summary-user-select-records" class="form-input">
           <option value="">Select User</option>
@@ -191,7 +143,7 @@
     
     <!-- Days Accounting Summary -->
     <div class="div-container">
-      <h3 class="text-lg font-semibold text-gray-700 mb-3">Days Accounting Summary</h3>
+      <h3 class="text-base font-semibold text-gray-900 mb-3">Days accounting summary</h3>
       <div class="grid md:grid-cols-2 gap-4 mb-4">
         <div class="div-container">
           <table class="table">
@@ -265,9 +217,8 @@
       </div>
     </div>
   </div>
-</div>
 
-<div class="overflow-auto div-container mt-4">
+  <div class="div-container overflow-auto">
   <table id="holidayTable" class="min-w-full text-sm text-gray-800">
     <thead>
       <tr>
@@ -379,6 +330,7 @@
       </tr>
     </tfoot>
   </table>
+</div>
 </div>
 
 <script>

@@ -70,16 +70,17 @@
         parentDiv.className = 'gap-4 grid md:grid-cols-' + numberOfAttendees;
     }
 </script>
-<div class='grid grid-cols-1 md:grid-cols-2 mt-2 gap-4'>
-    <h1 class='div-container md:w-fit h-fit text-3xl font-medium'>Free 30 mins</h1>
-    <div class="div-container flex flex-col gap-2 md:justify-self-end ">
-        <h3 class='text-2xl text-center'>Actions</h3>
-        <div class="flex gap-2">
-            <button class='btn btn-primary' onclick="toggleNormalCollapse('add_meeting_form');">Add Free 30 Mins</button>
-        </div>
+<div class="space-y-5">
+<div class="div-container py-3">
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-900">Free 30 mins</h1>
+      <p class="text-sm text-gray-600 mt-1">Record and search initial consultation meetings</p>
     </div>
+    <button class="btn-primary text-xs" type="button" onclick="toggleNormalCollapse('add_meeting_form');">Add meeting</button>
+  </div>
 </div>
-<form class="hidden" method="post" id="add_meeting_form" action="{% url 'free30mins' %}" >
+<form class="hidden div-container" method="post" id="add_meeting_form" action="{% url 'free30mins' %}" >
     {% csrf_token %}
     <div class="grid md:grid-cols-2 gap-4 mt-4 ">
 
@@ -88,7 +89,7 @@
             <div class=" space-y-2">
                 
                 <div class='grid grid-cols-2 mb-2'>
-                    <h3 class='text-xl'>Attendee(s)</h3>
+                    <h3 class="text-base font-semibold text-gray-900">Attendee(s)</h3>
                     <input name="number_of_attendees" id="number_of_attendees" value="1" class="hidden">
                     <div class='justify-self-end'>
                         <button data-popover-target="add_more_fields_popover" class='btn-primary text-xs' type="button" onclick="add_more_attendee('attendees_form_parent');" aria-expanded="false" aria-controls="attendees_form_parent">Add More</button>
@@ -168,15 +169,15 @@
             </select>
         </div>
         <div class="flex gap-2">
-            <button class="btn btn-primary" type="submit">Apply</button>
+            <button class="btn-primary text-xs" type="submit">Apply</button>
             {% if search_query %}
-                <a class="btn" href="{% url 'free30mins' %}">Clear</a>
+                <a class="btn-secondary text-xs" href="{% url 'free30mins' %}">Clear</a>
             {% endif %}
         </div>
     </form>
 </div>
 
-<div class="div-container mt-4 overflow-auto">
+<div class="div-container max-h-[70vh] overflow-auto">
     <div class="text-sm text-gray-600 mb-3">
         Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ paginator.count }} meetings
     </div>
@@ -247,4 +248,5 @@
     {% endif %}
 </nav>
 {% endif %}
+</div>
 {% endblock %}

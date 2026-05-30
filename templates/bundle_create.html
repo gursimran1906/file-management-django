@@ -1,219 +1,117 @@
 {% extends 'base.html' %}
-{% block title %}Document Bundles{% endblock %} 
+{% block title %}New Document Bundle{% endblock %}
 {% load utils %}
-{% block container_class %}container{% endblock %} 
+{% load static %}
+{% block container_class %}container{% endblock %}
 {% block container %}
 
-<div class='grid grid-cols-1 mt-2'>
-    <h1 class='div-container w-fit text-3xl font-medium'>Document Bundles</h1>
-</div>
-
-<!-- Create New Bundle Form -->
-<div class='mt-4 div-container'>
-    <h2 class='text-2xl font-medium mb-4'>Create New Bundle</h2>
-    
-    <div class="space-y-4">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <label for="bundle_name" class="block text-sm font-medium text-gray-700 mb-1">
-                    Bundle Name <span class="text-red-500">*</span>
-                </label>
+<div class="space-y-5">
+    <div id="bundle-builder" class="div-container">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between pb-3 mb-4 border-b border-gray-100">
+            <div class="min-w-0 flex-1">
+                <label for="bundle_name" class="block text-xs font-medium text-gray-500 mb-1">Bundle name</label>
                 <input type="text" id="bundle_name" name="bundle_name" required
-                       class="form-input"
-                       placeholder="Enter bundle name">
+                       value="PDF"
+                       class="block w-full max-w-lg text-xl font-semibold text-gray-900 bg-transparent border-0 border-b-2 border-gray-200 px-0 py-1 focus:ring-0 focus:border-blue-500 rounded-none"
+                       placeholder="Bundle name">
+                {% if file_number %}
+                <p class="text-xs text-gray-400 mt-1.5">{{ file_number }}</p>
+                {% else %}
+                <div class="mt-2 max-w-xs">
+                    <label for="file_number" class="block text-xs font-medium text-gray-500 mb-1">File number <span class="text-gray-400">(optional)</span></label>
+                    <input type="text" id="file_number" name="file_number"
+                           class="form-input text-sm"
+                           list="file-number-options"
+                           placeholder="Link to a matter">
+                    <datalist id="file-number-options">
+                        {% for file in files %}
+                        <option value="{{ file.file_number }}">{{ file.file_number }} - {{ file.matter_description|truncatechars:80 }}</option>
+                        {% endfor %}
+                    </datalist>
+                </div>
+                {% endif %}
+                <p class="text-xs text-gray-400 mt-1">PDF only · sections branch into documents below</p>
             </div>
-            
+            <div class="flex flex-wrap gap-2 shrink-0">
+                {% if file_number %}
+                <a href="{% url 'home' file_number %}" class="btn-secondary text-xs">Back</a>
+                {% else %}
+                <a href="{% url 'user_dashboard' %}" class="btn-secondary text-xs">Back</a>
+                {% endif %}
+                <button type="button" onclick="addSectionToBuilder()" class="btn-secondary text-xs">Add section</button>
+                <button type="button" onclick="saveBundleBuilder()" class="btn-primary text-xs" id="create-bundle-btn">Create bundle</button>
+            </div>
+        </div>
+
+        {% if file_number %}
+        <input type="hidden" id="file_number" value="{{ file_number }}">
+        {% endif %}
+
+        <div class="bundle-structure-panel mb-4">
+            <h3>Bundle structure</h3>
+            <div id="bundle-structure-outline" aria-live="polite"></div>
+        </div>
+
+        <div id="builder-sections-container" class="bundle-tree-root space-y-4"></div>
+    </div>
+</div>
+
+<div id="builder-upload-modal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
+    <div class="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-lg bg-white shadow-xl">
+        <div class="flex items-center justify-between border-b px-4 py-3 shrink-0">
             <div>
-                <label for="file_number" class="block text-sm font-medium text-gray-700 mb-1">
-                    File Number (Optional)
-                </label>
-                <select id="file_number" name="file_number" class="form-input">
-                    <option value="">Select a file (optional)</option>
-                    {% for file in files %}
-                        <option value="{{ file.file_number }}" 
-                                {% if file_number == file.file_number %}selected{% endif %}>
-                            {{ file.file_number }} - {{ file.matter_description|truncatechars:50 }}
-                        </option>
-                    {% endfor %}
-                </select>
+                <h3 class="text-base font-semibold text-gray-900">Add document(s)</h3>
+                <p id="builder-upload-modal-section" class="text-xs text-gray-500 mt-0.5"></p>
             </div>
+            <button type="button" onclick="cancelBuilderInlineUpload()" class="text-2xl leading-none text-gray-500 hover:text-gray-900" aria-label="Close">&times;</button>
         </div>
-        
-        <div class="flex justify-end gap-2">
-            <button type="button" onclick="startBundleBuilder()" class="btn-primary">
-                🚀 Start Building Bundle
-            </button>
-            <button type="button" onclick="createEmptyBundle()" class="btn-secondary">
-                Create Empty Bundle
-            </button>
+        <div class="overflow-y-auto px-4 py-4">
+            <p class="text-xs text-gray-500 mb-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                <span class="font-medium text-gray-700">Naming tip:</span> start filenames with the document date to auto-fill fields —
+                e.g. <code class="text-gray-800">2024-03-15 Letter to client.pdf</code> or
+                <code class="text-gray-800">15-03-2024 Letter to client.pdf</code>
+            </p>
+            <label for="builder-upload-files" class="block text-xs font-medium text-gray-600 mb-1">PDF files</label>
+            <input id="builder-upload-files" type="file" multiple accept=".pdf" class="form-input" onchange="handleBuilderInlineUploadFiles(this)">
+            <div id="builder-upload-list" class="mt-4 space-y-3"></div>
+        </div>
+        <div class="flex justify-end gap-2 border-t px-4 py-3 shrink-0">
+            <button type="button" onclick="cancelBuilderInlineUpload()" class="btn-secondary text-xs">Cancel</button>
+            <button type="button" onclick="saveBuilderInlineUpload()" class="btn-primary text-xs">Add document(s)</button>
         </div>
     </div>
 </div>
 
-<!-- Bundle Builder Interface -->
-<div id="bundle-builder" class="mt-6 div-container hidden">
-    <h2 class='text-2xl font-medium mb-4'>Build Your Bundle</h2>
-    
-    <!-- Bundle Actions -->
-    <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
-        <div class="flex gap-2">
-            <button onclick="addSectionToBuilder()" class="btn-primary">+ Add Section</button>
-            <button onclick="cancelBundleBuilder()" class="btn-secondary">Cancel</button>
-        </div>
-        <div class="flex gap-2">
-            <button onclick="saveBundleBuilder()" class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded">
-                🎯 Create Bundle
-            </button>
-        </div>
-    </div>
-    
-    <!-- Bundle Sections -->
-    <div id="builder-sections-container" class="space-y-6">
-        <!-- Sections will be added here dynamically -->
-    </div>
-    
-    <!-- Empty State -->
-    <div id="builder-empty-state" class="text-center py-12 text-gray-500">
-        <div class="text-lg mb-2">No sections added yet</div>
-        <div>Click "Add Section" to start building your bundle</div>
-    </div>
-</div>
-
-<!-- Existing Bundles -->
-{% if bundles %}
-<div class='mt-6 div-container'>
-    <h2 class='text-2xl font-medium mb-4'>Your Bundles</h2>
-    
-    <div class="overflow-x-auto">
-        <table class="min-w-full bg-white border border-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Bundle Name
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        File Number
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Created
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                    </th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                {% for bundle in bundles %}
-                <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm font-medium text-gray-900">{{ bundle.name }}</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-500">
-                            {% if bundle.file_number %}
-                                {{ bundle.file_number.file_number }}
-                            {% else %}
-                                <span class="text-gray-400">Not linked</span>
-                            {% endif %}
-                        </div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        {% if bundle.is_finalized %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                Finalized
-                            </span>
-                        {% else %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                Draft
-                            </span>
-                        {% endif %}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {{ bundle.created_at|date:"d/m/Y H:i" }}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                        {% if bundle.is_finalized %}
-                            <a href="{% url 'bundle_view' bundle.id %}" 
-                               class="text-blue-600 hover:text-blue-900">View</a>
-                            <a href="{% url 'bundle_download' bundle.id %}" 
-                               class="text-green-600 hover:text-green-900">Download</a>
-                        {% else %}
-                            <a href="{% url 'bundle_edit' bundle.id %}" 
-                               class="text-blue-600 hover:text-blue-900">Edit</a>
-                        {% endif %}
-                        <button onclick="deleteBundle({{ bundle.id }}, '{{ bundle.name }}')" 
-                                class="text-red-600 hover:text-red-900">Delete</button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% else %}
-<div class='mt-6 div-container'>
-    <div class="text-center py-8">
-        <div class="text-gray-500 text-lg mb-2">No bundles created yet</div>
-        <div class="text-gray-400">Create your first bundle using the form above</div>
-    </div>
-</div>
-{% endif %}
-
-<!-- Include Sortable.js for drag and drop -->
+<script src="{% static 'js/bundle-filename-utils.js' %}"></script>
+<script src="{% static 'js/bundle-tree.js' %}"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+<link rel="stylesheet" href="{% static 'css/bundle-tree.css' %}">
 
-<!-- Drag and Drop Styles -->
 <style>
-.sortable-ghost {
-    opacity: 0.4;
-    background: #e3f2fd !important;
-}
-
-.sortable-chosen {
-    cursor: grabbing !important;
-}
-
-.drag-handle:hover {
-    color: #2563eb !important;
-    cursor: grab;
-}
-
-.document-drag-handle:hover {
-    color: #2563eb !important;
-    cursor: grab;
-}
-
-.section-header {
-    cursor: grab;
-}
-
-.section-header:active {
-    cursor: grabbing;
-}
-
-.document-item {
-    transition: all 0.2s ease;
-}
-
-.document-item:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
+.sortable-ghost { opacity: 0.4; background: #eff6ff !important; }
+.sortable-chosen { cursor: grabbing !important; }
+.drag-handle:hover, .document-drag-handle:hover { color: #2563eb !important; cursor: grab; }
+.section-header { cursor: grab; }
+.section-header:active { cursor: grabbing; }
 </style>
 
 <script>
-// Bundle builder state
 let builderSections = [];
 let sectionCounter = 0;
 let documentCounter = 0;
+let builderUploadFiles = {};
+let activeBuilderUploadSectionId = null;
 
-// Initialize drag and drop
 document.addEventListener('DOMContentLoaded', function() {
+    addSectionToBuilder('Section 1', false);
     initializeSortable();
+    BundleTree.init('#builder-sections-container', 'bundle-structure-outline');
 });
+
+function getFileNumberValue() {
+    const field = document.getElementById('file_number');
+    return field ? field.value.trim() : '';
+}
 
 function initializeSortable() {
     const sectionsContainer = document.getElementById('builder-sections-container');
@@ -223,24 +121,21 @@ function initializeSortable() {
             animation: 150,
             ghostClass: 'sortable-ghost',
             chosenClass: 'sortable-chosen',
-            dragClass: 'sortable-drag',
-            onEnd: function(evt) {
+            onEnd: function() {
                 updateSectionOrder();
+                BundleTree.refresh('#builder-sections-container', 'bundle-structure-outline');
             }
         });
     }
-    
-    // Re-initialize sortable for documents when sections change
     document.querySelectorAll('.documents-container').forEach(container => {
         new Sortable(container, {
             handle: '.document-drag-handle',
             animation: 150,
-            group: 'documents',
             ghostClass: 'sortable-ghost',
             chosenClass: 'sortable-chosen',
-            dragClass: 'sortable-drag',
-            onEnd: function(evt) {
+            onEnd: function() {
                 updateDocumentOrder();
+                BundleTree.refresh('#builder-sections-container', 'bundle-structure-outline');
             }
         });
     });
@@ -270,350 +165,344 @@ function updateDocumentOrder() {
     });
 }
 
-function startBundleBuilder() {
-    const bundleName = document.getElementById('bundle_name').value.trim();
-    if (!bundleName) {
-        alert('Please enter a bundle name first');
-        return;
-    }
-    
-    // Hide the form and show the builder
-    document.querySelector('.mt-4.div-container').style.display = 'none';
-    document.getElementById('bundle-builder').classList.remove('hidden');
-    
-    // Update the builder title
-    document.querySelector('#bundle-builder h2').textContent = `Building: ${bundleName}`;
+function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
 }
 
-function cancelBundleBuilder() {
-    // Reset builder state
-    builderSections = [];
-    sectionCounter = 0;
-    documentCounter = 0;
-    
-    // Clear the builder
-    document.getElementById('builder-sections-container').innerHTML = '';
-    document.getElementById('builder-empty-state').style.display = 'block';
-    
-    // Show the form and hide the builder
-    document.querySelector('.mt-4.div-container').style.display = 'block';
-    document.getElementById('bundle-builder').classList.add('hidden');
+function fileDescriptionFromName(filename) {
+    return BundleFilenameUtils.descriptionFromName(filename);
 }
 
-function addSectionToBuilder() {
-    const heading = prompt('Enter section heading:');
-    if (!heading) return;
-    
+function addSectionToBuilder(heading = 'New section', focusHeading = true) {
     sectionCounter++;
     const sectionId = `section-${sectionCounter}`;
-    
-    const section = {
-        id: sectionId,
-        heading: heading,
-        documents: [],
-        order: builderSections.length
-    };
-    
-    builderSections.push(section);
-    renderSection(section);
-    updateEmptyState();
-    
-    // Re-initialize sortable after adding new section
+    builderSections.push({ id: sectionId, heading: heading, documents: [], order: builderSections.length });
+    renderSection(builderSections[builderSections.length - 1]);
+    refreshSectionDeleteButtons();
     setTimeout(() => initializeSortable(), 100);
+    BundleTree.refresh('#builder-sections-container', 'bundle-structure-outline');
+    BundleTree.bindHeadingInputs('#builder-sections-container', 'bundle-structure-outline');
+    if (focusHeading) {
+        setTimeout(() => {
+            const headingInput = document.querySelector(`[data-section-id="${sectionId}"] .builder-section-heading`);
+            if (headingInput) { headingInput.focus(); headingInput.select(); }
+        }, 120);
+    }
 }
 
 function renderSection(section) {
     const container = document.getElementById('builder-sections-container');
-    
-    const sectionHtml = `
-        <div class="section-card div-container border-l-4 border-blue-500" data-section-id="${section.id}">
-            <div class="section-header flex items-center justify-between mb-4 p-4 bg-gray-50 rounded cursor-move">
-                <div class="flex items-center">
-                    <span class="drag-handle text-gray-400 mr-3">⋮⋮</span>
-                    <h3 class="text-lg font-medium">${section.heading}</h3>
+    container.insertAdjacentHTML('beforeend', `
+        <div class="section-card bundle-tree-section bundle-tree-section-card" data-section-id="${section.id}">
+            <div class="section-header bundle-tree-node-section flex items-center justify-between gap-3">
+                <div class="flex flex-1 min-w-0 items-center gap-2">
+                    <span class="bundle-tree-badge section-index-label">Sec 1</span>
+                    <span class="drag-handle text-gray-300 text-sm select-none shrink-0">⋮⋮</span>
+                    <input class="builder-section-heading form-input h-9 text-sm font-medium w-full"
+                           value="${escapeHtml(section.heading)}"
+                           oninput="updateBuilderSectionHeading('${section.id}', this.value)"
+                           onkeydown="handleBuilderHeadingKeydown(event)">
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="uploadDocumentsToBuilder('${section.id}')" class="text-blue-600 hover:text-blue-800">📎 Upload</button>
-                    <button onclick="deleteSectionFromBuilder('${section.id}')" class="text-red-600 hover:text-red-800">🗑️ Delete</button>
-                </div>
+                <div class="section-actions flex gap-2 shrink-0"></div>
             </div>
-            
-            <div class="documents-container" data-section-id="${section.id}">
-                <div class="document-placeholder text-center py-8 text-gray-400 border-2 border-dashed border-gray-300 rounded">
-                    No documents uploaded yet. Click "Upload" to add documents to this section.
+            <div class="documents-container bundle-tree-children mt-3 bundle-u-hidden" data-section-id="${section.id}"></div>
+            <div class="section-empty-state mt-3" data-section-empty="${section.id}">
+                <p class="section-empty-text">No documents in this section yet</p>
+                <button type="button" onclick="openBuilderUploadModal('${section.id}')" class="btn-secondary text-xs">Add document(s)</button>
+            </div>
+            <div class="section-footer bundle-u-hidden" data-section-footer="${section.id}">
+                <button type="button" onclick="openBuilderUploadModal('${section.id}')" class="btn-secondary text-xs">Add document(s)</button>
+            </div>
+        </div>
+    `);
+}
+
+function refreshSectionDeleteButtons() {
+    document.querySelectorAll('.section-card').forEach(card => {
+        const sectionId = card.dataset.sectionId;
+        const actions = card.querySelector('.section-actions');
+        if (!actions) return;
+        const deleteBtn = actions.querySelector('[data-section-delete]');
+        if (builderSections.length <= 1) {
+            if (deleteBtn) deleteBtn.remove();
+        } else if (!deleteBtn) {
+            actions.insertAdjacentHTML('beforeend',
+                `<button type="button" data-section-delete onclick="deleteSectionFromBuilder('${sectionId}')" class="bundle-remove-btn" aria-label="Delete section" title="Delete section">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                </button>`
+            );
+        }
+    });
+}
+
+function updateBuilderSectionHeading(sectionId, heading) {
+    const section = builderSections.find(s => s.id === sectionId);
+    if (section) section.heading = heading.trim() || 'New section';
+    BundleTree.refreshOutline('bundle-structure-outline', '#builder-sections-container');
+}
+
+function handleBuilderHeadingKeydown(event) {
+    if (event.key === 'Enter') { event.preventDefault(); event.target.blur(); }
+}
+
+function deleteSectionFromBuilder(sectionId) {
+    if (builderSections.length <= 1) {
+        alert('At least one section is required.');
+        return;
+    }
+    if (!confirm('Delete this section and all its documents?')) return;
+    builderSections = builderSections.filter(s => s.id !== sectionId);
+    document.querySelector(`.section-card[data-section-id="${sectionId}"]`).remove();
+    refreshSectionDeleteButtons();
+    BundleTree.refresh('#builder-sections-container', 'bundle-structure-outline');
+}
+
+function openBuilderUploadModal(sectionId) {
+    activeBuilderUploadSectionId = sectionId;
+    builderUploadFiles[sectionId] = builderUploadFiles[sectionId] || [];
+    const section = builderSections.find(s => s.id === sectionId);
+    document.getElementById('builder-upload-modal-section').textContent = section ? section.heading : '';
+    document.getElementById('builder-upload-files').value = '';
+    renderBuilderInlineUploadRows(sectionId);
+    const modal = document.getElementById('builder-upload-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function cancelBuilderInlineUpload() {
+    const sectionId = activeBuilderUploadSectionId;
+    if (sectionId) builderUploadFiles[sectionId] = [];
+    document.getElementById('builder-upload-files').value = '';
+    document.getElementById('builder-upload-list').innerHTML = '';
+    const modal = document.getElementById('builder-upload-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    activeBuilderUploadSectionId = null;
+}
+
+function handleBuilderInlineUploadFiles(input) {
+    const sectionId = activeBuilderUploadSectionId;
+    if (!sectionId) return;
+    builderUploadFiles[sectionId] = Array.from(input.files || []);
+    renderBuilderInlineUploadRows(sectionId);
+}
+
+function renderBuilderInlineUploadRows(sectionId) {
+    const files = builderUploadFiles[sectionId] || [];
+    const list = document.getElementById('builder-upload-list');
+    if (files.length === 0) {
+        list.innerHTML = '<p class="text-sm text-gray-400 py-4 text-center border border-dashed border-gray-200 rounded-lg">Select one or more PDFs</p>';
+        return;
+    }
+    list.innerHTML = files.map((file, index) => {
+        const parsed = BundleFilenameUtils.parse(file.name);
+        const dateHint = parsed.dateFromFilename
+            ? '<span class="text-[11px] text-green-700">Date detected from filename</span>'
+            : '';
+        return `
+        <div class="rounded-lg border border-gray-200 p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="text-sm font-medium text-gray-900">${escapeHtml(file.name)}</p>
+                ${dateHint}
+            </div>
+            <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1" for="builder-upload-description-${sectionId}-${index}">Description</label>
+                    <input id="builder-upload-description-${sectionId}-${index}" class="form-input builder-upload-description-${sectionId}" value="${escapeHtml(parsed.description)}">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1" for="builder-upload-date-${sectionId}-${index}">Date</label>
+                    <input id="builder-upload-date-${sectionId}-${index}" type="date" class="form-input builder-upload-date-${sectionId}" value="${escapeHtml(parsed.date)}">
                 </div>
             </div>
         </div>
     `;
-    
-    container.insertAdjacentHTML('beforeend', sectionHtml);
+    }).join('');
 }
 
-function deleteSectionFromBuilder(sectionId) {
-    if (confirm('Delete this section and all its documents?')) {
-        builderSections = builderSections.filter(s => s.id !== sectionId);
-        document.querySelector(`[data-section-id="${sectionId}"]`).remove();
-        updateEmptyState();
+function saveBuilderInlineUpload() {
+    const sectionId = activeBuilderUploadSectionId;
+    if (!sectionId) return;
+    const files = builderUploadFiles[sectionId] || [];
+    if (files.length === 0) return;
+    const descriptions = Array.from(document.querySelectorAll(`.builder-upload-description-${sectionId}`));
+    const dates = Array.from(document.querySelectorAll(`.builder-upload-date-${sectionId}`));
+    for (let i = 0; i < files.length; i++) {
+        if (!descriptions[i].value.trim()) { descriptions[i].focus(); return; }
+        addDocumentToBuilder(sectionId, files[i], descriptions[i].value.trim(), dates[i].value);
     }
+    cancelBuilderInlineUpload();
 }
 
-function uploadDocumentsToBuilder(sectionId) {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = '.pdf';
-    input.onchange = function() {
-        const files = Array.from(this.files);
-        if (files.length > 0) {
-            files.forEach(file => {
-                const description = prompt(`Description for ${file.name}:`);
-                if (description) {
-                    addDocumentToBuilder(sectionId, file, description);
-                }
-            });
-        }
-    };
-    input.click();
+function setSectionDocumentMode(sectionId, hasDocuments) {
+    const card = document.querySelector(`.section-card[data-section-id="${sectionId}"]`);
+    if (!card) return;
+    const container = card.querySelector('.documents-container');
+    const emptyState = card.querySelector('.section-empty-state');
+    const footer = card.querySelector('.section-footer');
+    if (hasDocuments) {
+        container?.classList.remove('bundle-u-hidden');
+        emptyState?.classList.add('bundle-u-hidden');
+        footer?.classList.remove('bundle-u-hidden');
+    } else {
+        container?.classList.add('bundle-u-hidden');
+        emptyState?.classList.remove('bundle-u-hidden');
+        footer?.classList.add('bundle-u-hidden');
+        if (container) container.innerHTML = '';
+    }
 }
 
 function addDocumentToBuilder(sectionId, file, description, date = '') {
     documentCounter++;
     const docId = `doc-${documentCounter}`;
-    
-    const document = {
-        id: docId,
-        file: file,
-        description: description,
-        date: date,
-        order: 0
-    };
-    
+    const document = { id: docId, file: file, description: description, date: date, order: 0 };
     const section = builderSections.find(s => s.id === sectionId);
     if (section) {
         section.documents.push(document);
         renderDocument(sectionId, document);
-        
-        // Re-initialize sortable for this section
         setTimeout(() => initializeSortable(), 100);
+        BundleTree.refresh('#builder-sections-container', 'bundle-structure-outline');
     }
 }
 
-function renderDocument(sectionId, document) {
-    const container = document.querySelector(`[data-section-id="${sectionId}"] .documents-container`);
-    
-    // Remove placeholder if it exists
-    const placeholder = container.querySelector('.document-placeholder');
-    if (placeholder) {
-        placeholder.remove();
-    }
-    
-    const documentHtml = `
-        <div class="document-item border border-gray-200 p-4 mb-3 rounded cursor-move bg-white hover:bg-gray-50" data-document-id="${document.id}">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center">
-                    <span class="document-drag-handle text-gray-400 mr-3">⋮⋮</span>
-                    <div>
-                        <div class="font-medium">${document.description}</div>
-                        <div class="text-sm text-gray-500">
-                            ${document.date ? document.date + ' • ' : ''}
-                            ${document.file.name}
-                        </div>
+function renderDocument(sectionId, bundleDocument) {
+    const container = document.querySelector(`.section-card[data-section-id="${sectionId}"] .documents-container`);
+    setSectionDocumentMode(sectionId, true);
+    container.insertAdjacentHTML('beforeend', `
+        <div class="document-item bundle-tree-node bundle-tree-node-doc" data-document-id="${bundleDocument.id}">
+            <div class="bundle-tree-doc-body">
+                <div class="bundle-doc-grid">
+                    <span class="bundle-tree-badge doc-index-label">1.1</span>
+                    <span class="document-drag-handle" title="Drag to reorder">⋮⋮</span>
+                    <span class="bundle-doc-display-name bundle-doc-title">${escapeHtml(bundleDocument.description)}</span>
+                    <span class="bundle-doc-display-date">${bundleDocument.date ? escapeHtml(BundleFilenameUtils.formatUkDate(bundleDocument.date)) : '—'}</span>
+                    <div class="bundle-doc-actions">
+                        <button type="button" onclick="deleteDocumentFromBuilder('${sectionId}', '${bundleDocument.id}')" class="bundle-doc-delete" aria-label="Remove document" title="Remove document">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="bundle-doc-meta">
+                        <span class="bundle-doc-pdf-tag">PDF</span>
+                        <span class="bundle-doc-filename" title="${escapeHtml(bundleDocument.file.name)}">${escapeHtml(bundleDocument.file.name)}</span>
                     </div>
                 </div>
-                <button onclick="deleteDocumentFromBuilder('${sectionId}', '${document.id}')" class="text-red-600 hover:text-red-800">🗑️</button>
             </div>
         </div>
-    `;
-    
-    container.insertAdjacentHTML('beforeend', documentHtml);
+    `);
 }
 
 function deleteDocumentFromBuilder(sectionId, documentId) {
-    if (confirm('Delete this document?')) {
-        const section = builderSections.find(s => s.id === sectionId);
-        if (section) {
-            section.documents = section.documents.filter(d => d.id !== documentId);
-            document.querySelector(`[data-document-id="${documentId}"]`).remove();
-            
-            // Show placeholder if no documents left
-            const container = document.querySelector(`[data-section-id="${sectionId}"] .documents-container`);
-            if (container.children.length === 0) {
-                container.innerHTML = `
-                    <div class="document-placeholder text-center py-8 text-gray-400 border-2 border-dashed border-gray-300 rounded">
-                        No documents uploaded yet. Click "Upload" to add documents to this section.
-                    </div>
-                `;
-            }
-        }
+    if (!confirm('Remove this document?')) return;
+    const section = builderSections.find(s => s.id === sectionId);
+    if (!section) return;
+    section.documents = section.documents.filter(d => d.id !== documentId);
+    document.querySelector(`[data-document-id="${documentId}"]`).remove();
+    if (section.documents.length === 0) {
+        setSectionDocumentMode(sectionId, false);
     }
-}
-
-function updateEmptyState() {
-    const emptyState = document.getElementById('builder-empty-state');
-    if (builderSections.length === 0) {
-        emptyState.style.display = 'block';
-    } else {
-        emptyState.style.display = 'none';
-    }
+    BundleTree.refresh('#builder-sections-container', 'bundle-structure-outline');
 }
 
 async function saveBundleBuilder() {
     const bundleName = document.getElementById('bundle_name').value.trim();
-    const fileNumber = document.getElementById('file_number').value;
-    
+    const fileNumber = getFileNumberValue();
+    const createBtn = document.getElementById('create-bundle-btn');
     if (!bundleName) {
         alert('Please enter a bundle name');
+        document.getElementById('bundle_name').focus();
         return;
     }
-    
     if (builderSections.length === 0) {
-        alert('Please add at least one section to your bundle');
+        alert('At least one section is required');
         return;
     }
-    
-    // Check if all sections have documents
     const emptySections = builderSections.filter(s => s.documents.length === 0);
-    if (emptySections.length > 0) {
-        if (!confirm('Some sections have no documents. Continue anyway?')) {
-            return;
-        }
-    }
-    
+    if (emptySections.length > 0 && !confirm('Some sections have no documents. Continue anyway?')) return;
+
+    const sectionsWithDocs = builderSections.filter(s => s.documents.length > 0);
+    const totalDocuments = sectionsWithDocs.reduce((count, section) => count + section.documents.length, 0);
+
     try {
-        // Create the bundle first
+        if (createBtn) createBtn.disabled = true;
+        BundleUpload.show('Creating bundle...');
+
         const bundleData = new FormData();
         bundleData.append('bundle_name', bundleName);
         if (fileNumber) bundleData.append('file_number', fileNumber);
-        
-        const bundleResponse = await fetch('/bundles/', {
+
+        const bundleResponse = await fetch('{% if file_number %}{% url "matter_bundle_create" file_number %}{% else %}{% url "bundle_create" %}{% endif %}', {
             method: 'POST',
-            headers: {
-                'X-CSRFToken': getCsrfToken(),
-            },
+            headers: { 'X-CSRFToken': getCsrfToken() },
             body: bundleData
         });
-        
-        if (!bundleResponse.ok) {
-            throw new Error('Failed to create bundle');
-        }
-        
+        if (!bundleResponse.ok) throw new Error('Failed to create bundle');
         const bundleResult = await bundleResponse.json();
         const bundleId = bundleResult.bundle_id;
-        
-        // Create sections and upload documents
+
+        let uploadedDocuments = 0;
         for (const section of builderSections) {
-            // Create section
-            const sectionData = new URLSearchParams({
-                'heading': section.heading
-            });
-            
             const sectionResponse = await fetch(`/bundle/${bundleId}/section/add/`, {
                 method: 'POST',
                 headers: {
                     'X-CSRFToken': getCsrfToken(),
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: sectionData
+                body: new URLSearchParams({ heading: section.heading })
             });
-            
+            if (!sectionResponse.ok) throw new Error('Failed to add section');
             const sectionResult = await sectionResponse.json();
             const sectionId = sectionResult.section_id;
-            
-            // Upload documents to this section
             if (section.documents.length > 0) {
+                BundleUpload.updateMessage(
+                    totalDocuments > 1
+                        ? `Uploading documents (${uploadedDocuments + 1} of ${totalDocuments})...`
+                        : 'Uploading documents...'
+                );
                 const documentsData = new FormData();
                 section.documents.forEach(doc => {
                     documentsData.append('files[]', doc.file);
                     documentsData.append('descriptions[]', doc.description);
                     documentsData.append('dates[]', doc.date || '');
                 });
-                
-                await fetch(`/bundle/section/${sectionId}/document/upload/`, {
+                const uploadResponse = await fetch(`/bundle/section/${sectionId}/document/upload/`, {
                     method: 'POST',
-                    headers: {
-                        'X-CSRFToken': getCsrfToken(),
-                    },
+                    headers: { 'X-CSRFToken': getCsrfToken() },
                     body: documentsData
                 });
+                if (!uploadResponse.ok) {
+                    let message = 'Failed to upload documents';
+                    try {
+                        const data = await uploadResponse.json();
+                        if (data.error) message = data.error;
+                    } catch (error) {
+                        // Keep generic message when response is not JSON.
+                    }
+                    throw new Error(message);
+                }
+                uploadedDocuments += section.documents.length;
             }
         }
-        
-        // Redirect to the bundle edit page
+        BundleUpload.updateMessage('Finishing up...');
         window.location.href = `/bundle/${bundleId}/`;
-        
     } catch (error) {
         console.error('Error creating bundle:', error);
+        BundleUpload.hide();
+        if (createBtn) createBtn.disabled = false;
         alert('Error creating bundle: ' + error.message);
     }
 }
 
-function createEmptyBundle() {
-    const bundleName = document.getElementById('bundle_name').value.trim();
-    const fileNumber = document.getElementById('file_number').value;
-    
-    if (!bundleName) {
-        alert('Please enter a bundle name');
-        return;
-    }
-    
-    const formData = new FormData();
-    formData.append('bundle_name', bundleName);
-    if (fileNumber) formData.append('file_number', fileNumber);
-    
-    fetch('/bundles/', {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': getCsrfToken(),
-        },
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.bundle_id) {
-            window.location.href = `/bundle/${data.bundle_id}/`;
-        } else {
-            alert('Error creating bundle: ' + (data.error || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error creating bundle');
-    });
-}
-
 function getCsrfToken() {
     const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
-    if (csrfInput) {
-        return csrfInput.value;
-    }
-    return '{{ csrf_token }}';
+    return csrfInput ? csrfInput.value : '{{ csrf_token }}';
 }
 
-function deleteBundle(bundleId, bundleName) {
-    if (confirm(`Are you sure you want to delete the bundle "${bundleName}"? This action cannot be undone.`)) {
-        fetch(`/bundle/${bundleId}/delete/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCsrfToken(),
-                'Content-Type': 'application/json',
-            },
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success || data.error === undefined) {
-                location.reload();
-            } else {
-                alert('Error deleting bundle: ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Error deleting bundle');
-        });
-    }
-}
-
-// Add CSRF token to page if not present
 if (!document.querySelector('[name=csrfmiddlewaretoken]')) {
     const csrfInput = document.createElement('input');
     csrfInput.type = 'hidden';
@@ -621,6 +510,10 @@ if (!document.querySelector('[name=csrfmiddlewaretoken]')) {
     csrfInput.value = '{{ csrf_token }}';
     document.body.appendChild(csrfInput);
 }
+
+document.getElementById('builder-upload-modal').addEventListener('click', function(event) {
+    if (event.target === this) cancelBuilderInlineUpload();
+});
 </script>
 
-{% endblock %} 
+{% endblock %}

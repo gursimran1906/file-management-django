@@ -1,97 +1,73 @@
-{% extends 'base.html' %} 
-{% load utils %} 
-
-{% block title %}Edit Holiday Records{% endblock %} 
-
+{% extends 'base.html' %}
+{% load utils %}
+{% block title %}Edit Holiday Record{% endblock %}
 {% block container %}
-<div class="div-container mt-4">
-    <h2 class="text-2xl font-bold mb-4">Edit Holiday Record</h2>
-    
-    <form method="post" class="space-y-4">
-        {% csrf_token %}
-        
-        <!-- Holiday Details -->
-        <div class="form-group">
-            <label for="employee" class="block text-sm font-medium text-gray-700">Employee:</label>
-            {{form.employee}}
-        </div>
-        
-        <div class="form-group">
-            <label for="start_date" class="block text-sm font-medium text-gray-700">Start Date:</label>
-            {{form.start_date}}
-        </div>
-        
-        <div class="form-group">
-            <label for="end_date" class="block text-sm font-medium text-gray-700">End Date:</label>
-            {{form.end_date}}
-        </div>
-        
-        <div class="form-group">
-            <label for="reason" class="block text-sm font-medium text-gray-700">Reason:</label>
-            {{form.reason}}
-        </div>
-        
-        <div class="form-group">
-            <label for="type" class="block text-sm font-medium text-gray-700">Type:</label>
-            {{form.type}}
-        </div>
 
-        {% if user.is_manager %}
-            <!-- Manager's Approval Section -->
-            <div class="manager-section space-y-4">
-                <h4 class="text-lg font-semibold mt-4">Manager Approval</h4>
-                
-                <div class="form-check">
-                    {{form.approved}}
-                    <label class="form-check-label" for="approved" class="ml-2 text-sm font-medium text-gray-700">Approved</label>
-                </div>
-                
-                <div class="form-group">
-                    <label for="checked_by" class="block text-sm font-medium text-gray-700">Checked By:</label>
-                    {{form.checked_by}}
-                </div>
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Edit holiday record</h1>
+        <p class="text-sm text-gray-600 mt-1">Update holiday request details</p>
+      </div>
+      <a href="{% url 'profile_page' %}" class="btn-secondary text-xs shrink-0">Back to profile</a>
+    </div>
+  </div>
 
-                <div class="form-group">
-                    <label for="checked_on" class="block text-sm font-medium text-gray-700">Checked On:</label>
-                    {{form.checked_on}}
-                </div>
-
-                <div class="form-group">
-                    <label for="approved_by" class="block text-sm font-medium text-gray-700">Approved By:</label>
-                    {{form.approved_by}}
-                </div>
-                
-                <div class="form-group">
-                    <label for="approved_on" class="block text-sm font-medium text-gray-700">Approved On:</label>
-                    {{form.approved_on}}
-                </div>
-            </div>
-        {% else %}
-            <!-- Regular User Section -->
-            <div class="regular-user-section">
-                <h4 class="text-lg font-semibold mt-4">Update Your Holiday Request</h4>
-                <p class="text-sm text-gray-600"><strong>Note:</strong> This request will be reviewed by your manager.</p>
-            </div>
-        {% endif %}
-
-        <!-- Submit Button -->
-        <button type="submit" class="btn-primary w-full mt-4">Save Changes</button>
-    </form>
-
-    {% if user.is_manager and can_delete_holiday %}
-    <form
-      method="post"
-      action="{% url 'delete_holiday_record' holiday.id %}"
-      class="mt-6 pt-4 border-t border-gray-200"
-      onsubmit="return confirm('Permanently delete this holiday record? This cannot be undone.');"
-    >
-      {% csrf_token %}
-      <input type="hidden" name="next" value="holiday_records" />
-      <button type="submit" class="w-full py-2 px-4 rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-sm font-medium">
-        Delete holiday record
-      </button>
-    </form>
-    {% endif %}
+  <form class="div-container max-w-2xl" method="post">
+    {% csrf_token %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="form-label" for="{{ form.employee.id_for_label }}">Employee</label>
+        {{ form.employee }}
+      </div>
+      <div>
+        <label class="form-label" for="{{ form.type.id_for_label }}">Type</label>
+        {{ form.type }}
+      </div>
+      <div>
+        <label class="form-label" for="{{ form.start_date.id_for_label }}">Start date</label>
+        {{ form.start_date }}
+      </div>
+      <div>
+        <label class="form-label" for="{{ form.end_date.id_for_label }}">End date</label>
+        {{ form.end_date }}
+      </div>
+      <div class="md:col-span-2">
+        <label class="form-label" for="{{ form.reason.id_for_label }}">Reason</label>
+        {{ form.reason }}
+      </div>
+      {% if user.is_manager %}
+      <div class="md:col-span-2 pt-4 border-t border-gray-100 space-y-4">
+        <h2 class="text-base font-semibold text-gray-900">Manager approval</h2>
+        <div class="flex items-center gap-2">
+          {{ form.approved }}
+          <label class="text-sm text-gray-700" for="{{ form.approved.id_for_label }}">Approved</label>
+        </div>
+        <div>
+          <label class="form-label" for="{{ form.checked_by.id_for_label }}">Checked by</label>
+          {{ form.checked_by }}
+        </div>
+        <div>
+          <label class="form-label" for="{{ form.checked_on.id_for_label }}">Checked on</label>
+          {{ form.checked_on }}
+        </div>
+        <div>
+          <label class="form-label" for="{{ form.approved_by.id_for_label }}">Approved by</label>
+          {{ form.approved_by }}
+        </div>
+        <div>
+          <label class="form-label" for="{{ form.approved_on.id_for_label }}">Approved on</label>
+          {{ form.approved_on }}
+        </div>
+      </div>
+      {% else %}
+      <div class="md:col-span-2 pt-4 border-t border-gray-100">
+        <p class="text-sm text-gray-600">Changes will be reviewed by your manager.</p>
+      </div>
+      {% endif %}
+    </div>
+    <button class="btn-primary text-xs mt-4" type="submit">Save changes</button>
+  </form>
 </div>
-
 {% endblock %}

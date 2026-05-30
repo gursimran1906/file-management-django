@@ -16,13 +16,23 @@
 
 {% block container %}
 
+<div class="space-y-5">
+    <div class="div-container py-3">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <h1 class="text-2xl font-semibold text-gray-900">Allocate emails</h1>
+                <p class="text-sm text-gray-600 mt-1">Link unallocated emails to matter files</p>
+            </div>
+        </div>
+    </div>
+
 <form action="{% url 'allocate_emails' %}" method="POST">
     {% csrf_token %}
-    <div class="sticky top-0 z-20 -mx-4 px-4 pb-3 bg-gray-50">
-        <div class="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3 bg-white rounded-lg border p-4">
+    <div class="div-container mb-4">
+        <div class="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3">
             <div>
-                <label class="form-label" for="emailFilter">Filter by email</label>
-                <select id="emailFilter" class="form-input" onchange="filterRows()">
+                <label class="form-label" for="emailFilter">Filter by mailbox</label>
+                <select id="emailFilter" class="form-input text-sm" onchange="filterRows()">
                     <option value="All">Show all</option>
                     <option>mail@anpsolicitors.com</option>
                     <option>family@anpsolicitors.com</option>
@@ -32,12 +42,12 @@
                     <option>riskmanagment@anpsolicitors.com</option>
                 </select>
             </div>
-            <button class="btn-primary text-sm" type="submit">Allocate Emails</button>
+            <button class="btn-primary text-xs" type="submit">Allocate emails</button>
         </div>
     </div>
 
-    <div class="rounded-lg border bg-white overflow-x-auto">
-        <table class="table">
+    <div class="div-container overflow-x-auto">
+        <table class="table w-full text-sm">
             <thead>
                 <tr class="thead">
                     <th class="td">Index</th>
@@ -58,6 +68,7 @@
         </table>
     </div>
 </form>
+</div>
 
 <script>
 function filterRows() {

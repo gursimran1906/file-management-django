@@ -15,6 +15,7 @@ from time import strftime
 from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from urllib.parse import unquote
 
 from weasyprint import HTML
@@ -30,10 +31,9 @@ from django.template.loader import render_to_string
 import holidays
 from django.core.exceptions import ObjectDoesNotExist
 
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse, FileResponse, Http404
 from datetime import date, timedelta, datetime, time
 import csv
-from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.dateparse import parse_datetime
 from .models import AttendanceRecord, HolidayRecord, SicknessRecord
@@ -45,7 +45,19 @@ import zipfile
 logger = logging.getLogger('users')
 
 
+def _get_login_redirect_url(request):
+    next_param = request.POST.get('next') or request.GET.get('next', '')
+    if next_param and url_has_allowed_host_and_scheme(
+        url=next_param,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return unquote(next_param)
+    return reverse('user_dashboard')
+
+
 def login_view(request):
+    next_param = request.GET.get('next', '')
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
@@ -65,16 +77,16 @@ def login_view(request):
                 )
                 logger.info(
                     f'Created attendance record for user {username} on {today}')
-            next_param = request.GET.get('next', '')
-            next_page = unquote(next_param) if next_param else reverse(
-                'user_dashboard')
-            return redirect(next_page)
+            return redirect(_get_login_redirect_url(request))
         else:
             logger.warning(
                 f'Failed login attempt for username: {username} from IP {request.META.get("REMOTE_ADDR", "unknown")}')
-            return render(request, 'login.html', {'error_message': 'Invalid login credentials, Please check username or password'})
+            return render(request, 'login.html', {
+                'error_message': 'Invalid login credentials, Please check username or password',
+                'next': request.POST.get('next', ''),
+            })
     else:
-        return render(request, 'login.html')
+        return render(request, 'login.html', {'next': next_param})
 
 
 def logout_view(request):
@@ -1957,17 +1969,43 @@ def add_document(request):
 def delete_document(request, uuid):
     user_document = get_object_or_404(UserDocument, uuid=uuid)
     if request.method == 'POST':
+        if user_document.document:
+            user_document.document.delete(save=False)
         user_document.delete()
         return redirect('document_list')
     return render(request, 'delete_document.html', {'document': user_document})
 
-# View to access a document
+
+def _user_can_access_staff_document(request, user_document):
+    if request.user.is_superuser or request.user.is_staff:
+        return True
+    if user_document.employee_id == request.user.id:
+        return True
+    if user_document.added_by_id == request.user.id:
+        return True
+    return False
+
+
+@login_required
+def staff_document_download(request, uuid):
+    user_document = get_object_or_404(UserDocument, uuid=uuid)
+    if not _user_can_access_staff_document(request, user_document):
+        raise Http404('Document not found')
+    if not user_document.document:
+        raise Http404('File not found')
+
+    filename = os.path.basename(user_document.document.name)
+    response = FileResponse(
+        user_document.document.open('rb'),
+        content_type='application/octet-stream',
+    )
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+    return response
 
 
 @login_required
 def access_document(request, uuid):
-    user_document = get_object_or_404(UserDocument, uuid=uuid)
-    return render(request, 'access_document.html', {'document': user_document})
+    return redirect('staff_document_download', uuid=uuid)
 
 
 def add_cpd_training_log(request):
