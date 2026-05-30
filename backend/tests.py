@@ -447,6 +447,24 @@ class BundleTests(TestCase):
         self.assertIn('FOR HEARING ON 15 JUNE 2026 AT 10:00 AM', index_text)
         self.assertNotIn('File:', index_text)
 
+    def test_generate_bundle_pdf_uses_centered_standard_index_header(self):
+        self.bundle.name = 'Witness Statement Bundle'
+        self.bundle.save()
+
+        section = BundleSection.objects.create(bundle=self.bundle, heading='Evidence', order=1)
+        BundleDocument.objects.create(
+            section=section,
+            file=make_pdf('statement.pdf', 'Statement'),
+            description='Witness statement',
+            order=1,
+        )
+
+        index_text = PdfReader(BytesIO(_generate_bundle_pdf(self.bundle))).pages[0].extract_text()
+
+        self.assertIn('Witness Statement Bundle', index_text)
+        self.assertIn('Index', index_text)
+        self.assertNotIn('COUNTY COURT', index_text)
+
     def test_generate_bundle_pdf_wraps_long_index_descriptions(self):
         section = BundleSection.objects.create(bundle=self.bundle, heading='Section', order=1)
         long_description = (

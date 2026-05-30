@@ -10674,7 +10674,13 @@ def _estimate_index_page_count(documents_info, bundle):
 
 def _index_header_row_offset(bundle):
     if not bundle.is_court_bundle:
-        return 3
+        name_len = len(str(bundle.name or '').strip())
+        name_rows = 1
+        if name_len > 40:
+            name_rows = 2
+        if name_len > 80:
+            name_rows = 3
+        return name_rows + 3
     claimants, defendants = bundle.court_parties_by_side()
     rows = 1 + max(len(claimants), 1) + 1 + max(len(defendants), 1) + 5
     if len(bundle.court_name or '') > 42:
@@ -10740,10 +10746,45 @@ def _draw_index_table_header(index_canvas, margin_x, page_width, table_top, show
 
 
 def _draw_standard_index_header(index_canvas, bundle, margin_x, page_width, top_y):
-    _draw_semibold_text(index_canvas, 'Index', margin_x, top_y, 18)
-    index_canvas.setFont(_BUNDLE_INDEX_SERIF_FONT, 11)
-    index_canvas.drawString(margin_x, top_y - 24, bundle.name)
-    table_top = top_y - 52
+    name_font_size = 18
+    index_heading_font_size = 14
+    name_leading = 22
+    gap_after_name = 12
+    gap_after_index = 16
+
+    max_name_width = page_width - (2 * margin_x)
+    name_lines = _wrap_court_heading_lines(
+        index_canvas,
+        str(bundle.name or '').strip(),
+        max_name_width,
+        font_size=name_font_size,
+    )
+    if not name_lines and bundle.name:
+        name_lines = [str(bundle.name).strip()]
+
+    y = top_y
+    for line_index, line in enumerate(name_lines):
+        _draw_semibold_text(
+            index_canvas,
+            line,
+            page_width / 2,
+            y - (line_index * name_leading),
+            name_font_size,
+            align='center',
+        )
+    y -= name_leading * max(len(name_lines), 1) + gap_after_name
+
+    _draw_semibold_text(
+        index_canvas,
+        'Index',
+        page_width / 2,
+        y,
+        index_heading_font_size,
+        align='center',
+    )
+    y -= gap_after_index
+
+    table_top = y - 10
     index_canvas.setStrokeColor(_bundle_index_rule_color())
     index_canvas.line(margin_x, table_top + 18,
                       page_width - margin_x, table_top + 18)
