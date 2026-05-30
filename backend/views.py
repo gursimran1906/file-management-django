@@ -9467,18 +9467,11 @@ def bundle_list(request, file_number=None):
 
 @login_required
 def bundle_create(request, file_number=None):
-    """Create a new bundle."""
+    """Create a new bundle and open the editor."""
     if request.method == 'POST':
-        bundle_name = request.POST.get('bundle_name')
+        bundle_name = request.POST.get('bundle_name', '').strip() or 'PDF'
         file_number_str = request.POST.get('file_number', file_number)
 
-        if not bundle_name:
-            if request.headers.get('Content-Type') == 'application/json' or 'application/json' in request.headers.get('Accept', ''):
-                return JsonResponse({'error': 'Bundle name is required.'}, status=400)
-            messages.error(request, 'Bundle name is required.')
-            return redirect('bundle_create')
-
-        # Find the file if file_number is provided
         wip_file = None
         if file_number_str:
             try:
@@ -9489,7 +9482,6 @@ def bundle_create(request, file_number=None):
                 messages.error(request, f'File {file_number_str} not found.')
                 return redirect('bundle_create')
 
-        # Create the bundle
         bundle = Bundle.objects.create(
             name=bundle_name,
             file_number=wip_file,
@@ -9502,8 +9494,12 @@ def bundle_create(request, file_number=None):
             name=bundle_name,
             file_number=wip_file.file_number if wip_file else '',
         )
+        BundleSection.objects.create(
+            bundle=bundle,
+            heading='Section 1',
+            order=1,
+        )
 
-        # Return JSON response for AJAX requests
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type.startswith('multipart/form-data'):
             return JsonResponse({
                 'success': True,
@@ -9511,19 +9507,30 @@ def bundle_create(request, file_number=None):
                 'message': f'Bundle "{bundle_name}" created successfully.'
             })
 
-        messages.success(
-            request, f'Bundle "{bundle_name}" created successfully.')
-        return redirect('bundle_edit', bundle_id=bundle.id)
+        return redirect(f"{reverse('bundle_edit', kwargs={'bundle_id': bundle.id})}?new=1")
 
-    # Get available files for dropdown
-    files = WIP.objects.filter(
-        file_status__status='Open').order_by('file_number')
+    wip_file = None
+    if file_number:
+        wip_file = get_object_or_404(WIP, file_number=file_number)
 
-    context = {
-        'files': files,
-        'file_number': file_number
-    }
-    return render(request, 'bundle_create.html', context)
+    bundle = Bundle.objects.create(
+        name='PDF',
+        file_number=wip_file,
+        created_by=request.user,
+    )
+    log_bundle_event(
+        request.user,
+        bundle,
+        'Bundle created',
+        name=bundle.name,
+        file_number=wip_file.file_number if wip_file else '',
+    )
+    BundleSection.objects.create(
+        bundle=bundle,
+        heading='Section 1',
+        order=1,
+    )
+    return redirect(f"{reverse('bundle_edit', kwargs={'bundle_id': bundle.id})}?new=1")
 
 
 @login_required
@@ -9537,28 +9544,59 @@ def bundle_update(request, bundle_id):
             return JsonResponse({'error': 'Bundle name is required'}, status=400)
 
         old_name = bundle.name
-        if bundle_name == old_name:
+        name_changed = bundle_name != old_name
+
+        file_number_str = request.POST.get('file_number')
+        file_number_changed = False
+        linked_file_number = ''
+        if file_number_str is not None and not bundle.file_number:
+            file_number_str = file_number_str.strip()
+            if file_number_str:
+                try:
+                    wip_file = WIP.objects.get(file_number=file_number_str)
+                except WIP.DoesNotExist:
+                    return JsonResponse({'error': f'File {file_number_str} not found.'}, status=400)
+                bundle.file_number = wip_file
+                file_number_changed = True
+                linked_file_number = wip_file.file_number
+
+        if not name_changed and not file_number_changed:
             return JsonResponse({
                 'success': True,
                 'bundle': {
                     'id': bundle.id,
                     'name': bundle.name,
+                    'file_number': bundle.file_number.file_number if bundle.file_number else '',
                 }
             })
 
-        bundle.name = bundle_name
-        bundle.save(update_fields=['name'])
-        log_bundle_event(
-            request.user,
-            bundle,
-            'Bundle renamed',
-            name={'old_value': old_name, 'new_value': bundle_name},
-        )
+        update_fields = []
+        if name_changed:
+            bundle.name = bundle_name
+            update_fields.append('name')
+        if file_number_changed:
+            update_fields.append('file_number')
+        bundle.save(update_fields=update_fields)
+        if name_changed:
+            log_bundle_event(
+                request.user,
+                bundle,
+                'Bundle renamed',
+                name={'old_value': old_name, 'new_value': bundle_name},
+            )
+        if file_number_changed:
+            log_bundle_event(
+                request.user,
+                bundle,
+                'Bundle linked to matter',
+                file_number=linked_file_number,
+            )
         return JsonResponse({
             'success': True,
             'bundle': {
                 'id': bundle.id,
                 'name': bundle.name,
+                'file_number': bundle.file_number.file_number if bundle.file_number else '',
             }
         })
 
@@ -9690,7 +9728,11 @@ def bundle_edit(request, bundle_id):
         'bundle': bundle,
         'sections': sections,
         'court_bundle_json': json.dumps(_bundle_court_settings_dict(bundle)),
+        'is_new': request.GET.get('new') == '1',
     }
+    if not bundle.file_number:
+        context['files'] = WIP.objects.filter(
+            file_status__status='Open').order_by('file_number')
     return render(request, 'bundle_edit.html', context)
 
 

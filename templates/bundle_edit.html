@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Edit Bundle - {{ bundle.name }}{% endblock %}
+{% block title %}{% if is_new %}New Document Bundle{% else %}Edit Bundle - {{ bundle.name }}{% endif %}{% endblock %}
 {% load utils %}
 {% load static %}
 {% block container_class %}container{% endblock %}
@@ -13,11 +13,28 @@
                    value="{{ bundle.name }}"
                    data-original-name="{{ bundle.name }}"
                    class="bundle-edit-title-input"
+                   {% if is_new %}autofocus{% endif %}
                    onblur="saveBundleName(this)"
                    onkeydown="handleBundleNameKeydown(event)">
             {% if bundle.file_number %}
             <p class="bundle-edit-meta">{{ bundle.file_number.file_number }} · PDF bundle</p>
             {% else %}
+            <div class="mt-2 max-w-xs">
+                <label for="bundle_file_number" class="bundle-edit-label">File number <span class="text-gray-400">(optional)</span></label>
+                <input type="text" id="bundle_file_number" name="file_number"
+                       class="form-input text-sm"
+                       list="file-number-options"
+                       placeholder="Link to a matter"
+                       onblur="saveBundleFileNumber(this)"
+                       onkeydown="handleBundleFileNumberKeydown(event)">
+                {% if files %}
+                <datalist id="file-number-options">
+                    {% for file in files %}
+                    <option value="{{ file.file_number }}">{{ file.file_number }} - {{ file.matter_description|truncatechars:80 }}</option>
+                    {% endfor %}
+                </datalist>
+                {% endif %}
+            </div>
             <p class="bundle-edit-meta">PDF bundle</p>
             {% endif %}
         </div>
@@ -652,6 +669,42 @@ function handleBundleNameKeydown(event) {
         event.preventDefault();
         event.target.blur();
     }
+}
+
+function handleBundleFileNumberKeydown(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        event.target.blur();
+    }
+}
+
+function saveBundleFileNumber(input) {
+    const fileNumber = input.value.trim();
+    if (!fileNumber) return Promise.resolve();
+
+    return fetch(`/bundle/{{ bundle.id }}/update/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCsrfToken(),
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            'bundle_name': document.getElementById('bundle_name').value.trim() || '{{ bundle.name|escapejs }}',
+            'file_number': fileNumber,
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.bundle && data.bundle.file_number) {
+            window.location.reload();
+        } else {
+            throw new Error(data.error || 'Error linking file number');
+        }
+    })
+    .catch(error => {
+        input.value = '';
+        alert(error.message || 'Error linking file number');
+    });
 }
 
 function saveBundleName(input) {
