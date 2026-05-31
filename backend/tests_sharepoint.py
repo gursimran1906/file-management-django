@@ -8,9 +8,10 @@ from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from reportlab.pdfgen import canvas
 
-from backend.models import Bundle, BundleDocument, BundleSection, Undertaking
+from backend.models import Bundle, BundleDocument, BundleSection, BundleShareLink, Undertaking
 from backend.sharepoint.bundle_cache import BundleTempCache
 from backend.sharepoint.client import SharePointClient
 from backend.sharepoint.paths import (
@@ -19,6 +20,12 @@ from backend.sharepoint.paths import (
     normalize_storage_path,
     resolve_storage_path,
     undertaking_file_upload_path,
+)
+from backend.sharepoint.sharing import (
+    SharePointSharingError,
+    assert_bundle_final_pdf_path,
+    create_bundle_share_link,
+    revoke_share_link,
 )
 from backend.views import _collect_bundle_documents, _generate_bundle_pdf
 from users.models import CustomUser
@@ -254,3 +261,167 @@ class BundleTempCacheTests(TestCase):
 
         self.assertEqual(content, b'pdf-bytes')
         mock_client_cls.assert_called_once_with(timeout=120.0, follow_redirects=True)
+
+
+@override_settings(
+    USE_SHAREPOINT=True,
+    BUNDLE_SHARE_LINK_EXPIRY_DAYS=7,
+    BUNDLE_SHARE_LINK_USE_PASSWORD=True,
+    BUNDLE_SHARE_LINK_SCOPE='anonymous',
+    SHAREPOINT_DRIVE_IDS='{"BundleFinal":"drive-final"}',
+)
+class BundleShareLinkTests(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            username='bundle-share-user',
+            email='bundle-share@example.com',
+            first_name='B',
+            last_name='Share',
+            password='password',
+            max_holidays_in_year=20,
+        )
+        self.client.force_login(self.user)
+        self.bundle = Bundle.objects.create(
+            name='Share Bundle',
+            created_by=self.user,
+        )
+        self.final_path = bundle_final_pdf_upload_path(self.bundle, 'ignored.pdf')
+        self.bundle.final_pdf.name = self.final_path
+        self.bundle.pdf_generated_at = timezone.now()
+        self.bundle.save(update_fields=['final_pdf', 'pdf_generated_at'])
+
+    def test_assert_bundle_final_pdf_path_rejects_source_documents(self):
+        source_path = f'BundleSources/unassigned/{self.bundle.uuid}/doc.pdf'
+        with self.assertRaises(SharePointSharingError):
+            assert_bundle_final_pdf_path(self.bundle, source_path)
+
+    def test_assert_bundle_final_pdf_path_rejects_other_bundle(self):
+        other = Bundle.objects.create(name='Other', created_by=self.user)
+        other_path = bundle_final_pdf_upload_path(other, 'ignored.pdf')
+        with self.assertRaises(SharePointSharingError):
+            assert_bundle_final_pdf_path(self.bundle, other_path)
+
+    @patch('backend.sharepoint.sharing.get_sharepoint_client')
+    def test_create_bundle_share_link_stores_link_metadata(self, mock_get_client):
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.exists.return_value = True
+        mock_client.create_share_link.return_value = {
+            'permission_id': 'perm-123',
+            'web_url': 'https://contoso.sharepoint.com/:b:/g/abc',
+            'expiration_datetime': '2026-06-30T00:00:00Z',
+        }
+
+        result = create_bundle_share_link(self.bundle, created_by=self.user)
+
+        self.assertEqual(
+            result['url'],
+            'https://contoso.sharepoint.com/:b:/g/abc',
+        )
+        link = BundleShareLink.objects.get(bundle=self.bundle)
+        self.assertEqual(link.permission_id, 'perm-123')
+        self.assertEqual(link.url, result['url'])
+        mock_client.create_share_link.assert_called_once()
+        call_args = mock_client.create_share_link.call_args
+        self.assertEqual(call_args.kwargs['link_type'], 'view')
+        self.assertEqual(call_args.kwargs['scope'], 'anonymous')
+        self.assertTrue(call_args.kwargs['password'])
+
+    @patch('backend.sharepoint.sharing.get_sharepoint_client')
+    def test_create_bundle_share_link_without_password(self, mock_get_client):
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.exists.return_value = True
+        mock_client.create_share_link.return_value = {
+            'permission_id': 'perm-123',
+            'web_url': 'https://contoso.sharepoint.com/:b:/g/abc',
+            'expiration_datetime': '2026-06-30T00:00:00Z',
+        }
+
+        create_bundle_share_link(self.bundle, use_password=False, created_by=self.user)
+
+        link = BundleShareLink.objects.get(bundle=self.bundle)
+        self.assertEqual(link.password, '')
+        call_args = mock_client.create_share_link.call_args
+        self.assertIsNone(call_args.kwargs['password'])
+
+    @patch('backend.sharepoint.sharing.get_sharepoint_client')
+    def test_revoke_share_link_marks_revoked(self, mock_get_client):
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        link = BundleShareLink.objects.create(
+            bundle=self.bundle,
+            url='https://contoso.sharepoint.com/:b:/g/abc',
+            permission_id='perm-123',
+            created_by=self.user,
+        )
+
+        revoked = revoke_share_link(link)
+
+        self.assertTrue(revoked)
+        link.refresh_from_db()
+        self.assertIsNotNone(link.revoked_at)
+        mock_client.revoke_permission.assert_called_once()
+
+    @override_settings(USE_SHAREPOINT=False)
+    def test_create_share_link_view_requires_sharepoint(self):
+        response = self.client.post(
+            reverse('bundle_share_link_create', args=[self.bundle.id]),
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('SharePoint', response.json()['error'])
+
+    @patch('backend.views._require_current_bundle_pdf', return_value=(True, None))
+    @patch('backend.views.create_bundle_share_link')
+    def test_create_share_link_view_returns_link(self, mock_create, _mock_require_pdf):
+        mock_create.return_value = {
+            'id': 1,
+            'url': 'https://contoso.sharepoint.com/:b:/g/abc',
+            'password': 'secret',
+            'expires_at': timezone.now().isoformat(),
+            'status': 'active',
+            'active': True,
+        }
+        response = self.client.post(
+            reverse('bundle_share_link_create', args=[self.bundle.id]),
+            data='{"use_password": true}',
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(len(payload['links']), 0)
+        self.assertEqual(payload['link']['url'], 'https://contoso.sharepoint.com/:b:/g/abc')
+
+    @patch('backend.views._require_current_bundle_pdf', return_value=(True, None))
+    @patch('backend.views.create_bundle_share_link')
+    def test_create_share_link_view_without_password(self, mock_create, _mock_require_pdf):
+        mock_create.return_value = {
+            'id': 2,
+            'url': 'https://contoso.sharepoint.com/:b:/g/abc',
+            'password': '',
+            'expires_at': timezone.now().isoformat(),
+            'status': 'active',
+            'active': True,
+        }
+        response = self.client.post(
+            reverse('bundle_share_link_create', args=[self.bundle.id]),
+            data='{"use_password": false}',
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_create.assert_called_once()
+        self.assertFalse(mock_create.call_args.kwargs.get('use_password'))
+
+    @patch('backend.views.create_bundle_share_link')
+    def test_create_share_link_view_rejects_stale_pdf(self, mock_create):
+        self.bundle.updated_at = timezone.now()
+        self.bundle.save(update_fields=['updated_at'])
+        response = self.client.post(
+            reverse('bundle_share_link_create', args=[self.bundle.id]),
+            data='{"use_password": false}',
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('changed', response.json()['error'].lower())
+        mock_create.assert_not_called()

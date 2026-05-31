@@ -130,6 +130,17 @@
           </span>
         </a>
       </li>
+      {% if matter_is_probate %}
+      <li>
+        <a href="{% url 'estate_account_view' file_number %}" class="nav-link {% if request.resolver_match.url_name == 'estate_account_view' %}nav-link-active{% endif %}">
+          <svg class="nav-link-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6M6 3v18l2-2 2 2 2-2 2 2 2-2 2 2V3l-2 2-2-2-2 2-2-2-2 2-2-2Z"/></svg>
+          <span class="min-w-0 flex-1 flex items-baseline gap-1.5">
+            <span class="shrink-0">Estate account</span>
+            <span class="text-[11px] font-normal text-gray-400 truncate">{{ file_number }}</span>
+          </span>
+        </a>
+      </li>
+      {% endif %}
       {% endif %}
       <li>
         {% url 'new_file' as url %}

@@ -235,6 +235,11 @@ SHAREPOINT_DRIVE_IDS = os.getenv(
     'SHAREPOINT_DRIVE_IDS',
     '{"Undertakings":"","StaffDocuments":"","BundleSources":"","BundleFinal":""}',
 )
+BUNDLE_SHARE_LINK_EXPIRY_DAYS = int(os.getenv('BUNDLE_SHARE_LINK_EXPIRY_DAYS', '30'))
+BUNDLE_SHARE_LINK_USE_PASSWORD = os.getenv(
+    'BUNDLE_SHARE_LINK_USE_PASSWORD', 'true'
+).lower() in ('true', '1', 'yes')
+BUNDLE_SHARE_LINK_SCOPE = os.getenv('BUNDLE_SHARE_LINK_SCOPE', 'anonymous').strip().lower()
 
 if USE_SHAREPOINT:
     STORAGES = {

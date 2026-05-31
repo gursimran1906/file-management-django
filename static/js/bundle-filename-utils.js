@@ -369,5 +369,6 @@
     global.BundleDownload = {
         downloadPdf,
         prepareAndDownload,
+        pollPdfStatus,
     };
 })(window);

@@ -1,0 +1,24 @@
+<div class="estate-distribution-row bundle-linear-panel py-2 px-3 grid grid-cols-1 md:grid-cols-6 gap-2"
+     data-distribution-id="{{ row.id }}">
+    <input type="text" class="bundle-linear-field text-xs md:col-span-2" data-distribution-field="beneficiary_name"
+           value="{{ row.beneficiary_name }}" data-original-value="{{ row.beneficiary_name }}"
+           {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+    <input type="text" class="bundle-linear-field text-xs" data-distribution-field="share_fraction"
+           value="{{ row.share_fraction }}" placeholder="1/8"
+           {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+    <input type="number" step="0.01" class="bundle-linear-field text-xs" data-distribution-field="gross_amount"
+           value="{{ row.gross_amount }}" data-original-value="{{ row.gross_amount }}"
+           {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+    <input type="text" class="bundle-linear-field text-xs" data-distribution-field="adjustment_description"
+           value="{{ row.adjustment_description }}" placeholder="Adjustment note"
+           {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+    <div class="flex items-center gap-2">
+        <input type="number" step="0.01" class="bundle-linear-field text-xs w-full" data-distribution-field="adjustment_amount"
+               value="{{ row.adjustment_amount }}" data-original-value="{{ row.adjustment_amount }}"
+               {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+        {% if account_data.metadata.is_editable %}
+        <button type="button" class="text-xs text-red-600 shrink-0" data-delete-distribution>Delete</button>
+        {% endif %}
+    </div>
+    <div class="text-xs text-gray-600 md:col-span-6">Net: <strong class="distribution-net">{{ row.net_amount_display }}</strong></div>
+</div>

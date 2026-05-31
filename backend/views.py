@@ -9,7 +9,7 @@ from django.db.models.functions import Cast, Coalesce, Greatest, Concat
 from .models import WIP, Memo, NextWork, LastWork, MatterKeyDate, FileStatus, FileLocation, MatterType, PricingItem, ClientContactDetails, ClientKeyDocument, AuthorisedParties
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
-from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, MatterFileReview
+from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
 from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, MatterClientKeyDocumentForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm
@@ -63,6 +63,13 @@ from io import BytesIO
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from backend.sharepoint.bundle_cache import BundleTempCache
+from backend.sharepoint.sharing import (
+    SharePointSharingError,
+    bundle_share_link_status,
+    create_bundle_share_link,
+    revoke_all_bundle_share_links,
+    revoke_share_link,
+)
 from backend.sharepoint.client import SharePointClientError
 
 logger = logging.getLogger('backend')
@@ -1453,7 +1460,8 @@ def display_data_home_page(request, file_number):
                                              'matter_key_document_alerts': matter_key_document_alerts,
                                              'logs': activity_logs,
                                              'log_meta': log_meta,
-                                             'log_limit': 300})
+                                             'log_limit': 300,
+                                             'bundle_share_link_scope': settings.BUNDLE_SHARE_LINK_SCOPE})
     except WIP.DoesNotExist:
         logger.warning(
             f'User {request.user.username} attempted to access non-existent matter file {file_number}')
@@ -6605,232 +6613,6 @@ def edit_invoice(request, id):
 
 
 @login_required
-def download_estate_accounts(request, file_number):
-    file = WIP.objects.filter(file_number=file_number).first()
-    slips = PmtsSlips.objects.filter(file_number=file.id)
-    green_slips = LedgerAccountTransfers.objects.filter(
-        Q(file_number_from=file.id) | Q(file_number_to=file.id))
-    invoices = Invoices.objects.filter(file_number=file.id)
-    credit_notes = CreditNote.objects.filter(
-        file_number=file.id, status='F').select_related('invoice')
-    money_in_objects = []
-    money_out_objects = []
-    num_money_in_objs = 0
-    for slip in slips:
-        if slip.is_money_out == True:
-
-            desc = f"Payment to {slip.pmt_person} - {slip.description}"
-            obj = {'date': slip.date.strftime('%d/%m/%Y'),
-                   'desc': desc,
-                   'amount': slip.amount
-                   }
-            money_out_objects.append(obj)
-        else:
-
-            desc = f"Payment from {slip.pmt_person} - {slip.description}"
-
-            obj = {'date': slip.date.strftime('%d/%m/%Y'),
-                   'desc': desc,
-                   'amount': slip.amount
-                   }
-            money_in_objects.append(obj)
-
-    for slip in green_slips:
-        if slip.file_number_from.file_number == file_number:
-
-            desc = f"Transfer to {slip.file_number_to}"
-            obj = {'date': slip.date.strftime('%d/%m/%Y'),
-                   'desc': desc,
-                   'amount': slip.amount
-                   }
-            money_out_objects.append(obj)
-
-        else:
-
-            desc = f"Transfer from {slip.file_number_from}"
-            obj = {'date': slip.date.strftime('%d/%m/%Y'),
-                   'desc': desc,
-                   'amount': slip.amount
-                   }
-            money_in_objects.append(obj)
-
-    for invoice in invoices:
-        if invoice.state == 'F':
-            desc = f"ANP Invoice {invoice.invoice_number}"
-        else:
-            desc = f"DRAFT ANP Invoice"
-
-        _, _, total_cost_invoice = calculate_invoice_total_with_vat(invoice)
-        obj = {'date': invoice.date.strftime('%d/%m/%Y'),
-               'desc': desc,
-               'amount': total_cost_invoice
-               }
-        money_out_objects.append(obj)
-
-    for credit_note in credit_notes:
-        invoice_number = credit_note.invoice.invoice_number or "Draft"
-        obj = {'date': credit_note.date.strftime('%d/%m/%Y'),
-               'desc': f"Credit Note for ANP Invoice {invoice_number}",
-               'amount': credit_note.amount
-               }
-        money_in_objects.append(obj)
-
-    def sort_rows(rows):
-        def get_sort_key(row):
-            # Handling empty dates
-            date_str = row['date'] if row['date'] else '01/01/0001'
-
-            date_time = datetime.strptime(date_str, '%d/%m/%Y')
-            return date_time
-
-        sorted_rows = sorted(rows, key=get_sort_key)
-        return sorted_rows
-
-    sorted_money_in_objs = sort_rows(money_in_objects)
-    sorted_money_out_objs = sort_rows(money_out_objects)
-
-    doc = Document()
-
-    for style in doc.styles:
-        if hasattr(style, 'font'):
-            style.font.name = 'Times New Roman'
-            style.font.color.rgb = RGBColor(0, 0, 0)
-
-    '''Page 1'''
-
-    # Add heading on the first page
-    doc.add_paragraph('\n\n\n\n')
-
-    heading = doc.add_paragraph("Document Heading\n\n\n")
-    heading.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-    heading_run = heading.runs[0]
-    heading_run.bold = True
-    heading_run.font.size = Pt(46)
-
-    doc.add_paragraph('')
-
-    heading = doc.add_paragraph("Estate Account\n\n\n\n\n")
-    heading.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-    heading_run = heading.runs[0]
-    heading_run.bold = True
-    heading_run.underline = True
-    heading_run.font.size = Pt(32)
-
-    heading = doc.add_paragraph(
-        "Prepared by:\nANP Solicitors\n290 Kiln Road Benfleet\nEssex SS7 1QT")
-    heading.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-    heading_run = heading.runs[0]
-    heading_run.font.size = Pt(12)
-    # Add page break
-    doc.add_page_break()
-
-    '''Page 2 Assets (money in)'''
-
-    heading = doc.add_paragraph(
-        "Person Decesased\nDate of Death\nEstate Account")
-    heading.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-    heading_run = heading.runs[0]
-    heading_run.bold = True
-    heading_run.underline = True
-    heading_run.font.size = Pt(16)
-
-    heading = doc.add_paragraph("Assets")
-    heading.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-    heading_run = heading.runs[0]
-    heading_run.bold = True
-    heading_run.underline = True
-    heading_run.font.size = Pt(12)
-
-    table = doc.add_table(rows=len(money_in_objects)+1,
-                          cols=3, style='Light Shading')
-    table.autofit = True
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    i = 0
-    j = 0
-
-    for row in table.rows:
-        if i == 0:
-            row.cells[0].text = "Date"
-            row.cells[1].text = "Description"
-            row.cells[2].text = "Amount"
-            i = 1
-        elif j < len(money_in_objects):
-            row.cells[0].text = money_in_objects[j]['date']
-            row.cells[1].text = money_in_objects[j]['desc']
-            row.cells[2].text = '£' + str(money_in_objects[j]['amount'])
-            j = j + 1
-
-    heading = doc.add_paragraph(
-        "\nGross Value of Estate Carried Forward\t\t\t£1000.00")
-    heading.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-    heading_run = heading.runs[0]
-    heading_run.bold = True
-    heading_run.underline = True
-    heading_run.font.size = Pt(12)
-
-    doc.add_page_break()
-
-    '''Page 3'''
-
-    table = doc.add_table(rows=len(money_out_objects)+1,
-                          cols=3, style='Light Shading')
-    table.autofit = True
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    i = 0
-    j = 0
-
-    for row in table.rows:
-        if i == 0:
-            row.cells[0].text = "Date"
-            row.cells[1].text = "Description"
-            row.cells[2].text = "Amount"
-            i = 1
-        elif j < len(money_out_objects):
-            row.cells[0].text = money_out_objects[j]['date']
-            row.cells[1].text = money_out_objects[j]['desc']
-            row.cells[2].text = '£' + str(money_out_objects[j]['amount'])
-            j = j + 1
-
-    heading = doc.add_paragraph(
-        "Person Decesased\nDate of Death\nEstate Account")
-    heading.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-    heading_run = heading.runs[0]
-    heading_run.bold = True
-    heading_run.underline = True
-    heading_run.font.size = Pt(16)
-
-    heading = doc.add_paragraph("Assets")
-    heading.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-    heading_run = heading.runs[0]
-    heading_run.bold = True
-    heading_run.underline = True
-    heading_run.font.size = Pt(12)
-
-    heading = doc.add_paragraph(
-        "\nGross Value of Estate Carried Forward\t\t\t£1000.00")
-    heading.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-    heading_run = heading.runs[0]
-    heading_run.bold = True
-    heading_run.underline = True
-    heading_run.font.size = Pt(12)
-    # Create an in-memory stream to store the document
-    output = io.BytesIO()
-
-    # Save the document to the in-memory stream
-    doc.save(output)
-
-    # Create a response and set appropriate content type and headers
-    response = HttpResponse(
-        content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-    response['Content-Disposition'] = 'attachment; filename="example.docx"'
-
-    # Set the content of the response to the content of the in-memory stream
-    response.write(output.getvalue())
-
-    return response
-
-
-@login_required
 def unallocated_emails(request):
 
     unallocated_emails_obj = MatterEmails.objects.filter(
@@ -9401,6 +9183,20 @@ def _bundle_pdf_is_current(bundle, verify_file=True):
         return False
 
 
+def _require_current_bundle_pdf(bundle):
+    """Return (ok, error_message) without generating a PDF."""
+    if not bundle.final_pdf or not bundle.final_pdf.name:
+        return False, (
+            'No bundle PDF exists yet. Use Download PDF to generate one first.'
+        )
+    if not _bundle_pdf_is_current(bundle):
+        return False, (
+            'The bundle has changed since the PDF was last generated. '
+            'Use Download PDF to update it, then create a share link.'
+        )
+    return True, None
+
+
 def _ensure_bundle_final_pdf(bundle, user=None, progress_callback=None):
     """Generate the final PDF when missing or out of date. Returns (success, error_message, regenerated)."""
     if _bundle_pdf_is_current(bundle):
@@ -9739,6 +9535,7 @@ def bundle_edit(request, bundle_id):
         'sections': sections,
         'court_bundle_json': json.dumps(_bundle_court_settings_dict(bundle)),
         'is_new': request.GET.get('new') == '1',
+        'bundle_share_link_scope': settings.BUNDLE_SHARE_LINK_SCOPE,
     }
     if not bundle.file_number:
         context['files'] = WIP.objects.filter(
@@ -10359,6 +10156,85 @@ def bundle_download(request, bundle_id):
     if regenerated:
         response['X-Bundle-Regenerated'] = '1'
     return response
+
+
+@login_required
+def bundle_share_link_status_view(request, bundle_id):
+    """Return Microsoft share-link metadata for a bundle."""
+    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    return JsonResponse(bundle_share_link_status(bundle))
+
+
+@login_required
+@require_POST
+def bundle_share_link_create(request, bundle_id):
+    """Create a view-only Microsoft share link for the bundle final PDF."""
+    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        payload = {}
+
+    use_password = payload.get('use_password')
+    if use_password is not None:
+        use_password = bool(use_password)
+
+    ok, error = _require_current_bundle_pdf(bundle)
+    if not ok:
+        return JsonResponse(
+            {'error': error or 'The bundle PDF is not ready to share.'},
+            status=400,
+        )
+
+    bundle.refresh_from_db()
+    try:
+        link_data = create_bundle_share_link(
+            bundle,
+            use_password=use_password,
+            created_by=request.user,
+        )
+    except SharePointSharingError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+
+    log_bundle_event(
+        request.user,
+        bundle,
+        'External share link created',
+    )
+    status = bundle_share_link_status(bundle)
+    return JsonResponse({
+        'success': True,
+        'link': {
+            'id': link_data['id'],
+            'url': link_data['url'],
+            'password': link_data.get('password') or '',
+            'expires_at': link_data['expires_at'],
+            'status': link_data['status'],
+            'active': link_data['active'],
+        },
+        **status,
+    })
+
+
+@login_required
+@require_POST
+def bundle_share_link_revoke(request, bundle_id, link_id):
+    """Revoke one Microsoft share link for a bundle."""
+    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    link = get_object_or_404(BundleShareLink, id=link_id, bundle=bundle)
+    revoked = revoke_share_link(link)
+    if revoked:
+        log_bundle_event(
+            request.user,
+            bundle,
+            f'External share link revoked ({link_id})',
+        )
+    return JsonResponse({
+        'success': True,
+        'revoked': revoked,
+        **bundle_share_link_status(bundle),
+    })
 
 
 def _parse_order_ids(raw_values):
@@ -11240,6 +11116,8 @@ def bundle_delete(request, bundle_id):
     bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
 
     if request.method == 'POST':
+        revoke_all_bundle_share_links(bundle)
+
         # Delete all associated files
         for section in bundle.sections.all():
             for document in section.documents.all():

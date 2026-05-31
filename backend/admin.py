@@ -25,7 +25,10 @@ from .models import (Memo, Modifications, ClientContactDetails, AuthorisedPartie
                      LedgerAccountTransfers, Policy, PolicyVersion, TempSlips, Invoices, MatterEmails, MatterLetters,
                      MatterAttendanceNotes, RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees, Undertaking,
                      CreditNote, MatterFileReview, PricingItem,
-                     Bundle, BundleSection, BundleDocument)
+                     Bundle, BundleSection, BundleDocument,
+                     EstateAccount, EstateAccountFinanceLineOverride,
+                     EstateAccountManualEntry, EstateAccountDistribution,
+                     EstateAccountSigner)
 
 
 @admin.register(Modifications)
@@ -443,3 +446,30 @@ class BundleDocumentAdmin(admin.ModelAdmin):
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('section__bundle')
+
+
+@admin.register(EstateAccount)
+class EstateAccountAdmin(admin.ModelAdmin):
+    list_display = ('matter', 'status', 'deceased_name', 'account_date', 'updated_at')
+    list_filter = ('status',)
+    search_fields = ('matter__file_number', 'deceased_name')
+
+
+@admin.register(EstateAccountManualEntry)
+class EstateAccountManualEntryAdmin(admin.ModelAdmin):
+    list_display = ('estate_account', 'section', 'description', 'amount', 'date', 'is_pending')
+
+
+@admin.register(EstateAccountFinanceLineOverride)
+class EstateAccountFinanceLineOverrideAdmin(admin.ModelAdmin):
+    list_display = ('estate_account', 'source_type', 'source_id', 'is_excluded')
+
+
+@admin.register(EstateAccountDistribution)
+class EstateAccountDistributionAdmin(admin.ModelAdmin):
+    list_display = ('estate_account', 'beneficiary_name', 'gross_amount', 'net_amount')
+
+
+@admin.register(EstateAccountSigner)
+class EstateAccountSignerAdmin(admin.ModelAdmin):
+    list_display = ('estate_account', 'signer_name', 'sort_order')

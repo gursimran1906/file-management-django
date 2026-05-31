@@ -172,6 +172,77 @@ class SharePointClient:
                 f'Failed to delete {name}: {response.status_code}'
             )
 
+    def get_item(self, name):
+        response = self._request(
+            'GET',
+            self._item_url(name),
+            headers=self._headers(),
+        )
+        if response.status_code != 200:
+            raise SharePointClientError(
+                f'Failed to get item {name}: {response.status_code} {response.text}'
+            )
+        return response.json()
+
+    def create_share_link(
+        self,
+        name,
+        *,
+        link_type='view',
+        scope='anonymous',
+        expiration_datetime=None,
+        password=None,
+    ):
+        """Create a Microsoft sharing link for a single file."""
+        body = {
+            'type': link_type,
+            'scope': scope,
+            'retainInheritedPermissions': False,
+        }
+        if expiration_datetime:
+            body['expirationDateTime'] = expiration_datetime
+        if password:
+            body['password'] = password
+
+        response = self._request(
+            'POST',
+            self._item_url(name, ':/createLink'),
+            headers=self._headers({'Content-Type': 'application/json'}),
+            json=body,
+        )
+        if response.status_code not in (200, 201):
+            raise SharePointClientError(
+                f'Failed to create share link for {name}: '
+                f'{response.status_code} {response.text}'
+            )
+
+        data = response.json()
+        link = data.get('link') or {}
+        return {
+            'permission_id': data.get('id'),
+            'web_url': link.get('webUrl'),
+            'expiration_datetime': link.get('expirationDateTime') or expiration_datetime,
+        }
+
+    def revoke_permission(self, name, permission_id):
+        """Remove a sharing permission from a file."""
+        if not permission_id:
+            return
+
+        item = self.get_item(name)
+        drive_id, _ = self._split_path(name)
+        item_id = item['id']
+        url = (
+            f'{GRAPH_BASE}/drives/{drive_id}/items/{item_id}'
+            f'/permissions/{permission_id}'
+        )
+        response = self._request('DELETE', url, headers=self._headers())
+        if response.status_code not in (204, 404):
+            raise SharePointClientError(
+                f'Failed to revoke permission {permission_id} on {name}: '
+                f'{response.status_code} {response.text}'
+            )
+
     def upload(self, name, content):
         if hasattr(content, 'read'):
             data = content.read()

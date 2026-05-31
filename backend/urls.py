@@ -3,12 +3,30 @@ from django.urls import path
 from .views import add_memo, delete_memo, display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, edit_memo, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work, read_memo, update_task_status, load_initial_tasks, load_more_tasks, get_files, get_users, create_task
 from .views import attendance_note_view, add_attendance_note, bulk_upload_attendance_notes, download_attendance_notes_bulk_template, download_attendance_notes_bulk, download_attendance_note, edit_attendance_note, correspondence_view, add_letter, edit_letter, download_sowc
 from .views import finance_view, add_blue_slip, add_pink_slip, add_green_slip, edit_pmts_slip, download_pmts_slip, edit_green_slip, download_green_slip, add_invoice, add_credit_note, approve_credit_note, reject_credit_note, edit_credit_note
-from .views import allocate_monies, download_statement_account, download_invoice, download_credited_invoice, download_credit_note, edit_invoice, download_estate_accounts, unallocated_emails, allocate_emails
+from .views import allocate_monies, download_statement_account, download_invoice, download_credited_invoice, download_credit_note, edit_invoice, unallocated_emails, allocate_emails
+from .estate_account_views import (
+    estate_account_view,
+    estate_account_update,
+    estate_account_totals,
+    estate_account_line_update,
+    estate_account_line_add,
+    estate_account_line_delete,
+    estate_account_line_reorder,
+    estate_account_distribution_update,
+    estate_account_distribution_add,
+    estate_account_distribution_delete,
+    estate_account_signer_update,
+    estate_account_signer_add,
+    estate_account_signer_delete,
+    estate_account_status,
+    download_estate_account,
+    download_estate_accounts_redirect,
+)
 from .views import download_cashier_data, edit_file, edit_client, edit_authorised_party, download_file_logs, download_frontsheet, generate_ledgers_report, user_dashboard, download_risk_assessment
 from .views import add_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring
 from .views import edit_ongoing_monitoring, download_document, onboarding_documents_display, edit_otherside, free30mins, download_free30mins, edit_free30mins
 from .views import undertakings, edit_undertaking, undertaking_file_download, add_policy, edit_policy, download_policy_pdf, management_reports, weekly_report_view, policies_read_per_user
-from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundle_court_update, bundle_section_add, bundle_section_delete, bundle_section_update, bundle_section_reorder, bundle_document_upload, bundle_document_file, bundle_document_update, bundle_document_delete, bundle_document_pages_update, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_pdf_prepare, bundle_pdf_status, bundle_delete
+from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundle_court_update, bundle_section_add, bundle_section_delete, bundle_section_update, bundle_section_reorder, bundle_document_upload, bundle_document_file, bundle_document_update, bundle_document_delete, bundle_document_pages_update, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_pdf_prepare, bundle_pdf_status, bundle_delete, bundle_share_link_status_view, bundle_share_link_create, bundle_share_link_revoke
 from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, download_user_key_documents_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review, internal_pricing
 from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, add_matter_key_document, central_key_dates, download_central_key_dates
 
@@ -108,7 +126,37 @@ urlpatterns = [
     path('<str:file_number>/finances/ledger/',
          generate_ledgers_report, name='download_ledger_account'),
     path('<str:file_number>/finances/estate_account/',
-         download_estate_accounts, name='download_estate_account'),
+         download_estate_accounts_redirect, name='download_estate_account_legacy'),
+    path('<str:file_number>/estate_account/',
+         estate_account_view, name='estate_account_view'),
+    path('<str:file_number>/estate_account/update/',
+         estate_account_update, name='estate_account_update'),
+    path('<str:file_number>/estate_account/totals/',
+         estate_account_totals, name='estate_account_totals'),
+    path('<str:file_number>/estate_account/line/update/',
+         estate_account_line_update, name='estate_account_line_update'),
+    path('<str:file_number>/estate_account/line/add/',
+         estate_account_line_add, name='estate_account_line_add'),
+    path('<str:file_number>/estate_account/line/delete/',
+         estate_account_line_delete, name='estate_account_line_delete'),
+    path('<str:file_number>/estate_account/line/reorder/',
+         estate_account_line_reorder, name='estate_account_line_reorder'),
+    path('<str:file_number>/estate_account/distribution/update/',
+         estate_account_distribution_update, name='estate_account_distribution_update'),
+    path('<str:file_number>/estate_account/distribution/add/',
+         estate_account_distribution_add, name='estate_account_distribution_add'),
+    path('<str:file_number>/estate_account/distribution/delete/',
+         estate_account_distribution_delete, name='estate_account_distribution_delete'),
+    path('<str:file_number>/estate_account/signer/update/',
+         estate_account_signer_update, name='estate_account_signer_update'),
+    path('<str:file_number>/estate_account/signer/add/',
+         estate_account_signer_add, name='estate_account_signer_add'),
+    path('<str:file_number>/estate_account/signer/delete/',
+         estate_account_signer_delete, name='estate_account_signer_delete'),
+    path('<str:file_number>/estate_account/status/',
+         estate_account_status, name='estate_account_status'),
+    path('<str:file_number>/estate_account/download/',
+         download_estate_account, name='download_estate_account'),
     path('<str:file_number>/pink_slip/add/',
          add_pink_slip, name='add_pink_slip'),
     path('<str:file_number>/blue_slip/add/',
@@ -220,6 +268,12 @@ urlpatterns = [
          bundle_pdf_status, name='bundle_pdf_status'),
     path('bundle/<int:bundle_id>/download/',
          bundle_download, name='bundle_download'),
+    path('bundle/<int:bundle_id>/share-link/',
+         bundle_share_link_status_view, name='bundle_share_link_status'),
+    path('bundle/<int:bundle_id>/share-link/create/',
+         bundle_share_link_create, name='bundle_share_link_create'),
+    path('bundle/<int:bundle_id>/share-link/<int:link_id>/revoke/',
+         bundle_share_link_revoke, name='bundle_share_link_revoke'),
     path('bundle/<int:bundle_id>/delete/', bundle_delete, name='bundle_delete'),
 
     # Bundle Section URLs

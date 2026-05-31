@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Estate Account - {{ file_number }}{% endblock %}
+{% block container_class %}container{% endblock %}
+
+{% block container %}
+<link rel="stylesheet" href="{% static 'css/bundle-tree.css' %}">
+
+<div id="estate-account-app" class="bundle-edit-page space-y-4"
+     data-editable="{{ account_data.metadata.is_editable|yesno:'true,false' }}"
+     data-file-number="{{ file_number }}"
+     data-update-url="{% url 'estate_account_update' file_number %}"
+     data-line-update-url="{% url 'estate_account_line_update' file_number %}"
+     data-line-add-url="{% url 'estate_account_line_add' file_number %}"
+     data-line-delete-url="{% url 'estate_account_line_delete' file_number %}"
+     data-distribution-update-url="{% url 'estate_account_distribution_update' file_number %}"
+     data-distribution-add-url="{% url 'estate_account_distribution_add' file_number %}"
+     data-distribution-delete-url="{% url 'estate_account_distribution_delete' file_number %}"
+     data-status-url="{% url 'estate_account_status' file_number %}"
+     data-download-url="{% url 'download_estate_account' file_number %}">
+    {% csrf_token %}
+
+    <div class="bundle-edit-toolbar flex flex-wrap items-center justify-between gap-3">
+        <div>
+            <p class="bundle-edit-label">Estate account</p>
+            <h1 class="text-xl font-semibold text-gray-900">{{ account_data.metadata.deceased_name|default:file_number }}</h1>
+            <p class="bundle-edit-meta">{{ file_number }} · {{ account_data.metadata.status_display }}</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <span id="estate-save-status" class="text-xs text-gray-500"></span>
+            <a href="{% url 'home' file_number %}" class="bundle-linear-btn">Back</a>
+            <a href="{% url 'download_estate_account' file_number %}" class="btn-primary text-xs">Download PDF</a>
+            {% if account_data.metadata.is_editable %}
+            <button type="button" id="estate-finalise-btn" class="btn-secondary text-xs">Finalise</button>
+            {% elif request.user.is_manager %}
+            <button type="button" id="estate-reopen-btn" class="btn-secondary text-xs">Reopen</button>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if not account_data.metadata.is_editable %}
+    <div class="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        Finalised{% if estate_account.finalised_at %} on {{ estate_account.finalised_at|date:"d/m/Y" }}{% endif %}. Reopen to edit.
+    </div>
+    {% endif %}
+
+    <details class="bundle-linear-panel" open>
+        <summary class="cursor-pointer font-medium text-sm text-gray-900">Cover &amp; dates</summary>
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label class="text-xs text-gray-600">Deceased name
+                <input type="text" class="bundle-linear-field w-full mt-1" data-header-field="deceased_name"
+                       value="{{ account_data.metadata.deceased_name }}"
+                       data-original-value="{{ account_data.metadata.deceased_name }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+            </label>
+            <label class="text-xs text-gray-600">Date of death
+                <input type="date" class="bundle-linear-field w-full mt-1" data-header-field="date_of_death"
+                       value="{{ account_data.metadata.date_of_death }}"
+                       data-original-value="{{ account_data.metadata.date_of_death }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+            </label>
+            <label class="text-xs text-gray-600">Account date
+                <input type="date" class="bundle-linear-field w-full mt-1" data-header-field="account_date"
+                       value="{{ account_data.metadata.account_date }}"
+                       data-original-value="{{ account_data.metadata.account_date }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+            </label>
+            <label class="text-xs text-gray-600">Inheritance tax
+                <input type="number" step="0.01" class="bundle-linear-field w-full mt-1" data-header-field="inheritance_tax"
+                       value="{{ account_data.metadata.inheritance_tax }}"
+                       data-original-value="{{ account_data.metadata.inheritance_tax }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+            </label>
+            <label class="text-xs text-gray-600 md:col-span-2">Prepared by name
+                <input type="text" class="bundle-linear-field w-full mt-1" data-header-field="prepared_by_name"
+                       value="{{ account_data.metadata.prepared_by_name }}"
+                       data-original-value="{{ account_data.metadata.prepared_by_name }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+            </label>
+            <label class="text-xs text-gray-600 md:col-span-2">Prepared by address
+                <textarea class="estate-auto-textarea bundle-linear-field w-full mt-1" data-header-field="prepared_by_address"
+                          data-original-value="{{ account_data.metadata.prepared_by_address }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>{{ account_data.metadata.prepared_by_address }}</textarea>
+            </label>
+        </div>
+    </details>
+
+    <details class="bundle-linear-panel" open>
+        <summary class="cursor-pointer font-medium text-sm text-gray-900">Assets</summary>
+        <div class="estate-lines-table-wrap mt-4 overflow-x-auto">
+            <table class="estate-lines-table w-full">
+                <thead>
+                    <tr>
+                        <th scope="col">Source</th>
+                        <th scope="col">Date</th>
+                        <th scope="col">Description</th>
+                        <th scope="col" class="estate-lines-table-amount">Amount</th>
+                        <th scope="col" class="estate-lines-table-actions"></th>
+                    </tr>
+                </thead>
+                <tbody id="estate-assets-list">
+                    {% for line in account_data.assets %}
+                    {% include 'estate_account_line.html' with line=line section='asset' %}
+                    {% empty %}
+                    <tr class="estate-empty-msg">
+                        <td colspan="5">No asset lines yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if account_data.metadata.is_editable %}
+        <button type="button" class="bundle-linear-btn text-xs mt-3" data-add-line="asset">Add asset line</button>
+        {% endif %}
+    </details>
+
+    <details class="bundle-linear-panel" open>
+        <summary class="cursor-pointer font-medium text-sm text-gray-900">Debts due at death</summary>
+        <div class="estate-lines-table-wrap mt-4 overflow-x-auto">
+            <table class="estate-lines-table w-full">
+                <thead>
+                    <tr>
+                        <th scope="col">Source</th>
+                        <th scope="col">Date</th>
+                        <th scope="col">Description</th>
+                        <th scope="col" class="estate-lines-table-amount">Amount</th>
+                        <th scope="col" class="estate-lines-table-actions"></th>
+                    </tr>
+                </thead>
+                <tbody id="estate-debts-list">
+                    {% for line in account_data.debts %}
+                    {% include 'estate_account_line.html' with line=line section='debt' %}
+                    {% empty %}
+                    <tr class="estate-empty-msg">
+                        <td colspan="5">No debt lines yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if account_data.metadata.is_editable %}
+        <button type="button" class="bundle-linear-btn text-xs mt-3" data-add-line="debt">Add debt line</button>
+        {% endif %}
+    </details>
+
+    <div class="bundle-linear-panel" id="estate-totals-panel">
+        <p class="bundle-edit-section-label mb-3">Totals</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
+            <div>Gross estate: <strong id="total-gross">{{ account_data.totals.gross_estate_display }}</strong></div>
+            <div>Total debts paid: <strong id="total-debts">{{ account_data.totals.total_debts_paid_display }}</strong></div>
+            <div>Net estate: <strong id="total-net">{{ account_data.totals.net_estate_display }}</strong></div>
+            <div>Inheritance tax: <strong id="total-iht">{{ account_data.totals.inheritance_tax_display }}</strong></div>
+            <div>Balance for distribution: <strong id="total-balance">{{ account_data.totals.balance_for_distribution_display }}</strong></div>
+            <div>Distribution total: <strong id="total-distribution">{{ account_data.totals.distribution_total_display }}</strong></div>
+        </div>
+        <label class="mt-3 flex items-center gap-2 text-xs text-gray-600">
+            <input type="checkbox" id="use-manual-totals" data-header-field="use_manual_totals"
+                   {% if account_data.metadata.use_manual_totals %}checked{% endif %}
+                   {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+            Use manual totals
+        </label>
+        <div id="manual-totals-fields" class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 {% if not account_data.metadata.use_manual_totals %}hidden{% endif %}">
+            <label class="text-xs text-gray-600">Manual gross
+                <input type="number" step="0.01" class="bundle-linear-field w-full mt-1" data-header-field="manual_gross_estate"
+                       value="{{ account_data.metadata.manual_gross_estate }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+            </label>
+            <label class="text-xs text-gray-600">Manual debts
+                <input type="number" step="0.01" class="bundle-linear-field w-full mt-1" data-header-field="manual_total_debts"
+                       value="{{ account_data.metadata.manual_total_debts }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+            </label>
+            <label class="text-xs text-gray-600">Manual net
+                <input type="number" step="0.01" class="bundle-linear-field w-full mt-1" data-header-field="manual_net_estate"
+                       value="{{ account_data.metadata.manual_net_estate }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+            </label>
+            <label class="text-xs text-gray-600">Manual balance
+                <input type="number" step="0.01" class="bundle-linear-field w-full mt-1" data-header-field="manual_balance_for_distribution"
+                       value="{{ account_data.metadata.manual_balance_for_distribution }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+            </label>
+        </div>
+    </div>
+
+    <details class="bundle-linear-panel">
+        <summary class="cursor-pointer font-medium text-sm text-gray-900">Distribution account</summary>
+        <div class="mt-4 space-y-3">
+            <label class="text-xs text-gray-600 block">Will clause / residue
+                <textarea class="estate-auto-textarea bundle-linear-field w-full mt-1" data-header-field="will_clause_text"
+                          data-original-value="{{ account_data.metadata.will_clause_text|escape }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>{{ account_data.metadata.will_clause_text }}</textarea>
+            </label>
+            <div id="estate-distributions-list" class="space-y-2">
+                {% for row in account_data.distributions %}
+                {% include 'estate_account_distribution_row.html' with row=row %}
+                {% endfor %}
+            </div>
+            {% if account_data.metadata.is_editable %}
+            <button type="button" class="bundle-linear-btn text-xs" id="estate-add-distribution">Add beneficiary</button>
+            {% endif %}
+            <label class="text-xs text-gray-600 block">P.s. note
+                <textarea class="estate-auto-textarea bundle-linear-field w-full mt-1" data-header-field="distribution_notes"
+                          data-original-value="{{ account_data.metadata.distribution_notes|escape }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>{{ account_data.metadata.distribution_notes }}</textarea>
+            </label>
+        </div>
+    </details>
+
+    <details class="bundle-linear-panel">
+        <summary class="cursor-pointer font-medium text-sm text-gray-900">Acknowledgement</summary>
+        <div class="mt-4 space-y-3">
+            <label class="text-xs text-gray-600 block">Acknowledgement text
+                <textarea class="estate-auto-textarea bundle-linear-field w-full mt-1" data-header-field="acknowledgement_text"
+                          data-original-value="{{ account_data.metadata.acknowledgement_text|escape }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>{{ account_data.metadata.acknowledgement_text }}</textarea>
+            </label>
+            <p class="text-xs text-gray-500">Signing clients are taken from the matter's client records.</p>
+            <div id="estate-signers-list" class="space-y-2">
+                {% for signer in account_data.signers %}
+                {% include 'estate_account_signer_row.html' with signer=signer %}
+                {% empty %}
+                <p class="text-xs text-gray-500">No clients on this matter.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </details>
+</div>
+
+<script src="{% static 'js/estate-account.js' %}"></script>
+{% endblock %}

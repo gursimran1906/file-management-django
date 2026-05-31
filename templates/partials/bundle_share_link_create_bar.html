@@ -1,0 +1,20 @@
+<div class="bundle-share-create-bar flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+    {% if link_scope != 'organization' %}
+    <label class="flex items-start gap-2.5 text-sm text-gray-700 cursor-pointer min-w-0 sm:max-w-[60%]">
+        <input type="checkbox" class="bundle-share-use-password mt-0.5 rounded border-gray-300 shrink-0" checked>
+        <span class="min-w-0">
+            <span class="font-medium block">Password-protect this link</span>
+            <span class="text-xs text-gray-500 block mt-0.5 leading-snug">Microsoft generates a password to send with the link.</span>
+        </span>
+    </label>
+    {% endif %}
+    <div class="flex flex-wrap items-center gap-2 shrink-0{% if link_scope == 'organization' %} sm:ml-auto{% endif %}">
+        <button type="button"
+                id="{{ create_btn_id }}"
+                onclick="{{ create_onclick }}"
+                class="btn-primary text-xs bundle-share-create-btn">Create share link</button>
+        {% if show_close %}
+        <button type="button" class="btn-secondary text-xs" data-close-modal>Close</button>
+        {% endif %}
+    </div>
+</div>

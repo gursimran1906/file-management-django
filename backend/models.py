@@ -1121,6 +1121,12 @@ class Bundle(models.Model):
     hearing_line = models.CharField(max_length=255, blank=True, default='')
     conference_line = models.CharField(max_length=255, blank=True, default='')
     court_parties = models.JSONField(default=list, blank=True)
+    share_link_url = models.URLField(max_length=512, blank=True, default='')
+    share_link_permission_id = models.CharField(
+        max_length=255, blank=True, default='')
+    share_link_password = models.CharField(max_length=128, blank=True, default='')
+    share_link_expires_at = models.DateTimeField(null=True, blank=True)
+    share_link_created_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.name} - {self.file_number}"
@@ -1144,6 +1150,38 @@ class Bundle(models.Model):
         claimants = [party for party in parties if party.get('side') == 'claimant']
         defendants = [party for party in parties if party.get('side') == 'defendant']
         return claimants, defendants
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class BundleShareLink(models.Model):
+    """Microsoft sharing link created for a bundle final PDF."""
+    bundle = models.ForeignKey(
+        Bundle, on_delete=models.CASCADE, related_name='share_links')
+    url = models.URLField(max_length=512)
+    permission_id = models.CharField(max_length=255)
+    password = models.CharField(max_length=128, blank=True, default='')
+    use_password = models.BooleanField(default=False)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    def is_active(self):
+        if self.revoked_at:
+            return False
+        if self.expires_at and self.expires_at <= timezone.now():
+            return False
+        return True
+
+    def status_label(self):
+        if self.revoked_at:
+            return 'revoked'
+        if self.expires_at and self.expires_at <= timezone.now():
+            return 'expired'
+        return 'active'
 
     class Meta:
         ordering = ['-created_at']
@@ -1216,3 +1254,177 @@ class BundleDocument(models.Model):
     class Meta:
         ordering = ['order']
         unique_together = ('section', 'order')
+
+
+DEFAULT_PREPARED_BY_ADDRESS = (
+    'ANP Solicitors\n290 Kiln Road\nBenfleet\nEssex\nSS7 1QT'
+)
+
+DEFAULT_ACKNOWLEDGEMENT_TEXT = (
+    '1. That we have examined and approved the Estate Account and Distribution '
+    'Accounts submitted to us by ANP Solicitors of 290 Kiln Road, Benfleet, '
+    'Essex, SS7 1QT;\n'
+    '2. That we accept the sums in the Estate and Distribution Account have been '
+    'distributed in accordance with the terms of the Will;\n'
+    '3. All sums set out in the Estate and Distribution Account is full and final '
+    'satisfaction of the beneficiaries entitlement;\n'
+    '4. That such payment to each beneficiary will be a complete discharge of my '
+    'duties as the Executor;\n'
+    '5. To the best of my knowledge and ability, we have discharged our duties to '
+    'the Estate and the Beneficiaries in full.'
+)
+
+
+class EstateAccount(models.Model):
+    STATUS_INTERIM = 'interim'
+    STATUS_FINALISED = 'finalised'
+    STATUS_CHOICES = (
+        (STATUS_INTERIM, 'Interim'),
+        (STATUS_FINALISED, 'Finalised'),
+    )
+
+    id = models.AutoField(primary_key=True)
+    matter = models.OneToOneField(
+        WIP, on_delete=models.CASCADE, related_name='estate_account')
+    status = models.CharField(
+        max_length=16, choices=STATUS_CHOICES, default=STATUS_INTERIM)
+    deceased_name = models.CharField(max_length=255, blank=True)
+    date_of_death = models.DateField(null=True, blank=True)
+    account_date = models.DateField(null=True, blank=True)
+    prepared_by_name = models.CharField(
+        max_length=255, default='ANP Solicitors')
+    prepared_by_address = models.TextField(default=DEFAULT_PREPARED_BY_ADDRESS)
+    inheritance_tax = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    will_clause_text = models.TextField(blank=True)
+    distribution_notes = models.TextField(blank=True)
+    acknowledgement_text = models.TextField(default=DEFAULT_ACKNOWLEDGEMENT_TEXT)
+    use_manual_totals = models.BooleanField(default=False)
+    manual_gross_estate = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    manual_total_debts = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    manual_net_estate = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    manual_balance_for_distribution = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    finance_snapshot = models.JSONField(null=True, blank=True)
+    finalised_at = models.DateTimeField(null=True, blank=True)
+    finalised_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='estate_accounts_finalised')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'Estate Account - {self.matter.file_number}'
+
+
+class EstateAccountFinanceLineOverride(models.Model):
+    SOURCE_SLIP = 'slip'
+    SOURCE_GREEN_SLIP = 'green_slip'
+    SOURCE_INVOICE = 'invoice'
+    SOURCE_CREDIT_NOTE = 'credit_note'
+    SOURCE_TYPE_CHOICES = (
+        (SOURCE_SLIP, 'Payment slip'),
+        (SOURCE_GREEN_SLIP, 'Green slip'),
+        (SOURCE_INVOICE, 'Invoice'),
+        (SOURCE_CREDIT_NOTE, 'Credit note'),
+    )
+    SECTION_ASSET = 'asset'
+    SECTION_DEBT = 'debt'
+    SECTION_CHOICES = (
+        (SECTION_ASSET, 'Asset'),
+        (SECTION_DEBT, 'Debt'),
+    )
+
+    id = models.AutoField(primary_key=True)
+    estate_account = models.ForeignKey(
+        EstateAccount, on_delete=models.CASCADE, related_name='finance_overrides')
+    source_type = models.CharField(max_length=16, choices=SOURCE_TYPE_CHOICES)
+    source_id = models.PositiveIntegerField()
+    is_excluded = models.BooleanField(default=False)
+    date_override = models.DateField(null=True, blank=True)
+    description_override = models.CharField(max_length=500, blank=True)
+    amount_override = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    section_override = models.CharField(
+        max_length=8, choices=SECTION_CHOICES, null=True, blank=True)
+    sort_order = models.IntegerField(default=0)
+
+    class Meta:
+        unique_together = ('estate_account', 'source_type', 'source_id')
+
+    def __str__(self):
+        return f'{self.source_type}:{self.source_id}'
+
+
+class EstateAccountManualEntry(models.Model):
+    SECTION_ASSET = 'asset'
+    SECTION_DEBT = 'debt'
+    SECTION_CHOICES = (
+        (SECTION_ASSET, 'Asset'),
+        (SECTION_DEBT, 'Debt'),
+    )
+
+    id = models.AutoField(primary_key=True)
+    estate_account = models.ForeignKey(
+        EstateAccount, on_delete=models.CASCADE, related_name='manual_entries')
+    section = models.CharField(max_length=8, choices=SECTION_CHOICES)
+    date = models.DateField(null=True, blank=True)
+    description = models.CharField(max_length=500)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    is_pending = models.BooleanField(default=True)
+    sort_order = models.IntegerField(default=0)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['sort_order', 'date', 'id']
+
+    def __str__(self):
+        return f'{self.section}: {self.description}'
+
+
+class EstateAccountDistribution(models.Model):
+    id = models.AutoField(primary_key=True)
+    estate_account = models.ForeignKey(
+        EstateAccount, on_delete=models.CASCADE, related_name='distributions')
+    beneficiary_name = models.CharField(max_length=255)
+    share_fraction = models.CharField(max_length=32, blank=True)
+    gross_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    adjustment_description = models.CharField(max_length=255, blank=True)
+    adjustment_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    net_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    sort_order = models.IntegerField(default=0)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['sort_order', 'id']
+
+    def save(self, *args, **kwargs):
+        adjustment = self.adjustment_amount or Decimal('0')
+        self.net_amount = self.gross_amount - adjustment
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.beneficiary_name
+
+
+class EstateAccountSigner(models.Model):
+    id = models.AutoField(primary_key=True)
+    estate_account = models.ForeignKey(
+        EstateAccount, on_delete=models.CASCADE, related_name='signers')
+    signer_name = models.CharField(max_length=255)
+    signer_address = models.TextField(blank=True)
+    sort_order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['sort_order', 'id']
+
+    def __str__(self):
+        return self.signer_name

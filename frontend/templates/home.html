@@ -447,6 +447,7 @@
                 <div class="mt-2 flex gap-3 text-xs">
                     <a href="{% url 'bundle_edit' bundle.id %}" class="link">Edit</a>
                     <a href="{% url 'bundle_download' bundle.id %}" class="link" onclick="return downloadBundlePdfLink(event, '{{ bundle.name|escapejs }}.pdf', {{ bundle.id }})">Download</a>
+                    <a href="#" class="link" onclick="return openBundleShareModal(event, {{ bundle.id }}, '{{ bundle.name|escapejs }}')">Share</a>
                 </div>
             </div>
             {% endfor %}
@@ -802,6 +803,36 @@
         </form>
     </div>
 </div>
+
+<div id="bundleShareLinkModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
+    <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
+        <div class="flex items-center justify-between border-b px-4 py-3">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">External sharing</h3>
+                <p id="bundle-share-modal-subtitle" class="text-xs text-gray-500 mt-0.5"></p>
+            </div>
+            <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal aria-label="Close">&times;</button>
+        </div>
+        <div class="p-4 space-y-3 text-sm text-gray-700">
+            <p id="home-share-link-disabled-note" class="hidden text-amber-700">
+                SharePoint storage is not enabled. External links require SharePoint file storage.
+            </p>
+            <p class="text-gray-600">
+                Creates a Microsoft view-only link to this bundle&apos;s final PDF only.
+                Recipients do not get access to other files, folders, or bundles.
+                Uses the existing PDF — if the bundle has changed, use Download PDF first.
+            </p>
+            <p id="home-share-link-scope-note" class="bundle-share-scope-note text-xs text-gray-500"></p>
+            {% include 'partials/bundle_share_link_risks.html' with link_scope=bundle_share_link_scope|default:"anonymous" %}
+            {% include 'partials/bundle_share_link_create_bar.html' with link_scope=bundle_share_link_scope|default:"anonymous" create_btn_id='home-share-link-create-btn' create_onclick='createHomeBundleShareLink()' show_close=True %}
+            <p id="home-share-link-stale-warning" class="bundle-share-stale-warning hidden text-amber-700 text-xs">
+                The bundle has changed since some links were created. Download an updated PDF and create a new link if needed.
+            </p>
+            <p class="bundle-share-links-empty text-xs text-gray-500">No share links created yet.</p>
+            <div class="bundle-share-links-list overflow-x-auto rounded-lg border border-gray-200 px-3 py-2 max-h-64 overflow-y-auto"></div>
+        </div>
+    </div>
+</div>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     var taskTabs = document.querySelectorAll(".home-task-tab");
@@ -916,6 +947,7 @@
   });
 </script>
 <script src="{% static 'js/bundle-filename-utils.js' %}"></script>
+<script src="{% static 'js/bundle-share-link.js' %}"></script>
 <script>
 function downloadBundlePdfLink(event, filename, bundleId) {
     event.preventDefault();
@@ -931,6 +963,103 @@ function downloadBundlePdfLink(event, filename, bundleId) {
         progressTitle: 'Generating PDF...',
     });
     return false;
+}
+
+let activeShareBundleId = null;
+
+function getHomeCsrfToken() {
+    const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    return csrfInput ? csrfInput.value : '';
+}
+
+function openBundleShareModal(event, bundleId, bundleName) {
+    event.preventDefault();
+    activeShareBundleId = bundleId;
+    document.getElementById('bundle-share-modal-subtitle').textContent = bundleName;
+    const modal = document.getElementById('bundleShareLinkModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    BundleShareLink.resetShareOptions(modal);
+    BundleShareLink.bindRoot(modal);
+    loadHomeShareLinkStatus();
+    return false;
+}
+
+function renderHomeShareLinkStatus(data) {
+    const root = document.getElementById('bundleShareLinkModal');
+    const disabledNote = document.getElementById('home-share-link-disabled-note');
+
+    if (!data.sharepoint_enabled) {
+        disabledNote.classList.remove('hidden');
+        BundleShareLink.setSharepointEnabled(root, false);
+        return;
+    }
+
+    disabledNote.classList.add('hidden');
+    BundleShareLink.setSharepointEnabled(root, true);
+    BundleShareLink.renderShareLinks(root, data, {
+        onRevoke: revokeHomeBundleShareLink,
+        buttonClass: 'btn-secondary text-xs shrink-0',
+    });
+}
+
+function loadHomeShareLinkStatus() {
+    if (!activeShareBundleId) {
+        return Promise.resolve();
+    }
+    return fetch(`/bundle/${activeShareBundleId}/share-link/`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    })
+    .then(response => response.json())
+    .then(renderHomeShareLinkStatus)
+    .catch(() => {});
+}
+
+async function createHomeBundleShareLink() {
+    if (!activeShareBundleId) {
+        return;
+    }
+
+    const root = document.getElementById('bundleShareLinkModal');
+
+    try {
+        const data = await BundleShareLink.createWithProgress({
+            root: root,
+            bundleId: activeShareBundleId,
+            csrfToken: getHomeCsrfToken(),
+            createPayload: BundleShareLink.createPayload(root),
+        });
+        BundleShareLink.resetShareOptions(root);
+        renderHomeShareLinkStatus(data);
+    } catch (error) {
+        alert(error.message || 'Could not create share link.');
+    }
+}
+
+async function revokeHomeBundleShareLink(linkId) {
+    if (!activeShareBundleId) {
+        return;
+    }
+    if (!confirm('Revoke this external share link? Recipients will no longer be able to open the file.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/bundle/${activeShareBundleId}/share-link/${linkId}/revoke/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getHomeCsrfToken(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || 'Could not revoke share link.');
+        }
+        renderHomeShareLinkStatus(data);
+    } catch (error) {
+        alert(error.message || 'Could not revoke share link.');
+    }
 }
 </script>
 {% endblock %}

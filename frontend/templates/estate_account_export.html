@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm 1.8cm 2.2cm 1.8cm;
+            @bottom-center {
+                content: "Estate Accounts {{ data.metadata.account_date_display }}    " counter(page) " of " counter(pages);
+                font-family: "Times New Roman", Times, serif;
+                font-size: 10pt;
+            }
+        }
+
+        body {
+            font-family: "Times New Roman", Times, serif;
+            font-size: 11pt;
+            color: #000;
+            line-height: 1.35;
+        }
+
+        .cover {
+            text-align: center;
+            margin-top: 4cm;
+        }
+
+        .cover-name {
+            font-size: 28pt;
+            font-weight: bold;
+            margin-bottom: 1.5cm;
+        }
+
+        .cover-title {
+            font-size: 20pt;
+            font-weight: bold;
+            text-decoration: underline;
+            margin-bottom: 2cm;
+        }
+
+        .cover-prepared {
+            font-size: 11pt;
+            white-space: pre-line;
+        }
+
+        .page-break {
+            page-break-before: always;
+        }
+
+        .header-block {
+            text-align: center;
+            margin-bottom: 0.8cm;
+        }
+
+        .header-block h2 {
+            font-size: 13pt;
+            margin: 0 0 0.2cm;
+        }
+
+        .section-title {
+            font-weight: bold;
+            text-decoration: underline;
+            margin: 0.5cm 0 0.3cm;
+        }
+
+        .line-item {
+            margin: 0.15cm 0;
+        }
+
+        .line-amount {
+            float: right;
+        }
+
+        .total-line {
+            margin-top: 0.6cm;
+            font-weight: bold;
+            text-decoration: underline;
+        }
+
+        .total-line .line-amount {
+            float: right;
+            text-decoration: underline;
+        }
+
+        .distribution-line {
+            margin: 0.2cm 0;
+        }
+
+        .notes {
+            margin-top: 0.6cm;
+            white-space: pre-line;
+        }
+
+        .ack-title {
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 0.5cm;
+        }
+
+        .ack-body {
+            white-space: pre-line;
+            margin-bottom: 1cm;
+        }
+
+        .signature-block {
+            margin-top: 1.2cm;
+        }
+    </style>
+</head>
+<body>
+    <section class="cover">
+        <div class="cover-name">{{ data.metadata.deceased_name|upper }}</div>
+        <div class="cover-title">Estate Account</div>
+        <div class="cover-prepared">Prepared by: -<br>
+            {{ data.metadata.prepared_by_name }}<br>
+            {{ data.metadata.prepared_by_address|linebreaksbr }}
+        </div>
+    </section>
+
+    <section class="page-break">
+        <div class="header-block">
+            <h2>{{ data.metadata.deceased_name|upper }}</h2>
+            {% if data.metadata.date_of_death_display %}
+            <p>Died {{ data.metadata.date_of_death_display }}</p>
+            {% endif %}
+            <p><strong><u>Estate Account</u></strong></p>
+        </div>
+        <div class="section-title">Assets</div>
+        {% for line in data.assets %}
+        {% if not line.is_excluded %}
+        <div class="line-item">
+            {% if line.date %}{{ line.date }} - {% endif %}{{ line.description }}
+            <span class="line-amount">{{ line.amount_display }}</span>
+        </div>
+        {% endif %}
+        {% empty %}
+        <div class="line-item">No assets recorded.</div>
+        {% endfor %}
+        <div class="total-line clearfix">
+            Gross Value of Estate Carried Forward
+            <span class="line-amount">{{ data.totals.gross_estate_display }}</span>
+        </div>
+    </section>
+
+    <section class="page-break">
+        <div class="header-block">
+            <h2>{{ data.metadata.deceased_name|upper }}</h2>
+            <p><strong><u>Estate Account</u></strong></p>
+        </div>
+        <div class="section-title">Assets (Cont.)</div>
+        <div class="line-item">Balance Brought forward <span class="line-amount">{{ data.totals.gross_estate_display }}</span></div>
+        <div class="section-title">Debts due at Death</div>
+        {% for line in data.debts %}
+        {% if not line.is_excluded %}
+        <div class="line-item">
+            {% if line.date %}{{ line.date }} - {% endif %}{{ line.description }}
+            <span class="line-amount">{{ line.amount_display }}</span>
+        </div>
+        {% endif %}
+        {% empty %}
+        <div class="line-item">No debts recorded.</div>
+        {% endfor %}
+        <div class="total-line clearfix">
+            Total sums paid
+            <span class="line-amount">{{ data.totals.total_debts_paid_display }}</span>
+        </div>
+        <div class="total-line clearfix">
+            Net Value of the Estate
+            <span class="line-amount">{{ data.totals.net_estate_display }}</span>
+        </div>
+    </section>
+
+    <section class="page-break">
+        <div class="header-block">
+            <h2>{{ data.metadata.deceased_name|upper }}</h2>
+            <p><strong><u>Estate Account</u></strong></p>
+        </div>
+        <div class="line-item">Balance Carried Forward <span class="line-amount">{{ data.totals.net_estate_display }}</span></div>
+        <div class="line-item">Inheritance tax <span class="line-amount">{{ data.totals.inheritance_tax_display }}</span></div>
+        <div class="total-line clearfix">
+            Balance available for Distribution
+            <span class="line-amount">{{ data.totals.balance_for_distribution_display }}</span>
+        </div>
+    </section>
+
+    <section class="page-break">
+        <div class="header-block">
+            <h2>{{ data.metadata.deceased_name|upper }}</h2>
+            <p><strong><u>Distribution Account</u></strong></p>
+        </div>
+        <div class="line-item">Balance available for distribution <span class="line-amount">{{ data.totals.balance_for_distribution_display }}</span></div>
+        {% if data.metadata.will_clause_text %}
+        <p>{{ data.metadata.will_clause_text }}</p>
+        {% endif %}
+        {% for row in data.distributions %}
+        <div class="distribution-line">
+            {{ row.beneficiary_name }}
+            {% if row.share_fraction %}{{ row.share_fraction }}{% endif %}
+            i.e. {{ row.gross_amount_display }}
+            {% if row.adjustment_amount and row.adjustment_amount != "0.00" %}
+            less {{ row.adjustment_amount_display }} for {{ row.adjustment_description }}
+            {% endif %}
+            {% if row.adjustment_amount and row.adjustment_amount != "0.00" %}
+            (net {{ row.net_amount_display }})
+            {% endif %}
+        </div>
+        {% endfor %}
+        <div class="total-line clearfix">
+            Total
+            <span class="line-amount">{{ data.totals.distribution_total_display }}</span>
+        </div>
+        {% if data.metadata.distribution_notes %}
+        <div class="notes">P.s. {{ data.metadata.distribution_notes }}</div>
+        {% endif %}
+    </section>
+
+    <section class="page-break">
+        <div class="ack-title">THE ESTATE OF LATE {{ data.metadata.deceased_name|upper }}<br>(ANP REF: {{ data.metadata.file_number }})</div>
+        <div class="ack-body">We, {% for signer in data.signers %}{{ signer.signer_name|upper }}{% if signer.signer_address %} of {{ signer.signer_address }}{% endif %}{% if not forloop.last %} and {% endif %}{% endfor %} HEREBY ACKNOWLEDGE:
+{{ data.metadata.acknowledgement_text }}</div>
+        {% for signer in data.signers %}
+        <div class="signature-block">
+            Signed: __________________________________________<br>
+            {{ signer.signer_name }}<br><br>
+            Date: __________________________________________
+        </div>
+        {% endfor %}
+    </section>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<tr class="estate-line-row{% if line.is_excluded %} estate-line-row--excluded{% endif %}"
+    data-line-kind="{{ line.line_kind }}"
+    {% if line.id %}data-line-id="{{ line.id }}"{% endif %}
+    {% if line.source_type %}data-source-type="{{ line.source_type }}" data-source-id="{{ line.source_id }}"{% endif %}>
+    <td class="estate-line-source">
+        {% if line.from_finances %}
+        <span class="estate-line-badge estate-line-badge--finance">Finances</span>
+        {% elif line.line_kind == 'manual' %}
+        <span class="estate-line-badge estate-line-badge--manual">Pending</span>
+        {% else %}
+        <span class="estate-line-badge estate-line-badge--empty" aria-hidden="true">—</span>
+        {% endif %}
+    </td>
+    <td class="estate-line-date-cell">
+        <input type="date" class="estate-line-date bundle-linear-field w-full" data-line-field="date"
+               value="{{ line.date_iso|default:'' }}" data-original-value="{{ line.date_iso|default:'' }}"
+               {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+    </td>
+    <td class="estate-line-desc-cell">
+        <input type="text" class="estate-line-desc bundle-linear-field w-full" data-line-field="description"
+               value="{{ line.description|default:'' }}" data-original-value="{{ line.description|default:'' }}"
+               placeholder="Description" {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+    </td>
+    <td class="estate-line-amount-cell">
+        <input type="number" step="0.01" class="estate-line-amount bundle-linear-field w-full" data-line-field="amount"
+               value="{{ line.amount|default:'' }}" data-original-value="{{ line.amount|default:'' }}"
+               placeholder="0.00" {% if not account_data.metadata.is_editable %}disabled{% endif %}>
+    </td>
+    <td class="estate-line-actions-cell">
+        {% if line.from_finances and account_data.metadata.is_editable %}
+        <label class="estate-line-action-label">
+            <input type="checkbox" data-line-field="is_excluded" {% if line.is_excluded %}checked{% endif %}> Exclude
+        </label>
+        {% elif line.from_finances and line.is_excluded %}
+        <span class="estate-line-action-label estate-line-action-label--muted">Excluded</span>
+        {% elif line.line_kind == 'manual' and account_data.metadata.is_editable %}
+        <div class="estate-line-actions">
+            <label class="estate-line-action-label">
+                <input type="checkbox" data-line-field="is_pending" {% if line.is_pending %}checked{% endif %}> Pending
+            </label>
+            <button type="button" class="estate-line-delete-btn" data-delete-line>Delete</button>
+        </div>
+        {% else %}
+        <span class="estate-line-action-empty" aria-hidden="true">—</span>
+        {% endif %}
+    </td>
+</tr>

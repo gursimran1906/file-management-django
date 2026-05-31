@@ -1,0 +1,10 @@
+<div class="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2 text-xs text-amber-950">
+    <p class="font-semibold text-sm text-amber-900">Confidentiality risks — read before sharing externally</p>
+    <ul class="list-disc pl-4 space-y-1.5 leading-relaxed">
+        <li>Anyone with the link{% if link_scope != 'organization' %} (and password, if used){% endif %} can view this PDF{% if link_scope != 'organization' %} without signing in{% endif %}.</li>
+        <li>The recipient can forward the link to others. You cannot control or audit who opens it{% if link_scope == 'organization' %} beyond people signed into the firm&apos;s Microsoft account{% endif %}.</li>
+        <li>Only this bundle&apos;s final PDF is shared — not other matters or files — but the PDF may still contain sensitive client or privileged material.</li>
+        <li>The link stays active until it expires or is revoked. Revoke it when sharing is no longer needed.</li>
+        <li>Ensure you are authorised to share this document and that the method is appropriate for this matter.</li>
+    </ul>
+</div>

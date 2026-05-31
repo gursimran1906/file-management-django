@@ -96,6 +96,28 @@
         </div>
     </details>
 
+    <details class="bundle-linear-panel" id="external-share-panel">
+        <summary class="cursor-pointer font-medium text-sm text-gray-900">External sharing (Microsoft link)</summary>
+        <div class="mt-4 space-y-3 text-sm text-gray-700">
+            <p id="share-link-disabled-note" class="hidden text-amber-700">
+                SharePoint storage is not enabled. External links require SharePoint file storage.
+            </p>
+            <p class="text-gray-600">
+                Creates a Microsoft view-only link to this bundle&apos;s final PDF only.
+                Recipients do not get access to other files, folders, or bundles.
+                Uses the existing PDF — if the bundle has changed, use Download PDF first.
+            </p>
+            <p id="share-link-scope-note" class="bundle-share-scope-note text-xs text-gray-500"></p>
+            {% include 'partials/bundle_share_link_risks.html' with link_scope=bundle_share_link_scope %}
+            {% include 'partials/bundle_share_link_create_bar.html' with link_scope=bundle_share_link_scope create_btn_id='share-link-create-btn' create_onclick='createBundleShareLink()' show_close=False %}
+            <p id="share-link-stale-warning" class="bundle-share-stale-warning hidden text-amber-700 text-xs">
+                The bundle has changed since some links were created. Download an updated PDF and create a new link if needed.
+            </p>
+            <p class="bundle-share-links-empty text-xs text-gray-500">No share links created yet.</p>
+            <div class="bundle-share-links-list overflow-x-auto rounded-lg border border-gray-200 px-3 py-2"></div>
+        </div>
+    </details>
+
     <details class="bundle-structure-panel" open>
         <summary>Bundle structure</summary>
         <div id="bundle-structure-outline" aria-live="polite"></div>
@@ -235,6 +257,7 @@
 <!-- Include Sortable.js for drag and drop -->
 <link rel="stylesheet" href="{% static 'css/bundle-tree.css' %}">
 <script src="{% static 'js/bundle-filename-utils.js' %}"></script>
+<script src="{% static 'js/bundle-share-link.js' %}"></script>
 <script src="{% static 'js/bundle-tree.js' %}"></script>
 <script src="{% static 'js/bundle-edit-pages.js' %}"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
@@ -1453,7 +1476,77 @@ function initCourtBundleForm() {
     document.getElementById('case_number_type').addEventListener('change', queueCourtSettingsSave);
 }
 
-document.addEventListener('DOMContentLoaded', initCourtBundleForm);
+document.addEventListener('DOMContentLoaded', () => {
+    initCourtBundleForm();
+    BundleShareLink.bindRoot(document.getElementById('external-share-panel'));
+    loadShareLinkStatus();
+});
+
+function renderShareLinkStatus(data) {
+    const root = document.getElementById('external-share-panel');
+    const disabledNote = document.getElementById('share-link-disabled-note');
+
+    if (!data.sharepoint_enabled) {
+        disabledNote.classList.remove('hidden');
+        BundleShareLink.setSharepointEnabled(root, false);
+        return;
+    }
+
+    disabledNote.classList.add('hidden');
+    BundleShareLink.setSharepointEnabled(root, true);
+    BundleShareLink.renderShareLinks(root, data, {
+        onRevoke: revokeBundleShareLink,
+    });
+}
+
+function loadShareLinkStatus() {
+    return fetch('{% url "bundle_share_link_status" bundle.id %}', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    })
+    .then(response => response.json())
+    .then(renderShareLinkStatus)
+    .catch(() => {});
+}
+
+async function createBundleShareLink() {
+    const root = document.getElementById('external-share-panel');
+
+    try {
+        const data = await BundleShareLink.createWithProgress({
+            root: root,
+            bundleId: {{ bundle.id }},
+            csrfToken: getCsrfToken(),
+            createPayload: BundleShareLink.createPayload(root),
+        });
+        BundleShareLink.resetShareOptions(root);
+        renderShareLinkStatus(data);
+    } catch (error) {
+        alert(error.message || 'Could not create share link.');
+    }
+}
+
+async function revokeBundleShareLink(linkId) {
+    if (!confirm('Revoke this external share link? Recipients will no longer be able to open the file.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/bundle/{{ bundle.id }}/share-link/${linkId}/revoke/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || 'Could not revoke share link.');
+        }
+        renderShareLinkStatus(data);
+    } catch (error) {
+        alert(error.message || 'Could not revoke share link.');
+    }
+}
 
 function getCsrfToken() {
     const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
