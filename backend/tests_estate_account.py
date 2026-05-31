@@ -92,6 +92,95 @@ class EstateAccountTests(TestCase):
         )
         self.assertEqual(data['signers'][1]['signer_name'], 'Jane Beneficiary')
 
+    def test_money_out_pink_slip_defaults_to_debt(self):
+        estate_account = get_or_create_estate_account(self.probate_matter, self.user)
+        PmtsSlips.objects.create(
+            file_number=self.probate_matter,
+            ledger_account='C',
+            mode_of_pmt='BT',
+            amount=Decimal('500.00'),
+            is_money_out=True,
+            pmt_person='Jane Beneficiary',
+            description='Estate share',
+            date=date(2023, 12, 1),
+            balance_left=Decimal('0.00'),
+            created_by=self.user,
+        )
+        data = get_estate_account_data(
+            estate_account,
+            self.probate_matter,
+            calculate_invoice_total_with_vat,
+        )
+        self.assertEqual(len(data['distribution_payments']), 0)
+        self.assertEqual(len(data['debts']), 1)
+        self.assertEqual(data['totals']['total_debts_paid'], '500.00')
+
+    def test_credit_note_reduces_invoice_debt(self):
+        estate_account = get_or_create_estate_account(self.probate_matter, self.user)
+        from .models import CreditNote, Invoices
+        invoice = Invoices.objects.create(
+            file_number=self.probate_matter,
+            invoice_number=1001,
+            state='F',
+            date=date(2023, 6, 1),
+            description='Probate costs',
+            our_costs=[100.00],
+            vat=Decimal('0.00'),
+            created_by=self.user,
+        )
+        CreditNote.objects.create(
+            invoice=invoice,
+            file_number=self.probate_matter,
+            date=date(2023, 6, 15),
+            amount=Decimal('25.00'),
+            reason='Adjustment',
+            status='F',
+            created_by=self.user,
+        )
+        data = get_estate_account_data(
+            estate_account,
+            self.probate_matter,
+            calculate_invoice_total_with_vat,
+        )
+        self.assertEqual(len(data['debts']), 1)
+        self.assertEqual(data['debts'][0]['amount'], '75.00')
+        self.assertIn('less credit', data['debts'][0]['description'].lower())
+        self.assertEqual(data['totals']['total_debts_paid'], '75.00')
+
+    def test_money_out_pink_slip_with_invoice_defaults_to_debt(self):
+        estate_account = get_or_create_estate_account(self.probate_matter, self.user)
+        from .models import Invoices
+        invoice = Invoices.objects.create(
+            file_number=self.probate_matter,
+            invoice_number=1001,
+            state='F',
+            date=date(2023, 6, 1),
+            description='Probate costs',
+            our_costs=[100.00],
+            vat=Decimal('0.00'),
+            created_by=self.user,
+        )
+        PmtsSlips.objects.create(
+            file_number=self.probate_matter,
+            ledger_account='C',
+            mode_of_pmt='BT',
+            amount=Decimal('100.00'),
+            is_money_out=True,
+            pmt_person='ANP',
+            description='Invoice payment',
+            date=date(2023, 6, 2),
+            balance_left=Decimal('0.00'),
+            amount_invoiced={str(invoice.id): {'amt_invoiced': '100.00'}},
+            created_by=self.user,
+        )
+        data = get_estate_account_data(
+            estate_account,
+            self.probate_matter,
+            calculate_invoice_total_with_vat,
+        )
+        self.assertEqual(len(data['debts']), 2)
+        self.assertEqual(len(data['distribution_payments']), 0)
+
     def test_get_estate_account_data_merges_finance_and_manual_entries(self):
         estate_account = get_or_create_estate_account(self.probate_matter, self.user)
         PmtsSlips.objects.create(

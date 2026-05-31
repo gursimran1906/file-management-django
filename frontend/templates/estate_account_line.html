@@ -4,7 +4,7 @@
     {% if line.source_type %}data-source-type="{{ line.source_type }}" data-source-id="{{ line.source_id }}"{% endif %}>
     <td class="estate-line-source">
         {% if line.from_finances %}
-        <span class="estate-line-badge estate-line-badge--finance">Finances</span>
+        <span class="estate-line-badge estate-line-badge--finance{% if line.source_type == 'slip' %} estate-line-badge--pink-slip{% endif %}">{{ line.source_label|default:"Finances" }}</span>
         {% elif line.line_kind == 'manual' %}
         <span class="estate-line-badge estate-line-badge--manual">Pending</span>
         {% else %}
@@ -28,11 +28,22 @@
     </td>
     <td class="estate-line-actions-cell">
         {% if line.from_finances and account_data.metadata.is_editable %}
-        <label class="estate-line-action-label">
-            <input type="checkbox" data-line-field="is_excluded" {% if line.is_excluded %}checked{% endif %}> Exclude
-        </label>
-        {% elif line.from_finances and line.is_excluded %}
-        <span class="estate-line-action-label estate-line-action-label--muted">Excluded</span>
+        <div class="estate-line-actions">
+            <select class="estate-line-section bundle-linear-field" data-line-field="section"
+                    data-original-value="{{ line.section }}" aria-label="Section">
+                <option value="asset" {% if line.section == 'asset' %}selected{% endif %}>Asset</option>
+                <option value="debt" {% if line.section == 'debt' %}selected{% endif %}>Debt</option>
+                <option value="distribution" {% if line.section == 'distribution' %}selected{% endif %}>Distribution</option>
+            </select>
+            <label class="estate-line-action-label">
+                <input type="checkbox" data-line-field="is_excluded" {% if line.is_excluded %}checked{% endif %}> Exclude
+            </label>
+        </div>
+        {% elif line.from_finances %}
+        <span class="estate-line-action-label estate-line-action-label--muted">{{ line.section|title }}</span>
+        {% if line.is_excluded %}
+        <span class="estate-line-action-label estate-line-action-label--muted">· Excluded</span>
+        {% endif %}
         {% elif line.line_kind == 'manual' and account_data.metadata.is_editable %}
         <div class="estate-line-actions">
             <label class="estate-line-action-label">

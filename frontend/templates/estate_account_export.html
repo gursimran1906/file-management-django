@@ -205,8 +205,23 @@
             {% endif %}
         </div>
         {% endfor %}
+        {% if data.distribution_payments %}
+        <div class="section-title">Payments made</div>
+        {% for line in data.distribution_payments %}
+        {% if not line.is_excluded %}
+        <div class="line-item">
+            {% if line.date %}{{ line.date }} - {% endif %}{{ line.description }}
+            <span class="line-amount">{{ line.amount_display }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
         <div class="total-line clearfix">
-            Total
+            Total payments made
+            <span class="line-amount">{{ data.totals.distribution_payments_total_display }}</span>
+        </div>
+        {% endif %}
+        <div class="total-line clearfix">
+            Beneficiary total
             <span class="line-amount">{{ data.totals.distribution_total_display }}</span>
         </div>
         {% if data.metadata.distribution_notes %}

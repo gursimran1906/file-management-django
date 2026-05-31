@@ -53,11 +53,40 @@
             'total-iht': totals.inheritance_tax_display,
             'total-balance': totals.balance_for_distribution_display,
             'total-distribution': totals.distribution_total_display,
+            'total-distribution-payments': totals.distribution_payments_total_display,
         };
         Object.entries(map).forEach(([id, value]) => {
             const el = document.getElementById(id);
             if (el) el.textContent = value;
         });
+    }
+
+    const SECTION_LIST_IDS = {
+        asset: 'estate-assets-list',
+        debt: 'estate-debts-list',
+        distribution: 'estate-distribution-payments-list',
+    };
+
+    function moveLineRowToSection(row, section) {
+        const targetId = SECTION_LIST_IDS[section];
+        if (!targetId) return;
+        const targetBody = document.getElementById(targetId);
+        const sourceBody = row.closest('tbody');
+        if (!targetBody || sourceBody === targetBody) return;
+
+        const targetEmpty = targetBody.querySelector('.estate-empty-msg');
+        if (targetEmpty) targetEmpty.remove();
+
+        targetBody.appendChild(row);
+
+        if (sourceBody && !sourceBody.querySelector('.estate-line-row')) {
+            sourceBody.insertAdjacentHTML('beforeend', emptyLineMessage(sourceBody.id));
+        }
+
+        const sectionField = row.querySelector('[data-line-field="section"]');
+        if (sectionField) {
+            sectionField.dataset.originalValue = section;
+        }
     }
 
     function autoResizeTextarea(textarea) {
@@ -137,7 +166,14 @@
 
     function saveLineRow(row) {
         if (!editable) return Promise.resolve();
+        const sectionField = row.querySelector('[data-line-field="section"]');
+        const sectionChanged = sectionField
+            && sectionField.dataset.originalValue !== undefined
+            && sectionField.value !== sectionField.dataset.originalValue;
         return postJson(app.dataset.lineUpdateUrl, linePayload(row)).then(() => {
+            if (sectionChanged && sectionField) {
+                moveLineRowToSection(row, sectionField.value);
+            }
             row.querySelectorAll('[data-line-field]').forEach(field => {
                 if (field.dataset.originalValue !== undefined) {
                     field.dataset.originalValue = field.value;
@@ -174,7 +210,12 @@
     }
 
     function emptyLineMessage(listId) {
-        const label = listId === 'estate-assets-list' ? 'asset' : 'debt';
+        const labels = {
+            'estate-assets-list': 'asset',
+            'estate-debts-list': 'debt',
+            'estate-distribution-payments-list': 'distribution payment from Finances',
+        };
+        const label = labels[listId] || 'line';
         return `<tr class="estate-empty-msg"><td colspan="5">No ${label} lines yet.</td></tr>`;
     }
 
@@ -282,6 +323,8 @@
                         }
                         saveLineRow(row);
                     });
+                } else if (field.tagName === 'SELECT') {
+                    field.addEventListener('change', () => saveLineRow(row));
                 }
             });
             const deleteBtn = row.querySelector('[data-delete-line]');

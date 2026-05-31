@@ -1039,7 +1039,7 @@
 }
 
 #estate-account-app .estate-lines-table-actions {
-    width: 8.5rem;
+    width: 11rem;
 }
 
 #estate-account-app .estate-lines-table td {
@@ -1073,7 +1073,7 @@
 }
 
 #estate-account-app .estate-line-actions-cell {
-    width: 8.5rem;
+    width: 11rem;
     text-align: right;
 }
 
@@ -1093,6 +1093,17 @@
 #estate-account-app .estate-line-badge--finance {
     background: #dbeafe;
     color: #1d4ed8;
+}
+
+#estate-account-app .estate-line-badge--pink-slip {
+    background: #fce7f3;
+    color: #be185d;
+}
+
+#estate-account-app .estate-line-section {
+    min-width: 6.5rem;
+    height: 2rem;
+    font-size: 0.75rem;
 }
 
 #estate-account-app .estate-line-badge--manual {

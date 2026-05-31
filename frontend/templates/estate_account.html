@@ -145,7 +145,8 @@
             <div>Net estate: <strong id="total-net">{{ account_data.totals.net_estate_display }}</strong></div>
             <div>Inheritance tax: <strong id="total-iht">{{ account_data.totals.inheritance_tax_display }}</strong></div>
             <div>Balance for distribution: <strong id="total-balance">{{ account_data.totals.balance_for_distribution_display }}</strong></div>
-            <div>Distribution total: <strong id="total-distribution">{{ account_data.totals.distribution_total_display }}</strong></div>
+            <div>Beneficiary total: <strong id="total-distribution">{{ account_data.totals.distribution_total_display }}</strong></div>
+            <div>Distribution payments: <strong id="total-distribution-payments">{{ account_data.totals.distribution_payments_total_display }}</strong></div>
         </div>
         <label class="mt-3 flex items-center gap-2 text-xs text-gray-600">
             <input type="checkbox" id="use-manual-totals" data-header-field="use_manual_totals"
@@ -176,6 +177,32 @@
     <details class="bundle-linear-panel">
         <summary class="cursor-pointer font-medium text-sm text-gray-900">Distribution account</summary>
         <div class="mt-4 space-y-3">
+            <div>
+                <p class="text-xs font-medium text-gray-700 mb-2">Payments from Finances</p>
+                <p class="text-xs text-gray-500 mb-2">Use the Section dropdown on any finance line to move it here from Assets or Debts when it is a beneficiary payment.</p>
+                <div class="estate-lines-table-wrap overflow-x-auto">
+                    <table class="estate-lines-table w-full">
+                        <thead>
+                            <tr>
+                                <th scope="col">Source</th>
+                                <th scope="col">Date</th>
+                                <th scope="col">Description</th>
+                                <th scope="col" class="estate-lines-table-amount">Amount</th>
+                                <th scope="col" class="estate-lines-table-actions"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="estate-distribution-payments-list">
+                            {% for line in account_data.distribution_payments %}
+                            {% include 'estate_account_line.html' with line=line %}
+                            {% empty %}
+                            <tr class="estate-empty-msg">
+                                <td colspan="5">No distribution payments from Finances yet.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
             <label class="text-xs text-gray-600 block">Will clause / residue
                 <textarea class="estate-auto-textarea bundle-linear-field w-full mt-1" data-header-field="will_clause_text"
                           data-original-value="{{ account_data.metadata.will_clause_text|escape }}" {% if not account_data.metadata.is_editable %}disabled{% endif %}>{{ account_data.metadata.will_clause_text }}</textarea>

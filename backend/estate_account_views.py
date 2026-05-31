@@ -237,6 +237,7 @@ def estate_account_line_update(request, file_number):
     if 'section' in data and data.get('section') in {
         EstateAccountFinanceLineOverride.SECTION_ASSET,
         EstateAccountFinanceLineOverride.SECTION_DEBT,
+        EstateAccountFinanceLineOverride.SECTION_DISTRIBUTION,
     }:
         override.section_override = data.get('section')
     if 'sort_order' in data:

@@ -130,21 +130,45 @@ def get_or_create_estate_account(matter, user=None):
     return account
 
 
+FINANCE_SOURCE_LABELS = {
+    EstateAccountFinanceLineOverride.SOURCE_SLIP: 'Pink slip',
+    EstateAccountFinanceLineOverride.SOURCE_GREEN_SLIP: 'Green slip',
+    EstateAccountFinanceLineOverride.SOURCE_INVOICE: 'Invoice',
+    EstateAccountFinanceLineOverride.SOURCE_CREDIT_NOTE: 'Credit note',
+}
+
+
+def _default_section_for_slip(slip):
+    if slip.is_money_out:
+        return EstateAccountFinanceLineOverride.SECTION_DEBT
+    return EstateAccountFinanceLineOverride.SECTION_ASSET
+
+
+def _credit_notes_by_invoice(matter):
+    credits = {}
+    for credit_note in CreditNote.objects.filter(
+        file_number=matter.id, status='F'
+    ):
+        credits[credit_note.invoice_id] = (
+            credits.get(credit_note.invoice_id, Decimal('0')) + credit_note.amount
+        )
+    return credits
+
+
 def _finance_rows_for_matter(matter, calculate_invoice_total_with_vat):
     file_number = matter.file_number
     rows = []
 
     for slip in PmtsSlips.objects.filter(file_number=matter.id):
-        if slip.is_money_out:
-            section = EstateAccountFinanceLineOverride.SECTION_DEBT
-            desc = f'{slip.pmt_person} - {slip.description}'.strip(' -')
-        else:
-            section = EstateAccountFinanceLineOverride.SECTION_ASSET
-            desc = f'{slip.pmt_person} - {slip.description}'.strip(' -')
+        section = _default_section_for_slip(slip)
+        desc = f'{slip.pmt_person} - {slip.description}'.strip(' -')
         rows.append({
             'line_kind': 'finance',
             'source_type': EstateAccountFinanceLineOverride.SOURCE_SLIP,
             'source_id': slip.id,
+            'source_label': FINANCE_SOURCE_LABELS[
+                EstateAccountFinanceLineOverride.SOURCE_SLIP
+            ],
             'default_section': section,
             'date': slip.date,
             'description': desc,
@@ -166,11 +190,16 @@ def _finance_rows_for_matter(matter, calculate_invoice_total_with_vat):
             'line_kind': 'finance',
             'source_type': EstateAccountFinanceLineOverride.SOURCE_GREEN_SLIP,
             'source_id': slip.id,
+            'source_label': FINANCE_SOURCE_LABELS[
+                EstateAccountFinanceLineOverride.SOURCE_GREEN_SLIP
+            ],
             'default_section': section,
             'date': slip.date,
             'description': desc,
             'amount': slip.amount,
         })
+
+    credit_notes_by_invoice = _credit_notes_by_invoice(matter)
 
     for invoice in Invoices.objects.filter(file_number=matter.id):
         if invoice.state == 'F':
@@ -178,28 +207,21 @@ def _finance_rows_for_matter(matter, calculate_invoice_total_with_vat):
         else:
             desc = 'DRAFT ANP Invoice'
         _, _, total_cost_invoice = calculate_invoice_total_with_vat(invoice)
+        credit_total = credit_notes_by_invoice.pop(invoice.id, Decimal('0'))
+        net_amount = max(Decimal('0'), total_cost_invoice - credit_total)
+        if credit_total > 0:
+            desc = f'{desc} (less credit {_format_money(credit_total)})'
         rows.append({
             'line_kind': 'finance',
             'source_type': EstateAccountFinanceLineOverride.SOURCE_INVOICE,
             'source_id': invoice.id,
+            'source_label': FINANCE_SOURCE_LABELS[
+                EstateAccountFinanceLineOverride.SOURCE_INVOICE
+            ],
             'default_section': EstateAccountFinanceLineOverride.SECTION_DEBT,
             'date': invoice.date,
             'description': desc,
-            'amount': total_cost_invoice,
-        })
-
-    for credit_note in CreditNote.objects.filter(
-        file_number=matter.id, status='F'
-    ).select_related('invoice'):
-        invoice_number = credit_note.invoice.invoice_number or 'Draft'
-        rows.append({
-            'line_kind': 'finance',
-            'source_type': EstateAccountFinanceLineOverride.SOURCE_CREDIT_NOTE,
-            'source_id': credit_note.id,
-            'default_section': EstateAccountFinanceLineOverride.SECTION_ASSET,
-            'date': credit_note.date,
-            'description': f'Credit Note for ANP Invoice {invoice_number}',
-            'amount': credit_note.amount,
+            'amount': net_amount,
         })
 
     return rows
@@ -284,12 +306,18 @@ def _account_metadata(estate_account, matter):
     }
 
 
-def _compute_totals(estate_account, assets, debts, distributions):
+def _compute_totals(estate_account, assets, debts, distributions, distribution_payments=None):
+    distribution_payments = distribution_payments or []
     gross = sum(
         _decimal(line['amount']) for line in assets if not line.get('is_excluded')
     )
     total_debts = sum(
         _decimal(line['amount']) for line in debts if not line.get('is_excluded')
+    )
+    distribution_payments_total = sum(
+        _decimal(line['amount'])
+        for line in distribution_payments
+        if not line.get('is_excluded')
     )
     net_estate = gross - total_debts
     balance_for_distribution = net_estate - _decimal(estate_account.inheritance_tax)
@@ -320,6 +348,10 @@ def _compute_totals(estate_account, assets, debts, distributions):
         'balance_for_distribution_display': _format_money(balance_for_distribution),
         'distribution_total': str(distribution_total),
         'distribution_total_display': _format_money(distribution_total),
+        'distribution_payments_total': str(distribution_payments_total),
+        'distribution_payments_total_display': _format_money(
+            distribution_payments_total
+        ),
     }
 
 
@@ -330,6 +362,7 @@ def get_estate_account_data(estate_account, matter, calculate_invoice_total_with
     overrides = _override_map(estate_account)
     assets = []
     debts = []
+    distribution_payments = []
 
     for finance_row in _finance_rows_for_matter(matter, calculate_invoice_total_with_vat):
         key = (finance_row['source_type'], finance_row['source_id'])
@@ -359,6 +392,7 @@ def get_estate_account_data(estate_account, matter, calculate_invoice_total_with
             'override_id': override.id if override else None,
             'source_type': finance_row['source_type'],
             'source_id': finance_row['source_id'],
+            'source_label': finance_row.get('source_label', 'Finances'),
             'section': section,
             'date': date_value,
             'description': description,
@@ -368,8 +402,10 @@ def get_estate_account_data(estate_account, matter, calculate_invoice_total_with
             'from_finances': True,
             'sort_order': sort_order,
         }
-        if section == EstateAccountManualEntry.SECTION_ASSET:
+        if section == EstateAccountFinanceLineOverride.SECTION_ASSET:
             assets.append(line)
+        elif section == EstateAccountFinanceLineOverride.SECTION_DISTRIBUTION:
+            distribution_payments.append(line)
         else:
             debts.append(line)
 
@@ -396,6 +432,10 @@ def get_estate_account_data(estate_account, matter, calculate_invoice_total_with
 
     assets = [_serialize_line(line) for line in sorted(assets, key=_line_sort_key)]
     debts = [_serialize_line(line) for line in sorted(debts, key=_line_sort_key)]
+    distribution_payments = [
+        _serialize_line(line)
+        for line in sorted(distribution_payments, key=_line_sort_key)
+    ]
 
     distributions = [
         _serialize_distribution(row)
@@ -403,12 +443,15 @@ def get_estate_account_data(estate_account, matter, calculate_invoice_total_with
     ]
     signers = _matter_client_signers(matter)
     metadata = _account_metadata(estate_account, matter)
-    totals = _compute_totals(estate_account, assets, debts, distributions)
+    totals = _compute_totals(
+        estate_account, assets, debts, distributions, distribution_payments
+    )
 
     return {
         'metadata': metadata,
         'assets': assets,
         'debts': debts,
+        'distribution_payments': distribution_payments,
         'distributions': distributions,
         'signers': signers,
         'totals': totals,

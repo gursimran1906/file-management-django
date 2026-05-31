@@ -1333,9 +1333,11 @@ class EstateAccountFinanceLineOverride(models.Model):
     )
     SECTION_ASSET = 'asset'
     SECTION_DEBT = 'debt'
+    SECTION_DISTRIBUTION = 'distribution'
     SECTION_CHOICES = (
         (SECTION_ASSET, 'Asset'),
         (SECTION_DEBT, 'Debt'),
+        (SECTION_DISTRIBUTION, 'Distribution'),
     )
 
     id = models.AutoField(primary_key=True)
@@ -1349,7 +1351,7 @@ class EstateAccountFinanceLineOverride(models.Model):
     amount_override = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True)
     section_override = models.CharField(
-        max_length=8, choices=SECTION_CHOICES, null=True, blank=True)
+        max_length=12, choices=SECTION_CHOICES, null=True, blank=True)
     sort_order = models.IntegerField(default=0)
 
     class Meta:
