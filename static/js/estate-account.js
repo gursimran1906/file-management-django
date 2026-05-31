@@ -34,6 +34,7 @@
                 if (data.totals) {
                     updateTotals(data.totals);
                 }
+                updateAllSummaries();
                 setSaveStatus('Saved');
                 window.setTimeout(() => setSaveStatus(''), 1500);
                 return data;
@@ -59,6 +60,105 @@
             const el = document.getElementById(id);
             if (el) el.textContent = value;
         });
+    }
+
+    function formatMoney(amount) {
+        const value = Number(amount) || 0;
+        return new Intl.NumberFormat('en-GB', {
+            style: 'currency',
+            currency: 'GBP',
+        }).format(value);
+    }
+
+    function formatDisplayDate(isoValue) {
+        if (!isoValue) return '';
+        const [year, month, day] = isoValue.split('-');
+        if (!day) return isoValue;
+        return `${day}/${month}/${year}`;
+    }
+
+    function setSummaryText(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    }
+
+    function linesSummaryText(listId) {
+        const tbody = document.getElementById(listId);
+        if (!tbody) return 'No lines';
+        const rows = tbody.querySelectorAll('.estate-line-row:not(.estate-line-row--excluded)');
+        const excludedCount = tbody.querySelectorAll('.estate-line-row--excluded').length;
+        let total = 0;
+        rows.forEach(row => {
+            const amountField = row.querySelector('[data-line-field="amount"]');
+            if (amountField) total += parseFloat(amountField.value) || 0;
+        });
+        if (!rows.length) return 'No lines';
+        const lineWord = rows.length === 1 ? 'line' : 'lines';
+        let text = `${rows.length} ${lineWord} · ${formatMoney(total)}`;
+        if (excludedCount) {
+            const excludedWord = excludedCount === 1 ? 'line' : 'lines';
+            text += ` · ${excludedCount} excluded ${excludedWord}`;
+        }
+        return text;
+    }
+
+    function updateCoverSummary() {
+        const parts = [];
+        const deceased = app.querySelector('[data-header-field="deceased_name"]')?.value.trim();
+        const dod = app.querySelector('[data-header-field="date_of_death"]')?.value;
+        const accountDate = app.querySelector('[data-header-field="account_date"]')?.value;
+        const iht = app.querySelector('[data-header-field="inheritance_tax"]')?.value;
+        if (deceased) parts.push(deceased);
+        if (dod) parts.push(`DOD ${formatDisplayDate(dod)}`);
+        if (accountDate) parts.push(`Account ${formatDisplayDate(accountDate)}`);
+        if (iht !== undefined && iht !== '') parts.push(`IHT ${formatMoney(iht)}`);
+        setSummaryText('estate-summary-cover', parts.join(' · ') || 'Cover details not set');
+    }
+
+    function updateDistributionSummary() {
+        const parts = [];
+        const paymentsBody = document.getElementById('estate-distribution-payments-list');
+        const paymentCount = paymentsBody
+            ? paymentsBody.querySelectorAll('.estate-line-row:not(.estate-line-row--excluded)').length
+            : 0;
+        if (paymentCount) {
+            const paymentWord = paymentCount === 1 ? 'payment' : 'payments';
+            const paymentsTotal = document.getElementById('total-distribution-payments')?.textContent
+                || formatMoney(0);
+            parts.push(`${paymentCount} finance ${paymentWord} · ${paymentsTotal}`);
+        }
+        const beneficiaryCount = app.querySelectorAll('.estate-distribution-row').length;
+        if (beneficiaryCount) {
+            const beneficiaryWord = beneficiaryCount === 1 ? 'beneficiary' : 'beneficiaries';
+            parts.push(`${beneficiaryCount} ${beneficiaryWord}`);
+        }
+        const distributionTotal = document.getElementById('total-distribution')?.textContent
+            || formatMoney(0);
+        parts.push(`Total ${distributionTotal}`);
+        setSummaryText('estate-summary-distribution', parts.join(' · '));
+    }
+
+    function updateAcknowledgementSummary() {
+        const parts = [];
+        const signerCount = app.querySelectorAll('.estate-client-signer').length;
+        if (signerCount) {
+            const clientWord = signerCount === 1 ? 'client' : 'clients';
+            parts.push(`${signerCount} signing ${clientWord}`);
+        }
+        const text = app.querySelector('[data-header-field="acknowledgement_text"]')
+            ?.value.trim().replace(/\s+/g, ' ');
+        if (text) {
+            parts.push(text.length > 72 ? `${text.slice(0, 69).trim()}…` : text);
+        }
+        setSummaryText('estate-summary-acknowledgement', parts.join(' · ') || 'Acknowledgement not set');
+    }
+
+    function updateAllSummaries() {
+        updateCoverSummary();
+        setSummaryText('estate-summary-assets', linesSummaryText('estate-assets-list'));
+        setSummaryText('estate-summary-debts', linesSummaryText('estate-debts-list'));
+        updateDistributionSummary();
+        updateAcknowledgementSummary();
     }
 
     const SECTION_LIST_IDS = {
@@ -87,6 +187,7 @@
         if (sectionField) {
             sectionField.dataset.originalValue = section;
         }
+        updateAllSummaries();
     }
 
     function autoResizeTextarea(textarea) {
@@ -206,6 +307,7 @@
             if (list && !list.querySelector('.estate-line-row')) {
                 list.insertAdjacentHTML('beforeend', emptyLineMessage(list.id));
             }
+            updateAllSummaries();
         }).catch(() => {});
     }
 
@@ -351,7 +453,10 @@
                 deleteBtn.addEventListener('click', () => {
                     postJson(app.dataset.distributionDeleteUrl, {
                         id: row.dataset.distributionId,
-                    }).then(() => row.remove()).catch(() => {});
+                    }).then(() => {
+                        row.remove();
+                        updateAllSummaries();
+                    }).catch(() => {});
                 });
             }
         });
@@ -363,8 +468,17 @@
                 || field.dataset.headerField === 'will_clause_text'
                 || field.dataset.headerField === 'distribution_notes'
                 || field.dataset.headerField === 'acknowledgement_text') {
-                field.addEventListener('input', queueHeaderSave);
+                field.addEventListener('input', () => {
+                    queueHeaderSave();
+                    updateAllSummaries();
+                });
                 field.addEventListener('blur', queueHeaderSave);
+            } else if (field.dataset.headerField === 'deceased_name'
+                || field.dataset.headerField === 'date_of_death'
+                || field.dataset.headerField === 'account_date'
+                || field.dataset.headerField === 'inheritance_tax') {
+                field.addEventListener('input', updateCoverSummary);
+                field.addEventListener('blur', () => saveHeaderField(field).catch(() => {}));
             } else if (field.type === 'checkbox') {
                 field.addEventListener('change', () => {
                     if (field.id === 'use-manual-totals') {
@@ -423,4 +537,5 @@
     bindDistributionRows();
     bindActions();
     initAutoTextareas();
+    updateAllSummaries();
 })();

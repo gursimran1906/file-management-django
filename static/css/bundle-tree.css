@@ -1185,6 +1185,44 @@
     background: var(--linear-bg);
 }
 
+#estate-account-app .estate-details-panel summary {
+    list-style: none;
+}
+
+#estate-account-app .estate-details-panel summary::-webkit-details-marker {
+    display: none;
+}
+
+#estate-account-app .estate-details-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    cursor: pointer;
+    padding: 0.125rem 0;
+}
+
+#estate-account-app .estate-details-title {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--linear-text);
+}
+
+#estate-account-app .estate-details-collapsed-summary {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--linear-text-secondary);
+    text-align: right;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#estate-account-app .estate-details-panel[open] .estate-details-collapsed-summary {
+    display: none;
+}
+
 #estate-account-app .estate-signer-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;

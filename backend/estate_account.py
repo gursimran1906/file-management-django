@@ -276,6 +276,84 @@ def _serialize_signer(row):
     }
 
 
+def _lines_summary_text(lines):
+    active = [line for line in lines if not line.get('is_excluded')]
+    excluded_count = len(lines) - len(active)
+    total = sum(_decimal(line['amount']) for line in active)
+    if not active:
+        text = 'No lines'
+    else:
+        line_word = 'line' if len(active) == 1 else 'lines'
+        text = f'{len(active)} {line_word} · {_format_money(total)}'
+        if excluded_count:
+            excluded_word = 'line' if excluded_count == 1 else 'lines'
+            text += f' · {excluded_count} excluded {excluded_word}'
+    return text
+
+
+def _cover_summary_text(metadata):
+    parts = []
+    if metadata.get('deceased_name'):
+        parts.append(metadata['deceased_name'])
+    if metadata.get('date_of_death_display'):
+        parts.append(f'DOD {metadata["date_of_death_display"]}')
+    if metadata.get('account_date_display'):
+        parts.append(f'Account {metadata["account_date_display"]}')
+    if metadata.get('inheritance_tax_display'):
+        parts.append(f'IHT {metadata["inheritance_tax_display"]}')
+    return ' · '.join(parts) if parts else 'Cover details not set'
+
+
+def _distribution_summary_text(distribution_payments, distributions, totals):
+    parts = []
+    active_payments = [
+        line for line in distribution_payments if not line.get('is_excluded')
+    ]
+    if active_payments:
+        payment_word = 'payment' if len(active_payments) == 1 else 'payments'
+        parts.append(
+            f'{len(active_payments)} finance {payment_word} · '
+            f'{totals["distribution_payments_total_display"]}'
+        )
+    beneficiary_count = len(distributions)
+    if beneficiary_count:
+        beneficiary_word = 'beneficiary' if beneficiary_count == 1 else 'beneficiaries'
+        parts.append(f'{beneficiary_count} {beneficiary_word}')
+    parts.append(f'Total {totals["distribution_total_display"]}')
+    return ' · '.join(parts)
+
+
+def _acknowledgement_summary_text(signers, acknowledgement_text):
+    parts = []
+    signer_count = len(signers)
+    if signer_count:
+        client_word = 'client' if signer_count == 1 else 'clients'
+        parts.append(f'{signer_count} signing {client_word}')
+    text = (acknowledgement_text or '').strip()
+    if text:
+        preview = text.replace('\n', ' ')
+        if len(preview) > 72:
+            preview = f'{preview[:69].rstrip()}…'
+        parts.append(preview)
+    return ' · '.join(parts) if parts else 'Acknowledgement not set'
+
+
+def _build_section_summaries(
+    metadata, assets, debts, distribution_payments, distributions, signers, totals
+):
+    return {
+        'cover': _cover_summary_text(metadata),
+        'assets': _lines_summary_text(assets),
+        'debts': _lines_summary_text(debts),
+        'distribution': _distribution_summary_text(
+            distribution_payments, distributions, totals
+        ),
+        'acknowledgement': _acknowledgement_summary_text(
+            signers, metadata.get('acknowledgement_text')
+        ),
+    }
+
+
 def _account_metadata(estate_account, matter):
     return {
         'id': estate_account.id,
@@ -357,7 +435,21 @@ def _compute_totals(estate_account, assets, debts, distributions, distribution_p
 
 def get_estate_account_data(estate_account, matter, calculate_invoice_total_with_vat):
     if estate_account.status == EstateAccount.STATUS_FINALISED and estate_account.finance_snapshot:
-        return estate_account.finance_snapshot
+        snapshot = estate_account.finance_snapshot
+        if 'summaries' not in snapshot:
+            snapshot = {
+                **snapshot,
+                'summaries': _build_section_summaries(
+                    snapshot.get('metadata', {}),
+                    snapshot.get('assets', []),
+                    snapshot.get('debts', []),
+                    snapshot.get('distribution_payments', []),
+                    snapshot.get('distributions', []),
+                    snapshot.get('signers', []),
+                    snapshot.get('totals', {}),
+                ),
+            }
+        return snapshot
 
     overrides = _override_map(estate_account)
     assets = []
@@ -446,6 +538,15 @@ def get_estate_account_data(estate_account, matter, calculate_invoice_total_with
     totals = _compute_totals(
         estate_account, assets, debts, distributions, distribution_payments
     )
+    summaries = _build_section_summaries(
+        metadata,
+        assets,
+        debts,
+        distribution_payments,
+        distributions,
+        signers,
+        totals,
+    )
 
     return {
         'metadata': metadata,
@@ -455,6 +556,7 @@ def get_estate_account_data(estate_account, matter, calculate_invoice_total_with
         'distributions': distributions,
         'signers': signers,
         'totals': totals,
+        'summaries': summaries,
     }
 
 

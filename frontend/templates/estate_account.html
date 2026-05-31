@@ -44,8 +44,11 @@
     </div>
     {% endif %}
 
-    <details class="bundle-linear-panel" open>
-        <summary class="cursor-pointer font-medium text-sm text-gray-900">Cover &amp; dates</summary>
+    <details class="bundle-linear-panel estate-details-panel" open>
+        <summary class="estate-details-summary">
+            <span class="estate-details-title">Cover &amp; dates</span>
+            <span class="estate-details-collapsed-summary" id="estate-summary-cover">{{ account_data.summaries.cover }}</span>
+        </summary>
         <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
             <label class="text-xs text-gray-600">Deceased name
                 <input type="text" class="bundle-linear-field w-full mt-1" data-header-field="deceased_name"
@@ -79,8 +82,11 @@
         </div>
     </details>
 
-    <details class="bundle-linear-panel" open>
-        <summary class="cursor-pointer font-medium text-sm text-gray-900">Assets</summary>
+    <details class="bundle-linear-panel estate-details-panel" open>
+        <summary class="estate-details-summary">
+            <span class="estate-details-title">Assets</span>
+            <span class="estate-details-collapsed-summary" id="estate-summary-assets">{{ account_data.summaries.assets }}</span>
+        </summary>
         <div class="estate-lines-table-wrap mt-4 overflow-x-auto">
             <table class="estate-lines-table w-full">
                 <thead>
@@ -108,8 +114,11 @@
         {% endif %}
     </details>
 
-    <details class="bundle-linear-panel" open>
-        <summary class="cursor-pointer font-medium text-sm text-gray-900">Debts due at death</summary>
+    <details class="bundle-linear-panel estate-details-panel" open>
+        <summary class="estate-details-summary">
+            <span class="estate-details-title">Debts due at death</span>
+            <span class="estate-details-collapsed-summary" id="estate-summary-debts">{{ account_data.summaries.debts }}</span>
+        </summary>
         <div class="estate-lines-table-wrap mt-4 overflow-x-auto">
             <table class="estate-lines-table w-full">
                 <thead>
@@ -174,8 +183,11 @@
         </div>
     </div>
 
-    <details class="bundle-linear-panel">
-        <summary class="cursor-pointer font-medium text-sm text-gray-900">Distribution account</summary>
+    <details class="bundle-linear-panel estate-details-panel">
+        <summary class="estate-details-summary">
+            <span class="estate-details-title">Distribution account</span>
+            <span class="estate-details-collapsed-summary" id="estate-summary-distribution">{{ account_data.summaries.distribution }}</span>
+        </summary>
         <div class="mt-4 space-y-3">
             <div>
                 <p class="text-xs font-medium text-gray-700 mb-2">Payments from Finances</p>
@@ -222,8 +234,11 @@
         </div>
     </details>
 
-    <details class="bundle-linear-panel">
-        <summary class="cursor-pointer font-medium text-sm text-gray-900">Acknowledgement</summary>
+    <details class="bundle-linear-panel estate-details-panel">
+        <summary class="estate-details-summary">
+            <span class="estate-details-title">Acknowledgement</span>
+            <span class="estate-details-collapsed-summary" id="estate-summary-acknowledgement">{{ account_data.summaries.acknowledgement }}</span>
+        </summary>
         <div class="mt-4 space-y-3">
             <label class="text-xs text-gray-600 block">Acknowledgement text
                 <textarea class="estate-auto-textarea bundle-linear-field w-full mt-1" data-header-field="acknowledgement_text"
