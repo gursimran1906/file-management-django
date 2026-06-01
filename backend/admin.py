@@ -23,7 +23,9 @@ from .models import (Memo, Modifications, ClientContactDetails, AuthorisedPartie
                      ClientKeyDocument, MatterKeyDate,
                      FileLocation, FileStatus, MatterType, WIP, NextWork, LastWork, PmtsSlips,
                      LedgerAccountTransfers, Policy, PolicyVersion, TempSlips, Invoices, MatterEmails, MatterLetters,
-                     MatterAttendanceNotes, RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees, Undertaking,
+                     MatterAttendanceNotes, MatterEmailDraft, MatterEmailDraftAttachment,
+                     MatterTimeEvent, MatterTimeSession,
+                     RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees, Undertaking,
                      CreditNote, MatterFileReview, PricingItem,
                      Bundle, BundleSection, BundleDocument,
                      EstateAccount, EstateAccountFinanceLineOverride,
@@ -168,10 +170,34 @@ class CreditNoteAdmin(admin.ModelAdmin):
                     'status', 'created_by', 'approved_by', 'approved_on', 'timestamp']
 
 
+class MatterEmailDraftAttachmentInline(admin.TabularInline):
+    model = MatterEmailDraftAttachment
+    extra = 0
+    readonly_fields = ['original_name', 'size', 'content_type', 'created_at']
+
+
+@admin.register(MatterEmailDraft)
+class MatterEmailDraftAdmin(admin.ModelAdmin):
+    list_display = [
+        'id', 'file_number', 'user', 'subject', 'from_mailbox', 'updated_at',
+    ]
+    list_filter = ['updated_at']
+    inlines = [MatterEmailDraftAttachmentInline]
+
+
+@admin.register(MatterEmailDraftAttachment)
+class MatterEmailDraftAttachmentAdmin(admin.ModelAdmin):
+    list_display = ['id', 'draft', 'original_name', 'size', 'content_type', 'created_at']
+    list_filter = ['created_at']
+
+
 @admin.register(MatterEmails)
 class MatterEmailsAdmin(admin.ModelAdmin):
-    list_display = ['id', 'file_number', 'sender', 'receiver', 'body', 'description',
-                    'subject', 'is_sent', 'time', 'fee_earner', 'units', 'timestamp', 'link']
+    list_display = [
+        'id', 'file_number', 'subject', 'is_sent', 'time', 'fee_earner', 'units',
+        'sent_via_app', 'request_read_receipt', 'request_delivery_receipt', 'link',
+    ]
+    list_filter = ['is_sent', 'sent_via_app']
 
 
 @admin.register(MatterLetters)
@@ -184,6 +210,20 @@ class MatterLettersAdmin(admin.ModelAdmin):
 class MatterAttendanceNotesAdmin(admin.ModelAdmin):
     list_display = ['id', 'file_number', 'start_time', 'finish_time', 'subject_line',
                     'content', 'is_charged', 'person_attended', 'date', 'unit', 'created_by', 'timestamp']
+
+
+@admin.register(MatterTimeEvent)
+class MatterTimeEventAdmin(admin.ModelAdmin):
+    list_display = [
+        'id', 'file_number', 'user', 'description', 'activity_type',
+        'units', 'is_charged', 'status', 'source', 'ended_at',
+    ]
+    list_filter = ['status', 'activity_type', 'source', 'is_charged']
+
+
+@admin.register(MatterTimeSession)
+class MatterTimeSessionAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'file_number', 'started_at', 'activity_type']
 
 
 @admin.register(RiskAssessment)

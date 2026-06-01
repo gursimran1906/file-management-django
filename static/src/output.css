@@ -1302,6 +1302,10 @@ textarea.form-input {
   top: 5rem;
 }
 
+.top-\[var\(--navbar-height\)\] {
+  top: var(--navbar-height);
+}
+
 .z-10 {
   z-index: 10;
 }
@@ -1530,6 +1534,10 @@ textarea.form-input {
 
 .mt-auto {
   margin-top: auto;
+}
+
+.ml-auto {
+  margin-left: auto;
 }
 
 .line-clamp-2 {
@@ -1771,6 +1779,10 @@ textarea.form-input {
   min-height: 2.75rem;
 }
 
+.min-h-\[1\.25rem\] {
+  min-height: 1.25rem;
+}
+
 .\!w-auto {
   width: auto !important;
 }
@@ -1880,6 +1892,10 @@ textarea.form-input {
   width: 100%;
 }
 
+.w-16 {
+  width: 4rem;
+}
+
 .min-w-0 {
   min-width: 0px;
 }
@@ -1922,6 +1938,14 @@ textarea.form-input {
 
 .min-w-full {
   min-width: 100%;
+}
+
+.min-w-\[4rem\] {
+  min-width: 4rem;
+}
+
+.min-w-\[10rem\] {
+  min-width: 10rem;
 }
 
 .max-w-2xl {
@@ -2980,6 +3004,10 @@ textarea.form-input {
   background-color: rgb(255 255 255 / 0.4);
 }
 
+.bg-white\/95 {
+  background-color: rgb(255 255 255 / 0.95);
+}
+
 .bg-opacity-50 {
   --tw-bg-opacity: 0.5;
 }
@@ -3823,6 +3851,10 @@ textarea.form-input {
   color: rgb(63 63 70 / var(--tw-text-opacity, 1));
 }
 
+.text-amber-800\/80 {
+  color: rgb(146 64 14 / 0.8);
+}
+
 .underline {
   text-decoration-line: underline;
 }
@@ -3849,6 +3881,10 @@ textarea.form-input {
 
 .opacity-75 {
   opacity: 0.75;
+}
+
+.opacity-80 {
+  opacity: 0.8;
 }
 
 .shadow {
@@ -3897,6 +3933,12 @@ textarea.form-input {
 
 .filter {
   filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
+}
+
+.backdrop-blur {
+  --tw-backdrop-blur: blur(8px);
+  -webkit-backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
+  backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
 }
 
 .transition {

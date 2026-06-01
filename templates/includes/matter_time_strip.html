@@ -1,0 +1,56 @@
+{% if file_number %}
+<div id="matter-time-strip" class="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur px-4 py-2 shadow-sm" data-file-number="{{ file_number }}">
+  <div class="flex flex-wrap items-center gap-2 text-xs">
+    <span class="font-medium text-gray-700 shrink-0">Time on {{ file_number }}</span>
+    <span id="matter-time-display" class="tabular-nums text-gray-500 min-w-[4rem]"></span>
+    <button type="button" id="matter-time-start" class="btn-primary text-xs py-1">Start</button>
+    <button type="button" id="matter-time-stop" class="btn-disabled text-xs py-1" disabled>Stop &amp; log</button>
+    <button type="button" id="matter-time-cancel" class="btn-secondary text-xs py-1 hidden">Cancel</button>
+    <span class="text-gray-300">|</span>
+    <button type="button" class="matter-time-quick btn-secondary text-xs py-1" data-minutes="6" data-activity="telephone" data-label="Telephone call with client">+6m Call</button>
+    <button type="button" class="matter-time-quick btn-secondary text-xs py-1" data-minutes="6" data-activity="conference" data-label="Conference with counsel">+6m Conf</button>
+    <button type="button" class="matter-time-quick btn-secondary text-xs py-1" data-minutes="12" data-activity="research" data-label="Research">+12m Research</button>
+    <button type="button" class="matter-time-quick btn-secondary text-xs py-1" data-minutes="6" data-activity="drafting" data-label="Drafting">+6m Draft</button>
+    <button type="button" class="matter-time-quick btn-secondary text-xs py-1" data-minutes="6" data-activity="travel" data-label="Travel">+6m Travel</button>
+    <a href="{% url 'matter_time_review' file_number %}" class="link text-xs">Review</a>
+    <a href="{% url 'attendance_note_view' file_number %}" class="link text-xs ml-auto">All notes</a>
+  </div>
+</div>
+
+<div id="matter-time-modal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/50 p-4">
+  <div class="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
+    <h3 class="text-base font-semibold text-gray-900">Log time</h3>
+    <p class="text-xs text-gray-500 mt-1">Creates an attendance note on this matter (6 minutes = 1 unit).</p>
+    <form id="matter-time-log-form" class="mt-4 space-y-3">
+      <div>
+        <label class="form-label" for="matter-time-description">Description</label>
+        <input id="matter-time-description" class="form-input w-full text-sm" type="text" required maxlength="255" placeholder="e.g. Telephone call with client re settlement">
+      </div>
+      <div>
+        <label class="form-label" for="matter-time-activity">Activity</label>
+        <select id="matter-time-activity" class="form-input w-full text-sm">
+          <option value="telephone">Telephone</option>
+          <option value="attendance">Attendance</option>
+          <option value="drafting">Drafting</option>
+          <option value="perusal">Perusal</option>
+          <option value="conference">Conference</option>
+          <option value="research">Research</option>
+          <option value="travel">Travel</option>
+          <option value="admin">Admin</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+        <input id="matter-time-charged" type="checkbox" class="rounded border-gray-300" checked>
+        Chargeable
+      </label>
+      <input type="hidden" id="matter-time-mode" value="stop">
+      <input type="hidden" id="matter-time-minutes" value="6">
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" id="matter-time-modal-cancel" class="btn-secondary text-xs">Cancel</button>
+        <button type="submit" class="btn-primary text-xs">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}

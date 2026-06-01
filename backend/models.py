@@ -17,6 +17,16 @@ from backend.sharepoint.paths import (
 )
 
 
+def email_draft_attachment_upload_path(instance, filename):
+    from backend.sharepoint.paths import sanitize_filename
+    matter_key = 'unassigned'
+    if instance.draft_id and instance.draft.file_number_id:
+        matter_key = instance.draft.file_number.file_number
+    user_id = instance.draft.user_id if instance.draft_id else 'unknown'
+    safe_name = sanitize_filename(filename)
+    return f'EmailDrafts/{matter_key}/{user_id}/{uuid.uuid4()}_{safe_name}'
+
+
 CURRENT_VAT_RATE = Decimal('0.20')
 
 
@@ -926,9 +936,57 @@ class MatterEmails(models.Model):
     units = models.IntegerField(null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
     link = models.URLField(max_length=4096, null=True, blank=True)
+    bcc = models.JSONField(default=list, null=True, blank=True)
+    attachments = models.JSONField(default=list, null=True, blank=True)
+    graph_message_id = models.CharField(max_length=512, null=True, blank=True)
+    conversation_id = models.CharField(max_length=512, null=True, blank=True)
+    internet_message_id = models.CharField(max_length=512, null=True, blank=True)
+    request_read_receipt = models.BooleanField(null=True, default=False)
+    request_delivery_receipt = models.BooleanField(null=True, default=False)
+    sent_via_app = models.BooleanField(null=True, default=False)
 
     def __str__(self):
         return (f'ID: {str(self.id)}, File Number: {self.file_number}')
+
+
+class MatterEmailDraft(models.Model):
+    """Per-user outbound email drafts for a matter (multiple allowed; autosaved from compose)."""
+    id = models.AutoField(primary_key=True)
+    file_number = models.ForeignKey(WIP, on_delete=models.CASCADE)
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name='email_drafts',
+    )
+    from_mailbox = models.CharField(max_length=255, blank=True, default='')
+    to_addresses = models.TextField(blank=True, default='')
+    cc_addresses = models.TextField(blank=True, default='')
+    bcc_addresses = models.TextField(blank=True, default='')
+    subject = models.CharField(max_length=500, blank=True, default='')
+    body_html = models.TextField(blank=True, default='')
+    request_read_receipt = models.BooleanField(default=False)
+    request_delivery_receipt = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f'Draft {self.id} for {self.file_number} ({self.user})'
+
+
+class MatterEmailDraftAttachment(models.Model):
+    id = models.AutoField(primary_key=True)
+    draft = models.ForeignKey(
+        MatterEmailDraft, on_delete=models.CASCADE, related_name='attachments',
+    )
+    file = models.FileField(upload_to=email_draft_attachment_upload_path)
+    original_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=128, blank=True, default='')
+    size = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.original_name
 
 
 class MatterLetters(models.Model):
@@ -962,6 +1020,120 @@ class MatterAttendanceNotes(models.Model):
                                    related_name='attendance_note_created_by', null=True, blank=True)
 
     timestamp = models.DateTimeField(auto_now_add=True)
+
+
+class MatterTimeEvent(models.Model):
+    ACTIVITY_TELEPHONE = 'telephone'
+    ACTIVITY_ATTENDANCE = 'attendance'
+    ACTIVITY_DRAFTING = 'drafting'
+    ACTIVITY_PERUSAL = 'perusal'
+    ACTIVITY_CONFERENCE = 'conference'
+    ACTIVITY_RESEARCH = 'research'
+    ACTIVITY_TRAVEL = 'travel'
+    ACTIVITY_ADMIN = 'admin'
+    ACTIVITY_OTHER = 'other'
+    ACTIVITY_CHOICES = [
+        (ACTIVITY_TELEPHONE, 'Telephone'),
+        (ACTIVITY_ATTENDANCE, 'Attendance'),
+        (ACTIVITY_DRAFTING, 'Drafting'),
+        (ACTIVITY_PERUSAL, 'Perusal'),
+        (ACTIVITY_CONFERENCE, 'Conference'),
+        (ACTIVITY_RESEARCH, 'Research'),
+        (ACTIVITY_TRAVEL, 'Travel'),
+        (ACTIVITY_ADMIN, 'Admin'),
+        (ACTIVITY_OTHER, 'Other'),
+    ]
+
+    SOURCE_TIMER = 'timer'
+    SOURCE_MANUAL = 'manual'
+    SOURCE_EMAIL = 'email'
+    SOURCE_LETTER = 'letter'
+    SOURCE_ATTENDANCE_NOTE = 'attendance_note'
+    SOURCE_TASK = 'task'
+    SOURCE_APP_ACTIVITY = 'app_activity'
+    SOURCE_SHAREPOINT = 'sharepoint'
+    SOURCE_AGENT = 'agent'
+    SOURCE_CHOICES = [
+        (SOURCE_TIMER, 'Timer'),
+        (SOURCE_MANUAL, 'Manual'),
+        (SOURCE_EMAIL, 'Email'),
+        (SOURCE_LETTER, 'Letter'),
+        (SOURCE_ATTENDANCE_NOTE, 'Attendance note'),
+        (SOURCE_TASK, 'Task'),
+        (SOURCE_APP_ACTIVITY, 'App activity'),
+        (SOURCE_SHAREPOINT, 'SharePoint'),
+        (SOURCE_AGENT, 'Agent'),
+    ]
+
+    STATUS_DRAFT = 'draft'
+    STATUS_CONFIRMED = 'confirmed'
+    STATUS_DISCARDED = 'discarded'
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, 'Draft'),
+        (STATUS_CONFIRMED, 'Confirmed'),
+        (STATUS_DISCARDED, 'Discarded'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    file_number = models.ForeignKey(WIP, on_delete=models.SET_NULL, null=True)
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True,
+        related_name='matter_time_events',
+    )
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='matter_time_events_created',
+    )
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField()
+    description = models.CharField(max_length=255)
+    detail = models.TextField(blank=True, default='')
+    activity_type = models.CharField(
+        max_length=20, choices=ACTIVITY_CHOICES, default=ACTIVITY_OTHER,
+    )
+    source = models.CharField(
+        max_length=20, choices=SOURCE_CHOICES, default=SOURCE_MANUAL,
+    )
+    source_id = models.PositiveIntegerField(null=True, blank=True)
+    is_charged = models.BooleanField(default=True)
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default=STATUS_DRAFT,
+    )
+    units = models.IntegerField(default=1)
+    attendance_note = models.ForeignKey(
+        MatterAttendanceNotes, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='time_events',
+    )
+    locked_at = models.DateTimeField(null=True, blank=True)
+    invoice = models.ForeignKey(
+        'Invoices', on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['file_number', 'user', 'status']),
+            models.Index(fields=['file_number', 'ended_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.description} ({self.units}u) — {self.file_number}'
+
+
+class MatterTimeSession(models.Model):
+    """One running timer per user (matter-scoped)."""
+    id = models.AutoField(primary_key=True)
+    user = models.OneToOneField(
+        CustomUser, on_delete=models.CASCADE, related_name='matter_time_session',
+    )
+    file_number = models.ForeignKey(WIP, on_delete=models.CASCADE)
+    started_at = models.DateTimeField()
+    activity_type = models.CharField(
+        max_length=20,
+        choices=MatterTimeEvent.ACTIVITY_CHOICES,
+        default=MatterTimeEvent.ACTIVITY_OTHER,
+    )
+    timestamp = models.DateTimeField(auto_now=True)
 
 
 class Policy(models.Model):

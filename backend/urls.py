@@ -29,6 +29,26 @@ from .views import undertakings, edit_undertaking, undertaking_file_download, ad
 from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundle_court_update, bundle_section_add, bundle_section_delete, bundle_section_update, bundle_section_reorder, bundle_document_upload, bundle_document_file, bundle_document_update, bundle_document_delete, bundle_document_pages_update, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_pdf_prepare, bundle_pdf_status, bundle_delete, bundle_share_link_status_view, bundle_share_link_create, bundle_share_link_revoke
 from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, download_user_key_documents_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review, internal_pricing
 from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, add_matter_key_document, central_key_dates, download_central_key_dates
+from .time_event_views import (
+    time_event_session,
+    time_event_start,
+    time_event_stop,
+    time_event_cancel,
+    time_event_quick_log,
+    time_event_from_task,
+    matter_time_review,
+    correspondence_send_email,
+    time_event_agent_create,
+)
+from .correspondence_draft_views import (
+    correspondence_email_draft,
+    correspondence_email_draft_new,
+    correspondence_email_draft_save,
+    correspondence_email_draft_delete,
+    correspondence_email_draft_upload_attachment,
+    correspondence_email_draft_delete_attachment,
+    correspondence_email_draft_download_attachment,
+)
 
 urlpatterns = [
     path('dashboard/', user_dashboard, name='user_dashboard'),
@@ -95,6 +115,22 @@ urlpatterns = [
     path('next_work/edit/<int:id>/', edit_next_work, name='edit_next_work'),
     path('last_work/edit/<int:id>/', edit_last_work, name='edit_last_work'),
 
+    path('<str:file_number>/time-events/session/',
+         time_event_session, name='time_event_session'),
+    path('<str:file_number>/time-events/start/',
+         time_event_start, name='time_event_start'),
+    path('<str:file_number>/time-events/stop/',
+         time_event_stop, name='time_event_stop'),
+    path('<str:file_number>/time-events/cancel/',
+         time_event_cancel, name='time_event_cancel'),
+    path('<str:file_number>/time-events/quick-log/',
+         time_event_quick_log, name='time_event_quick_log'),
+    path('time-events/from-task/', time_event_from_task, name='time_event_from_task'),
+    path('<str:file_number>/time-events/review/',
+         matter_time_review, name='matter_time_review'),
+    path('<str:file_number>/time-events/agent/',
+         time_event_agent_create, name='time_event_agent_create'),
+
     path('<str:file_number>/attendance_notes/',
          attendance_note_view, name='attendance_note_view'),
     path('<str:file_number>/attendance_notes/add/',
@@ -114,6 +150,27 @@ urlpatterns = [
 
     path('<str:file_number>/correspondence/',
          correspondence_view, name='correspondence_view'),
+    path('<str:file_number>/correspondence/send/',
+         correspondence_send_email, name='correspondence_send_email'),
+    path('<str:file_number>/correspondence/draft/',
+         correspondence_email_draft, name='correspondence_email_draft'),
+    path('<str:file_number>/correspondence/draft/new/',
+         correspondence_email_draft_new, name='correspondence_email_draft_new'),
+    path('<str:file_number>/correspondence/draft/save/',
+         correspondence_email_draft_save, name='correspondence_email_draft_save'),
+    path('<str:file_number>/correspondence/draft/<int:draft_id>/delete/',
+         correspondence_email_draft_delete, name='correspondence_email_draft_delete'),
+    path('<str:file_number>/correspondence/draft/delete/',
+         correspondence_email_draft_delete, name='correspondence_email_draft_delete_legacy'),
+    path('<str:file_number>/correspondence/draft/attachment/upload/',
+         correspondence_email_draft_upload_attachment,
+         name='correspondence_email_draft_upload_attachment'),
+    path('<str:file_number>/correspondence/draft/attachment/<int:attachment_id>/delete/',
+         correspondence_email_draft_delete_attachment,
+         name='correspondence_email_draft_delete_attachment'),
+    path('<str:file_number>/correspondence/draft/attachment/<int:attachment_id>/download/',
+         correspondence_email_draft_download_attachment,
+         name='correspondence_email_draft_download_attachment'),
     path('<str:file_number>/letter/add/', add_letter, name='add_letter'),
     path('letter/edit/<int:id>/', edit_letter, name='edit_letter'),
 

@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% block title %}Time review — {{ file_number }}{% endblock %}
+{% block container %}
+
+<div class="space-y-5">
+    <div class="div-container py-3">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+                <h1 class="text-2xl font-semibold text-gray-900">{{ file_number }}</h1>
+                <p class="text-sm text-gray-600 mt-1">Pre-bill time review</p>
+                <p class="text-xs text-gray-500 mt-0.5">Confirm, adjust units, or discard before invoicing</p>
+            </div>
+            <div class="flex gap-2 shrink-0">
+                <a href="{% url 'home' file_number %}" class="btn-secondary text-xs">Back to file</a>
+                <a href="{% url 'finance_view' file_number %}" class="btn-secondary text-xs">Finances</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="div-container overflow-x-auto">
+        {% if events %}
+        <table class="table min-w-full text-sm">
+            <thead class="thead border-b">
+                <tr>
+                    <th class="td">When</th>
+                    <th class="td">Activity</th>
+                    <th class="td">Description</th>
+                    <th class="td">User</th>
+                    <th class="td">Units</th>
+                    <th class="td">Status</th>
+                    <th class="td">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in events %}
+                <tr class="border-b align-top">
+                    <td class="td text-xs whitespace-nowrap">{{ event.ended_at|date:"d/m/Y H:i" }}</td>
+                    <td class="td text-xs">{{ event.get_activity_type_display }}</td>
+                    <td class="td">{{ event.description }}{% if not event.is_charged %} <span class="badge-gray">N/C</span>{% endif %}</td>
+                    <td class="td text-xs">{{ event.user|default:"—" }}</td>
+                    <td class="td text-xs tabular-nums">{{ event.units }}</td>
+                    <td class="td text-xs">
+                        {{ event.get_status_display }}
+                        {% if event.locked_at %}<span class="badge-gray">Locked</span>{% endif %}
+                    </td>
+                    <td class="td">
+                        {% if not event.locked_at %}
+                        <form method="post" class="space-y-2 min-w-[12rem]">
+                            {% csrf_token %}
+                            <input type="hidden" name="event_id" value="{{ event.id }}">
+                            <input type="text" name="description" value="{{ event.description }}" class="form-input text-xs w-full" maxlength="255">
+                            <div class="flex gap-2 items-center">
+                                <label class="text-xs text-gray-600">Units</label>
+                                <input type="number" name="units" value="{{ event.units }}" min="1" class="form-input text-xs w-16">
+                            </div>
+                            <label class="inline-flex items-center gap-1 text-xs">
+                                <input type="checkbox" name="is_charged" {% if event.is_charged %}checked{% endif %}>
+                                Chargeable
+                            </label>
+                            <div class="flex flex-wrap gap-1">
+                                {% if event.status == 'draft' %}
+                                <button type="submit" name="action" value="confirm" class="btn-primary text-xs">Confirm</button>
+                                {% else %}
+                                <button type="submit" name="action" value="write_down" class="btn-secondary text-xs">Update units</button>
+                                {% endif %}
+                                <button type="submit" name="action" value="discard" class="btn-secondary text-xs">Discard</button>
+                            </div>
+                        </form>
+                        {% else %}
+                        <span class="text-xs text-gray-400">Locked on bill</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="py-8 text-center text-sm text-gray-400">No time entries on this matter yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Email{% endblock %}
+{% load static %}
 {% load utils %}
 {% block container_class %}container{% endblock %}
 {% block container %}
@@ -10,6 +11,8 @@
   .corr-tab { color: rgb(75 85 99); }
   .corr-tab:hover { color: rgb(17 24 39); }
   .corr-tab.is-active { background-color: white; color: rgb(17 24 39); box-shadow: 0 1px 2px rgb(0 0 0 / 0.06); }
+  #corr-body-editor { min-height: 220px; }
+  #corr-body-editor .ql-editor { min-height: 180px; font-size: 14px; }
 </style>
 
 <div class="space-y-5">
@@ -26,7 +29,11 @@
                 {% endif %}
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
-                <button type="button" id="toggle-letter-form" class="btn-primary text-xs">Add letter</button>
+                <button type="button" id="toggle-email-form" class="btn-primary text-xs">
+                    Send email{% if email_draft_count %} <span class="opacity-80">({{ email_draft_count }} draft{% if email_draft_count != 1 %}s{% endif %})</span>{% endif %}
+                </button>
+                <button type="button" id="toggle-letter-form" class="btn-secondary text-xs">Add letter</button>
+                <a href="{% url 'matter_time_review' file_number %}" class="btn-secondary text-xs">Time review</a>
                 <a href="{% url 'home' file_number %}" class="btn-secondary text-xs">Back to file</a>
             </div>
         </div>
@@ -57,6 +64,10 @@
                             <p class="text-sm font-medium text-gray-900 leading-snug">{{ email.subject|default:"(No subject)" }}</p>
                             <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                                 <span>{% if email.is_sent %}Sent{% else %}Received{% endif %}</span>
+                                {% if email.sent_via_app %}<span class="badge-gray">App</span>{% endif %}
+                                {% if email.request_read_receipt %}<span class="badge-gray" title="Read receipt requested">RR</span>{% endif %}
+                                {% if email.request_delivery_receipt %}<span class="badge-gray" title="Delivery receipt requested">DR</span>{% endif %}
+                                {% if email.attachments %}<span class="badge-gray">{{ email.attachments|length }} file{% if email.attachments|length != 1 %}s{% endif %}</span>{% endif %}
                                 <span>{{ email.time|date:'d/m/Y @ H:i' }}</span>
                                 {% if email.is_sent %}
                                 {% with email.receiver|jsonify as receiver %}
@@ -92,11 +103,38 @@
                                 </dd>
                             </div>
                         </dl>
+                        {% if email.bcc %}
+                        <div class="rounded border border-gray-100 bg-gray-50 p-2 text-xs">
+                            <span class="text-gray-500">BCC</span>
+                            <span class="text-gray-900 ml-1">
+                                {% with email.bcc as bcc_list %}
+                                {% for addr in bcc_list %}
+                                {{ addr.emailAddress.address }}{% if not forloop.last %}; {% endif %}
+                                {% endfor %}
+                                {% endwith %}
+                            </span>
+                        </div>
+                        {% endif %}
+                        {% if email.attachments %}
+                        <div class="text-xs">
+                            <p class="text-gray-500 mb-1">Attachments</p>
+                            <ul class="flex flex-wrap gap-2">
+                                {% for att in email.attachments %}
+                                <li class="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-gray-800">
+                                    {{ att.name }}{% if att.size %} <span class="text-gray-400">({{ att.size|filesizeformat }})</span>{% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
                         {% if email.body %}
-                        <div class="rounded border border-gray-100 bg-white p-3 text-xs text-gray-700 break-words">{{ email.body|linebreaksbr|safe }}</div>
+                        <div class="rounded border border-gray-100 bg-white p-3 text-xs text-gray-700 break-words corr-email-body">{{ email.body|safe }}</div>
                         {% endif %}
                         {% if email.link %}
                         <a class="link text-xs" href="{{ email.link }}" target="_blank" rel="noopener noreferrer">Open in Outlook</a>
+                        {% endif %}
+                        {% if email.sent_via_app and not email.link %}
+                        <p class="text-xs text-gray-400">Sent from this app — open the mailbox Sent Items in Outlook for delivery/read status.</p>
                         {% endif %}
                     </div>
                 </details>
@@ -134,6 +172,86 @@
             </div>
         </div>
 
+        <div id="email-form-panel" class="div-container hidden h-fit"
+             data-file-number="{{ file_number }}"
+             data-default-mailbox="{{ default_outbound_mailbox }}">
+            {{ email_drafts_for_script|json_script:"corr-drafts-data" }}
+            {{ email_draft_for_script|json_script:"corr-draft-data" }}
+            <div class="flex items-start justify-between gap-3 pb-3 mb-4 border-b border-gray-100">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-900">Send email</h2>
+                    <p class="text-xs text-gray-500 mt-0.5">Multiple drafts · rich text · autosave · Microsoft 365</p>
+                </div>
+                <button type="button" id="close-email-form" class="text-gray-500 hover:text-gray-900 text-xl leading-none" aria-label="Close">&times;</button>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 mb-3">
+                <label class="form-label mb-0 shrink-0" for="corr-draft-select">Draft</label>
+                <select id="corr-draft-select" class="form-input text-sm flex-1 min-w-[10rem] max-w-full" aria-label="Select email draft">
+                    <option value="">— No drafts —</option>
+                </select>
+                <button type="button" id="corr-new-draft" class="btn-secondary text-xs shrink-0">New email</button>
+            </div>
+            <p class="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded p-2 mb-2">
+                Subject will include matter ref: <strong>{{ email_subject_prefix }}</strong>
+            </p>
+            <p id="corr-draft-status" class="text-xs text-gray-500 mb-3 min-h-[1.25rem]">
+                {% if email_draft %}Draft restored · last saved {{ email_draft.updated_at|date:"d/m/Y H:i" }}{% else %}Autosave every 15 seconds while you type{% endif %}
+            </p>
+            <form id="corr-email-form" class="space-y-3" method="post" action="{% url 'correspondence_send_email' file_number %}">
+                {% csrf_token %}
+                <input type="hidden" name="draft_id" id="corr-draft-id" value="{% if email_draft %}{{ email_draft.id }}{% endif %}">
+                <div>
+                    <label class="form-label" for="from_mailbox">From mailbox</label>
+                    <input id="from_mailbox" name="from_mailbox" class="form-input w-full text-sm" value="{% if email_draft and email_draft.from_mailbox %}{{ email_draft.from_mailbox }}{% else %}{{ default_outbound_mailbox }}{% endif %}">
+                </div>
+                <div>
+                    <label class="form-label" for="corr-to">To</label>
+                    <input id="corr-to" name="to" class="form-input w-full text-sm" required placeholder="client@example.com" value="{{ email_draft.to_addresses|default:'' }}">
+                </div>
+                <div>
+                    <label class="form-label" for="corr-cc">CC (optional)</label>
+                    <input id="corr-cc" name="cc" class="form-input w-full text-sm" value="{{ email_draft.cc_addresses|default:'' }}">
+                </div>
+                <div>
+                    <label class="form-label" for="corr-bcc">BCC (optional)</label>
+                    <input id="corr-bcc" name="bcc" class="form-input w-full text-sm" value="{{ email_draft.bcc_addresses|default:'' }}">
+                </div>
+                <div>
+                    <label class="form-label" for="corr-subject">Subject (after matter ref)</label>
+                    <input id="corr-subject" name="subject" class="form-input w-full text-sm" required placeholder="Your subject line" value="{{ email_draft.subject|default:'' }}">
+                </div>
+                <div>
+                    <label class="form-label">Body</label>
+                    <input type="hidden" name="body" id="corr-body-input" value="">
+                    <div id="corr-body-editor" class="django-quill-widget rounded border border-gray-300 bg-white"></div>
+                </div>
+                <div>
+                    <label class="form-label">Attachments</label>
+                    <p class="text-xs text-gray-500 mb-2">Up to 10 files, 3 MB each (10 MB total). Saved with your draft.</p>
+                    <input type="file" id="corr-attachment-input" class="text-xs" multiple>
+                    <ul id="corr-attachment-list" class="mt-2 space-y-1 text-xs"></ul>
+                </div>
+                <div class="flex flex-wrap gap-4 text-xs">
+                    <label class="inline-flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="request_read_receipt" id="corr-read-receipt"
+                               class="rounded border-gray-300" {% if email_draft.request_read_receipt %}checked{% endif %}>
+                        <span>Request read receipt</span>
+                    </label>
+                    <label class="inline-flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="request_delivery_receipt" id="corr-delivery-receipt"
+                               class="rounded border-gray-300" {% if email_draft.request_delivery_receipt %}checked{% endif %}>
+                        <span>Request delivery receipt</span>
+                    </label>
+                </div>
+                <div class="flex flex-wrap gap-2 pt-1">
+                    <button class="btn-primary text-xs" type="submit">Send</button>
+                    <button class="btn-secondary text-xs" type="button" id="corr-save-draft">Save draft now</button>
+                    <button class="btn-secondary text-xs" type="button" id="corr-discard-draft">Discard this draft</button>
+                    <button class="btn-secondary text-xs" type="button" id="cancel-email-form">Cancel</button>
+                </div>
+            </form>
+        </div>
+
         <div id="letter-form-panel" class="div-container hidden h-fit">
             <div class="flex items-start justify-between gap-3 pb-3 mb-4 border-b border-gray-100">
                 <div>
@@ -160,9 +278,12 @@ document.addEventListener('DOMContentLoaded', function () {
     var emailsPanel = document.getElementById('emails-panel');
     var lettersPanel = document.getElementById('letters-panel');
     var letterFormPanel = document.getElementById('letter-form-panel');
+    var emailFormPanel = document.getElementById('email-form-panel');
     var toggleLetterFormBtn = document.getElementById('toggle-letter-form');
+    var toggleEmailFormBtn = document.getElementById('toggle-email-form');
 
     function showLetterForm() {
+        if (emailFormPanel) emailFormPanel.classList.add('hidden');
         letterFormPanel.classList.remove('hidden');
         letterFormPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -171,6 +292,19 @@ document.addEventListener('DOMContentLoaded', function () {
         letterFormPanel.classList.add('hidden');
     }
 
+    function showEmailForm() {
+        if (letterFormPanel) letterFormPanel.classList.add('hidden');
+        emailFormPanel.classList.remove('hidden');
+        emailFormPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function hideEmailForm() {
+        emailFormPanel.classList.add('hidden');
+    }
+
+    toggleEmailFormBtn.addEventListener('click', showEmailForm);
+    document.getElementById('close-email-form')?.addEventListener('click', hideEmailForm);
+    document.getElementById('cancel-email-form')?.addEventListener('click', hideEmailForm);
     toggleLetterFormBtn.addEventListener('click', showLetterForm);
     document.getElementById('close-letter-form').addEventListener('click', hideLetterForm);
     document.getElementById('cancel-letter-form').addEventListener('click', hideLetterForm);
@@ -191,4 +325,5 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
+<script src="{% static 'js/correspondence_compose.js' %}"></script>
 {% endblock %}

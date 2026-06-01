@@ -1055,6 +1055,8 @@ def user_dashboard(request):
     unique_wips = get_user_dashboard_wips(user)
     dashboard_files, overdue_invoice_file_count, unsettled_invoices = build_dashboard_files(
         user)
+    from .time_events import get_unlogged_dashboard_files
+    unlogged_wips = get_unlogged_dashboard_files(user, unique_wips)
     risk_scope_wips, validated_risk_scope = get_dashboard_risk_scope_wips(
         user, risk_scope
     )
@@ -1108,6 +1110,7 @@ def user_dashboard(request):
         'key_doc_scope': validated_key_doc_scope,
         'file_reviews_due_files': file_reviews_due,
         'pending_credit_notes': pending_credit_notes,
+        'unlogged_wips': unlogged_wips,
     }
 
     return render(request, 'dashboard.html', context)
@@ -1134,7 +1137,13 @@ def update_task_status(request):
         task.status = new_status
         task.save()
 
-        return JsonResponse({'success': True})
+        payload = {'success': True}
+        if new_status == 'completed' and task.file_number_id:
+            payload['prompt_time_log'] = True
+            payload['task_id'] = task.id
+            payload['task_text'] = (task.task or '')[:255]
+            payload['file_number'] = task.file_number.file_number
+        return JsonResponse(payload)
 
     except json.JSONDecodeError:
         return JsonResponse({
@@ -1531,7 +1540,13 @@ def display_data_home_page(request, file_number):
         ).order_by('-created_at')
         activity_logs, log_meta = enrich_file_logs(
             get_file_logs(file_number, limit=300))
+        from .models import MatterTimeEvent
+        matter_time_events = MatterTimeEvent.objects.filter(
+            file_number=matter,
+            status=MatterTimeEvent.STATUS_CONFIRMED,
+        ).select_related('user').order_by('-ended_at')[:15]
         return render(request, 'home.html', {'matter': matter,
+                                             'matter_time_events': matter_time_events,
                                              'bundles': bundles,
                                              'undertakings': undertakings,
                                              'file_number': file_number,
@@ -4078,12 +4093,82 @@ def correspondence_view(request, file_number):
         file_number=matter.id).order_by('-time')
     letters = MatterLetters.objects.filter(
         file_number=matter.id).order_by('-date')
+    from django.conf import settings as django_settings
+    from .email_compose import draft_is_empty
+    from .models import MatterEmailDraft
+    from .outbound_mail import build_matter_email_subject
+    subject_prefix = build_matter_email_subject(
+        file_number, request.user, '',
+    ).rstrip(' -')
+    email_drafts = list(
+        MatterEmailDraft.objects.filter(
+            file_number=matter, user=request.user,
+        ).prefetch_related('attachments').order_by('-updated_at'),
+    )
+    email_draft = None
+    for d in email_drafts:
+        if not draft_is_empty(d):
+            email_draft = d
+            break
+    if not email_draft and email_drafts:
+        email_draft = email_drafts[0]
+    email_draft_count = sum(1 for d in email_drafts if not draft_is_empty(d))
+
+    def _draft_summary(d):
+        subject = (d.subject or '').strip()
+        if subject:
+            label = subject[:80]
+        elif (d.to_addresses or '').strip():
+            label = 'To: ' + (d.to_addresses or '').strip()[:50]
+        else:
+            label = timezone.localtime(d.updated_at).strftime('Draft · %d/%m/%Y %H:%M')
+        return {
+            'id': d.id,
+            'label': label,
+            'updated_at': timezone.localtime(d.updated_at).strftime('%d/%m/%Y %H:%M'),
+            'attachment_count': d.attachments.count(),
+        }
+
+    # Pass Python objects — template uses |json_script (do not json.dumps here).
+    email_drafts_for_script = [
+        _draft_summary(d) for d in email_drafts if not draft_is_empty(d)
+    ]
+    email_draft_for_script = {}
+    if email_draft:
+        email_draft_for_script = {
+            'id': email_draft.id,
+            'from_mailbox': email_draft.from_mailbox,
+            'to': email_draft.to_addresses,
+            'cc': email_draft.cc_addresses,
+            'bcc': email_draft.bcc_addresses,
+            'subject': email_draft.subject,
+            'body_html': email_draft.body_html,
+            'request_read_receipt': email_draft.request_read_receipt,
+            'request_delivery_receipt': email_draft.request_delivery_receipt,
+            'attachments': [
+                {
+                    'id': a.id,
+                    'name': a.original_name,
+                    'size': a.size,
+                }
+                for a in email_draft.attachments.all()
+            ],
+            'updated_at': timezone.localtime(email_draft.updated_at).strftime('%d/%m/%Y %H:%M'),
+        }
     return render(request, 'correspondence.html', {
         'letter_form': letter_form,
         'file_number': file_number,
         'matter': matter,
         'emails': emails,
         'letters': letters,
+        'email_subject_prefix': subject_prefix,
+        'default_outbound_mailbox': getattr(
+            django_settings, 'DEFAULT_OUTBOUND_MAILBOX', 'mail@anpsolicitors.com',
+        ),
+        'email_draft': email_draft,
+        'email_draft_count': email_draft_count,
+        'email_drafts_for_script': email_drafts_for_script,
+        'email_draft_for_script': email_draft_for_script,
     })
 
 
@@ -4096,7 +4181,9 @@ def add_letter(request, file_number):
         request_post_copy['created_by'] = request.user
         form = LetterForm(request_post_copy)
         if form.is_valid():
-            form.save()
+            letter = form.save()
+            from .time_events import sync_time_event_from_letter
+            sync_time_event_from_letter(letter)
             messages.success(request, 'Letter successfully added.')
             return redirect('correspondence_view', file_number=file_number)
         else:
@@ -4127,6 +4214,8 @@ def edit_letter(request, id):
                     'new_value': None
                 }
             form.save()
+            from .time_events import sync_time_event_from_letter
+            sync_time_event_from_letter(letter_instance)
 
             for field in changed_fields:
                 changes[field]['new_value'] = getattr(letter_instance, field)
@@ -4203,6 +4292,9 @@ def download_sowc(request, file_number):
             (letter.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
+
+    from .time_events import sowc_rows_from_time_events
+    rows.extend(sowc_rows_from_time_events(file_number_id))
 
     def sort_rows(rows):
         def get_sort_key(row):
@@ -6525,6 +6617,8 @@ def edit_invoice(request, id):
                         Max('invoice_number'))['invoice_number__max']
                     invoice.invoice_number = (largest_invoice_number or 0) + 1
                 invoice.state = 'F'
+                from .time_events import lock_time_events_for_invoice
+                lock_time_events_for_invoice(invoice)
 
         invoice.payable_by = request.POST['payable_by']
         invoice.by_email = 'by_email' in request.POST

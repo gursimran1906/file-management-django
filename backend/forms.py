@@ -4,6 +4,7 @@ from django.forms import formset_factory, inlineformset_factory
 from datetime import date
 from math import ceil
 from django.utils import timezone
+from .time_events import compute_units_from_times
 from django.core.validators import RegexValidator
 from django.utils.safestring import mark_safe
 from django_quill.forms import QuillFormField
@@ -94,6 +95,15 @@ class AttendanceNoteFormHalf(forms.ModelForm):
             'finish_time': forms.TimeInput(attrs={'type': 'time'}),
         }
 
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.unit = compute_units_from_times(
+            instance.start_time, instance.finish_time,
+        )
+        if commit:
+            instance.save()
+        return instance
+
     def __init__(self, *args, **kwargs):
         super(AttendanceNoteFormHalf, self).__init__(*args, **kwargs)
         self.fields['date'].initial = timezone.localdate()
@@ -113,15 +123,11 @@ class AttendanceNoteForm(forms.ModelForm):
 
     def save(self, commit=True):
         instance = super().save(commit=False)
-
-        time_diff_minutes = (instance.finish_time.hour * 60 + instance.finish_time.minute) - \
-            (instance.start_time.hour * 60 + instance.start_time.minute)
-
-        instance.unit = max(1, ceil(time_diff_minutes / 6))
-
+        instance.unit = compute_units_from_times(
+            instance.start_time, instance.finish_time,
+        )
         if commit:
             instance.save()
-
         return instance
 
     def __init__(self, *args, **kwargs):

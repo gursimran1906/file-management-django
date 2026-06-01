@@ -10,79 +10,6 @@
 
 <script>
     $(document).ready(function() {
-        var startTime;
-        var elapsedTime = 0;
-        var startHour;
-        var startMinutes;
-        var finishHour;
-        var finishMinutes;
-        var timerInterval;
-        var timerPaused = false;
-
-        $('#startTimer').on('click', function() {
-            startHour = new Date().getHours();
-            startMinutes = new Date().getMinutes();
-            $('#startTimer').prop("disabled", false);
-            selector_start_time = document.getElementsByName('start_time');
-            if (startHour<10){ startHour = "0"+ startHour }
-            if (startMinutes<10){ startMinutes = "0"+ startMinutes }
-            time_input = startHour +":"+startMinutes
-            $(selector_start_time).val(time_input)
-
-            startTime = new Date().getTime();
-            timerInterval = setInterval(updateTimer, 1000);
-            $(this).prop("disabled", true);
-            $('#stopTimer').prop("disabled", false);
-            $('#pauseTimer').prop("disabled", false);
-
-            $('#startTimer').removeClass('btn-primary').addClass('btn-disabled');
-            $('#stopTimer').removeClass('btn-disabled').addClass('btn-primary');
-            $('#pauseTimer').removeClass('btn-disabled').addClass('btn-primary');
-        });
-
-        $('#stopTimer').on('click', function() {
-            clearInterval(timerInterval);
-            $(this).prop("disabled", true);
-            $('#startTimer').prop("disabled", false);
-            $('#pauseTimer').prop("disabled", true);
-
-            finishHour = new Date().getHours();
-            finishMinutes = new Date().getMinutes();
-            if (finishHour<10){ finishHour = "0"+ finishHour }
-            if (finishMinutes<10){ finishMinutes = "0"+ finishMinutes }
-            time_input = finishHour +":"+finishMinutes
-            selector_finish_time = document.getElementsByName('finish_time');
-            $(selector_finish_time).val(time_input);
-            $('#startTimer').removeClass('btn-disabled').addClass('btn-primary');
-            $('#stopTimer').removeClass('btn-primary').addClass('btn-disabled');
-            $('#pauseTimer').removeClass('btn-primary').addClass('btn-disabled');
-        });
-
-        $('#pauseTimer').on('click', function() {
-            if (!timerPaused) {
-                clearInterval(timerInterval);
-                $(this).text('Resume');
-            } else {
-                startTime = new Date().getTime();
-                timerInterval = setInterval(updateTimer, 1000);
-                $(this).text('Pause');
-            }
-            timerPaused = !timerPaused;
-        });
-
-        function updateTimer() {
-            var currentTime = new Date().getTime();
-            var elapsedTimeTemp = currentTime - startTime;
-            if (!timerPaused) {
-                elapsedTime += elapsedTimeTemp;
-            }
-            var hours = Math.floor(elapsedTime / (1000 * 60 * 60));
-            var minutes = Math.floor((elapsedTime % (1000 * 60 * 60)) / (1000 * 60));
-            var seconds = Math.floor((elapsedTime % (1000 * 60)) / 1000);
-            $('#timer').html(hours + 'h ' + minutes + 'm ' + seconds + 's');
-            startTime = currentTime;
-        }
-
         $('#openBulkUploadModal').on('click', function() {
             $('#bulk-upload-modal').removeClass('hidden').addClass('flex');
         });
@@ -237,13 +164,7 @@
         <div class="div-container">
             <div class="pb-3 mb-4 border-b border-gray-100">
                 <h2 class="text-base font-semibold text-gray-900">Record attendance</h2>
-                <p class="text-xs text-gray-500 mt-0.5">Use the timer or enter times manually</p>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-                <button class="btn-primary text-xs" type="button" id="startTimer">Start</button>
-                <button class="btn-disabled text-xs" type="button" id="stopTimer" disabled>Stop</button>
-                <button class="btn-disabled text-xs" type="button" id="pauseTimer" disabled>Pause</button>
-                <span id="timer" class="text-sm font-medium text-gray-700 ml-1"></span>
+                <p class="text-xs text-gray-500 mt-0.5">Use the <strong>time bar above</strong> to start/stop a timer, or enter times manually below</p>
             </div>
             <form class="space-y-3 mt-4 pt-4 border-t border-gray-100" method="post" action="{% url 'add_attendance_note' file_number %}">
                 {% csrf_token %}

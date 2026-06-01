@@ -34,6 +34,11 @@ def insert_data(file_number, sender, receiver, description, subject, body, link,
         
         # Save the object to the database
         email.save()
+        try:
+            from .time_events import sync_time_event_from_email
+            sync_time_event_from_email(email)
+        except Exception:
+            pass
 
         print("Data inserted successfully")
 

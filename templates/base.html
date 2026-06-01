@@ -19,6 +19,7 @@
     <script src="https://cdn.datatables.net/plug-ins/1.10.19/sorting/datetime-moment.js"></script>
     <link rel="icon" type="image/png" href="{% static 'images/logo.png' %}">
     <script src="{% static 'js/functions.js' %}"></script>
+    {% if file_number %}<script src="{% static 'js/matter_timer.js' %}"></script>{% endif %}
     
     {% compress css %}
       <link rel="stylesheet" href="{% static 'src/output.css' %}">
@@ -371,6 +372,7 @@
     <div id="content"
         class="sm:ml-64 mt-[var(--navbar-height)] min-h-[calc(100vh-var(--navbar-height))] overflow-y-auto"
       >
+    {% include 'includes/matter_time_strip.html' %}
     <div class="px-4 pb-4 pt-2">
         {% block messages %}
           <div id="flash-messages" class="{% if not messages %}hidden {% endif %}mb-3 flex flex-col gap-2">

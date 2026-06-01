@@ -240,6 +240,12 @@ BUNDLE_SHARE_LINK_EXPIRY_DAYS = int(os.getenv('BUNDLE_SHARE_LINK_EXPIRY_DAYS', '
 BUNDLE_SHARE_LINK_USE_PASSWORD = os.getenv(
     'BUNDLE_SHARE_LINK_USE_PASSWORD', 'true'
 ).lower() in ('true', '1', 'yes')
+
+# Matter time recording
+MATTER_TIME_AGENT_TOKEN = os.getenv('MATTER_TIME_AGENT_TOKEN', '')
+DEFAULT_OUTBOUND_MAILBOX = os.getenv('DEFAULT_OUTBOUND_MAILBOX', 'mail@anpsolicitors.com')
+# SharePoint folder convention for per-matter Word/docs (see docs/MATTER_TIME_SHAREPOINT.md)
+MATTER_SHAREPOINT_ROOT = os.getenv('MATTER_SHAREPOINT_ROOT', 'Matters')
 BUNDLE_SHARE_LINK_SCOPE = os.getenv('BUNDLE_SHARE_LINK_SCOPE', 'anonymous').strip().lower()
 
 if USE_SHAREPOINT:
