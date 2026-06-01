@@ -420,6 +420,11 @@ LOGGING = {
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
+        'backend.bundle_pdf': {
+            'handlers': ['application_file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
         'users': {
             'handlers': ['application_file', 'error_file', 'console'],
             'level': 'DEBUG' if DEBUG else 'INFO',

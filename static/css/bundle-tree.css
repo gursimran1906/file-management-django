@@ -1100,6 +1100,11 @@
     color: #be185d;
 }
 
+#estate-account-app .estate-line-badge--blue-slip {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
 #estate-account-app .estate-line-section {
     min-width: 6.5rem;
     height: 2rem;

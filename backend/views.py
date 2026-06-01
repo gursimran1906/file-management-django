@@ -61,7 +61,7 @@ import PyPDF2
 import zipfile
 from io import BytesIO
 from django.core.files.storage import default_storage
-from django.core.files.base import ContentFile
+from django.core.files.base import ContentFile, File
 from backend.sharepoint.bundle_cache import BundleTempCache
 from backend.sharepoint.sharing import (
     SharePointSharingError,
@@ -9290,17 +9290,38 @@ def _require_current_bundle_pdf(bundle):
 
 def _ensure_bundle_final_pdf(bundle, user=None, progress_callback=None):
     """Generate the final PDF when missing or out of date. Returns (success, error_message, regenerated)."""
+    from backend.pdf.build_stats import BundlePdfBuildStats, bundle_pdf_logging_enabled
+
     if _bundle_pdf_is_current(bundle):
         if progress_callback:
             progress_callback(100, 'PDF is ready')
         return True, None, False
 
+    build_stats = BundlePdfBuildStats(bundle.id) if bundle_pdf_logging_enabled() else None
     cache_obj = None
     try:
         if progress_callback:
             progress_callback(5, 'Collecting documents...')
         cache_obj = BundleTempCache(bundle)
+        all_documents = [
+            document
+            for section in bundle.sections.all().order_by('order')
+            for document in section.documents.all().order_by('order')
+        ]
+        if build_stats is not None:
+            build_stats.start('prefetch_sources')
+        if all_documents:
+            cache_obj.prefetch_all(all_documents)
+        if build_stats is not None:
+            build_stats.finish_stage()
+            build_stats.start('collect_documents')
         documents_info = _collect_bundle_documents(bundle, cache=cache_obj)
+        if build_stats is not None:
+            build_stats.finish_stage()
+            build_stats.add_meta(
+                document_count=len(documents_info),
+                document_pages=sum(doc_info['page_count'] for doc_info in documents_info),
+            )
         if not documents_info:
             return False, 'Cannot generate bundle: no valid documents with pages.', False
 
@@ -9309,11 +9330,12 @@ def _ensure_bundle_final_pdf(bundle, user=None, progress_callback=None):
                 15,
                 f'Building index for {len(documents_info)} document{"s" if len(documents_info) != 1 else ""}...',
             )
-        pdf_content = _generate_bundle_pdf(
+        pdf_result = _generate_bundle_pdf(
             bundle,
             cache=cache_obj,
             progress_callback=progress_callback,
             documents_info=documents_info,
+            build_stats=build_stats,
         )
 
         if progress_callback:
@@ -9326,7 +9348,32 @@ def _ensure_bundle_final_pdf(bundle, user=None, progress_callback=None):
                 logger.warning(
                     'Could not delete previous final PDF for bundle %s', bundle.id)
 
-        bundle.final_pdf.save(f'{bundle.uuid}.pdf', ContentFile(pdf_content))
+        work_dir = None
+        output_bytes_len = 0
+        if build_stats is not None:
+            build_stats.start('save_final_pdf')
+        if pdf_result.get('path'):
+            output_path = pdf_result['path']
+            work_dir = pdf_result.get('work_dir')
+            output_bytes_len = os.path.getsize(output_path)
+            with open(output_path, 'rb') as pdf_file:
+                bundle.final_pdf.save(f'{bundle.uuid}.pdf', File(pdf_file))
+        else:
+            output_bytes_len = len(pdf_result['bytes'])
+            bundle.final_pdf.save(
+                f'{bundle.uuid}.pdf',
+                ContentFile(pdf_result['bytes']),
+            )
+        if build_stats is not None:
+            build_stats.finish_stage()
+            build_stats.add_meta(
+                output_pages=pdf_result.get('output_pages'),
+                output_mb=round(output_bytes_len / (1024 * 1024), 2),
+            )
+            build_stats.log_summary()
+        if work_dir:
+            import shutil
+            shutil.rmtree(work_dir, ignore_errors=True)
         saved_name = bundle.final_pdf.name
         now = timezone.now()
         Bundle.objects.filter(pk=bundle.pk).update(
@@ -10373,39 +10420,184 @@ def _open_document_pdf(document, cache=None):
     return document.file.open('rb')
 
 
-def _generate_bundle_pdf(bundle, cache=None, progress_callback=None, documents_info=None):
-    """Generate the final PDF bundle with index and pagination"""
+def _assign_document_page_ranges(documents_info, bundle):
+    index_page_count = _estimate_index_page_count(documents_info, bundle)
+    current_document_page = index_page_count + 1
+    for doc_info in documents_info:
+        doc_info['page_start'] = current_document_page
+        doc_info['page_end'] = current_document_page + doc_info['page_count'] - 1
+        current_document_page = doc_info['page_end'] + 1
+    return index_page_count
+
+
+def _persist_document_page_ranges(documents_info, total_pages):
+    doc_ids = [doc_info['document'].id for doc_info in documents_info]
+    documents = {
+        document.id: document
+        for document in BundleDocument.objects.filter(id__in=doc_ids)
+    }
+    for doc_info in documents_info:
+        page_start = doc_info.get('page_start')
+        page_end = doc_info.get('page_end')
+        if page_start and page_start > total_pages:
+            page_start = None
+            page_end = None
+            doc_info['page_start'] = None
+            doc_info['page_end'] = None
+        document = documents.get(doc_info['document'].id)
+        if document is None:
+            continue
+        document.page_start = page_start
+        document.page_end = page_end
+    if documents:
+        BundleDocument.objects.bulk_update(
+            documents.values(),
+            ['page_start', 'page_end'],
+        )
+
+
+def _generate_bundle_pdf(bundle, cache=None, progress_callback=None, documents_info=None, build_stats=None):
+    """Generate the final PDF bundle with index and pagination."""
+    from backend.pdf.bundle_builder import (
+        build_bundle_pdf_fast_with_links,
+        fast_builder_available,
+        pikepdf_available,
+        qpdf_available,
+    )
+    from backend.pdf.build_stats import log_builder_selection, bundle_pdf_logging_enabled
+
+    if documents_info is None:
+        documents_info = _collect_bundle_documents(bundle, cache=cache)
+
+    _assign_document_page_ranges(documents_info, bundle)
+
+    if build_stats is not None:
+        build_stats.start('reportlab_index')
+    if progress_callback:
+        progress_callback(20, 'Generating index page...')
+    index_pdf_content, index_links = _generate_index_pdf(bundle, documents_info)
+    if build_stats is not None:
+        build_stats.finish_stage()
+
+    qpdf_ok = qpdf_available()
+    pikepdf_ok = pikepdf_available()
+    cache_used = cache is not None
+    if build_stats is not None:
+        build_stats.add_meta(
+            qpdf_available=qpdf_ok,
+            pikepdf_available=pikepdf_ok,
+            cache_used=cache_used,
+        )
+
+    if fast_builder_available() and cache is not None:
+        log_builder_selection(
+            bundle.id,
+            qpdf_ok=qpdf_ok,
+            pikepdf_ok=pikepdf_ok,
+            cache_used=cache_used,
+            selected_builder='qpdf+pikepdf',
+            reason='fast path',
+        )
+        try:
+            if progress_callback:
+                progress_callback(25, 'Building PDF (fast path)...')
+            output_path, work_dir = build_bundle_pdf_fast_with_links(
+                index_pdf_content,
+                index_links,
+                documents_info,
+                cache,
+                progress_callback=progress_callback,
+                stats=build_stats,
+            )
+            import pikepdf
+            with pikepdf.open(output_path) as pdf:
+                total_pages = len(pdf.pages)
+            _persist_document_page_ranges(documents_info, total_pages)
+            if progress_callback:
+                progress_callback(92, 'Finalising PDF...')
+            if build_stats is not None:
+                build_stats.set_builder('qpdf+pikepdf')
+            return {
+                'path': output_path,
+                'work_dir': work_dir,
+                'output_pages': total_pages,
+            }
+        except Exception as exc:
+            logger.exception(
+                'Fast bundle PDF build failed for bundle %s; falling back to PyPDF2',
+                bundle.id,
+            )
+            if build_stats is not None:
+                build_stats.add_meta(fallback_reason=str(exc))
+
+    fallback_reason = []
+    if not qpdf_ok:
+        fallback_reason.append('qpdf missing')
+    if not pikepdf_ok:
+        fallback_reason.append('pikepdf missing')
+    if not cache_used:
+        fallback_reason.append('no cache')
+    if build_stats is not None and build_stats.meta.get('fallback_reason'):
+        fallback_reason.append('fast path error')
+    reason = ', '.join(fallback_reason) or 'legacy default'
+    log_builder_selection(
+        bundle.id,
+        qpdf_ok=qpdf_ok,
+        pikepdf_ok=pikepdf_ok,
+        cache_used=cache_used,
+        selected_builder='pypdf2+reportlab',
+        reason=reason,
+    )
+
+    if build_stats is not None:
+        build_stats.start('legacy_pypdf2_merge')
+    pdf_content = _generate_bundle_pdf_legacy(
+        bundle,
+        cache=cache,
+        progress_callback=progress_callback,
+        documents_info=documents_info,
+        index_pdf_content=index_pdf_content,
+        index_links=index_links,
+    )
+    if build_stats is not None:
+        build_stats.finish_stage()
+        build_stats.set_builder('pypdf2+reportlab', fallback_reason=reason)
+    from PyPDF2 import PdfReader
+    output_pages = len(PdfReader(BytesIO(pdf_content)).pages)
+    return {'bytes': pdf_content, 'output_pages': output_pages}
+
+
+def _generate_bundle_pdf_legacy(
+    bundle,
+    cache=None,
+    progress_callback=None,
+    documents_info=None,
+    index_pdf_content=None,
+    index_links=None,
+):
+    """Legacy PyPDF2 merge path."""
     from PyPDF2 import PdfWriter, PdfReader
     from PyPDF2.generic import AnnotationBuilder
 
     if documents_info is None:
         documents_info = _collect_bundle_documents(bundle, cache=cache)
-    index_page_count = _estimate_index_page_count(documents_info, bundle)
+        _assign_document_page_ranges(documents_info, bundle)
 
-    current_document_page = index_page_count + 1
-    for doc_info in documents_info:
-        doc_info['page_start'] = current_document_page
-        doc_info['page_end'] = current_document_page + \
-            doc_info['page_count'] - 1
-        current_document_page = doc_info['page_end'] + 1
+    if index_pdf_content is None or index_links is None:
+        if progress_callback:
+            progress_callback(20, 'Generating index page...')
+        index_pdf_content, index_links = _generate_index_pdf(
+            bundle, documents_info)
 
-    if progress_callback:
-        progress_callback(20, 'Generating index page...')
-    index_pdf_content, index_links = _generate_index_pdf(
-        bundle, documents_info)
-
-    # Create final PDF writer
     writer = PdfWriter()
     page_number = 1
 
-    # Add index page
     index_reader = PdfReader(BytesIO(index_pdf_content))
     for page in index_reader.pages:
         page_with_number = _add_page_number(page, page_number)
         writer.add_page(page_with_number)
         page_number += 1
 
-    # Add documents with page numbers
     doc_total = len(documents_info)
     for doc_index, doc_info in enumerate(documents_info):
         try:
@@ -10420,13 +10612,15 @@ def _generate_bundle_pdf(bundle, cache=None, progress_callback=None, documents_i
                 doc_reader = PdfReader(doc_file)
                 for page_index in doc_info['page_indices']:
                     page = doc_reader.pages[page_index]
-                    # Add page number to each page
                     page_with_number = _add_page_number(page, page_number)
                     writer.add_page(page_with_number)
                     page_number += 1
         except Exception as e:
             logger.exception(
-                "Error adding bundle document pages for document %s: %s", doc_info['document'].id, e)
+                "Error adding bundle document pages for document %s: %s",
+                doc_info['document'].id,
+                e,
+            )
 
     if progress_callback:
         progress_callback(88, 'Adding bookmarks and links...')
@@ -10447,23 +10641,12 @@ def _generate_bundle_pdf(bundle, cache=None, progress_callback=None, documents_i
     if progress_callback:
         progress_callback(92, 'Finalising PDF...')
 
-    for doc_info in documents_info:
-        if doc_info['page_start'] > len(writer.pages):
-            doc_info['page_start'] = None
-            doc_info['page_end'] = None
+    _persist_document_page_ranges(documents_info, len(writer.pages))
 
-    for doc_info in documents_info:
-        BundleDocument.objects.filter(id=doc_info['document'].id).update(
-            page_start=doc_info['page_start'],
-            page_end=doc_info['page_end'],
-        )
-
-    # Write to bytes
     output_buffer = BytesIO()
     writer.write(output_buffer)
     pdf_content = output_buffer.getvalue()
     output_buffer.close()
-
     return pdf_content
 
 
@@ -10504,6 +10687,9 @@ def _add_bundle_pdf_bookmarks(writer, documents_info):
 
 
 def _get_pdf_page_count(document, cache=None):
+    if cache is not None and cache.has_page_count(document):
+        return cache.get_page_count(document)
+
     from PyPDF2 import PdfReader
 
     with _open_document_pdf(document, cache=cache) as pdf_file:
@@ -10540,7 +10726,7 @@ def _get_bundle_document_page_choices(document):
     try:
         page_count = _get_pdf_page_count(document)
     except Exception as e:
-        logger.exception(
+        logger.warning(
             "Error reading page count for bundle document %s: %s", document.id, e)
         document.page_count = 0
         return []
@@ -10570,12 +10756,17 @@ def _collect_bundle_documents(bundle, cache=None):
     for section in bundle.sections.all().order_by('order'):
         for document in section.documents.all().order_by('order'):
             try:
-                with _open_document_pdf(document, cache=cache) as pdf_file:
-                    reader = PdfReader(pdf_file)
+                if cache is not None and cache.has_page_count(document):
+                    page_count = cache.get_page_count(document)
                     page_order = _normalise_document_page_order(
-                        document, len(reader.pages))
-                    page_indices = [page_number -
-                                    1 for page_number in page_order]
+                        document, page_count)
+                    page_indices = [page_number - 1 for page_number in page_order]
+                else:
+                    with _open_document_pdf(document, cache=cache) as pdf_file:
+                        reader = PdfReader(pdf_file)
+                        page_order = _normalise_document_page_order(
+                            document, len(reader.pages))
+                        page_indices = [page_number - 1 for page_number in page_order]
 
                 if not page_indices:
                     continue

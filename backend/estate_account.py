@@ -131,11 +131,14 @@ def get_or_create_estate_account(matter, user=None):
 
 
 FINANCE_SOURCE_LABELS = {
-    EstateAccountFinanceLineOverride.SOURCE_SLIP: 'Pink slip',
     EstateAccountFinanceLineOverride.SOURCE_GREEN_SLIP: 'Green slip',
     EstateAccountFinanceLineOverride.SOURCE_INVOICE: 'Invoice',
     EstateAccountFinanceLineOverride.SOURCE_CREDIT_NOTE: 'Credit note',
 }
+
+
+def _source_label_for_slip(slip):
+    return 'Pink slip' if slip.is_money_out else 'Blue slip'
 
 
 def _default_section_for_slip(slip):
@@ -166,9 +169,8 @@ def _finance_rows_for_matter(matter, calculate_invoice_total_with_vat):
             'line_kind': 'finance',
             'source_type': EstateAccountFinanceLineOverride.SOURCE_SLIP,
             'source_id': slip.id,
-            'source_label': FINANCE_SOURCE_LABELS[
-                EstateAccountFinanceLineOverride.SOURCE_SLIP
-            ],
+            'source_label': _source_label_for_slip(slip),
+            'is_money_out': bool(slip.is_money_out),
             'default_section': section,
             'date': slip.date,
             'description': desc,
@@ -485,6 +487,7 @@ def get_estate_account_data(estate_account, matter, calculate_invoice_total_with
             'source_type': finance_row['source_type'],
             'source_id': finance_row['source_id'],
             'source_label': finance_row.get('source_label', 'Finances'),
+            'is_money_out': finance_row.get('is_money_out'),
             'section': section,
             'date': date_value,
             'description': description,

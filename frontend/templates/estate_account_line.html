@@ -4,7 +4,7 @@
     {% if line.source_type %}data-source-type="{{ line.source_type }}" data-source-id="{{ line.source_id }}"{% endif %}>
     <td class="estate-line-source">
         {% if line.from_finances %}
-        <span class="estate-line-badge estate-line-badge--finance{% if line.source_type == 'slip' %} estate-line-badge--pink-slip{% endif %}">{{ line.source_label|default:"Finances" }}</span>
+        <span class="estate-line-badge estate-line-badge--finance{% if line.source_type == 'slip' %}{% if line.is_money_out %} estate-line-badge--pink-slip{% else %} estate-line-badge--blue-slip{% endif %}{% endif %}">{{ line.source_label|default:"Finances" }}</span>
         {% elif line.line_kind == 'manual' %}
         <span class="estate-line-badge estate-line-badge--manual">Pending</span>
         {% else %}

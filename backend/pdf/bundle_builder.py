@@ -1,0 +1,309 @@
+import logging
+import os
+import shutil
+import subprocess
+import tempfile
+
+logger = logging.getLogger(__name__)
+
+PAGE_NUMBER_FONT_SIZE = 20
+PAGE_NUMBER_RIGHT_MARGIN = 18
+PAGE_NUMBER_BOTTOM_MARGIN = 16
+PAGE_NUMBER_FONT = 'Times-Bold'
+PAGE_NUMBER_PDF_FONT = '/Times-Bold'
+
+
+def _page_number_text_width(text):
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    return stringWidth(str(text), PAGE_NUMBER_FONT, PAGE_NUMBER_FONT_SIZE)
+
+
+def _page_number_x_position(page_width, text):
+    """Right-align page number text, matching ReportLab drawRightString behaviour."""
+    return page_width - PAGE_NUMBER_RIGHT_MARGIN - _page_number_text_width(text)
+
+
+def qpdf_available():
+    return shutil.which('qpdf') is not None
+
+
+def pikepdf_available():
+    try:
+        import pikepdf  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def fast_builder_available():
+    return qpdf_available() and pikepdf_available()
+
+
+def _page_range_spec(page_indices):
+    """Convert 0-based page indices to a qpdf page spec (1-based)."""
+    if not page_indices:
+        return None
+    one_based = [index + 1 for index in page_indices]
+    if len(one_based) == 1:
+        return str(one_based[0])
+    if one_based == list(range(one_based[0], one_based[-1] + 1)):
+        return f'{one_based[0]}-{one_based[-1]}'
+    return ','.join(str(page) for page in one_based)
+
+
+def _run_qpdf(args):
+    result = subprocess.run(
+        ['qpdf', *args],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f'qpdf failed ({result.returncode}): {result.stderr or result.stdout}'
+        )
+
+
+def _concat_with_qpdf(output_path, page_inputs):
+    """
+    page_inputs: list of (pdf_path, page_spec) e.g. ('index.pdf', '1-z')
+    """
+    args = ['--empty', '--pages']
+    for pdf_path, page_spec in page_inputs:
+        args.extend([pdf_path, page_spec])
+    args.extend(['--', output_path])
+    _run_qpdf(args)
+
+
+def _stamp_page_numbers(input_path, output_path):
+    import pikepdf
+    from pikepdf import Name
+
+    pdf = pikepdf.Pdf.open(input_path)
+    for page_number, page in enumerate(pdf.pages, start=1):
+        width = float(page.mediabox[2])
+        text = str(page_number)
+        x = _page_number_x_position(width, text)
+        y = PAGE_NUMBER_BOTTOM_MARGIN
+        stream = (
+            f'q BT {PAGE_NUMBER_PDF_FONT} '.encode()
+            + str(PAGE_NUMBER_FONT_SIZE).encode()
+            + b' Tf '
+            + f'{x} {y} Td ({text}) Tj ET Q'.encode()
+        )
+
+        if '/Resources' not in page:
+            page.Resources = pikepdf.Dictionary()
+        if '/Font' not in page.Resources:
+            page.Resources.Font = pikepdf.Dictionary()
+        font_key = Name(PAGE_NUMBER_PDF_FONT)
+        if font_key not in page.Resources.Font:
+            page.Resources.Font[font_key] = pikepdf.Dictionary(
+                Type=Name('/Font'),
+                Subtype=Name('/Type1'),
+                BaseFont=Name('/Times-Bold'),
+            )
+
+        overlay = pikepdf.Stream(pdf, stream)
+        if isinstance(page.Contents, pikepdf.Array):
+            page.Contents.append(overlay)
+        elif page.Contents is not None:
+            existing = page.Contents.read_bytes()
+            page.Contents = pdf.make_stream(existing + stream)
+        else:
+            page.Contents = overlay
+
+    pdf.save(output_path)
+    pdf.close()
+
+
+def _add_index_links(pdf_path, index_links):
+    if not index_links:
+        return
+
+    import pikepdf
+    from pikepdf import Array, Dictionary, Name
+
+    pdf = pikepdf.Pdf.open(pdf_path, allow_overwriting_input=True)
+    for link in index_links:
+        source_index = link['source_page_index']
+        target_index = link['target_page_index']
+        if source_index >= len(pdf.pages) or target_index >= len(pdf.pages):
+            continue
+
+        page = pdf.pages[source_index]
+        rect = link['rect']
+        x1, y1, x2, y2 = rect
+        target_page = pdf.pages[target_index]
+        annot = pdf.make_indirect(
+            Dictionary(
+                Type=Name('/Annot'),
+                Subtype=Name('/Link'),
+                Rect=[x1, y1, x2, y2],
+                Border=[0, 0, 0],
+                Dest=[target_page.obj, Name('/Fit')],
+            )
+        )
+        if '/Annots' in page:
+            page.Annots.append(annot)
+        else:
+            page.Annots = Array([annot])
+
+    pdf.save()
+    pdf.close()
+
+
+def _add_bookmarks(pdf_path, documents_info):
+    import pikepdf
+
+    pdf = pikepdf.Pdf.open(pdf_path, allow_overwriting_input=True)
+    with pdf.open_outline() as outline:
+        outline.root.clear()
+        outline.root.append(pikepdf.OutlineItem('Index', 0))
+
+        current_section = None
+        section_parent = None
+        serial_number = 1
+
+        for doc_info in documents_info:
+            page_start = doc_info.get('page_start')
+            if not page_start:
+                continue
+
+            target_page = page_start - 1
+            if target_page < 0 or target_page >= len(pdf.pages):
+                continue
+
+            if doc_info['section'] != current_section:
+                current_section = doc_info['section']
+                section_parent = pikepdf.OutlineItem(
+                    f'{current_section} (p. {page_start})',
+                    target_page,
+                )
+                outline.root.append(section_parent)
+
+            label = doc_info['description']
+            if doc_info.get('date'):
+                label = f'{label} ({doc_info["date"]})'
+
+            item = pikepdf.OutlineItem(
+                f'{serial_number}. {label} (p. {page_start})',
+                target_page,
+            )
+            if section_parent is not None:
+                section_parent.children.append(item)
+            else:
+                outline.root.append(item)
+            serial_number += 1
+
+    pdf.save()
+    pdf.close()
+
+
+def build_bundle_pdf_fast(
+    index_pdf_bytes,
+    documents_info,
+    cache,
+    progress_callback=None,
+    stats=None,
+):
+    """
+    Build the final bundle PDF on disk using qpdf + pikepdf.
+    Returns the path to the output file (caller must delete).
+    """
+    if not fast_builder_available():
+        raise RuntimeError('Fast bundle builder requires qpdf and pikepdf')
+
+    work_dir = tempfile.mkdtemp(prefix='bundle_build_')
+    try:
+        if stats is not None:
+            stats.start('fast_write_index')
+        index_path = os.path.join(work_dir, 'index.pdf')
+        with open(index_path, 'wb') as index_file:
+            index_file.write(index_pdf_bytes)
+        if stats is not None:
+            stats.finish_stage()
+
+        page_inputs = [(index_path, '1-z')]
+        doc_total = len(documents_info)
+
+        if stats is not None:
+            stats.start('fast_prepare_inputs')
+        for doc_index, doc_info in enumerate(documents_info):
+            if progress_callback and doc_total:
+                percent = 30 + int(40 * (doc_index + 1) / doc_total)
+                label = (doc_info['description'] or 'document')[:48]
+                progress_callback(
+                    percent,
+                    f'Preparing document {doc_index + 1} of {doc_total}: {label}...',
+                )
+
+            source_path = cache.local_path(doc_info['document'])
+            page_spec = _page_range_spec(doc_info['page_indices'])
+            if page_spec:
+                page_inputs.append((source_path, page_spec))
+        if stats is not None:
+            stats.finish_stage()
+
+        unnumbered_path = os.path.join(work_dir, 'unnumbered.pdf')
+        if progress_callback:
+            progress_callback(72, 'Concatenating PDFs...')
+        if stats is not None:
+            stats.start('fast_qpdf_concat')
+        _concat_with_qpdf(unnumbered_path, page_inputs)
+        if stats is not None:
+            stats.finish_stage()
+
+        numbered_path = os.path.join(work_dir, 'numbered.pdf')
+        if progress_callback:
+            progress_callback(80, 'Adding page numbers...')
+        if stats is not None:
+            stats.start('fast_pikepdf_page_numbers')
+        _stamp_page_numbers(unnumbered_path, numbered_path)
+        if stats is not None:
+            stats.finish_stage()
+
+        if progress_callback:
+            progress_callback(85, 'Adding bookmarks and links...')
+        if stats is not None:
+            stats.start('fast_pikepdf_bookmarks')
+        _add_bookmarks(numbered_path, documents_info)
+        if stats is not None:
+            stats.finish_stage()
+
+        output_path = os.path.join(work_dir, 'final.pdf')
+        shutil.copy2(numbered_path, output_path)
+        return output_path, work_dir
+    except Exception:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise
+
+
+def build_bundle_pdf_fast_with_links(
+    index_pdf_bytes,
+    index_links,
+    documents_info,
+    cache,
+    progress_callback=None,
+    stats=None,
+):
+    """Like build_bundle_pdf_fast but also adds index hyperlinks."""
+    output_path, work_dir = build_bundle_pdf_fast(
+        index_pdf_bytes,
+        documents_info,
+        cache,
+        progress_callback=progress_callback,
+        stats=stats,
+    )
+    try:
+        linked_path = os.path.join(work_dir, 'linked.pdf')
+        shutil.copy2(output_path, linked_path)
+        if stats is not None:
+            stats.start('fast_pikepdf_index_links')
+        _add_index_links(linked_path, index_links)
+        if stats is not None:
+            stats.finish_stage()
+        return linked_path, work_dir
+    except Exception:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise

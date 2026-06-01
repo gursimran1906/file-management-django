@@ -113,6 +113,7 @@ class EstateAccountTests(TestCase):
         )
         self.assertEqual(len(data['distribution_payments']), 0)
         self.assertEqual(len(data['debts']), 1)
+        self.assertEqual(data['debts'][0]['source_label'], 'Pink slip')
         self.assertEqual(data['totals']['total_debts_paid'], '500.00')
 
     def test_credit_note_reduces_invoice_debt(self):
@@ -210,6 +211,7 @@ class EstateAccountTests(TestCase):
             calculate_invoice_total_with_vat,
         )
         self.assertEqual(len(data['assets']), 1)
+        self.assertEqual(data['assets'][0]['source_label'], 'Blue slip')
         self.assertEqual(len(data['debts']), 1)
         self.assertEqual(data['totals']['gross_estate'], '100.00')
         self.assertEqual(data['totals']['total_debts_paid'], '50.00')

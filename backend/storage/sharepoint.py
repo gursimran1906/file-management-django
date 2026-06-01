@@ -10,6 +10,46 @@ from backend.sharepoint.client import SharePointClientError, get_sharepoint_clie
 from backend.sharepoint.paths import normalize_storage_path, resolve_storage_path
 
 
+def resolve_local_media_path(name):
+    """Return a disk path under MEDIA_ROOT for legacy/local files, if present."""
+    if not name:
+        return None
+
+    candidates = [name.replace('\\', '/')]
+    mapped = normalize_storage_path(name)
+    if mapped not in candidates:
+        candidates.append(mapped)
+
+    for candidate in dict.fromkeys(candidates):
+        path = os.path.join(settings.MEDIA_ROOT, candidate)
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def read_storage_file_bytes(name):
+    """Read file bytes from SharePoint, falling back to local MEDIA_ROOT."""
+    if settings.USE_SHAREPOINT:
+        client = get_sharepoint_client()
+        resolved_name = resolve_storage_path(name, client=client)
+        try:
+            return client.download(resolved_name)
+        except SharePointClientError as exc:
+            if '404' not in str(exc):
+                raise
+            local_path = resolve_local_media_path(name)
+            if local_path is None:
+                raise
+            with open(local_path, 'rb') as handle:
+                return handle.read()
+
+    local_path = resolve_local_media_path(name)
+    if local_path is None:
+        raise FileNotFoundError(name)
+    with open(local_path, 'rb') as handle:
+        return handle.read()
+
+
 class SharePointFile(File):
     def __init__(self, name, content):
         self.name = name
@@ -38,9 +78,7 @@ class SharePointStorage(Storage):
     def _open(self, name, mode='rb'):
         if 'w' in mode:
             raise ValueError('SharePoint storage is read-only via _open')
-        client = get_sharepoint_client()
-        storage_name = self._resolved_name(name)
-        return SharePointFile(name, client.download(storage_name))
+        return SharePointFile(name, read_storage_file_bytes(name))
 
     def delete(self, name):
         if not name:
@@ -51,11 +89,15 @@ class SharePointStorage(Storage):
     def exists(self, name):
         if not name:
             return False
-        client = get_sharepoint_client()
-        try:
-            return client.exists(self._resolved_name(name))
-        except SharePointClientError:
-            return False
+        if settings.USE_SHAREPOINT:
+            client = get_sharepoint_client()
+            try:
+                if client.exists(self._resolved_name(name)):
+                    return True
+            except SharePointClientError:
+                pass
+            return resolve_local_media_path(name) is not None
+        return resolve_local_media_path(name) is not None
 
     def size(self, name):
         client = get_sharepoint_client()
@@ -79,21 +121,6 @@ class SharePointStorage(Storage):
 
 def download_storage_file_to_path(name, dest_path):
     """Download a file from active storage to a local path."""
-    if settings.USE_SHAREPOINT:
-        client = get_sharepoint_client()
-        resolved_name = resolve_storage_path(name, client=client)
-        client.download_to_file(resolved_name, dest_path)
-        return
-
-    normalized = normalize_storage_path(name)
-    candidates = [name.replace('\\', '/'), normalized]
-    source = None
-    for candidate in dict.fromkeys(candidates):
-        path = os.path.join(settings.MEDIA_ROOT, candidate)
-        if os.path.exists(path):
-            source = path
-            break
-    if source is None:
-        raise FileNotFoundError(name)
-    with open(source, 'rb') as src, open(dest_path, 'wb') as dest:
-        dest.write(src.read())
+    content = read_storage_file_bytes(name)
+    with open(dest_path, 'wb') as dest:
+        dest.write(content)

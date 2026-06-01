@@ -13,6 +13,22 @@ from .models import Bundle, BundleDocument, BundleSection
 from .views import _generate_bundle_pdf
 
 
+def bundle_pdf_bytes(pdf_result):
+    """Normalise fast-path dict or legacy bytes from _generate_bundle_pdf."""
+    if isinstance(pdf_result, dict):
+        if pdf_result.get('path'):
+            import shutil
+            try:
+                with open(pdf_result['path'], 'rb') as pdf_file:
+                    return pdf_file.read()
+            finally:
+                work_dir = pdf_result.get('work_dir')
+                if work_dir:
+                    shutil.rmtree(work_dir, ignore_errors=True)
+        return pdf_result['bytes']
+    return pdf_result
+
+
 def make_pdf(filename, text):
     buffer = BytesIO()
     pdf_canvas = canvas.Canvas(buffer)
@@ -213,7 +229,7 @@ class BundleTests(TestCase):
             order=2,
         )
 
-        pdf_content = _generate_bundle_pdf(self.bundle)
+        pdf_content = bundle_pdf_bytes(_generate_bundle_pdf(self.bundle))
         reader = PdfReader(BytesIO(pdf_content))
 
         self.assertEqual(len(reader.pages), 3)
@@ -333,7 +349,7 @@ class BundleTests(TestCase):
             order=2,
         )
 
-        pdf_content = _generate_bundle_pdf(self.bundle)
+        pdf_content = bundle_pdf_bytes(_generate_bundle_pdf(self.bundle))
 
         self.assertEqual(len(PdfReader(BytesIO(pdf_content)).pages), 3)
         index_page = PdfReader(BytesIO(pdf_content)).pages[0]
@@ -358,7 +374,7 @@ class BundleTests(TestCase):
             order=2,
         )
 
-        pdf_content = _generate_bundle_pdf(self.bundle)
+        pdf_content = bundle_pdf_bytes(_generate_bundle_pdf(self.bundle))
         reader = PdfReader(BytesIO(pdf_content))
 
         def collect_outline_titles(outline):
@@ -386,7 +402,7 @@ class BundleTests(TestCase):
             order=1,
         )
 
-        index_text = PdfReader(BytesIO(_generate_bundle_pdf(self.bundle))).pages[0].extract_text()
+        index_text = PdfReader(BytesIO(bundle_pdf_bytes(_generate_bundle_pdf(self.bundle)))).pages[0].extract_text()
 
         self.assertNotIn('Date', index_text)
         self.assertIn('Description', index_text)
@@ -408,7 +424,7 @@ class BundleTests(TestCase):
             order=2,
         )
 
-        index_text = PdfReader(BytesIO(_generate_bundle_pdf(self.bundle))).pages[0].extract_text()
+        index_text = PdfReader(BytesIO(bundle_pdf_bytes(_generate_bundle_pdf(self.bundle)))).pages[0].extract_text()
 
         self.assertIn('Date', index_text)
         self.assertIn('01/06/2024', index_text)
@@ -434,7 +450,7 @@ class BundleTests(TestCase):
             order=1,
         )
 
-        index_text = PdfReader(BytesIO(_generate_bundle_pdf(self.bundle))).pages[0].extract_text()
+        index_text = PdfReader(BytesIO(bundle_pdf_bytes(_generate_bundle_pdf(self.bundle)))).pages[0].extract_text()
 
         self.assertIn('COUNTY COURT AT SOUTHEND', index_text)
         self.assertIn('CLAIM NO. 12338123223', index_text)
@@ -459,7 +475,7 @@ class BundleTests(TestCase):
             order=1,
         )
 
-        index_text = PdfReader(BytesIO(_generate_bundle_pdf(self.bundle))).pages[0].extract_text()
+        index_text = PdfReader(BytesIO(bundle_pdf_bytes(_generate_bundle_pdf(self.bundle)))).pages[0].extract_text()
 
         self.assertIn('Witness Statement Bundle', index_text)
         self.assertIn('Index', index_text)
@@ -478,7 +494,7 @@ class BundleTests(TestCase):
             order=1,
         )
 
-        index_text = PdfReader(BytesIO(_generate_bundle_pdf(self.bundle))).pages[0].extract_text()
+        index_text = PdfReader(BytesIO(bundle_pdf_bytes(_generate_bundle_pdf(self.bundle)))).pages[0].extract_text()
 
         self.assertNotIn('...', index_text)
         self.assertIn('Witness statement of John Smith', index_text)
@@ -493,7 +509,7 @@ class BundleTests(TestCase):
             order=1,
         )
 
-        pdf_content = _generate_bundle_pdf(self.bundle)
+        pdf_content = bundle_pdf_bytes(_generate_bundle_pdf(self.bundle))
 
         self.assertEqual(len(PdfReader(BytesIO(pdf_content)).pages), 4)
         document.refresh_from_db()
@@ -509,7 +525,7 @@ class BundleTests(TestCase):
             page_order=[3, 1],
         )
 
-        pdf_content = _generate_bundle_pdf(self.bundle)
+        pdf_content = bundle_pdf_bytes(_generate_bundle_pdf(self.bundle))
         reader = PdfReader(BytesIO(pdf_content))
 
         self.assertEqual(len(reader.pages), 3)
