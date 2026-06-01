@@ -69,12 +69,13 @@
         + '.bundle-upload-subtext{font-size:.75rem;color:#6b7280;line-height:1.4}'
         + '.bundle-upload-progress-wrap{display:flex;flex-direction:column;gap:.35rem;width:100%}'
         + '.bundle-upload-progress-track{height:.45rem;border-radius:9999px;background:#e5e7eb;overflow:hidden}'
-        + '.bundle-upload-progress-bar{height:100%;width:0;border-radius:9999px;background:#2563eb;transition:width .25s ease}'
+        + '.bundle-upload-progress-bar{height:100%;width:0;border-radius:9999px;background:#2563eb;transition:width .45s ease-out}'
         + '.bundle-upload-progress-label{font-size:.6875rem;color:#6b7280;text-align:right}'
         + '@keyframes bundle-upload-spin{to{transform:rotate(360deg)}}';
 
     global.BundleUpload = {
         _overlay: null,
+        _maxPercent: 0,
 
         _ensureStyles() {
             if (document.getElementById('bundle-upload-styles')) return;
@@ -117,9 +118,10 @@
         show(message, subtext, options) {
             const overlay = this._ensureOverlay();
             const opts = options || {};
+            this._maxPercent = typeof opts.percent === 'number' ? opts.percent : 0;
             overlay.querySelector('.bundle-upload-message').textContent = message || 'Working...';
             overlay.querySelector('.bundle-upload-subtext').textContent = subtext || 'Please wait, do not close this page.';
-            this.setProgress(opts.percent, opts.showProgress);
+            this.setProgress(this._maxPercent, opts.showProgress);
             overlay.classList.remove('hidden');
         },
 
@@ -129,11 +131,15 @@
             const bar = overlay.querySelector('#bundle-upload-progress-bar');
             const label = overlay.querySelector('#bundle-upload-progress-label');
             const spinner = overlay.querySelector('.bundle-upload-spinner');
-            const shouldShow = showProgress || (typeof percent === 'number' && percent > 0 && percent < 100);
-            wrap.classList.toggle('hidden', !shouldShow);
-            spinner.classList.toggle('hidden', shouldShow && percent >= 5);
             if (typeof percent === 'number') {
-                const safePercent = Math.max(0, Math.min(100, Math.round(percent)));
+                this._maxPercent = Math.max(this._maxPercent || 0, percent);
+            }
+            const displayPercent = this._maxPercent || 0;
+            const shouldShow = showProgress || (displayPercent > 0 && displayPercent < 100);
+            wrap.classList.toggle('hidden', !shouldShow);
+            spinner.classList.toggle('hidden', shouldShow && displayPercent >= 5);
+            if (typeof percent === 'number' || showProgress) {
+                const safePercent = Math.max(0, Math.min(100, Math.round(displayPercent)));
                 bar.style.width = `${safePercent}%`;
                 label.textContent = `${safePercent}%`;
             }
@@ -155,6 +161,7 @@
         hide() {
             if (this._overlay) {
                 this._overlay.classList.add('hidden');
+                this._maxPercent = 0;
                 this.setProgress(0, false);
             }
         },
@@ -165,6 +172,7 @@
     }
 
     async function pollPdfStatus(statusUrl, onProgress) {
+        let maxPercent = 0;
         for (let attempt = 0; attempt < 600; attempt += 1) {
             const response = await fetch(statusUrl, {
                 credentials: 'same-origin',
@@ -174,8 +182,14 @@
             if (!response.ok) {
                 throw new Error(data.error || data.message || 'PDF generation failed');
             }
+            if (typeof data.percent === 'number') {
+                maxPercent = Math.max(maxPercent, data.percent);
+            }
             if (typeof onProgress === 'function') {
-                onProgress(data);
+                onProgress({
+                    ...data,
+                    ...(typeof data.percent === 'number' ? {percent: maxPercent} : {}),
+                });
             }
             if (data.ready === true || data.status === 'ready') {
                 return data;
@@ -320,7 +334,7 @@
                     BundleUpload.updateMessage(
                         opts.progressTitle || 'Generating PDF...',
                         data.message || 'Please wait.',
-                        data.percent || 0,
+                        typeof data.percent === 'number' ? data.percent : undefined,
                     );
                 });
             } else {
@@ -332,7 +346,7 @@
             }
 
             BundleUpload.updateMessage('Downloading PDF...', 'Your file will open shortly.', 100);
-            await downloadPdfBlob(downloadUrl, filename, opts);
+            await downloadPdfBlob(downloadUrl, filename, {...opts, skipOverlay: true});
             if (typeof opts.onComplete === 'function') {
                 opts.onComplete();
             }

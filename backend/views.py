@@ -1438,7 +1438,6 @@ def display_data_home_page(request, file_number):
             messages.error(
                 request, "ARCHIVED MATTER. Please note this matter is archived.")
         bundles = Bundle.objects.filter(
-            created_by=request.user,
             file_number=matter,
         ).order_by('-created_at')
         activity_logs, log_meta = enrich_file_logs(
@@ -9087,23 +9086,64 @@ def read_memo(request, memo_id):
 
 
 # Bundle Views
-def _bundle_pdf_progress_key(user_id, bundle_id):
-    return f'bundle_pdf_progress:{user_id}:{bundle_id}'
+def _user_can_access_bundle(user, bundle):
+    """Matter-linked bundles are visible to all authenticated users."""
+    if bundle.file_number_id:
+        return True
+    return bundle.created_by_id == user.id
 
 
-def _set_bundle_pdf_progress(user_id, bundle_id, **payload):
-    cache.set(
-        _bundle_pdf_progress_key(user_id, bundle_id),
-        {
-            'updated_at': timezone.now().isoformat(),
-            **payload,
-        },
-        900,
-    )
+def _get_accessible_bundle(request, bundle_id):
+    bundle = get_object_or_404(Bundle, id=bundle_id)
+    if not _user_can_access_bundle(request.user, bundle):
+        raise Http404('Bundle not found')
+    return bundle
 
 
-def _clear_bundle_pdf_progress(user_id, bundle_id):
-    cache.delete(_bundle_pdf_progress_key(user_id, bundle_id))
+def _get_accessible_bundle_section(request, section_id):
+    section = get_object_or_404(BundleSection, id=section_id)
+    if not _user_can_access_bundle(request.user, section.bundle):
+        raise Http404('Section not found')
+    return section
+
+
+def _get_accessible_bundle_document(request, document_id):
+    document = get_object_or_404(BundleDocument, id=document_id)
+    if not _user_can_access_bundle(request.user, document.section.bundle):
+        raise Http404('Document not found')
+    return document
+
+
+def _bundle_pdf_progress_key(bundle_id):
+    return f'bundle_pdf_progress:{bundle_id}'
+
+
+def _bundle_pdf_gen_lock_key(bundle_id):
+    return f'bundle_pdf_gen_lock:{bundle_id}'
+
+
+def _set_bundle_pdf_progress(bundle_id, *, user_id=None, reset=False, **payload):
+    existing = {} if reset else (cache.get(_bundle_pdf_progress_key(bundle_id)) or {})
+    if (
+        not reset
+        and payload.get('status') != 'error'
+        and 'percent' in payload
+        and isinstance(existing.get('percent'), (int, float))
+    ):
+        payload['percent'] = max(int(existing['percent']), int(payload['percent']))
+
+    data = {
+        'updated_at': timezone.now().isoformat(),
+        **payload,
+    }
+    if user_id is not None:
+        data['user_id'] = user_id
+    cache.set(_bundle_pdf_progress_key(bundle_id), data, 900)
+
+
+def _clear_bundle_pdf_progress(bundle_id):
+    cache.delete(_bundle_pdf_progress_key(bundle_id))
+    cache.delete(_bundle_pdf_gen_lock_key(bundle_id))
 
 
 def _generate_bundle_pdf_job(bundle_id, user_id):
@@ -9111,13 +9151,21 @@ def _generate_bundle_pdf_job(bundle_id, user_id):
 
     close_old_connections()
     try:
-        bundle = Bundle.objects.get(pk=bundle_id, created_by_id=user_id)
+        bundle = Bundle.objects.get(pk=bundle_id)
         user = CustomUser.objects.filter(pk=user_id).first()
+        if user is None or not _user_can_access_bundle(user, bundle):
+            _set_bundle_pdf_progress(
+                bundle_id,
+                status='error',
+                percent=0,
+                message='Bundle not found.',
+            )
+            return
 
         def progress_callback(percent, message):
             _set_bundle_pdf_progress(
-                user_id,
                 bundle_id,
+                user_id=user_id,
                 status='running',
                 percent=percent,
                 message=message,
@@ -9130,7 +9178,6 @@ def _generate_bundle_pdf_job(bundle_id, user_id):
         )
         if success:
             _set_bundle_pdf_progress(
-                user_id,
                 bundle_id,
                 status='ready',
                 percent=100,
@@ -9139,7 +9186,6 @@ def _generate_bundle_pdf_job(bundle_id, user_id):
             )
         else:
             _set_bundle_pdf_progress(
-                user_id,
                 bundle_id,
                 status='error',
                 percent=0,
@@ -9150,7 +9196,6 @@ def _generate_bundle_pdf_job(bundle_id, user_id):
         logger.exception(
             'Background PDF generation failed for bundle %s: %s', bundle_id, exc)
         _set_bundle_pdf_progress(
-            user_id,
             bundle_id,
             status='error',
             percent=0,
@@ -9158,6 +9203,7 @@ def _generate_bundle_pdf_job(bundle_id, user_id):
             error=str(exc),
         )
     finally:
+        cache.delete(_bundle_pdf_gen_lock_key(bundle_id))
         close_old_connections()
 
 
@@ -9342,7 +9388,7 @@ def bundle_create(request, file_number=None):
 @login_required
 def bundle_update(request, bundle_id):
     """Update bundle metadata."""
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
 
     if request.method == 'POST':
         bundle_name = request.POST.get('bundle_name', '').strip()
@@ -9469,7 +9515,7 @@ def _bundle_court_settings_dict(bundle):
 @login_required
 def bundle_court_update(request, bundle_id):
     """Update court bundle heading settings."""
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
 
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request'}, status=400)
@@ -9523,7 +9569,7 @@ def bundle_court_update(request, bundle_id):
 @login_required
 def bundle_edit(request, bundle_id):
     """Edit bundle - manage sections and documents"""
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
 
     sections = list(bundle.sections.prefetch_related(
         'documents').order_by('order'))
@@ -9546,7 +9592,7 @@ def bundle_edit(request, bundle_id):
 @login_required
 def bundle_section_add(request, bundle_id):
     """Add a new section to the bundle"""
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
 
     if request.method == 'POST':
         _touch_bundle(bundle)
@@ -9589,8 +9635,7 @@ def bundle_section_add(request, bundle_id):
 @login_required
 def bundle_section_delete(request, section_id):
     """Delete a bundle section"""
-    section = get_object_or_404(
-        BundleSection, id=section_id, bundle__created_by=request.user)
+    section = _get_accessible_bundle_section(request, section_id)
 
     if request.method == 'POST':
         _touch_bundle(section.bundle)
@@ -9611,8 +9656,7 @@ def bundle_section_delete(request, section_id):
 @login_required
 def bundle_section_update(request, section_id):
     """Update a bundle section heading or date sort."""
-    section = get_object_or_404(
-        BundleSection, id=section_id, bundle__created_by=request.user)
+    section = _get_accessible_bundle_section(request, section_id)
 
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request'}, status=400)
@@ -9672,7 +9716,7 @@ def bundle_section_update(request, section_id):
 @login_required
 def bundle_section_reorder(request, bundle_id):
     """Reorder sections in the bundle"""
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
 
     if request.method == 'POST':
         _touch_bundle(bundle)
@@ -9700,8 +9744,7 @@ def bundle_section_reorder(request, bundle_id):
 @login_required
 def bundle_document_upload(request, section_id):
     """Upload a document to a section"""
-    section = get_object_or_404(
-        BundleSection, id=section_id, bundle__created_by=request.user)
+    section = _get_accessible_bundle_section(request, section_id)
 
     if request.method == 'POST':
         _touch_bundle(section.bundle)
@@ -9786,8 +9829,7 @@ def bundle_document_upload(request, section_id):
 @login_required
 def bundle_document_file(request, document_id):
     """Serve a bundle document PDF for in-app page previews."""
-    document = get_object_or_404(
-        BundleDocument, id=document_id, section__bundle__created_by=request.user)
+    document = _get_accessible_bundle_document(request, document_id)
 
     if not document.file or not document.file.name:
         raise Http404('Document file not found')
@@ -9815,8 +9857,7 @@ def bundle_document_file(request, document_id):
 @login_required
 def bundle_document_update(request, document_id):
     """Update a bundle document's description and date."""
-    document = get_object_or_404(
-        BundleDocument, id=document_id, section__bundle__created_by=request.user)
+    document = _get_accessible_bundle_document(request, document_id)
 
     if request.method == 'POST':
         _touch_bundle(document.section.bundle)
@@ -9868,8 +9909,7 @@ def bundle_document_update(request, document_id):
 @login_required
 def bundle_document_delete(request, document_id):
     """Delete a bundle document"""
-    document = get_object_or_404(
-        BundleDocument, id=document_id, section__bundle__created_by=request.user)
+    document = _get_accessible_bundle_document(request, document_id)
 
     if request.method == 'POST':
         _touch_bundle(document.section.bundle)
@@ -9907,8 +9947,7 @@ def bundle_document_delete(request, document_id):
 @login_required
 def bundle_document_pages_update(request, document_id):
     """Get or update the selected page order for a bundle document."""
-    document = get_object_or_404(
-        BundleDocument, id=document_id, section__bundle__created_by=request.user)
+    document = _get_accessible_bundle_document(request, document_id)
 
     if request.method == 'GET':
         page_choices = _get_bundle_document_page_choices(document)
@@ -9968,8 +10007,7 @@ def bundle_document_pages_update(request, document_id):
 @login_required
 def bundle_document_reorder(request, section_id):
     """Reorder documents within a section"""
-    section = get_object_or_404(
-        BundleSection, id=section_id, bundle__created_by=request.user)
+    section = _get_accessible_bundle_section(request, section_id)
 
     if request.method == 'POST':
         _touch_bundle(section.bundle)
@@ -10002,7 +10040,7 @@ def bundle_document_reorder(request, section_id):
 @login_required
 def bundle_generate(request, bundle_id):
     """Generate the final PDF bundle"""
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
 
     if request.method == 'POST':
         success, error, _regenerated = _ensure_bundle_final_pdf(
@@ -10020,7 +10058,7 @@ def bundle_generate(request, bundle_id):
 @login_required
 def bundle_view(request, bundle_id):
     """View a finalized bundle"""
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
     sections = bundle.sections.all().order_by('order')
 
     # Calculate total documents
@@ -10040,23 +10078,35 @@ def bundle_pdf_prepare(request, bundle_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request'}, status=400)
 
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
 
     if _bundle_pdf_is_current(bundle):
-        _clear_bundle_pdf_progress(request.user.id, bundle_id)
+        _clear_bundle_pdf_progress(bundle_id)
         return JsonResponse({
             'ready': True,
             'percent': 100,
             'message': 'PDF is ready',
         })
 
-    progress = cache.get(_bundle_pdf_progress_key(request.user.id, bundle_id))
+    progress = cache.get(_bundle_pdf_progress_key(bundle_id))
     if progress and progress.get('status') == 'running':
         return JsonResponse({'started': True, **progress})
 
+    lock_key = _bundle_pdf_gen_lock_key(bundle_id)
+    if not cache.add(lock_key, request.user.id, 900):
+        progress = cache.get(_bundle_pdf_progress_key(bundle_id))
+        if progress:
+            return JsonResponse({'started': True, **progress})
+        return JsonResponse({
+            'started': True,
+            'status': 'running',
+            'message': 'Starting PDF generation...',
+        })
+
     _set_bundle_pdf_progress(
-        request.user.id,
         bundle_id,
+        user_id=request.user.id,
+        reset=True,
         status='running',
         percent=0,
         message='Starting PDF generation...',
@@ -10078,9 +10128,9 @@ def bundle_pdf_prepare(request, bundle_id):
 @login_required
 def bundle_pdf_status(request, bundle_id):
     """Poll PDF generation progress for a bundle."""
-    get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    _get_accessible_bundle(request, bundle_id)
 
-    progress = cache.get(_bundle_pdf_progress_key(request.user.id, bundle_id))
+    progress = cache.get(_bundle_pdf_progress_key(bundle_id))
     if progress:
         if progress.get('status') == 'error':
             return JsonResponse(progress, status=400)
@@ -10098,8 +10148,7 @@ def bundle_pdf_status(request, bundle_id):
         })
 
     return JsonResponse({
-        'status': 'pending',
-        'percent': 0,
+        'status': 'starting',
         'message': 'Waiting to start...',
     })
 
@@ -10107,14 +10156,14 @@ def bundle_pdf_status(request, bundle_id):
 @login_required
 def bundle_download(request, bundle_id):
     """Download the bundle PDF, generating it first when out of date."""
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
     bundle.refresh_from_db()
 
     serve_only = request.headers.get('X-Bundle-Serve-Only') == '1'
     regenerated = False
     pdf_file = None
 
-    progress = cache.get(_bundle_pdf_progress_key(request.user.id, bundle_id))
+    progress = cache.get(_bundle_pdf_progress_key(bundle_id))
     if serve_only and progress and progress.get('status') == 'running':
         return JsonResponse({'error': 'PDF is not ready yet.'}, status=409)
 
@@ -10161,7 +10210,7 @@ def bundle_download(request, bundle_id):
 @login_required
 def bundle_share_link_status_view(request, bundle_id):
     """Return Microsoft share-link metadata for a bundle."""
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
     return JsonResponse(bundle_share_link_status(bundle))
 
 
@@ -10169,7 +10218,7 @@ def bundle_share_link_status_view(request, bundle_id):
 @require_POST
 def bundle_share_link_create(request, bundle_id):
     """Create a view-only Microsoft share link for the bundle final PDF."""
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
 
     try:
         payload = json.loads(request.body.decode('utf-8') or '{}')
@@ -10221,7 +10270,7 @@ def bundle_share_link_create(request, bundle_id):
 @require_POST
 def bundle_share_link_revoke(request, bundle_id, link_id):
     """Revoke one Microsoft share link for a bundle."""
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
     link = get_object_or_404(BundleShareLink, id=link_id, bundle=bundle)
     revoked = revoke_share_link(link)
     if revoked:
@@ -11113,7 +11162,7 @@ def _add_page_number(page, page_number):
 @login_required
 def bundle_delete(request, bundle_id):
     """Delete a bundle"""
-    bundle = get_object_or_404(Bundle, id=bundle_id, created_by=request.user)
+    bundle = _get_accessible_bundle(request, bundle_id)
 
     if request.method == 'POST':
         revoke_all_bundle_share_links(bundle)
