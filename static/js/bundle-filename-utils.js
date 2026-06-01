@@ -59,6 +59,52 @@
         },
     };
 
+    // Fallback when page count is unknown; prepare response overrides per bundle.
+    const BUNDLE_PDF_GENERATION_EASE_MS = 600000;
+    const BUNDLE_PDF_GENERATION_CAP = 92;
+    const BUNDLE_PDF_WAIT_MAX_MS = 45 * 60 * 1000;
+    const BUNDLE_PDF_POLL_INTERVAL_MS = 1000;
+    const BUNDLE_PDF_MS_PER_PAGE = 800;
+    const BUNDLE_PDF_MS_PER_DOCUMENT = 2500;
+
+    function estimateGenerationTiming(pages, documentCount) {
+        const pageCount = Math.max(1, Number(pages) || 50);
+        const docCount = Math.max(0, Number(documentCount) || 0);
+        const expectedMs = Math.min(
+            BUNDLE_PDF_WAIT_MAX_MS,
+            Math.max(15000, pageCount * BUNDLE_PDF_MS_PER_PAGE + docCount * BUNDLE_PDF_MS_PER_DOCUMENT),
+        );
+        return {
+            pageCount,
+            docCount,
+            expectedMs,
+            easeMs: expectedMs / 2.5,
+            maxWaitMs: Math.min(
+                BUNDLE_PDF_WAIT_MAX_MS,
+                Math.max(expectedMs * 2, 120000),
+            ),
+        };
+    }
+
+    function generationMessagesForPages(pageCount) {
+        const pages = Math.max(1, Number(pageCount) || 0);
+        const messages = [
+            'Building your PDF bundle...',
+            'Collecting and merging documents...',
+        ];
+        if (pages >= 500) {
+            messages.push(
+                `Processing approximately ${pages.toLocaleString()} pages — large bundles can take 15–30 minutes...`,
+            );
+        } else if (pages >= 100) {
+            messages.push(`Processing approximately ${pages.toLocaleString()} pages...`);
+        } else {
+            messages.push('Please keep this tab open...');
+        }
+        messages.push('Still working — your download will start when ready...');
+        return messages;
+    }
+
     const OVERLAY_STYLES = ''
         + '#bundle-upload-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(17,24,39,.45);padding:1rem}'
         + '#bundle-upload-overlay.hidden{display:none}'
@@ -72,9 +118,11 @@
         + '.bundle-upload-progress-bar{height:100%;width:0;border-radius:9999px;background:#2563eb;transition:width .45s ease-out}'
         + '.bundle-upload-progress-bar.is-instant{transition:none}'
         + '.bundle-upload-progress-bar.is-transfer{width:40%!important;transition:none;animation:bundle-upload-transfer 1.35s ease-in-out infinite}'
+        + '.bundle-upload-progress-bar.is-waiting{animation:bundle-upload-waiting 1.8s ease-in-out infinite}'
         + '.bundle-upload-progress-label{font-size:.6875rem;color:#6b7280;text-align:right}'
         + '@keyframes bundle-upload-spin{to{transform:rotate(360deg)}}'
-        + '@keyframes bundle-upload-transfer{0%{transform:translateX(-120%)}100%{transform:translateX(320%)}}';
+        + '@keyframes bundle-upload-transfer{0%{transform:translateX(-120%)}100%{transform:translateX(320%)}}'
+        + '@keyframes bundle-upload-waiting{0%,100%{opacity:1}50%{opacity:.55}}';
 
     global.BundleUpload = {
         _overlay: null,
@@ -84,6 +132,13 @@
         _transferTimer: null,
         _transferMessages: [],
         _transferMsgIndex: 0,
+        _generationMode: false,
+        _generationTimer: null,
+        _generationMsgTimer: null,
+        _generationMessages: [],
+        _generationCap: BUNDLE_PDF_GENERATION_CAP,
+        _generationEaseMs: BUNDLE_PDF_GENERATION_EASE_MS,
+        _generationStarted: 0,
 
         _ensureStyles() {
             if (document.getElementById('bundle-upload-styles')) return;
@@ -141,6 +196,17 @@
             }
         },
 
+        _clearGenerationTimers() {
+            if (this._generationTimer) {
+                clearInterval(this._generationTimer);
+                this._generationTimer = null;
+            }
+            if (this._generationMsgTimer) {
+                clearInterval(this._generationMsgTimer);
+                this._generationMsgTimer = null;
+            }
+        },
+
         _clearTransferTimer() {
             if (this._transferTimer) {
                 clearInterval(this._transferTimer);
@@ -149,14 +215,78 @@
         },
 
         _setTransferSubtext() {
-            if (!this._overlay || !this._transferMessages.length) {
+            if (!this._overlay) {
+                return;
+            }
+            const messages = this._generationMode
+                ? this._generationMessages
+                : this._transferMessages;
+            if (!messages.length) {
                 return;
             }
             this._overlay.querySelector('.bundle-upload-subtext').textContent =
-                this._transferMessages[this._transferMsgIndex];
+                messages[this._transferMsgIndex];
+        },
+
+        beginGenerationSimulation(message, subtextMessages, timing) {
+            this._clearGenerationTimers();
+            this._clearTransferTimer();
+            this._generationMode = true;
+            this._transferMode = false;
+            this._indeterminate = false;
+            this._maxPercent = 8;
+            this._generationStarted = Date.now();
+            this._generationEaseMs = (timing && timing.easeMs) || BUNDLE_PDF_GENERATION_EASE_MS;
+            this._generationMessages = subtextMessages && subtextMessages.length
+                ? subtextMessages
+                : generationMessagesForPages(timing && timing.pageCount);
+            this._transferMsgIndex = 0;
+
+            const overlay = this._ensureOverlay();
+            const bar = overlay.querySelector('#bundle-upload-progress-bar');
+            if (bar) {
+                bar.classList.remove('is-transfer');
+                bar.style.transform = '';
+            }
+            overlay.querySelector('.bundle-upload-message').textContent = message || 'Generating PDF...';
+            this._setTransferSubtext();
+            this.setProgress(8, true);
+
+            this._generationMsgTimer = setInterval(() => {
+                this._transferMsgIndex = (this._transferMsgIndex + 1) % this._generationMessages.length;
+                this._setTransferSubtext();
+            }, 3200);
+
+            this._generationTimer = setInterval(() => {
+                if (!this._generationMode) {
+                    return;
+                }
+                const elapsed = Date.now() - this._generationStarted;
+                const easeMs = this._generationEaseMs || BUNDLE_PDF_GENERATION_EASE_MS;
+                const eased = 8 + (this._generationCap - 8) * (1 - Math.exp(-elapsed / easeMs));
+                const next = Math.min(this._generationCap, Math.max(this._maxPercent, eased));
+                const rounded = Math.round(next);
+                const bar = this._overlay && this._overlay.querySelector('#bundle-upload-progress-bar');
+                if (bar) {
+                    bar.classList.toggle('is-waiting', rounded >= this._generationCap - 1);
+                }
+                this.setProgress(rounded, true);
+            }, 500);
+        },
+
+        finishGenerationSimulation() {
+            this._clearGenerationTimers();
+            this._generationMode = false;
+            const bar = this._overlay && this._overlay.querySelector('#bundle-upload-progress-bar');
+            if (bar) {
+                bar.classList.remove('is-waiting');
+            }
+            this.setProgress(100, true);
         },
 
         beginTransfer(message, subtextMessages) {
+            this._clearGenerationTimers();
+            this._generationMode = false;
             this._clearTransferTimer();
             this._transferMode = true;
             this._indeterminate = false;
@@ -230,8 +360,10 @@
         },
 
         show(message, subtext, options) {
+            this._clearGenerationTimers();
             this._clearTransferTimer();
             this._transferMode = false;
+            this._generationMode = false;
             const overlay = this._ensureOverlay();
             const bar = overlay.querySelector('#bundle-upload-progress-bar');
             if (bar) {
@@ -287,8 +419,10 @@
 
         hide() {
             if (this._overlay) {
+                this._clearGenerationTimers();
                 this._clearTransferTimer();
                 this._transferMode = false;
+                this._generationMode = false;
                 const bar = this._overlay.querySelector('#bundle-upload-progress-bar');
                 if (bar) {
                     bar.classList.remove('is-transfer');
@@ -303,6 +437,56 @@
 
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function waitForPdfReady(statusUrl, options) {
+        const opts = options || {};
+        const timing = {
+            pageCount: opts.estimatedPages,
+            easeMs: opts.easeMs,
+            maxWaitMs: opts.maxWaitMs,
+        };
+        if (global.BundleUpload) {
+            global.BundleUpload.beginGenerationSimulation(
+                opts.progressTitle || 'Generating PDF...',
+                opts.generationMessages || generationMessagesForPages(timing.pageCount),
+                timing,
+            );
+        }
+
+        const maxWaitMs = opts.maxWaitMs || BUNDLE_PDF_WAIT_MAX_MS;
+        const pollIntervalMs = opts.pollIntervalMs || BUNDLE_PDF_POLL_INTERVAL_MS;
+        const deadline = Date.now() + maxWaitMs;
+
+        try {
+            while (Date.now() < deadline) {
+                const response = await fetch(statusUrl, {
+                    credentials: 'same-origin',
+                    headers: {'X-Requested-With': 'XMLHttpRequest'},
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.error || data.message || 'PDF generation failed');
+                }
+                if (data.ready === true || data.status === 'ready') {
+                    if (global.BundleUpload) {
+                        global.BundleUpload.finishGenerationSimulation();
+                    }
+                    return data;
+                }
+                await sleep(pollIntervalMs);
+            }
+            throw new Error(
+                `PDF generation timed out after ${Math.round(maxWaitMs / 60000)} minutes. `
+                + 'Very large bundles may need another attempt or fewer documents per batch.',
+            );
+        } catch (error) {
+            if (global.BundleUpload) {
+                global.BundleUpload._clearGenerationTimers();
+                global.BundleUpload._generationMode = false;
+            }
+            throw error;
+        }
     }
 
     async function pollPdfStatus(statusUrl, onProgress) {
@@ -528,19 +712,18 @@
                 throw new Error(prepareData.error || prepareData.message || 'Could not start PDF generation');
             }
 
+            const timing = estimateGenerationTiming(
+                prepareData.estimated_pages,
+                prepareData.document_count,
+            );
+
             if (!prepareData.ready) {
-                const initialPercent = typeof prepareData.percent === 'number' ? prepareData.percent : 3;
-                BundleUpload.updateMessage(
-                    opts.progressTitle || 'Generating PDF...',
-                    prepareData.message || 'Please wait.',
-                    initialPercent,
-                );
-                await pollPdfStatus(statusUrl, data => {
-                    BundleUpload.updateMessage(
-                        opts.progressTitle || 'Generating PDF...',
-                        data.message || 'Please wait.',
-                        typeof data.percent === 'number' ? data.percent : undefined,
-                    );
+                await waitForPdfReady(statusUrl, {
+                    ...opts,
+                    easeMs: timing.easeMs,
+                    maxWaitMs: timing.maxWaitMs,
+                    estimatedPages: timing.pageCount,
+                    generationMessages: generationMessagesForPages(timing.pageCount),
                 });
             }
 
@@ -549,11 +732,16 @@
                 skipOverlay: true,
                 useTransfer: true,
                 transferTitle: 'Downloading PDF...',
-                transferMessages: [
-                    'Fetching the PDF from storage...',
-                    'Large bundles may take a little longer...',
-                    'Your download will start automatically...',
-                ],
+                transferMessages: timing.pageCount >= 500
+                    ? [
+                        `Fetching your ${timing.pageCount.toLocaleString()}-page PDF from storage...`,
+                        'Large files may take several minutes to download...',
+                        'Your download will start automatically...',
+                    ]
+                    : [
+                        'Fetching the PDF from storage...',
+                        'Your download will start automatically...',
+                    ],
             });
             if (typeof opts.onComplete === 'function') {
                 opts.onComplete();
@@ -569,7 +757,7 @@
     async function deleteBundle(bundleId, bundleName, options) {
         const opts = options || {};
         const confirmMessage = opts.confirmMessage
-            || `Are you sure you want to delete the bundle "${bundleName}"? This action cannot be undone.`;
+            || `Delete the bundle "${bundleName}"?\n\nThis permanently removes the bundle and all of its uploaded PDFs and generated files from storage. This cannot be undone.`;
         if (!window.confirm(confirmMessage)) {
             return false;
         }
@@ -629,6 +817,8 @@
         downloadPdf,
         prepareAndDownload,
         pollPdfStatus,
+        waitForPdfReady,
+        estimateGenerationTiming,
         deleteBundle,
     };
 })(window);

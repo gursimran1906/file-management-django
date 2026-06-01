@@ -9122,6 +9122,51 @@ def _bundle_pdf_gen_lock_key(bundle_id):
     return f'bundle_pdf_gen_lock:{bundle_id}'
 
 
+# Large bundles (1000+ pages) can take 30+ minutes; keep progress/lock alive long enough.
+BUNDLE_PDF_PROGRESS_CACHE_TTL = 3600
+
+
+def _estimate_bundle_work_pages(bundle):
+    """Estimate merged page count for progress timing without opening every PDF."""
+    total_pages = 0
+    unknown_documents = 0
+    document_count = 0
+
+    for document in BundleDocument.objects.filter(section__bundle=bundle):
+        document_count += 1
+        if document.page_order:
+            included_pages = set()
+            for page_number in document.page_order:
+                try:
+                    page_number = int(page_number)
+                except (TypeError, ValueError):
+                    continue
+                if page_number >= 1:
+                    included_pages.add(page_number)
+            if included_pages:
+                total_pages += len(included_pages)
+            else:
+                unknown_documents += 1
+        elif document.page_start is not None and document.page_end is not None:
+            total_pages += max(0, document.page_end - document.page_start + 1)
+        else:
+            unknown_documents += 1
+
+    if unknown_documents:
+        total_pages += unknown_documents * 8
+
+    index_pages = max(1, min(25, 1 + document_count // 12))
+    return max(1, total_pages + index_pages), document_count
+
+
+def _bundle_pdf_timing_payload(bundle):
+    estimated_pages, document_count = _estimate_bundle_work_pages(bundle)
+    return {
+        'estimated_pages': estimated_pages,
+        'document_count': document_count,
+    }
+
+
 def _set_bundle_pdf_progress(bundle_id, *, user_id=None, reset=False, **payload):
     existing = {} if reset else (cache.get(_bundle_pdf_progress_key(bundle_id)) or {})
     if (
@@ -9138,7 +9183,7 @@ def _set_bundle_pdf_progress(bundle_id, *, user_id=None, reset=False, **payload)
     }
     if user_id is not None:
         data['user_id'] = user_id
-    cache.set(_bundle_pdf_progress_key(bundle_id), data, 900)
+    cache.set(_bundle_pdf_progress_key(bundle_id), data, BUNDLE_PDF_PROGRESS_CACHE_TTL)
 
 
 def _clear_bundle_pdf_progress(bundle_id):
@@ -10079,6 +10124,7 @@ def bundle_pdf_prepare(request, bundle_id):
         return JsonResponse({'error': 'Invalid request'}, status=400)
 
     bundle = _get_accessible_bundle(request, bundle_id)
+    timing = _bundle_pdf_timing_payload(bundle)
 
     if _bundle_pdf_is_current(bundle):
         _clear_bundle_pdf_progress(bundle_id)
@@ -10086,21 +10132,23 @@ def bundle_pdf_prepare(request, bundle_id):
             'ready': True,
             'percent': 100,
             'message': 'PDF is ready',
+            **timing,
         })
 
     progress = cache.get(_bundle_pdf_progress_key(bundle_id))
     if progress and progress.get('status') == 'running':
-        return JsonResponse({'started': True, **progress})
+        return JsonResponse({'started': True, **progress, **timing})
 
     lock_key = _bundle_pdf_gen_lock_key(bundle_id)
-    if not cache.add(lock_key, request.user.id, 900):
+    if not cache.add(lock_key, request.user.id, BUNDLE_PDF_PROGRESS_CACHE_TTL):
         progress = cache.get(_bundle_pdf_progress_key(bundle_id))
         if progress:
-            return JsonResponse({'started': True, **progress})
+            return JsonResponse({'started': True, **progress, **timing})
         return JsonResponse({
             'started': True,
             'status': 'running',
             'message': 'Starting PDF generation...',
+            **timing,
         })
 
     _set_bundle_pdf_progress(
@@ -10122,34 +10170,37 @@ def bundle_pdf_prepare(request, bundle_id):
         'percent': 0,
         'message': 'Starting PDF generation...',
         'status': 'running',
+        **timing,
     })
 
 
 @login_required
 def bundle_pdf_status(request, bundle_id):
     """Poll PDF generation progress for a bundle."""
-    _get_accessible_bundle(request, bundle_id)
+    bundle = _get_accessible_bundle(request, bundle_id)
+    timing = _bundle_pdf_timing_payload(bundle)
 
     progress = cache.get(_bundle_pdf_progress_key(bundle_id))
     if progress:
         if progress.get('status') == 'error':
-            return JsonResponse(progress, status=400)
+            return JsonResponse({**progress, **timing}, status=400)
         if progress.get('status') == 'ready':
-            return JsonResponse({**progress, 'ready': True})
-        return JsonResponse(progress)
+            return JsonResponse({**progress, 'ready': True, **timing})
+        return JsonResponse({**progress, **timing})
 
-    bundle = Bundle.objects.get(pk=bundle_id)
     if _bundle_pdf_is_current(bundle):
         return JsonResponse({
             'ready': True,
             'status': 'ready',
             'percent': 100,
             'message': 'PDF is ready',
+            **timing,
         })
 
     return JsonResponse({
         'status': 'starting',
         'message': 'Waiting to start...',
+        **timing,
     })
 
 
