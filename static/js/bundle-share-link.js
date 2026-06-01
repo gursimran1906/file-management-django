@@ -85,6 +85,22 @@
         });
     }
 
+    function resolveLinkStatus(link) {
+        if (link.status === 'revoked' || link.revoked_at) {
+            return 'revoked';
+        }
+        if (link.expires_at) {
+            const expiresAt = new Date(link.expires_at);
+            if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() <= Date.now()) {
+                return 'expired';
+            }
+        }
+        if (link.status === 'expired') {
+            return 'expired';
+        }
+        return link.status === 'active' || link.active ? 'active' : (link.status || 'active');
+    }
+
     function formatShareLinkStatus(status) {
         if (status === 'active') {
             return 'Active';
@@ -137,6 +153,22 @@
         return btn;
     }
 
+    function renderExpiryNote(root, data) {
+        const expiryNote = root.querySelector('.bundle-share-expiry-note');
+        if (!expiryNote) {
+            return;
+        }
+        const days = Number(data.link_expiry_days);
+        if (!days || Number.isNaN(days)) {
+            expiryNote.classList.add('hidden');
+            expiryNote.textContent = '';
+            return;
+        }
+        const dayLabel = days === 1 ? 'day' : 'days';
+        expiryNote.textContent = `Each new link stays active for ${days} ${dayLabel} unless you revoke it sooner. After that date the link expires and shows as Expired below.`;
+        expiryNote.classList.remove('hidden');
+    }
+
     function renderShareLinks(root, data, options) {
         const listEl = root.querySelector('.bundle-share-links-list');
         const emptyEl = root.querySelector('.bundle-share-links-empty');
@@ -169,6 +201,8 @@
             }
         }
 
+        renderExpiryNote(root, data);
+
         if (!links.length) {
             return;
         }
@@ -188,8 +222,14 @@
 
         const tbody = document.createElement('tbody');
         links.forEach(function (link) {
+            const status = resolveLinkStatus(link);
             const row = document.createElement('tr');
             row.className = 'border-b border-gray-100 last:border-0';
+            if (status === 'expired') {
+                row.classList.add('bg-amber-50/40');
+            } else if (status === 'revoked') {
+                row.classList.add('opacity-70');
+            }
             row.dataset.linkId = link.id;
 
             const createdCell = document.createElement('td');
@@ -198,15 +238,23 @@
             row.appendChild(createdCell);
 
             const expiresCell = document.createElement('td');
-            expiresCell.className = 'py-2.5 pr-3 text-gray-700 whitespace-nowrap';
-            expiresCell.textContent = formatShareDate(link.expires_at);
+            expiresCell.className = 'py-2.5 pr-3 whitespace-nowrap';
+            if (status === 'expired') {
+                expiresCell.className += ' text-amber-800 font-medium';
+                expiresCell.textContent = link.expires_at
+                    ? `Expired (${formatShareDate(link.expires_at)})`
+                    : 'Expired';
+            } else {
+                expiresCell.className += ' text-gray-700';
+                expiresCell.textContent = formatShareDate(link.expires_at);
+            }
             row.appendChild(expiresCell);
 
             const statusCell = document.createElement('td');
             statusCell.className = 'py-2.5 pr-3';
             const statusBadge = document.createElement('span');
-            statusBadge.className = statusBadgeClass(link.status);
-            statusBadge.textContent = formatShareLinkStatus(link.status);
+            statusBadge.className = statusBadgeClass(status);
+            statusBadge.textContent = formatShareLinkStatus(status);
             statusCell.appendChild(statusBadge);
             row.appendChild(statusCell);
 
@@ -215,13 +263,13 @@
             const actionsWrap = document.createElement('div');
             actionsWrap.className = 'inline-flex flex-wrap items-center justify-end gap-1.5';
 
-            if (link.url) {
+            if (status === 'active' && link.url) {
                 actionsWrap.appendChild(makeCopyButton('Copy link', link.url, buttonClass));
             }
-            if (link.password) {
+            if (status === 'active' && link.password) {
                 actionsWrap.appendChild(makeCopyButton('Copy pass', link.password, buttonClass));
             }
-            if (link.status === 'active' && typeof options.onRevoke === 'function') {
+            if (status === 'active' && typeof options.onRevoke === 'function') {
                 const revokeBtn = document.createElement('button');
                 revokeBtn.type = 'button';
                 revokeBtn.className = buttonClass;
@@ -232,10 +280,12 @@
                 actionsWrap.appendChild(revokeBtn);
             }
             if (!actionsWrap.childNodes.length) {
-                actionsCell.textContent = '—';
-            } else {
-                actionsCell.appendChild(actionsWrap);
+                const inactiveLabel = document.createElement('span');
+                inactiveLabel.className = 'text-gray-400 text-xs';
+                inactiveLabel.textContent = status === 'expired' ? 'Expired' : (status === 'revoked' ? 'Revoked' : '—');
+                actionsWrap.appendChild(inactiveLabel);
             }
+            actionsCell.appendChild(actionsWrap);
             row.appendChild(actionsCell);
 
             tbody.appendChild(row);

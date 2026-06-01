@@ -11166,6 +11166,7 @@ def bundle_delete(request, bundle_id):
 
     if request.method == 'POST':
         revoke_all_bundle_share_links(bundle)
+        _clear_bundle_pdf_progress(bundle_id)
 
         # Delete all associated files
         for section in bundle.sections.all():

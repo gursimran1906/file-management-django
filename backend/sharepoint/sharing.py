@@ -242,4 +242,5 @@ def bundle_share_link_status(bundle):
         'stale': stale,
         'sharepoint_enabled': settings.USE_SHAREPOINT,
         'link_scope': getattr(settings, 'BUNDLE_SHARE_LINK_SCOPE', 'anonymous'),
+        'link_expiry_days': getattr(settings, 'BUNDLE_SHARE_LINK_EXPIRY_DAYS', 30),
     }

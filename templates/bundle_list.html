@@ -87,28 +87,9 @@ function getCsrfToken() {
 }
 
 function deleteBundle(bundleId, bundleName) {
-    if (confirm(`Are you sure you want to delete the bundle "${bundleName}"? This action cannot be undone.`)) {
-        fetch(`/bundle/${bundleId}/delete/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCsrfToken(),
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-            },
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success || data.error === undefined) {
-                location.reload();
-            } else {
-                alert('Error deleting bundle: ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Error deleting bundle');
-        });
-    }
+    BundleDownload.deleteBundle(bundleId, bundleName, {
+        csrfToken: getCsrfToken(),
+    });
 }
 
 if (!document.querySelector('[name=csrfmiddlewaretoken]')) {

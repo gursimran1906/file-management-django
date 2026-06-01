@@ -25,6 +25,9 @@
                 <button type="button"
                         onclick="downloadBundlePdf()"
                         class="btn-primary text-xs">Download PDF</button>
+                <button type="button"
+                        onclick="deleteCurrentBundle()"
+                        class="text-xs text-red-700 hover:text-red-900 px-2 py-1">Delete</button>
             </div>
         </div>
     </div>
@@ -76,6 +79,19 @@ function downloadBundlePdf() {
         message: 'Preparing PDF download...',
         subtext: 'Checking whether the bundle needs to be regenerated.',
         progressTitle: 'Generating PDF...',
+    });
+}
+
+function deleteCurrentBundle() {
+    BundleDownload.deleteBundle({{ bundle.id }}, '{{ bundle.name|escapejs }}', {
+        csrfToken: '{{ csrf_token }}',
+        onSuccess: function () {
+            {% if bundle.file_number %}
+            window.location.href = '{% url "home" bundle.file_number.file_number %}';
+            {% else %}
+            window.location.href = '{% url "user_dashboard" %}';
+            {% endif %}
+        },
     });
 }
 </script>

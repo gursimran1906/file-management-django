@@ -444,10 +444,11 @@
                     <span class="font-medium text-gray-900 leading-snug">{{ bundle.name }}</span>
                 </div>
                 <p class="text-xs text-gray-400 mt-2">{{ bundle.created_at|date:"d/m/Y H:i" }}</p>
-                <div class="mt-2 flex gap-3 text-xs">
+                <div class="mt-2 flex flex-wrap gap-3 text-xs">
                     <a href="{% url 'bundle_edit' bundle.id %}" class="link">Edit</a>
                     <a href="{% url 'bundle_download' bundle.id %}" class="link" onclick="return downloadBundlePdfLink(event, '{{ bundle.name|escapejs }}.pdf', {{ bundle.id }})">Download</a>
                     <a href="#" class="link" onclick="return openBundleShareModal(event, {{ bundle.id }}, '{{ bundle.name|escapejs }}')">Share</a>
+                    <button type="button" class="link text-red-700" onclick="deleteHomeBundle({{ bundle.id }}, '{{ bundle.name|escapejs }}')">Delete</button>
                 </div>
             </div>
             {% endfor %}
@@ -970,6 +971,12 @@ let activeShareBundleId = null;
 function getHomeCsrfToken() {
     const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
     return csrfInput ? csrfInput.value : '';
+}
+
+function deleteHomeBundle(bundleId, bundleName) {
+    BundleDownload.deleteBundle(bundleId, bundleName, {
+        csrfToken: getHomeCsrfToken(),
+    });
 }
 
 function openBundleShareModal(event, bundleId, bundleName) {
