@@ -57,6 +57,9 @@ def _get_login_redirect_url(request):
 
 
 def login_view(request):
+    if request.user.is_authenticated:
+        return redirect(_get_login_redirect_url(request))
+
     next_param = request.GET.get('next', '')
     if request.method == 'POST':
         username = request.POST.get('username')

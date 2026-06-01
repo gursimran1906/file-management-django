@@ -55,6 +55,7 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/dashboard/'
 
 
 SESSION_COOKIE_HTTPONLY = True
