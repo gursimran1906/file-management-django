@@ -9122,8 +9122,49 @@ def _bundle_pdf_gen_lock_key(bundle_id):
     return f'bundle_pdf_gen_lock:{bundle_id}'
 
 
-# Large bundles (1000+ pages) can take 30+ minutes; keep progress/lock alive long enough.
+# Keep progress/lock alive long enough for large bundles (legacy path) or slow networks.
 BUNDLE_PDF_PROGRESS_CACHE_TTL = 3600
+
+# Frontend progress simulation (qpdf+pikepdf fast path; ~4–25 ms/page observed locally/prod).
+BUNDLE_PDF_TIMING_BASE_MS = 5000
+BUNDLE_PDF_TIMING_MS_PER_PAGE_FAST = 12
+BUNDLE_PDF_TIMING_MS_PER_DOCUMENT_FAST = 600
+BUNDLE_PDF_TIMING_MS_PER_PAGE_LEGACY = 800
+BUNDLE_PDF_TIMING_MS_PER_DOCUMENT_LEGACY = 2500
+BUNDLE_PDF_TIMING_MIN_MS = 6000
+BUNDLE_PDF_TIMING_MAX_MS = 15 * 60 * 1000
+
+
+def _bundle_pdf_timing_estimates(estimated_pages, document_count):
+    from backend.pdf.bundle_builder import fast_builder_available
+
+    if fast_builder_available():
+        base_ms = BUNDLE_PDF_TIMING_BASE_MS
+        ms_per_page = BUNDLE_PDF_TIMING_MS_PER_PAGE_FAST
+        ms_per_document = BUNDLE_PDF_TIMING_MS_PER_DOCUMENT_FAST
+    else:
+        base_ms = 10000
+        ms_per_page = BUNDLE_PDF_TIMING_MS_PER_PAGE_LEGACY
+        ms_per_document = BUNDLE_PDF_TIMING_MS_PER_DOCUMENT_LEGACY
+
+    estimated_ms = min(
+        BUNDLE_PDF_TIMING_MAX_MS,
+        max(
+            BUNDLE_PDF_TIMING_MIN_MS,
+            base_ms
+            + estimated_pages * ms_per_page
+            + document_count * ms_per_document,
+        ),
+    )
+    return {
+        'estimated_ms': estimated_ms,
+        'estimated_ease_ms': int(estimated_ms / 2.8),
+        'max_wait_ms': min(
+            BUNDLE_PDF_TIMING_MAX_MS,
+            max(estimated_ms * 3, 120000),
+        ),
+        'uses_fast_builder': fast_builder_available(),
+    }
 
 
 def _estimate_bundle_work_pages(bundle):
@@ -9164,6 +9205,7 @@ def _bundle_pdf_timing_payload(bundle):
     return {
         'estimated_pages': estimated_pages,
         'document_count': document_count,
+        **_bundle_pdf_timing_estimates(estimated_pages, document_count),
     }
 
 

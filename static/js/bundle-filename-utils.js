@@ -59,45 +59,76 @@
         },
     };
 
-    // Fallback when page count is unknown; prepare response overrides per bundle.
-    const BUNDLE_PDF_GENERATION_EASE_MS = 600000;
+    // Fallback when prepare response has no server timing (legacy PyPDF2 estimates).
+    const BUNDLE_PDF_GENERATION_EASE_MS = 60000;
     const BUNDLE_PDF_GENERATION_CAP = 92;
-    const BUNDLE_PDF_WAIT_MAX_MS = 45 * 60 * 1000;
+    const BUNDLE_PDF_WAIT_MAX_MS = 15 * 60 * 1000;
     const BUNDLE_PDF_POLL_INTERVAL_MS = 1000;
-    const BUNDLE_PDF_MS_PER_PAGE = 800;
-    const BUNDLE_PDF_MS_PER_DOCUMENT = 2500;
+    const BUNDLE_PDF_BASE_MS = 5000;
+    const BUNDLE_PDF_MS_PER_PAGE = 12;
+    const BUNDLE_PDF_MS_PER_DOCUMENT = 600;
+    const BUNDLE_PDF_MIN_MS = 6000;
+    // Legacy PyPDF2 path (if server has no qpdf/pikepdf).
+    const BUNDLE_PDF_MS_PER_PAGE_LEGACY = 800;
+    const BUNDLE_PDF_MS_PER_DOCUMENT_LEGACY = 2500;
 
-    function estimateGenerationTiming(pages, documentCount) {
+    function estimateGenerationTiming(pages, documentCount, serverTiming) {
+        if (serverTiming && serverTiming.estimated_ms) {
+            const pageCount = Math.max(1, Number(serverTiming.estimated_pages || pages) || 50);
+            return {
+                pageCount,
+                docCount: Math.max(0, Number(serverTiming.document_count || documentCount) || 0),
+                expectedMs: serverTiming.estimated_ms,
+                easeMs: serverTiming.estimated_ease_ms || Math.round(serverTiming.estimated_ms / 2.8),
+                maxWaitMs: serverTiming.max_wait_ms || Math.min(
+                    BUNDLE_PDF_WAIT_MAX_MS,
+                    Math.max(serverTiming.estimated_ms * 3, 120000),
+                ),
+                usesFastBuilder: !!serverTiming.uses_fast_builder,
+            };
+        }
+
         const pageCount = Math.max(1, Number(pages) || 50);
         const docCount = Math.max(0, Number(documentCount) || 0);
+        const usesFast = serverTiming && serverTiming.uses_fast_builder !== false;
+        const msPerPage = usesFast ? BUNDLE_PDF_MS_PER_PAGE : BUNDLE_PDF_MS_PER_PAGE_LEGACY;
+        const msPerDoc = usesFast ? BUNDLE_PDF_MS_PER_DOCUMENT : BUNDLE_PDF_MS_PER_DOCUMENT_LEGACY;
+        const baseMs = usesFast ? BUNDLE_PDF_BASE_MS : 10000;
         const expectedMs = Math.min(
             BUNDLE_PDF_WAIT_MAX_MS,
-            Math.max(15000, pageCount * BUNDLE_PDF_MS_PER_PAGE + docCount * BUNDLE_PDF_MS_PER_DOCUMENT),
+            Math.max(BUNDLE_PDF_MIN_MS, baseMs + pageCount * msPerPage + docCount * msPerDoc),
         );
         return {
             pageCount,
             docCount,
             expectedMs,
-            easeMs: expectedMs / 2.5,
+            easeMs: Math.round(expectedMs / 2.8),
             maxWaitMs: Math.min(
                 BUNDLE_PDF_WAIT_MAX_MS,
-                Math.max(expectedMs * 2, 120000),
+                Math.max(expectedMs * 3, 120000),
             ),
+            usesFastBuilder: usesFast,
         };
     }
 
-    function generationMessagesForPages(pageCount) {
+    function generationMessagesForPages(pageCount, usesFastBuilder) {
         const pages = Math.max(1, Number(pageCount) || 0);
         const messages = [
             'Building your PDF bundle...',
             'Collecting and merging documents...',
         ];
-        if (pages >= 500) {
+        if (pages >= 2000) {
             messages.push(
-                `Processing approximately ${pages.toLocaleString()} pages — large bundles can take 15–30 minutes...`,
+                `Processing approximately ${pages.toLocaleString()} pages — very large bundles may take a few minutes...`,
+            );
+        } else if (pages >= 500) {
+            messages.push(
+                `Processing approximately ${pages.toLocaleString()} pages — this may take a minute or two...`,
             );
         } else if (pages >= 100) {
             messages.push(`Processing approximately ${pages.toLocaleString()} pages...`);
+        } else if (usesFastBuilder) {
+            messages.push('Merging and numbering pages...');
         } else {
             messages.push('Please keep this tab open...');
         }
@@ -239,7 +270,10 @@
             this._generationEaseMs = (timing && timing.easeMs) || BUNDLE_PDF_GENERATION_EASE_MS;
             this._generationMessages = subtextMessages && subtextMessages.length
                 ? subtextMessages
-                : generationMessagesForPages(timing && timing.pageCount);
+                : generationMessagesForPages(
+                    timing && timing.pageCount,
+                    timing && timing.usesFastBuilder,
+                );
             this._transferMsgIndex = 0;
 
             const overlay = this._ensureOverlay();
@@ -715,6 +749,7 @@
             const timing = estimateGenerationTiming(
                 prepareData.estimated_pages,
                 prepareData.document_count,
+                prepareData,
             );
 
             if (!prepareData.ready) {
@@ -723,7 +758,10 @@
                     easeMs: timing.easeMs,
                     maxWaitMs: timing.maxWaitMs,
                     estimatedPages: timing.pageCount,
-                    generationMessages: generationMessagesForPages(timing.pageCount),
+                    generationMessages: generationMessagesForPages(
+                        timing.pageCount,
+                        timing.usesFastBuilder,
+                    ),
                 });
             }
 
@@ -732,16 +770,21 @@
                 skipOverlay: true,
                 useTransfer: true,
                 transferTitle: 'Downloading PDF...',
-                transferMessages: timing.pageCount >= 500
+                transferMessages: timing.pageCount >= 1500
                     ? [
                         `Fetching your ${timing.pageCount.toLocaleString()}-page PDF from storage...`,
-                        'Large files may take several minutes to download...',
+                        'Large files may take a minute or two to download...',
                         'Your download will start automatically...',
                     ]
-                    : [
-                        'Fetching the PDF from storage...',
-                        'Your download will start automatically...',
-                    ],
+                    : timing.pageCount >= 500
+                        ? [
+                            `Fetching your ${timing.pageCount.toLocaleString()}-page PDF from storage...`,
+                            'Your download will start automatically...',
+                        ]
+                        : [
+                            'Fetching the PDF from storage...',
+                            'Your download will start automatically...',
+                        ],
             });
             if (typeof opts.onComplete === 'function') {
                 opts.onComplete();
