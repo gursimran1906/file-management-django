@@ -187,6 +187,62 @@ class PmtsHalfForm(forms.ModelForm):
         for field_name, field in self.fields.items():
             field.widget.attrs['class'] = 'form-input'
 
+
+class PmtsSlipEditForm(forms.ModelForm):
+    class Meta:
+        model = PmtsSlips
+        fields = [
+            'date', 'ledger_account', 'mode_of_pmt', 'amount',
+            'pmt_person', 'description', 'is_money_out',
+        ]
+        widgets = {
+            'date': forms.DateInput(attrs={'type': 'date'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs['class'] = 'form-input'
+
+
+def apply_pmts_slip_edit_locks(form, slip_usage):
+    if not slip_usage.get('amount_editable', True):
+        form.fields['amount'].widget = forms.HiddenInput()
+    elif slip_usage.get('amount_edit_note'):
+        form.fields['amount'].help_text = slip_usage['amount_edit_note']
+
+
+def apply_green_slip_edit_locks(form, slip_usage):
+    if not slip_usage.get('amount_editable', True):
+        form.fields['amount'].widget = forms.HiddenInput()
+    elif slip_usage.get('amount_edit_note'):
+        form.fields['amount'].help_text = slip_usage['amount_edit_note']
+    if slip_usage.get('has_usage'):
+        form.fields['file_number_from'].widget = forms.HiddenInput()
+        form.fields['file_number_to'].widget = forms.HiddenInput()
+
+
+class GreenSlipEditForm(forms.ModelForm):
+    class Meta:
+        model = LedgerAccountTransfers
+        fields = [
+            'date', 'from_ledger_account', 'file_number_from',
+            'to_ledger_account', 'file_number_to', 'amount', 'description',
+        ]
+        widgets = {
+            'date': forms.DateInput(attrs={'type': 'date'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['file_number_from'].choices = sorted(
+            self.fields['file_number_from'].choices, key=lambda choice: choice[1])
+        self.fields['file_number_to'].choices = sorted(
+            self.fields['file_number_to'].choices, key=lambda choice: choice[1])
+        for field in self.fields.values():
+            field.widget.attrs['class'] = 'form-input'
+
+
 class LedgerAccountTransfersForm(forms.ModelForm):
     class Meta:
         model = LedgerAccountTransfers
@@ -204,16 +260,29 @@ class LedgerAccountTransfersForm(forms.ModelForm):
 class LedgerAccountTransfersHalfForm(forms.ModelForm):
     class Meta:
         model = LedgerAccountTransfers
-        fields = ['date', 'from_ledger_account','file_number_from', 'to_ledger_account', 'file_number_to', 'amount', 'description']
+        fields = [
+            'date', 'from_ledger_account', 'file_number_from',
+            'to_ledger_account', 'file_number_to', 'amount', 'description',
+        ]
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date'}),
+        }
+        labels = {
+            'from_ledger_account': 'From ledger',
+            'to_ledger_account': 'To ledger',
+            'file_number_from': 'From file',
+            'file_number_to': 'To file',
         }
 
     def __init__(self, *args, **kwargs):
         super(LedgerAccountTransfersHalfForm, self).__init__(*args, **kwargs)
         self.fields['date'].initial = timezone.localdate()
-        self.fields['file_number_from'].choices = sorted(self.fields['file_number_from'].choices, key=lambda choice: choice[1])
-        self.fields['file_number_to'].choices = sorted(self.fields['file_number_to'].choices, key=lambda choice: choice[1])
+        self.fields['file_number_from'].choices = sorted(
+            self.fields['file_number_from'].choices, key=lambda choice: choice[1])
+        self.fields['file_number_to'].choices = sorted(
+            self.fields['file_number_to'].choices, key=lambda choice: choice[1])
+        self.fields['description'].widget.attrs['placeholder'] = 'Reason for transfer'
+        self.fields['amount'].widget.attrs['placeholder'] = '0.00'
         for field_name, field in self.fields.items():
             field.widget.attrs['class'] = 'form-input'
 

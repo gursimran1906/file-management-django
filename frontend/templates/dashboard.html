@@ -1,7 +1,47 @@
 {% extends 'base.html' %} {% block title %}Dashboard{% endblock %}
-{% block container %} {% load utils %} {% csrf_token %}
+{% block container %} {% load utils humanize %} {% csrf_token %}
 
 <div class="space-y-5">
+ {% if request.user.is_manager and pending_credit_notes %}
+ <div class="div-container flex flex-col max-h-80 !overflow-hidden border-amber-200 bg-amber-50/40">
+   <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between mb-3 pb-3 border-b border-amber-200/60 shrink-0">
+     <div>
+       <h3 class="text-base font-semibold text-gray-900">Credit notes awaiting approval</h3>
+       <p class="text-xs text-gray-600 mt-0.5">Review and approve or reject on the matter finances page</p>
+     </div>
+     <span class="badge-yellow shrink-0">{{ pending_credit_notes|length }}</span>
+   </div>
+   <ul class="overflow-y-auto flex-1 min-h-0 -mx-1 px-1">
+     {% for credit_note in pending_credit_notes %}
+     <li class="py-3 border-b border-amber-200/40 last:border-0">
+       <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+         <div class="min-w-0">
+           <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+             <a class="link text-sm font-medium" href="{% url 'finance_view' credit_note.file_number.file_number %}">File {{ credit_note.file_number.file_number }}</a>
+             <span class="badge-yellow shrink-0">Pending</span>
+           </div>
+           <p class="text-sm text-gray-900 mt-0.5 leading-snug">
+             Invoice {{ credit_note.invoice.invoice_number|default:"Draft" }} · £{{ credit_note.amount|intcomma }}
+           </p>
+           <p class="mt-1 text-xs text-gray-500">
+             {{ credit_note.date|date:"d/m/Y" }}{% if credit_note.created_by %} · submitted by {{ credit_note.created_by.get_full_name|default:credit_note.created_by.username }}{% endif %}
+           </p>
+           {% if credit_note.reason %}
+           <p class="mt-1 text-xs text-gray-600 line-clamp-2">{{ credit_note.reason }}</p>
+           {% endif %}
+         </div>
+         <div class="flex flex-wrap gap-x-3 gap-y-1 shrink-0 text-xs">
+           <a class="link" href="{% url 'finance_view' credit_note.file_number.file_number %}">Review</a>
+           <a class="link" href="{% url 'approve_credit_note' credit_note.id %}">Approve</a>
+           <a class="link text-red-700" href="{% url 'reject_credit_note' credit_note.id %}">Reject</a>
+         </div>
+       </div>
+     </li>
+     {% endfor %}
+   </ul>
+ </div>
+ {% endif %}
+
  <!-- Kanban Board -->
  <div id="kanban-container" class="div-container">
    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-4 pb-3 border-b border-gray-100">

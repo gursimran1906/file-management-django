@@ -1,63 +1,168 @@
+function createInvoiceCostLineRow(options) {
+  var isLast = options.isLast !== false;
+  var row = document.createElement("div");
+  row.setAttribute(
+    "class",
+    "invoice-cost-line grid grid-cols-1 sm:grid-cols-12 gap-2 items-start"
+  );
+
+  var descWrap = document.createElement("div");
+  descWrap.setAttribute("class", "sm:col-span-5");
+  var descInput = document.createElement("input");
+  descInput.setAttribute("type", "text");
+  descInput.setAttribute("name", "our_costs_desc[]");
+  descInput.setAttribute("class", "form-input invoice-cost-input");
+  descInput.setAttribute("placeholder", "Cost description");
+  if (options.description) {
+    descInput.value = options.description;
+  }
+  descWrap.appendChild(descInput);
+
+  var amountWrap = document.createElement("div");
+  amountWrap.setAttribute("class", "sm:col-span-5");
+  var amountInput = document.createElement("input");
+  amountInput.setAttribute("type", "number");
+  amountInput.setAttribute("step", "0.01");
+  amountInput.setAttribute("min", "0");
+  amountInput.setAttribute("name", "our_costs[]");
+  amountInput.setAttribute("class", "form-input invoice-cost-input");
+  amountInput.setAttribute("placeholder", "0.00");
+  if (options.required) {
+    amountInput.required = true;
+  }
+  amountWrap.appendChild(amountInput);
+
+  var actionsWrap = document.createElement("div");
+  actionsWrap.setAttribute("class", "sm:col-span-2 flex gap-2 invoice-cost-actions");
+
+  if (!options.isFirst) {
+    var minusBtn = document.createElement("button");
+    minusBtn.setAttribute("type", "button");
+    minusBtn.setAttribute("class", "btn-secondary text-xs px-3 invoice-cost-remove");
+    minusBtn.setAttribute("aria-label", "Remove cost line");
+    minusBtn.textContent = "−";
+    minusBtn.addEventListener("click", function () {
+      removeInvoiceCostLine(row);
+    });
+    actionsWrap.appendChild(minusBtn);
+  }
+
+  if (isLast) {
+    var plusBtn = document.createElement("button");
+    plusBtn.setAttribute("type", "button");
+    plusBtn.setAttribute("class", "btn-secondary text-xs px-3");
+    plusBtn.setAttribute("id", "add_more_fields_inv");
+    plusBtn.setAttribute("aria-label", "Add cost line");
+    plusBtn.textContent = "+";
+    plusBtn.addEventListener("click", function () {
+      addFieldsInvoice("our_costs_row");
+    });
+    actionsWrap.appendChild(plusBtn);
+  }
+
+  row.appendChild(descWrap);
+  row.appendChild(amountWrap);
+  row.appendChild(actionsWrap);
+  return row;
+}
+
+function ensureInvoiceCostAddButton() {
+  var container = document.getElementById("our_costs_row");
+  if (!container) return;
+
+  var lines = container.querySelectorAll(".invoice-cost-line");
+  lines.forEach(function (line, index) {
+    var actions = line.querySelector(".invoice-cost-actions");
+    if (!actions) return;
+
+    var existingPlus = actions.querySelector("#add_more_fields_inv");
+    if (existingPlus) {
+      existingPlus.removeAttribute("id");
+    }
+
+    var isLast = index === lines.length - 1;
+    var hasPlus = actions.querySelector("[aria-label='Add cost line']");
+    var hasMinus = actions.querySelector(".invoice-cost-remove");
+
+    if (!hasMinus && index > 0) {
+      var minusBtn = document.createElement("button");
+      minusBtn.setAttribute("type", "button");
+      minusBtn.setAttribute("class", "btn-secondary text-xs px-3 invoice-cost-remove");
+      minusBtn.setAttribute("aria-label", "Remove cost line");
+      minusBtn.textContent = "−";
+      minusBtn.addEventListener("click", function () {
+        removeInvoiceCostLine(line);
+      });
+      actions.insertBefore(minusBtn, actions.firstChild);
+    }
+
+    if (isLast && !hasPlus) {
+      var plusBtn = document.createElement("button");
+      plusBtn.setAttribute("type", "button");
+      plusBtn.setAttribute("class", "btn-secondary text-xs px-3");
+      plusBtn.setAttribute("id", "add_more_fields_inv");
+      plusBtn.setAttribute("aria-label", "Add cost line");
+      plusBtn.textContent = "+";
+      plusBtn.addEventListener("click", function () {
+        addFieldsInvoice("our_costs_row");
+      });
+      actions.appendChild(plusBtn);
+    } else if (!isLast && hasPlus) {
+      hasPlus.remove();
+    }
+  });
+}
+
 function addFieldsInvoice(id) {
   var container = document.getElementById(id);
   if (!container) return;
 
-  var divElmNewRow = document.createElement("div");
-  divElmNewRow.setAttribute("class", "grid grid-cols-1 md:grid-cols-12 gap-4 mt-2");
+  var addButton = document.getElementById("add_more_fields_inv");
+  if (!addButton) return;
 
-  var divElmField = document.createElement("div");
-  divElmField.setAttribute("class", "col-span-5");
+  var currentRow = addButton.closest(".invoice-cost-line");
+  if (currentRow) {
+    addButton.removeAttribute("id");
+    if (!currentRow.querySelector(".invoice-cost-remove")) {
+      var actions = addButton.parentNode;
+      var minusBtn = document.createElement("button");
+      minusBtn.setAttribute("type", "button");
+      minusBtn.setAttribute("class", "btn-secondary text-xs px-3 invoice-cost-remove");
+      minusBtn.setAttribute("aria-label", "Remove cost line");
+      minusBtn.textContent = "−";
+      minusBtn.addEventListener("click", function () {
+        removeInvoiceCostLine(currentRow);
+      });
+      actions.insertBefore(minusBtn, addButton);
+    }
+    addButton.remove();
+  }
 
-  var divElmField1 = document.createElement("div");
-  divElmField1.setAttribute("class", "col-span-5");
+  container.appendChild(createInvoiceCostLineRow({ isFirst: false, isLast: true }));
+  if (typeof window.updateInvoiceCostPreview === "function") {
+    window.updateInvoiceCostPreview();
+  }
+}
 
-  var divElmFieldSymbol = document.createElement("div");
-  divElmFieldSymbol.setAttribute("class", "col-span-2 flex items-center");
-
-  var add_more_fields = document.getElementById("add_more_fields_inv");
-  if (!add_more_fields) return;
-
-  var newField = document.createElement("input");
-  newField.setAttribute("type", "text");
-  newField.setAttribute("name", "our_costs_desc[]");
-  newField.setAttribute("class", "form-input");
-  newField.setAttribute("placeholder", "(Costs - XYZ)");
-  divElmField.appendChild(newField);
-
-  var newField1 = document.createElement("input");
-  newField1.setAttribute("type", "number");
-  newField1.setAttribute("step", "0.01");
-  newField1.setAttribute("name", "our_costs[]");
-  newField1.setAttribute("class", "form-input");
-  newField1.setAttribute("placeholder", "£0.00");
-  divElmField1.appendChild(newField1);
-
-  var minusSign = document.createElement("span");
-  minusSign.setAttribute("type", "button");
-  minusSign.setAttribute("onclick", "removeField(this);");
-  minusSign.setAttribute("class", "btn btn-danger px-4");
-  minusSign.appendChild(document.createTextNode("-"));
-
-  var plusSign = document.createElement("span");
-  plusSign.setAttribute("type", "button");
-  plusSign.setAttribute("onclick", "addFieldsInvoice('our_costs_row');");
-  plusSign.setAttribute("class", "btn btn-primary px-4");
-  plusSign.setAttribute("id", "add_more_fields_inv");
-  plusSign.appendChild(document.createTextNode("+"));
-  divElmFieldSymbol.appendChild(plusSign);
-
-  var parentNode = add_more_fields.parentNode;
-  parentNode.replaceChild(minusSign, add_more_fields);
-
-  divElmNewRow.appendChild(divElmField);
-  divElmNewRow.appendChild(divElmField1);
-  divElmNewRow.appendChild(divElmFieldSymbol);
-  container.appendChild(divElmNewRow);
+function removeInvoiceCostLine(row) {
+  if (!row || !row.parentNode) return;
+  row.parentNode.removeChild(row);
+  ensureInvoiceCostAddButton();
+  if (typeof window.updateInvoiceCostPreview === "function") {
+    window.updateInvoiceCostPreview();
+  }
 }
 
 function removeField(minusElm) {
-  if (!minusElm || !minusElm.parentNode || !minusElm.parentNode.parentNode) return;
-  minusElm.parentNode.parentNode.remove();
+  if (!minusElm) return;
+  var row = minusElm.closest(".invoice-cost-line");
+  if (row) {
+    removeInvoiceCostLine(row);
+    return;
+  }
+  if (minusElm.parentNode && minusElm.parentNode.parentNode) {
+    minusElm.parentNode.parentNode.remove();
+  }
 }
 
 function addFieldsUndertaking(id) {

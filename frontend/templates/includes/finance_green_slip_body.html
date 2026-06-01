@@ -1,0 +1,51 @@
+{% load humanize %}
+<div class="ml-1 border-l-2 border-gray-100 pl-3 space-y-3 pb-1">
+    <div class="grid grid-cols-2 gap-2">
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+            <p class="text-[10px] uppercase tracking-wide text-gray-500">Transfer amount</p>
+            <p class="text-sm font-semibold text-gray-900">£{{ slip.amount|intcomma }}</p>
+        </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+            <p class="text-[10px] uppercase tracking-wide text-gray-500">From side left</p>
+            <p class="text-sm font-semibold text-gray-900">£{{ slip.balance_left_from|intcomma }}</p>
+        </div>
+    </div>
+
+    <dl class="grid grid-cols-1 gap-1.5 text-xs">
+        <div class="flex justify-between gap-2"><dt class="text-gray-500">From</dt><dd class="text-gray-800">{{ slip.file_number_from }} · {{ slip.get_from_ledger_account_display }}</dd></div>
+        <div class="flex justify-between gap-2"><dt class="text-gray-500">To</dt><dd class="text-gray-800">{{ slip.file_number_to }} · {{ slip.get_to_ledger_account_display }}</dd></div>
+        <div class="flex justify-between gap-2"><dt class="text-gray-500">To side left</dt><dd class="text-gray-800">£{{ slip.balance_left_to|intcomma }}</dd></div>
+        {% if slip.description %}
+        <div><dt class="text-gray-500">Description</dt><dd class="text-gray-800 mt-0.5">{{ slip.description }}</dd></div>
+        {% endif %}
+    </dl>
+
+    {% if slip_usage.has_usage %}
+    <div class="rounded-lg border border-green-200 bg-green-50/30 overflow-hidden">
+        <div class="px-3 py-2 border-b border-green-200/80">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-green-800">Invoice usage</h4>
+        </div>
+        <ul class="divide-y divide-green-100/60 px-3 text-xs">
+            {% for row in slip_usage.from_usages %}
+            <li class="flex justify-between gap-3 py-2">
+                <span class="text-gray-700">From side · {{ row.invoice_label }}</span>
+                <span class="font-medium shrink-0">£{{ row.amount|intcomma }}</span>
+            </li>
+            {% endfor %}
+            {% for row in slip_usage.to_usages %}
+            <li class="flex justify-between gap-3 py-2">
+                <span class="text-gray-700">To side · {{ row.invoice_label }}</span>
+                <span class="font-medium shrink-0">£{{ row.amount|intcomma }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% else %}
+    <p class="text-xs text-gray-500">Not yet used on any invoice.</p>
+    {% endif %}
+
+    <div class="flex flex-wrap gap-x-4 gap-y-2 pt-1 border-t border-gray-100">
+        <a class="link text-xs" href="{% url 'download_green_slip' slip.id %}">Print slip</a>
+        <a class="link text-xs" href="{% url 'edit_green_slip' slip.id %}">Edit slip</a>
+    </div>
+</div>

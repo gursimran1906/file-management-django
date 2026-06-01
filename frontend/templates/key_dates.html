@@ -56,6 +56,7 @@
         <p class="text-sm text-gray-600 mt-1">Central calendar across matters and staff</p>
       </div>
       <div class="no-print flex flex-wrap gap-2">
+        <button class="btn-primary text-xs" type="button" data-open-modal="addKeyDateModal">Add key date</button>
         <a class="btn-secondary text-xs" href="{% url 'download_central_key_dates' 'pdf' 'calendar' %}?{{ request.GET.urlencode }}">Calendar PDF</a>
         <a class="btn-secondary text-xs" href="{% url 'download_central_key_dates' 'csv' 'calendar' %}?{{ request.GET.urlencode }}">Calendar CSV</a>
         <a class="btn-secondary text-xs" href="{% url 'download_central_key_dates' 'pdf' 'list' %}?{{ request.GET.urlencode }}">Entries PDF</a>
@@ -353,6 +354,46 @@
   </div>
 </div>
 
+<div id="addKeyDateModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
+  <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
+    <div class="flex items-center justify-between border-b px-4 py-3">
+      <h3 class="text-lg font-semibold text-gray-900">Add key date</h3>
+      <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal>&times;</button>
+    </div>
+    <form id="add-key-date-form" class="p-4 space-y-3" method="post" action="#">
+      {% csrf_token %}
+      <input type="hidden" name="return_to" value="central">
+      <div>
+        <label for="kd_file_number_search" class="form-label">File number</label>
+        <div class="relative">
+          <input
+            type="text"
+            id="kd_file_number_search"
+            placeholder="Search for a file..."
+            class="form-input pr-10 text-sm"
+            autocomplete="off"
+          >
+          <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+            <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+          </div>
+          <input type="hidden" id="kd_file_number">
+          <div id="kd_file_dropdown" class="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg mt-1 max-h-48 overflow-auto hidden">
+            <div id="kd_file_options" class="py-1"></div>
+            <div id="kd_no_files_found" class="px-3 py-2 text-xs text-gray-500 hidden">No files found</div>
+          </div>
+        </div>
+      </div>
+      {{ matter_key_date_form.as_p }}
+      <div class="flex justify-end gap-2 pt-1">
+        <button class="btn-secondary" type="button" data-close-modal>Cancel</button>
+        <button class="btn-primary" type="submit" id="kd_submit_btn" disabled>Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
   function printKeyDates(mode) {
     document.body.classList.remove('print-calendar', 'print-list');
@@ -365,6 +406,185 @@
   });
 
   document.addEventListener('DOMContentLoaded', function () {
+    const addKeyDateUrlTemplate = '{% url "add_matter_key_date" "FILE_PLACEHOLDER" %}';
+    const addKeyDateForm = document.getElementById('add-key-date-form');
+    const kdFileSearchInput = document.getElementById('kd_file_number_search');
+    const kdFileHiddenInput = document.getElementById('kd_file_number');
+    const kdFileDropdown = document.getElementById('kd_file_dropdown');
+    const kdFileOptions = document.getElementById('kd_file_options');
+    const kdNoFilesFound = document.getElementById('kd_no_files_found');
+    const kdSubmitBtn = document.getElementById('kd_submit_btn');
+    let kdAllFiles = [];
+
+    function kdAddUrl(fileNumber) {
+      return addKeyDateUrlTemplate.replace('FILE_PLACEHOLDER', encodeURIComponent(fileNumber));
+    }
+
+    function kdFilterFiles(searchTerm) {
+      if (!kdFileOptions || !kdAllFiles.length) {
+        return;
+      }
+      const term = (searchTerm || '').toLowerCase();
+      const filteredFiles = kdAllFiles.filter(function (file) {
+        return file.display_text && file.display_text.toLowerCase().includes(term);
+      });
+      kdFileOptions.innerHTML = '';
+      if (filteredFiles.length === 0) {
+        if (kdNoFilesFound) {
+          kdNoFilesFound.classList.remove('hidden');
+        }
+      } else {
+        if (kdNoFilesFound) {
+          kdNoFilesFound.classList.add('hidden');
+        }
+        filteredFiles.forEach(function (file) {
+          const option = document.createElement('div');
+          option.className = 'px-3 py-1.5 text-xs cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0';
+          option.innerHTML =
+            '<div class="font-medium text-gray-900">' + (file.file_number || 'N/A') + '</div>' +
+            '<div class="text-gray-500 text-[11px] mt-0.5 truncate">' + (file.description || 'No description') + '</div>';
+          option.addEventListener('click', function () {
+            kdSelectFile(file);
+          });
+          kdFileOptions.appendChild(option);
+        });
+      }
+    }
+
+    function kdSelectFile(file) {
+      if (kdFileSearchInput && file.display_text) {
+        kdFileSearchInput.value = file.display_text;
+      }
+      if (kdFileHiddenInput && file.file_number) {
+        kdFileHiddenInput.value = file.file_number;
+      }
+      if (addKeyDateForm && file.file_number) {
+        addKeyDateForm.action = kdAddUrl(file.file_number);
+      }
+      if (kdSubmitBtn) {
+        kdSubmitBtn.disabled = !file.file_number;
+      }
+      if (kdFileDropdown) {
+        kdFileDropdown.classList.add('hidden');
+      }
+    }
+
+    function kdResetAddForm() {
+      if (!addKeyDateForm) {
+        return;
+      }
+      addKeyDateForm.reset();
+      if (kdFileSearchInput) {
+        kdFileSearchInput.value = '';
+      }
+      if (kdFileHiddenInput) {
+        kdFileHiddenInput.value = '';
+      }
+      addKeyDateForm.action = '#';
+      if (kdSubmitBtn) {
+        kdSubmitBtn.disabled = true;
+      }
+      if (kdFileDropdown) {
+        kdFileDropdown.classList.add('hidden');
+      }
+    }
+
+    function kdLoadFiles() {
+      fetch('/api/get-files/')
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error('Failed to load files');
+          }
+          return response.json();
+        })
+        .then(function (data) {
+          if (data.success && data.files) {
+            kdAllFiles = data.files;
+            kdFilterFiles('');
+          } else {
+            kdAllFiles = [];
+          }
+        })
+        .catch(function () {
+          kdAllFiles = [];
+        });
+    }
+
+    document.querySelectorAll('[data-open-modal]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        const modal = document.getElementById(this.dataset.openModal);
+        if (!modal) {
+          return;
+        }
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        if (this.dataset.openModal === 'addKeyDateModal') {
+          kdLoadFiles();
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-close-modal]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        const modal = this.closest('[data-modal]');
+        if (!modal) {
+          return;
+        }
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        if (modal.id === 'addKeyDateModal') {
+          kdResetAddForm();
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-modal]').forEach(function (modal) {
+      modal.addEventListener('click', function (event) {
+        if (event.target !== modal) {
+          return;
+        }
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        if (modal.id === 'addKeyDateModal') {
+          kdResetAddForm();
+        }
+      });
+    });
+
+    if (kdFileSearchInput) {
+      kdFileSearchInput.addEventListener('input', function () {
+        kdFilterFiles(this.value.toLowerCase());
+      });
+      kdFileSearchInput.addEventListener('focus', function () {
+        if (kdFileDropdown) {
+          kdFileDropdown.classList.remove('hidden');
+          kdFilterFiles(this.value.toLowerCase());
+        }
+      });
+      kdFileSearchInput.addEventListener('click', function () {
+        if (kdFileDropdown) {
+          kdFileDropdown.classList.remove('hidden');
+          kdFilterFiles(this.value.toLowerCase());
+        }
+      });
+      document.addEventListener('click', function (event) {
+        if (!event.target.closest('#kd_file_number_search') && !event.target.closest('#kd_file_dropdown')) {
+          if (kdFileDropdown) {
+            kdFileDropdown.classList.add('hidden');
+          }
+        }
+      });
+    }
+
+    if (addKeyDateForm) {
+      addKeyDateForm.addEventListener('submit', function (event) {
+        if (!kdFileHiddenInput || !kdFileHiddenInput.value) {
+          event.preventDefault();
+          alert('Please select a file.');
+        }
+      });
+    }
+
     const viewSelect = document.getElementById('view_months');
     const dateFromInput = document.getElementById('date_from');
     const dateToInput = document.getElementById('date_to');

@@ -3,7 +3,7 @@ from django.urls import path
 from .views import add_memo, delete_memo, display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, edit_memo, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work, read_memo, update_task_status, load_initial_tasks, load_more_tasks, get_files, get_users, create_task
 from .views import attendance_note_view, add_attendance_note, bulk_upload_attendance_notes, download_attendance_notes_bulk_template, download_attendance_notes_bulk, download_attendance_note, edit_attendance_note, correspondence_view, add_letter, edit_letter, download_sowc
 from .views import finance_view, add_blue_slip, add_pink_slip, add_green_slip, edit_pmts_slip, download_pmts_slip, edit_green_slip, download_green_slip, add_invoice, add_credit_note, approve_credit_note, reject_credit_note, edit_credit_note
-from .views import allocate_monies, download_statement_account, download_invoice, download_credited_invoice, download_credit_note, edit_invoice, unallocated_emails, allocate_emails
+from .views import allocate_monies, download_statement_account, download_invoice, download_credited_invoice, download_credit_note, edit_invoice, reopen_invoice, unallocated_emails, allocate_emails
 from .estate_account_views import (
     estate_account_view,
     estate_account_update,
@@ -187,6 +187,7 @@ urlpatterns = [
     path('invoice/download/credited/<int:id>/',
          download_credited_invoice, name='download_credited_invoice'),
     path('invoice/edit/<int:id>/', edit_invoice, name='edit_invoice'),
+    path('invoice/reopen/<int:id>/', reopen_invoice, name='reopen_invoice'),
 
     path('allocate/monies_in/invoice/', allocate_monies, name='allocate_monies'),
 

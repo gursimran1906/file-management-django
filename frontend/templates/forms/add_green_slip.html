@@ -1,0 +1,52 @@
+<div class="space-y-4" id="greenSlipAddForm" data-current-file-id="{{ file_number_id }}">
+  <p class="text-xs text-gray-600 rounded-lg border border-green-100 bg-green-50/50 px-3 py-2">
+    Record a transfer between matter files. One side must be <span class="font-medium text-gray-900">{{ file_number }}</span>.
+  </p>
+
+  <div class="flex flex-wrap gap-2">
+    <button type="button" class="btn-secondary text-xs green-slip-direction-btn ring-2 ring-zinc-700" data-direction="out">
+      Out from {{ file_number }}
+    </button>
+    <button type="button" class="btn-secondary text-xs green-slip-direction-btn" data-direction="in">
+      In to {{ file_number }}
+    </button>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div>
+      <label class="form-label">Date</label>
+      {{ green_slip_form.date }}
+    </div>
+    <div>
+      <label class="form-label">Amount</label>
+      {{ green_slip_form.amount }}
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div>
+      <label class="form-label">From ledger</label>
+      {{ green_slip_form.from_ledger_account }}
+    </div>
+    <div>
+      <label class="form-label">To ledger</label>
+      {{ green_slip_form.to_ledger_account }}
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div id="green-slip-from-file-wrap">
+      <label class="form-label">From file</label>
+      {{ green_slip_form.file_number_from }}
+    </div>
+    <div id="green-slip-to-file-wrap">
+      <label class="form-label">To file</label>
+      {{ green_slip_form.file_number_to }}
+    </div>
+  </div>
+
+  <div>
+    <label class="form-label">Description</label>
+    {{ green_slip_form.description }}
+  </div>
+</div>

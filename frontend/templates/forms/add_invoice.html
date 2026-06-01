@@ -1,112 +1,190 @@
+{% load humanize %}
 
-{% load utils %}
-    
-    <div class="col-span-6">
-      <label class="form-label">Date</label>
-      <input required type="Date" 
-      class="form-input" name="date" 
-      value={% now "Y-m-d" %}>
-    </div>
+<div class="col-span-12 space-y-5">
 
-    <div class="col-span-6">
-      <label class="form-label" for="">Draft/Final</label>
-      <select name="state" class="form-input py-2.5">
-        <option value='D' selected>Draft</option>
-        <option value='F'>Final</option>
-      </select>
+  <section class="rounded-lg border border-gray-100 bg-gray-50/60 p-4 space-y-3">
+    <div>
+      <h4 class="text-sm font-semibold text-gray-900">Invoice details</h4>
+      <p class="text-xs text-gray-500 mt-0.5">Date, status and delivery</p>
     </div>
-
-    <div class="col-span-6">
-      <label class="form-label">Payable by</label>
-      <input required type="text" 
-      class="form-input" name="payable_by" placeholder="eg. Client" value="Client">
-    </div>
-    <div class='col-span-3'>
-      <label class="mt-4 form-label">By email</label>
-      <input class="mt-4 form-check-input" type="checkbox" name="by_email">
-    </div>
-    <div class='col-span-3'>
-      <label class="mt-4 form-label">By post</label>
-      <input class="mt-4 form-check-input" type="checkbox" name="by_post">
-    </div>
-    <div class="col-span-12">
-      <label class="form-label">Description</label>
-      <textarea required type="text" class="form-input" name="description">Our professional charges in relation to work undertaken on your behalf as per attached schedule of work and costs.</textarea>
-    </div>
-
-    <div class="col-span-12" id="our_costs_row">
-      <div class="grid grid-cols-12 gap-4">
-        <div class="col-span-5">
-          <label class="form-label">Our Costs </label>
-        </div>
-        <div class="col-span-5">
-          <label class="form-label">Amount excl. VAT</label>
-        </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div>
+        <label class="form-label">Date</label>
+        <input required type="date" class="form-input" name="date" value="{% now 'Y-m-d' %}">
       </div>
-      <div class="grid grid-cols-12 gap-4">
-        <div class="col-span-5">
-          <input type="text" class="form-input" id="our_costs_description" placeholder="Costs Description" name="our_costs_desc[]" value="Our Costs">
-        </div>
-        <div class="col-span-5">
-          <input required type="number" step="0.01" 
-          class="form-input" name="our_costs[]" id="our_costs" placeholder="£0.00">
-        </div>
-        <div class="col-span-2 flex mt-1 mb-2">
-          <span type='button' class=' btn-primary px-4' onclick="addFieldsInvoice('our_costs_row');" id="add_more_fields_inv">+</span>
-        </div>
+      <div>
+        <label class="form-label">Draft / final</label>
+        <select name="state" class="form-input">
+          <option value="D" selected>Draft</option>
+          <option value="F">Final</option>
+        </select>
+        <p class="text-xs text-gray-500 mt-1">Final invoices receive the next invoice number.</p>
+      </div>
+      <div>
+        <label class="form-label">Payable by</label>
+        <input required type="text" class="form-input" name="payable_by" placeholder="e.g. Client" value="Client">
+      </div>
+      <div class="flex flex-wrap items-end gap-4 pb-1">
+        <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input class="rounded border-gray-300 text-zinc-700 focus:ring-zinc-400" type="checkbox" name="by_email">
+          <span>By email</span>
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input class="rounded border-gray-300 text-zinc-700 focus:ring-zinc-400" type="checkbox" name="by_post">
+          <span>By post</span>
+        </label>
       </div>
     </div>
+  </section>
 
+  <section class="space-y-2">
+    <label class="form-label">Description</label>
+    <textarea required class="form-input min-h-[5rem]" name="description" rows="3">Our professional charges in relation to work undertaken on your behalf as per attached schedule of work and costs.</textarea>
+  </section>
 
+  <section class="rounded-lg border border-gray-100 overflow-hidden">
+    <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h4 class="text-sm font-semibold text-gray-900">Our costs</h4>
+        <p class="text-xs text-gray-500 mt-0.5">Amounts are excl. VAT · VAT @ {{ current_vat_rate_percent }}%</p>
+      </div>
+      <div class="text-xs text-gray-600 shrink-0">
+        <span class="text-gray-500">Subtotal </span><span id="invoice-costs-subtotal" class="font-medium text-gray-900">£0.00</span>
+        <span class="text-gray-400 mx-1">·</span>
+        <span class="text-gray-500">VAT </span><span id="invoice-costs-vat" class="font-medium text-gray-900">£0.00</span>
+        <span class="text-gray-400 mx-1">·</span>
+        <span class="text-gray-500">Total </span><span id="invoice-costs-total" class="font-semibold text-gray-900">£0.00</span>
+      </div>
+    </div>
+    <div class="p-4 space-y-2" id="our_costs_row">
+      <div class="hidden sm:grid sm:grid-cols-12 gap-2 text-xs font-medium text-gray-500 uppercase tracking-wide">
+        <div class="sm:col-span-5">Description</div>
+        <div class="sm:col-span-5">Amount excl. VAT</div>
+        <div class="sm:col-span-2"></div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start invoice-cost-line">
+        <div class="sm:col-span-5">
+          <label class="form-label sm:sr-only">Description</label>
+          <input type="text" class="form-input invoice-cost-input" name="our_costs_desc[]" value="Our Costs" placeholder="Cost description">
+        </div>
+        <div class="sm:col-span-5">
+          <label class="form-label sm:sr-only">Amount excl. VAT</label>
+          <input required type="number" step="0.01" min="0" class="form-input invoice-cost-input" name="our_costs[]" id="our_costs" placeholder="0.00">
+        </div>
+        <div class="sm:col-span-2 flex gap-2 invoice-cost-actions">
+          <button type="button" class="btn-secondary text-xs px-3" onclick="addFieldsInvoice('our_costs_row');" id="add_more_fields_inv" aria-label="Add cost line">+</button>
+        </div>
+      </div>
+    </div>
+  </section>
 
-    <div class="col-span-12 mt-4"> 
-      <legend class='text-xl mb-2' >Pink slips to be attached</legend>
-      {% for slip in slips %}
+  <section class="space-y-3">
+    <div>
+      <h4 class="text-sm font-semibold text-gray-900">Attach slips</h4>
+      <p class="text-xs text-gray-500 mt-0.5">All unallocated slips are selected by default — use select/unselect all or uncheck individual slips</p>
+    </div>
+
+    <div class="rounded-lg border border-pink-100 bg-pink-50/30 overflow-hidden">
+      <div class="flex items-center justify-between gap-3 px-3 py-2.5 border-b border-pink-100/60 bg-white/40 min-h-[2.75rem]">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-xs font-semibold text-pink-900 uppercase tracking-wide">Pink slips (disbursements out)</span>
+          <span class="badge-zinc shrink-0">{{ attachable_pink_slip_count }}</span>
+        </div>
+        {% if attachable_pink_slip_count %}
+        <div class="flex items-center gap-2 shrink-0 invoice-slip-actions" data-slip-name="pink_slips[]">
+          <button type="button" class="link text-xs !no-underline hover:underline inline-flex items-center invoice-slip-select-all">Select all</button>
+          <span class="text-gray-300 text-xs select-none" aria-hidden="true">·</span>
+          <button type="button" class="link text-xs !no-underline hover:underline inline-flex items-center invoice-slip-unselect-all">Unselect all</button>
+        </div>
+        {% endif %}
+      </div>
+      <div class="invoice-slip-list max-h-44 overflow-y-auto px-3 pb-3 space-y-2">
+      {% for slip in pmts_slips %}
         {% if slip.is_money_out and slip.balance_left > 0 %}
-        <div class="form-check">
-
-            <div id="tooltip-top-pink-{{slip.id}}" role="tooltip" class="absolute z-50 invisible inline-block px-3 py-2 text-sm font-medium text-white bg-black rounded-lg border shadow-sm  dark:bg-gray-700">
-                Description: {{slip.description}}
-                <div class="tooltip-arrow" data-popper-arrow></div>
-            </div>
-            <input class="form-check-input" name="pink_slips[]" type="checkbox" value="{{slip.id}}">
-            <label class="form-check-label" data-tooltip-target="tooltip-top-pink-{{slip.id}}" data-tooltip-placement="top">Payment to&nbsp;<b >'{{slip.pmt_person}}'</b>&nbsp;of £{{slip.balance_left}} from  {{slip.get_ledger_account_display}} Ledger on {{slip.date|date:'d/m/Y'}}</label>
-        </div>
+        <label class="flex items-start gap-2.5 rounded-md border border-pink-100/80 bg-white px-3 py-2 cursor-pointer hover:border-pink-200">
+          <input class="mt-0.5 rounded border-gray-300 text-pink-600 focus:ring-pink-300 invoice-slip-checkbox" name="pink_slips[]" type="checkbox" value="{{ slip.id }}" checked>
+          <span class="text-xs text-gray-700 leading-snug">
+            Payment to <span class="font-medium text-gray-900">{{ slip.pmt_person }}</span>
+            · £{{ slip.balance_left|intcomma }} · {{ slip.get_ledger_account_display }} · {{ slip.date|date:'d/m/Y' }}
+            {% if slip.description %}<span class="block text-gray-500 mt-0.5">{{ slip.description }}</span>{% endif %}
+          </span>
+        </label>
         {% endif %}
       {% endfor %}
+      </div>
+      <p class="text-xs text-gray-400 italic no-slip-msg hidden px-3 pb-3" data-slip-kind="pink">No pink slips with balance available.</p>
     </div>
 
-    <div class="col-span-12 mt-4"> 
-      <legend class='text-xl mb-2' >Blue slips to be attached</legend>
-      {% for slip in slips %}
-        {% if slip.is_money_out != True and slip.balance_left > 0 %}
-        <div class="form-check">
-            <div id="tooltip-top-blue-{{slip.id}}" role="tooltip" class="absolute z-50 invisible inline-block px-3 py-2 text-sm font-medium text-white bg-black rounded-lg border shadow-sm  dark:bg-gray-700">
-              Description: {{slip.description}}
-              <div class="tooltip-arrow" data-popper-arrow></div>
-          </div>
-            <input class="form-check-input" name="blue_slips[]" type="checkbox" value="{{slip.id}}">
-            <label class="form-check-label" data-tooltip-target="tooltip-top-blue-{{slip.id}}" data-tooltip-placement="top">Payment from&nbsp;<b >'{{slip.pmt_person}}'</b>&nbsp;of £{{slip.balance_left}}(from £{{slip.amount}}) to  {{slip.get_ledger_account_display}} Ledger on {{slip.date|date:'d/m/Y'}}</label>
+    <div class="rounded-lg border border-sky-100 bg-sky-50/30 overflow-hidden">
+      <div class="flex items-center justify-between gap-3 px-3 py-2.5 border-b border-sky-100/60 bg-white/40 min-h-[2.75rem]">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-xs font-semibold text-sky-900 uppercase tracking-wide">Blue slips (payments on invoice)</span>
+          <span class="badge-zinc shrink-0">{{ attachable_blue_slip_count }}</span>
+        </div>
+        {% if attachable_blue_slip_count %}
+        <div class="flex items-center gap-2 shrink-0 invoice-slip-actions" data-slip-name="blue_slips[]">
+          <button type="button" class="link text-xs !no-underline hover:underline inline-flex items-center invoice-slip-select-all">Select all</button>
+          <span class="text-gray-300 text-xs select-none" aria-hidden="true">·</span>
+          <button type="button" class="link text-xs !no-underline hover:underline inline-flex items-center invoice-slip-unselect-all">Unselect all</button>
         </div>
         {% endif %}
+      </div>
+      <div class="invoice-slip-list max-h-44 overflow-y-auto px-3 pb-3 space-y-2">
+      {% for slip in pmts_slips %}
+        {% if not slip.is_money_out and slip.balance_left > 0 %}
+        <label class="flex items-start gap-2.5 rounded-md border border-sky-100/80 bg-white px-3 py-2 cursor-pointer hover:border-sky-200">
+          <input class="mt-0.5 rounded border-gray-300 text-sky-600 focus:ring-sky-300 invoice-slip-checkbox" name="blue_slips[]" type="checkbox" value="{{ slip.id }}" checked>
+          <span class="text-xs text-gray-700 leading-snug">
+            Payment from <span class="font-medium text-gray-900">{{ slip.pmt_person }}</span>
+            · £{{ slip.balance_left|intcomma }} of £{{ slip.amount|intcomma }} · {{ slip.get_ledger_account_display }} · {{ slip.date|date:'d/m/Y' }}
+            {% if slip.description %}<span class="block text-gray-500 mt-0.5">{{ slip.description }}</span>{% endif %}
+          </span>
+        </label>
+        {% endif %}
       {% endfor %}
+      </div>
+      <p class="text-xs text-gray-400 italic no-slip-msg hidden px-3 pb-3" data-slip-kind="blue">No blue slips with balance available.</p>
     </div>
 
-    <div class="col-span-12 mt-4"> 
-      <legend class='text-xl mb-2' >Green slips to be attached</legend>
+    <div class="rounded-lg border border-green-200 bg-green-50/30 overflow-hidden">
+      <div class="flex items-center justify-between gap-3 px-3 py-2.5 border-b border-green-100/60 bg-white/40 min-h-[2.75rem]">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-xs font-semibold text-green-900 uppercase tracking-wide">Green slips (inter-file transfers)</span>
+          <span class="badge-zinc shrink-0">{{ attachable_green_slip_count }}</span>
+        </div>
+        {% if attachable_green_slip_count %}
+        <div class="flex items-center gap-2 shrink-0 invoice-slip-actions" data-slip-name="green_slips[]">
+          <button type="button" class="link text-xs !no-underline hover:underline inline-flex items-center invoice-slip-select-all">Select all</button>
+          <span class="text-gray-300 text-xs select-none" aria-hidden="true">·</span>
+          <button type="button" class="link text-xs !no-underline hover:underline inline-flex items-center invoice-slip-unselect-all">Unselect all</button>
+        </div>
+        {% endif %}
+      </div>
+      <div class="invoice-slip-list max-h-44 overflow-y-auto px-3 pb-3 space-y-2">
       {% for slip in green_slips %}
         {% if slip.file_number_from.file_number == file_number and slip.balance_left_from > 0 %}
-        <div class="form-check">
-            <input class="form-check-input" name="green_slips[]" type="checkbox" value="{{slip.id}}">
-            <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{{slip.description}}">Transfer to&nbsp;<b >{{slip.file_number_to}}</b> of £{{slip.balance_left_from}} (from £{{slip.amount}}) {{slip.date|date:'d/m/Y'}}</label>
-        </div>
+        <label class="flex items-start gap-2.5 rounded-md border border-green-100/80 bg-white px-3 py-2 cursor-pointer hover:border-green-200">
+          <input class="mt-0.5 rounded border-gray-300 text-green-600 focus:ring-green-300 invoice-slip-checkbox" name="green_slips[]" type="checkbox" value="{{ slip.id }}" checked>
+          <span class="text-xs text-gray-700 leading-snug">
+            Transfer to <span class="font-medium text-gray-900">{{ slip.file_number_to }}</span>
+            · £{{ slip.balance_left_from|intcomma }} of £{{ slip.amount|intcomma }} · {{ slip.date|date:'d/m/Y' }}
+            {% if slip.description %}<span class="block text-gray-500 mt-0.5">{{ slip.description }}</span>{% endif %}
+          </span>
+        </label>
         {% elif slip.file_number_to.file_number == file_number and slip.balance_left_to > 0 %}
-        <div class="form-check">
-          <input class="form-check-input" name="green_slips[]" type="checkbox" value="{{slip.id}}">
-          <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{{slip.description}}">Transfer from&nbsp;<b >{{slip.file_number_from}}</b> of £{{slip.balance_left_to}} (from £{{slip.amount}}) {{slip.date|date:'d/m/Y'}}</label>
-        </div>
+        <label class="flex items-start gap-2.5 rounded-md border border-green-100/80 bg-white px-3 py-2 cursor-pointer hover:border-green-200">
+          <input class="mt-0.5 rounded border-gray-300 text-green-600 focus:ring-green-300 invoice-slip-checkbox" name="green_slips[]" type="checkbox" value="{{ slip.id }}" checked>
+          <span class="text-xs text-gray-700 leading-snug">
+            Transfer from <span class="font-medium text-gray-900">{{ slip.file_number_from }}</span>
+            · £{{ slip.balance_left_to|intcomma }} of £{{ slip.amount|intcomma }} · {{ slip.date|date:'d/m/Y' }}
+            {% if slip.description %}<span class="block text-gray-500 mt-0.5">{{ slip.description }}</span>{% endif %}
+          </span>
+        </label>
         {% endif %}
       {% endfor %}
+      </div>
+      <p class="text-xs text-gray-400 italic no-slip-msg hidden px-3 pb-3" data-slip-kind="green">No green slips with balance available.</p>
     </div>
-    
+  </section>
 
+</div>

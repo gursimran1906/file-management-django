@@ -11,9 +11,17 @@ from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessm
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
 from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
-from .forms import PmtsForm, PmtsHalfForm, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, MatterClientKeyDocumentForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
+from .forms import PmtsForm, PmtsHalfForm, PmtsSlipEditForm, GreenSlipEditForm, apply_pmts_slip_edit_locks, apply_green_slip_edit_locks, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, MatterClientKeyDocumentForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm
-from .utils import create_modification, parse_bundle_filename
+from .utils import (
+    create_modification,
+    parse_bundle_filename,
+    get_pmt_slip_usage_summary,
+    get_green_slip_usage_summary,
+    validate_pmt_slip_amount_change,
+    validate_green_slip_amount_change,
+    validate_green_slip_file_change,
+)
 from .audit import (
     audit_client_key_document_formset,
     build_form_field_changes,
@@ -23,6 +31,7 @@ from .audit import (
     snapshot_key_date,
     snapshot_key_document,
 )
+from .finance_display import build_invoice_finance_detail, compute_invoice_balance_due
 from .audit_display import build_change_items, enrich_file_logs
 from django.utils import timezone
 from users.models import CPDTrainingLog, CustomUser, HolidayRecord, SicknessRecord
@@ -304,19 +313,99 @@ def get_invoice_approved_credit_total(invoice):
     ).aggregate(total=Sum('amount')).get('total') or Decimal('0')
 
 
-def get_invoice_max_credit_amount(invoice, excluded_credit_note_id=None):
-    max_allowed = Decimal(str(invoice.total_due_left or 0))
+def get_pending_credit_note_total(invoice, excluded_credit_note_id=None):
+    pending = CreditNote.objects.filter(invoice=invoice, status='P')
     if excluded_credit_note_id:
-        excluded_note = CreditNote.objects.filter(
+        pending = pending.exclude(id=excluded_credit_note_id)
+    return pending.aggregate(total=Sum('amount')).get('total') or Decimal('0')
+
+
+def get_invoice_amount_due(invoice, file_number, approved_credit_total=None):
+    """Authoritative amount due from invoice components (0 if account in credit)."""
+    if invoice.state != 'F':
+        return Decimal('0')
+    if approved_credit_total is None:
+        approved_credit_total = get_invoice_approved_credit_total(invoice)
+    balance_due, is_account_credit = compute_invoice_balance_due(
+        invoice, file_number, approved_credit_total)
+    if is_account_credit:
+        return Decimal('0')
+    return balance_due
+
+
+def sync_invoice_total_due_left(invoice, file_number):
+    """Keep stored total_due_left aligned with computed invoice balance."""
+    invoice.total_due_left = get_invoice_amount_due(invoice, file_number)
+    invoice.save(update_fields=['total_due_left'])
+
+
+def get_credit_note_max_amount(invoice, file_number, excluded_credit_note_id=None):
+    """Maximum credit note amount allowed against an invoice."""
+    approved = get_invoice_approved_credit_total(invoice)
+    if excluded_credit_note_id:
+        excluded = CreditNote.objects.filter(
             id=excluded_credit_note_id,
             status='F',
-            invoice=invoice
+            invoice=invoice,
         ).first()
-        if excluded_note:
-            max_allowed += Decimal(str(excluded_note.amount))
-    if max_allowed < 0:
+        if excluded:
+            approved -= Decimal(str(excluded.amount))
+    due = get_invoice_amount_due(invoice, file_number, approved)
+    due -= get_pending_credit_note_total(
+        invoice, excluded_credit_note_id=excluded_credit_note_id)
+    if due < 0:
         return Decimal('0')
-    return round(max_allowed, 2)
+    return round(due, 2)
+
+
+def get_available_credit_amount(invoice, excluded_credit_note_id=None):
+    """Credit headroom on an invoice, reserving other pending credit notes."""
+    file_number = invoice.file_number.file_number
+    return get_credit_note_max_amount(
+        invoice, file_number, excluded_credit_note_id=excluded_credit_note_id)
+
+
+def get_invoice_allocatable_due(
+        invoice,
+        file_number,
+        approved_credit_total=None,
+        finance_detail=None):
+    """Amount still payable via cash allocation."""
+    if invoice.state != 'F':
+        return Decimal('0')
+
+    if finance_detail is not None:
+        if finance_detail.get('is_account_credit'):
+            return Decimal('0')
+        due = Decimal(str(finance_detail.get('balance_due', 0)))
+    else:
+        due = get_invoice_amount_due(
+            invoice, file_number, approved_credit_total=approved_credit_total)
+
+    due -= get_pending_credit_note_total(invoice)
+    if due < 0:
+        return Decimal('0')
+    return round(due, 2)
+
+
+def get_invoice_due_for_allocation_update(
+        invoice,
+        file_number,
+        approved_credit_total=None,
+        finance_detail=None):
+    """Current invoice due before applying a new cash allocation."""
+    if finance_detail is not None:
+        if finance_detail.get('is_account_credit'):
+            return Decimal('0')
+        return Decimal(str(finance_detail.get('balance_due', 0)))
+    return get_invoice_amount_due(
+        invoice, file_number, approved_credit_total=approved_credit_total)
+
+
+def get_invoice_max_credit_amount(invoice, excluded_credit_note_id=None):
+    file_number = invoice.file_number.file_number
+    return get_credit_note_max_amount(
+        invoice, file_number, excluded_credit_note_id=excluded_credit_note_id)
 
 
 def get_effective_invoice_due(invoice, approved_credit_total=None):
@@ -327,31 +416,14 @@ def get_effective_invoice_due(invoice, approved_credit_total=None):
 
 
 def get_invoice_outstanding_balance(invoice, approved_credit_total=None):
-    """Amount still owed on a final invoice (handles unset total_due_left)."""
+    """Amount still owed on a final invoice (computed from components)."""
+    if invoice.state != 'F':
+        return Decimal('0')
     if approved_credit_total is None:
         approved_credit_total = get_invoice_approved_credit_total(invoice)
-
-    if invoice.total_due_left is not None:
-        return get_effective_invoice_due(invoice, approved_credit_total)
-
-    _, _, gross = calculate_invoice_total_with_vat(invoice)
-    cash_allocated = Decimal('0')
-    for slip in invoice.cash_allocated_slips.all():
-        alloc_raw = slip.amount_allocated
-        if not alloc_raw:
-            continue
-        try:
-            data = json.loads(alloc_raw) if isinstance(
-                alloc_raw, str) else alloc_raw
-            if isinstance(data, dict):
-                cash_allocated += Decimal(str(data.get(str(invoice.id), 0) or 0))
-        except (json.JSONDecodeError, TypeError, InvalidOperation):
-            continue
-
-    balance = gross - approved_credit_total - cash_allocated
-    if balance <= 0:
-        return Decimal('0')
-    return round(balance, 2)
+    file_number = invoice.file_number.file_number
+    return get_invoice_amount_due(
+        invoice, file_number, approved_credit_total=approved_credit_total)
 
 
 def get_user_dashboard_wip_ids(user):
@@ -948,7 +1020,8 @@ def user_dashboard(request):
         person=user,
         status__in=['to_do', 'in_progress']
     ).exists()
-    # Check if user is manager and show pending holiday requests
+    pending_credit_notes = []
+    # Check if user is manager and show pending holiday / credit note requests
     if user.is_manager:
         pending_holiday_requests = HolidayRecord.objects.filter(
             approved=False,
@@ -962,6 +1035,21 @@ def user_dashboard(request):
             else:
                 messages.info(
                     request, f'You have {pending_holiday_requests} holiday requests pending your approval.')
+
+        pending_credit_notes = list(
+            CreditNote.objects.filter(status='P')
+            .select_related('invoice', 'file_number', 'created_by')
+            .order_by('timestamp')
+        )
+        pending_credit_note_count = len(pending_credit_notes)
+        if pending_credit_note_count > 0:
+            if pending_credit_note_count == 1:
+                messages.info(
+                    request, 'You have 1 credit note pending your approval.')
+            else:
+                messages.info(
+                    request,
+                    f'You have {pending_credit_note_count} credit notes pending your approval.')
 
     now = timezone.now()
     unique_wips = get_user_dashboard_wips(user)
@@ -1019,6 +1107,7 @@ def user_dashboard(request):
         'risk_scope': validated_risk_scope,
         'key_doc_scope': validated_key_doc_scope,
         'file_reviews_due_files': file_reviews_due,
+        'pending_credit_notes': pending_credit_notes,
     }
 
     return render(request, 'dashboard.html', context)
@@ -1493,6 +1582,8 @@ def add_matter_key_date(request, file_number):
     else:
         messages.error(request, 'Please correct the key date form.')
 
+    if request.POST.get('return_to') == 'central':
+        return redirect('central_key_dates')
     return redirect('home', file_number=file_number)
 
 
@@ -2099,6 +2190,7 @@ def _build_central_key_dates_context(request):
 @login_required
 def central_key_dates(request):
     context = _build_central_key_dates_context(request)
+    context['matter_key_date_form'] = MatterKeyDateForm()
     return render(request, 'key_dates.html', context)
 
 
@@ -4163,6 +4255,24 @@ def download_sowc(request, file_number):
     return response
 
 
+def _finance_activity_balance_delta(kind, file_number, *, invoice=None, credit_note=None, pmts_slip=None, green_slip=None):
+    if kind == 'invoice':
+        return -invoice['total_cost_and_vat']
+    if kind == 'credit_note':
+        if credit_note['status'] == 'F':
+            return credit_note['amount']
+        return Decimal('0')
+    if kind == 'pmts_slip':
+        return -pmts_slip.amount if pmts_slip.is_money_out else pmts_slip.amount
+    if kind == 'green_slip':
+        if green_slip.file_number_from.file_number == green_slip.file_number_to.file_number:
+            return Decimal('0')
+        if green_slip.file_number_from.file_number == file_number:
+            return -green_slip.amount
+        return green_slip.amount
+    return Decimal('0')
+
+
 @login_required
 def finance_view(request, file_number):
     file_obj = WIP.objects.select_related(
@@ -4177,6 +4287,7 @@ def finance_view(request, file_number):
         file_number=file_number_id).order_by('-date')
     pmts_form = PmtsHalfForm()
     green_slips_form = LedgerAccountTransfersHalfForm()
+    green_slips_form.fields['file_number_from'].initial = file_number_id
     credit_note_form = CreditNoteHalfForm()
     credit_note_form.fields['invoice'].queryset = Invoices.objects.filter(
         file_number=file_number_id, state='F').order_by('-invoice_number')
@@ -4205,6 +4316,8 @@ def finance_view(request, file_number):
         credit_notes_data.append({
             'id': credit_note.id,
             'date': credit_note.date.strftime('%d/%m/%Y'),
+            'sort_date': credit_note.date,
+            'sort_timestamp': credit_note.timestamp,
             'invoice_number': credit_note.invoice.invoice_number,
             'amount': gross_amount,
             'net_amount': net_amount,
@@ -4235,190 +4348,49 @@ def finance_view(request, file_number):
 
         costs = ast.literal_eval(our_costs) if type(
             our_costs) != type([]) else our_costs
-        total_cost_invoice = Decimal('0')
-
-        our_costs_desc_pre = invoice.our_costs_desc
-        our_costs_desc = ast.literal_eval(our_costs_desc_pre) if type(
-            our_costs_desc_pre) != type([]) else our_costs_desc_pre
-        costs_display = "<div>"
-        for i in range(len(costs)):
-            total_cost_invoice = total_cost_invoice + Decimal(costs[i])
-            costs_display = costs_display + \
-                f"<b>{our_costs_desc[i]}</b>: £{costs[i]}<br>"
-        _, vat_inv, total_cost_and_vat = calculate_invoice_total_with_vat(
-            invoice)
-        costs_display = costs_display + \
-            f"Add VAT @{CURRENT_VAT_RATE_PERCENT}%: £{round(vat_inv, 2)}<br>"
-        total_cost_and_vat = round(total_cost_and_vat, 2)
-        costs_display = costs_display + \
-            f"<b>Total Costs and VAT:</b> £{total_cost_and_vat}<br>"
-        costs_display = costs_display + "</div>"
-
-        blue_slips_display = "<div class='mt-2'><h5 class='text-xl font-medium' >Blues Slips attached</h5>"
-        total_blue_slips = 0
-        if invoice.moa_ids.exists():
-            for slip in invoice.moa_ids.all():
-                if isinstance(slip.amount_invoiced, str):
-                    amount_invoiced = json.loads(slip.amount_invoiced)
-                elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
-                    amount_invoiced = json.loads(
-                        slip.amount_invoiced.decode('utf-8'))
-                elif isinstance(slip.amount_invoiced, dict):
-                    amount_invoiced = slip.amount_invoiced
-                else:
-                    raise ValueError(
-                        "Unsupported type for slip.amount_invoiced")
-
-                date = slip.date.strftime('%d/%m/%Y')
-                amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
-                total_blue_slips = total_blue_slips + Decimal(amt)
-                blue_slips_display = blue_slips_display + \
-                    f"Payment from {slip.pmt_person} of <b>£{amt}</b> on <b>{date}</b><br>"
-            blue_slips_display = blue_slips_display + \
-                f"<b>Total Blue Slips:</b> £{round(total_blue_slips, 2)}<br>"
-        else:
-            blue_slips_display = blue_slips_display + "No Blue Slips Attached"
-
-        blue_slips_display = blue_slips_display + "</div>"
-
-        pink_slips_display = "<div><h5 class='text-xl font-medium' >Pink Slips attached</h5>"
-        total_pink_slips = 0
-        if invoice.disbs_ids.exists():
-            for slip in invoice.disbs_ids.all():
-                date = slip.date.strftime('%d/%m/%Y')
-                total_pink_slips = total_pink_slips + slip.amount
-                pink_slips_display = pink_slips_display + \
-                    f"Payment to {slip.pmt_person} of £{
-                        slip.amount} on {date}<br>"
-            pink_slips_display = pink_slips_display + \
-                f"<b>Total Pink Slips:</b> £{total_pink_slips}<br>"
-        else:
-            pink_slips_display = pink_slips_display + "No Pink Slips Attached"
-
-        pink_slips_display = pink_slips_display + "</div>"
-
-        green_slips_display = "<div><h5 class='text-xl font-medium' >Green Slips attached</h5>"
-        total_green_slips = 0
-        if invoice.green_slip_ids.exists():
-            for slip in invoice.green_slip_ids.all():
-                date = slip.date.strftime('%d/%m/%Y')
-                if slip.file_number_from.file_number == file_number:
-                    total_green_slips = total_green_slips - slip.amount
-                    green_slips_display = green_slips_display + \
-                        f"Transfer to {slip.file_number_to} of £{
-                            slip.amount} on {date}<br>"
-                else:
-
-                    if isinstance(slip.amount_invoiced_to, str):
-                        amount_invoiced = json.loads(slip.amount_invoiced_to)
-                    elif isinstance(slip.amount_invoiced_to, (bytes, bytearray)):
-                        amount_invoiced = json.loads(
-                            slip.amount_invoiced_to.decode('utf-8'))
-                    elif isinstance(slip.amount_invoiced_to, dict):
-                        amount_invoiced = slip.amount_invoiced_to
-                    else:
-                        raise ValueError(
-                            "Unsupported type for slip.amount_invoiced_to")
-
-                    date = slip.date.strftime('%d/%m/%Y')
-                    amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
-
-                    total_green_slips = total_green_slips + Decimal(amt)
-                    green_slips_display = green_slips_display + \
-                        f"Transfer from {slip.file_number_from} of £{
-                            amt} on {date}<br>"
-            green_slips_display = green_slips_display + \
-                f"<b>Total Green Slips:</b> £{total_green_slips}<br>"
-        else:
-            green_slips_display = green_slips_display + "No Green Slips Attached"
-        green_slips_display = green_slips_display + "</div>"
-
-        cash_allocated_slips_display = "<div class='mt-2'><h5 class='text-xl font-medium' >Blue Slips attached (after invoice creation)</h5>"
-        total_cash_allocated_slips = 0
-        if invoice.cash_allocated_slips.exists():
-            for slip in invoice.cash_allocated_slips.all():
-                if isinstance(slip.amount_allocated, str):
-                    amount_invoiced = json.loads(slip.amount_allocated)
-                elif isinstance(slip.amount_allocated, (bytes, bytearray)):
-                    amount_invoiced = json.loads(
-                        slip.amount_allocated.decode('utf-8'))
-                elif isinstance(slip.amount_allocated, dict):
-                    amount_invoiced = slip.amount_allocated
-                else:
-                    raise ValueError(
-                        "Unsupported type for slip.amount_invoiced")
-
-                date = slip.date.strftime('%d/%m/%Y')
-                invoice_id_str = f'{invoice.id}'
-                if invoice_id_str in amount_invoiced:
-                    amt = amount_invoiced[invoice_id_str]
-                    total_cash_allocated_slips = total_cash_allocated_slips + \
-                        Decimal(amt)
-                    cash_allocated_slips_display = cash_allocated_slips_display + \
-                        f"Payment from {slip.pmt_person} of <b>£{amt}</b> on <b>{date}</b><br>"
-
-            cash_allocated_slips_display = cash_allocated_slips_display + \
-                f"<b>Total Allocated Slips:</b> £{total_cash_allocated_slips}<br>"
-        else:
-            cash_allocated_slips_display = cash_allocated_slips_display + \
-                "No Slips Attached After Invoice Creation"
-
-        cash_allocated_slips_display = cash_allocated_slips_display + "</div>"
+        _, _, total_cost_and_vat = calculate_invoice_total_with_vat(invoice)
 
         invoice_credit_notes = credit_notes_by_invoice.get(invoice.id, [])
         approved_credit_total = approved_credit_totals.get(
             invoice.id, Decimal('0'))
         total_approved_credit_notes += approved_credit_total
-        credit_notes_display = "<div><h5 class='text-xl font-medium'>Credit Notes</h5>"
-        if invoice_credit_notes:
-            for note in invoice_credit_notes:
-                status_display = status_labels.get(note.status, note.status)
-                net_amount, vat_amount, gross_amount = calculate_credit_note_breakdown(
-                    note.amount)
-                approved_meta = ""
-                if note.approved_by:
-                    approved_meta = (
-                        f" (approved by {note.approved_by} on {note.approved_on.strftime('%d/%m/%Y %H:%M')})"
-                        if note.approved_on else f" (approved by {note.approved_by})"
-                    )
-                credit_notes_display = credit_notes_display + (
-                    f"{note.date.strftime('%d/%m/%Y')} - Ex VAT £{net_amount}, VAT £{vat_amount}, "
-                    f"Total £{gross_amount} - {status_display}{approved_meta}<br>"
-                )
-            credit_notes_display = credit_notes_display + \
-                f"<b>Total Final Credit Notes:</b> £{round(approved_credit_total, 2)}<br>"
-        else:
-            credit_notes_display = credit_notes_display + "No Credit Notes Issued"
-        credit_notes_display = credit_notes_display + "</div>"
 
-        balance = (total_cost_and_vat + total_pink_slips) - \
-            total_green_slips - \
-            (total_blue_slips + total_cash_allocated_slips) - approved_credit_total
+        detail = build_invoice_finance_detail(
+            invoice,
+            file_number,
+            invoice_credit_notes,
+            approved_credit_total,
+            status_labels,
+            CURRENT_VAT_RATE_PERCENT,
+        )
 
-        if balance >= 0:
-            total_due_display = f"<div><b>Total Due: </b> £{round(balance, 2)}<br></div>"
-        else:
-            balance = balance * -1
-            total_due_display = f"<div><b>Balance remaining on account:</b> £{round(balance, 2)}<br></div>"
+        effective_due_left = (
+            Decimal('0') if detail['is_account_credit']
+            else detail['balance_due']
+        )
+        available_due_left = get_invoice_allocatable_due(
+            invoice,
+            file_number,
+            approved_credit_total=approved_credit_total,
+            finance_detail=detail,
+        )
 
-        effective_due_left = get_effective_invoice_due(
-            invoice, approved_credit_total)
-
-        data = {'id': invoice.id,
-                'state': invoice.state,
-                'number': invoice.invoice_number,
-                'total_cost_and_vat': total_cost_and_vat,
-                'desc': invoice.description,
-                'date': invoice.date.strftime('%d/%m/%Y'),
-                'costs': mark_safe(costs_display),
-                'pink_slips': mark_safe(pink_slips_display),
-                'blue_slips': mark_safe(blue_slips_display),
-                'green_slips': mark_safe(green_slips_display),
-                'cash_allocated_slips': mark_safe(cash_allocated_slips_display),
-                'credit_notes': mark_safe(credit_notes_display),
-                'total_due': mark_safe(total_due_display),
-                'total_due_left': effective_due_left,
-                }
+        data = {
+            'id': invoice.id,
+            'state': invoice.state,
+            'number': invoice.invoice_number,
+            'total_cost_and_vat': total_cost_and_vat,
+            'desc': invoice.description,
+            'date': invoice.date.strftime('%d/%m/%Y'),
+            'sort_date': invoice.date,
+            'detail': detail,
+            'total_due_left': effective_due_left,
+            'available_due_left': available_due_left,
+            'display_due_left': (
+                Decimal('0') if detail['is_account_credit']
+                else detail['balance_due']
+            ),
+        }
 
         invoices_data.append(data)
 
@@ -4451,14 +4423,96 @@ def finance_view(request, file_number):
               'green': "#90EE90",
               'temp': "#CCD1D1"}
 
+    finance_activity = []
+    for invoice in invoices_data:
+        finance_activity.append({
+            'kind': 'invoice',
+            'sort_date': invoice['sort_date'],
+            'sort_timestamp': None,
+            'balance_delta': _finance_activity_balance_delta(
+                'invoice', file_number, invoice=invoice),
+            'invoice': invoice,
+        })
+    for credit_note in credit_notes_data:
+        finance_activity.append({
+            'kind': 'credit_note',
+            'sort_date': credit_note['sort_date'],
+            'sort_timestamp': credit_note['sort_timestamp'],
+            'balance_delta': _finance_activity_balance_delta(
+                'credit_note', file_number, credit_note=credit_note),
+            'credit_note': credit_note,
+        })
+    for slip in pmts_slips:
+        finance_activity.append({
+            'kind': 'pmts_slip',
+            'sort_date': slip.date,
+            'sort_timestamp': None,
+            'balance_delta': _finance_activity_balance_delta(
+                'pmts_slip', file_number, pmts_slip=slip),
+            'pmts_slip': slip,
+            'slip_usage': get_pmt_slip_usage_summary(slip),
+        })
+    for slip in green_slips:
+        finance_activity.append({
+            'kind': 'green_slip',
+            'sort_date': slip.date,
+            'sort_timestamp': None,
+            'balance_delta': _finance_activity_balance_delta(
+                'green_slip', file_number, green_slip=slip),
+            'green_slip': slip,
+            'slip_usage': get_green_slip_usage_summary(slip),
+        })
+
+    def _activity_sort_key(item):
+        return (
+            item['sort_date'],
+            item['sort_timestamp'] or timezone.make_aware(datetime.min),
+        )
+
+    finance_activity.sort(key=_activity_sort_key)
+    running_balance = Decimal('0')
+    for item in finance_activity:
+        running_balance += item['balance_delta']
+        item['running_balance'] = round(running_balance, 2)
+    finance_activity.sort(key=_activity_sort_key, reverse=True)
+
+    attachable_pink_slip_count = sum(
+        1 for slip in pmts_slips if slip.is_money_out and slip.balance_left > 0)
+    attachable_blue_slip_count = sum(
+        1 for slip in pmts_slips if not slip.is_money_out and slip.balance_left > 0)
+    attachable_green_slip_count = 0
+    for slip in green_slips:
+        if (slip.file_number_from.file_number == file_number
+                and slip.balance_left_from > 0):
+            attachable_green_slip_count += 1
+        elif (slip.file_number_to.file_number == file_number
+              and slip.balance_left_to > 0):
+            attachable_green_slip_count += 1
+
+    allocatable_invoices = [
+        invoice for invoice in invoices_data
+        if invoice['state'] == 'F' and invoice['available_due_left'] > 0
+    ]
+    cash_allocation_slips = [
+        slip for slip in pmts_slips
+        if not slip.is_money_out and slip.balance_left > 0
+    ]
+
     return render(request, 'finances.html', {'total_monies_in': total_in, 'total_monies_out': total_out, 'total_monies_balance': total_balance,
                                              'pmts_slips': pmts_slips, 'file_number': file_number, 'file_number_id': file_number_id,
                                              'matter': file_obj,
                                              'colors': colors,
+                                             'finance_activity': finance_activity,
                                              'pmts_form': pmts_form, 'green_slip_form': green_slips_form,
                                              'green_slips': green_slips, 'invoices': invoices_data,
                                              'credit_notes': credit_notes_data, 'credit_note_form': credit_note_form,
-                                             'current_vat_rate_percent': CURRENT_VAT_RATE_PERCENT})
+                                             'current_vat_rate_percent': CURRENT_VAT_RATE_PERCENT,
+                                             'can_reopen_invoice': request.user.is_manager,
+                                             'attachable_pink_slip_count': attachable_pink_slip_count,
+                                             'attachable_blue_slip_count': attachable_blue_slip_count,
+                                             'attachable_green_slip_count': attachable_green_slip_count,
+                                             'allocatable_invoices': allocatable_invoices,
+                                             'cash_allocation_slips': cash_allocation_slips})
 
 
 @login_required
@@ -4486,7 +4540,7 @@ def add_credit_note(request, file_number):
                     request, 'Credit note amount must be greater than 0.')
                 return redirect('finance_view', file_number=file_number)
 
-            max_allowed_amount = get_effective_invoice_due(credit_note.invoice)
+            max_allowed_amount = get_available_credit_amount(credit_note.invoice)
             if credit_note.amount > max_allowed_amount:
                 messages.error(
                     request,
@@ -4523,23 +4577,28 @@ def approve_credit_note(request, id):
         messages.info(request, 'This credit note has already been reviewed.')
         return redirect('finance_view', file_number=credit_note.file_number.file_number)
 
-    max_allowed_amount = get_effective_invoice_due(credit_note.invoice)
+    file_number_str = credit_note.file_number.file_number
+    max_allowed_amount = get_credit_note_max_amount(
+        credit_note.invoice, file_number_str, excluded_credit_note_id=credit_note.id)
     if credit_note.amount > max_allowed_amount:
         messages.error(
             request,
             f'Credit note cannot be approved because invoice due is £{max_allowed_amount}.'
         )
-        return redirect('finance_view', file_number=credit_note.file_number.file_number)
-
-    invoice = credit_note.invoice
-    prev_invoice_due = Decimal(str(invoice.total_due_left or 0))
-    new_invoice_due = prev_invoice_due - Decimal(str(credit_note.amount))
-    if new_invoice_due < 0:
-        new_invoice_due = Decimal('0')
+        return redirect('finance_view', file_number=file_number_str)
 
     with transaction.atomic():
-        invoice.total_due_left = new_invoice_due
-        invoice.save(update_fields=['total_due_left'])
+        invoice = Invoices.objects.select_for_update().get(id=credit_note.invoice_id)
+        max_allowed_amount = get_credit_note_max_amount(
+            invoice, file_number_str, excluded_credit_note_id=credit_note.id)
+        if credit_note.amount > max_allowed_amount:
+            messages.error(
+                request,
+                f'Credit note cannot be approved because invoice due is £{max_allowed_amount}.'
+            )
+            return redirect('finance_view', file_number=file_number_str)
+
+        prev_invoice_due = get_invoice_amount_due(invoice, file_number_str)
 
         old_status = credit_note.status
         credit_note.status = 'F'
@@ -4547,6 +4606,9 @@ def approve_credit_note(request, id):
         credit_note.approved_on = timezone.now()
         credit_note.save(
             update_fields=['status', 'approved_by', 'approved_on'])
+
+        sync_invoice_total_due_left(invoice, file_number_str)
+        invoice.refresh_from_db()
 
         create_modification(
             request.user,
@@ -4635,8 +4697,10 @@ def edit_credit_note(request, id):
                 max_allowed_amount = get_invoice_max_credit_amount(
                     edited_credit_note.invoice, excluded_credit_note_id=edited_credit_note.id)
             else:
-                max_allowed_amount = get_effective_invoice_due(
-                    edited_credit_note.invoice)
+                max_allowed_amount = get_available_credit_amount(
+                    edited_credit_note.invoice,
+                    excluded_credit_note_id=edited_credit_note.id,
+                )
 
             if edited_credit_note.amount > max_allowed_amount:
                 messages.error(
@@ -4653,26 +4717,16 @@ def edit_credit_note(request, id):
                     new_invoice = Invoices.objects.select_for_update().filter(
                         id=edited_credit_note.invoice_id
                     ).first()
+                    old_file_number = old_invoice.file_number.file_number
+                    old_invoice_prev_due = get_invoice_amount_due(
+                        old_invoice, old_file_number)
 
-                    old_invoice_prev_due = Decimal(
-                        str(old_invoice.total_due_left or 0))
-                    old_invoice.total_due_left = old_invoice_prev_due + \
-                        Decimal(str(duplicate_obj.amount))
-                    old_invoice.save(update_fields=['total_due_left'])
+                    edited_credit_note.save()
 
-                    if old_invoice.id == new_invoice.id:
-                        new_invoice_prev_due = Decimal(
-                            str(old_invoice.total_due_left or 0))
-                    else:
-                        new_invoice_prev_due = Decimal(
-                            str(new_invoice.total_due_left or 0))
-
-                    new_invoice_due = new_invoice_prev_due - \
-                        Decimal(str(edited_credit_note.amount))
-                    if new_invoice_due < 0:
-                        new_invoice_due = Decimal('0')
-                    new_invoice.total_due_left = new_invoice_due
-                    new_invoice.save(update_fields=['total_due_left'])
+                    sync_invoice_total_due_left(old_invoice, old_file_number)
+                    if old_invoice.id != new_invoice.id:
+                        sync_invoice_total_due_left(
+                            new_invoice, new_invoice.file_number.file_number)
 
                     create_modification(
                         user=request.user,
@@ -4682,22 +4736,11 @@ def edit_credit_note(request, id):
                                 'old_value': str(old_invoice_prev_due),
                                 'new_value': str(old_invoice.total_due_left)
                             },
-                            'reason': f'Edited Credit Note {edited_credit_note.id} (reverse old amount)'
+                            'reason': f'Edited Credit Note {edited_credit_note.id}'
                         }
                     )
-                    create_modification(
-                        user=request.user,
-                        modified_obj=new_invoice,
-                        changes={
-                            'total_due_left': {
-                                'old_value': str(new_invoice_prev_due),
-                                'new_value': str(new_invoice.total_due_left)
-                            },
-                            'reason': f'Edited Credit Note {edited_credit_note.id} (apply new amount)'
-                        }
-                    )
-
-                edited_credit_note.save()
+                else:
+                    edited_credit_note.save()
 
                 changed_fields = form.changed_data
                 changes = {}
@@ -4785,23 +4828,37 @@ def add_blue_slip(request, file_number):
 @login_required
 def add_green_slip(request, file_number):
     if request.method == 'POST':
-        request_post_copy = request.POST.copy()
-        file_number_id = WIP.objects.filter(file_number=file_number).first().id
-        request_post_copy['file_number_from'] = file_number_id
+        file_obj = WIP.objects.filter(file_number=file_number).first()
+        if not file_obj:
+            messages.error(request, 'File not found.')
+            return redirect('index')
 
-        request_post_copy['balance_left_from'] = request_post_copy['amount']
-        request_post_copy['balance_left_to'] = request_post_copy['amount']
-        request_post_copy['created_by'] = request.user
-        form = LedgerAccountTransfersForm(request_post_copy)
+        form = LedgerAccountTransfersHalfForm(request.POST)
         if form.is_valid():
-            form.save()
-            messages.success(request, 'Green Slip successfully added.')
+            from_file = form.cleaned_data['file_number_from']
+            to_file = form.cleaned_data['file_number_to']
+            if from_file.id == to_file.id:
+                messages.error(
+                    request, 'From and to file must be different.')
+                return redirect('finance_view', file_number=file_number)
+            if file_obj.id not in (from_file.id, to_file.id):
+                messages.error(
+                    request,
+                    'This transfer must involve the current matter file.')
+                return redirect('finance_view', file_number=file_number)
+
+            green_slip = form.save(commit=False)
+            green_slip.balance_left_from = green_slip.amount
+            green_slip.balance_left_to = green_slip.amount
+            green_slip.created_by = request.user
+            green_slip.save()
+            messages.success(request, 'Green slip successfully added.')
             return redirect('finance_view', file_number=file_number)
-        else:
-            error_message = 'Form is not valid. Please correct the errors:'
-            for field, errors in form.errors.items():
-                error_message += f'\n{field}: {", ".join(errors)}'
-            messages.error(request, error_message)
+
+        error_message = 'Form is not valid. Please correct the errors:'
+        for field, errors in form.errors.items():
+            error_message += f'\n{field}: {", ".join(errors)}'
+        messages.error(request, error_message)
     else:
         messages.error(request, 'Invalid request method.')
 
@@ -4812,41 +4869,88 @@ def add_green_slip(request, file_number):
 def edit_pmts_slip(request, id):
 
     pmt_instance = get_object_or_404(PmtsSlips, pk=id)
+    slip_usage = get_pmt_slip_usage_summary(pmt_instance)
 
     if request.method == 'POST':
         duplicate_obj = copy.deepcopy(pmt_instance)
-        post_copy = request.POST.copy()
 
-        form = PmtsForm(request.POST, instance=pmt_instance)
+        form = PmtsSlipEditForm(request.POST, instance=pmt_instance)
+        apply_pmts_slip_edit_locks(form, slip_usage)
         if form.is_valid():
-            changed_fields = form.changed_data
-            changes = {}
-            for field in changed_fields:
-                changes[field] = {
-                    'old_value': str(getattr(duplicate_obj, field)),
-                    'new_value': None
-                }
-            form.save()
+            saved = form.save(commit=False)
+            update_fields = list(form.changed_data)
 
-            for field in changed_fields:
-                changes[field]['new_value'] = str(getattr(pmt_instance, field))
+            if 'amount' in form.changed_data:
+                new_balance, amount_error = validate_pmt_slip_amount_change(
+                    duplicate_obj, form.cleaned_data['amount']
+                )
+                if amount_error:
+                    form.add_error('amount', amount_error)
+                else:
+                    saved.balance_left = new_balance
+                    if (new_balance != duplicate_obj.balance_left
+                            and 'balance_left' not in update_fields):
+                        update_fields.append('balance_left')
 
-            create_modification(
-                user=request.user,
-                modified_obj=pmt_instance,
-                changes=changes
-            )
-            messages.success(request, 'Successfully updated Slip.')
-            return redirect('finance_view', pmt_instance.file_number)
-        else:
+            if not form.errors:
+                if not update_fields:
+                    messages.info(request, 'No changes were made.')
+                    return redirect('finance_view', pmt_instance.file_number)
+
+                with transaction.atomic():
+                    saved.save(update_fields=update_fields)
+
+                    changes = build_form_field_changes(
+                        duplicate_obj, saved, form.changed_data)
+                    if saved.balance_left != duplicate_obj.balance_left:
+                        changes['balance_left'] = {
+                            'old_value': str(duplicate_obj.balance_left),
+                            'new_value': str(saved.balance_left),
+                            '_label': 'Balance remaining',
+                        }
+                    changes['reason'] = {
+                        'old_value': '',
+                        'new_value': 'Edited payment slip',
+                    }
+                    if slip_usage.get('has_final_invoice'):
+                        final_labels = sorted({
+                            row['invoice_label']
+                            for row in (
+                                slip_usage.get('invoiced', [])
+                                + slip_usage.get('allocated', [])
+                            )
+                            if row.get('is_final')
+                        })
+                        if final_labels:
+                            changes['linked_final_invoices'] = {
+                                'old_value': '',
+                                'new_value': ', '.join(final_labels),
+                                '_label': 'Linked final invoices',
+                            }
+                    create_modification(
+                        user=request.user,
+                        modified_obj=saved,
+                        changes=changes,
+                    )
+
+                messages.success(request, 'Successfully updated Slip.')
+                return redirect('finance_view', pmt_instance.file_number)
+
+        if form.errors:
             error_message = 'Form is not valid. Please correct the errors:'
             for field, errors in form.errors.items():
                 error_message += f'\n{field}: {", ".join(errors)}'
             messages.error(request, error_message)
     else:
-        form = PmtsForm(instance=pmt_instance)
+        form = PmtsSlipEditForm(instance=pmt_instance)
+        apply_pmts_slip_edit_locks(form, slip_usage)
 
-    return render(request, 'edit_models.html', {'form': form, 'title': 'Slip', 'file_number': pmt_instance.file_number.file_number})
+    return render(request, 'edit_models.html', {
+        'form': form,
+        'title': 'Slip',
+        'file_number': pmt_instance.file_number.file_number,
+        'slip_usage': slip_usage,
+    })
 
 
 @login_required
@@ -4867,39 +4971,109 @@ def download_pmts_slip(request, id):
 def edit_green_slip(request, id):
 
     pmt_instance = get_object_or_404(LedgerAccountTransfers, pk=id)
+    slip_usage = get_green_slip_usage_summary(pmt_instance)
 
     if request.method == 'POST':
         duplicate_obj = copy.deepcopy(pmt_instance)
-        form = LedgerAccountTransfersForm(request.POST, instance=pmt_instance)
+        form = GreenSlipEditForm(request.POST, instance=pmt_instance)
+        apply_green_slip_edit_locks(form, slip_usage)
         if form.is_valid():
-            changed_fields = form.changed_data
-            changes = {}
-            for field in changed_fields:
-                changes[field] = {
-                    'old_value': str(getattr(duplicate_obj, field)),
-                    'new_value': None
-                }
-            form.save()
+            saved = form.save(commit=False)
+            update_fields = list(form.changed_data)
 
-            for field in changed_fields:
-                changes[field]['new_value'] = str(getattr(pmt_instance, field))
-
-            create_modification(
-                user=request.user,
-                modified_obj=pmt_instance,
-                changes=changes
+            file_error = validate_green_slip_file_change(
+                duplicate_obj,
+                form.cleaned_data['file_number_from'].pk,
+                form.cleaned_data['file_number_to'].pk,
             )
-            messages.success(request, 'Successfully updated Green Slip.')
-            return redirect('finance_view', pmt_instance.file_number)
-        else:
+            if file_error:
+                if ('file_number_from' in form.changed_data
+                        or 'file_number_to' in form.changed_data):
+                    form.add_error('file_number_to', file_error)
+                else:
+                    form.add_error(None, file_error)
+
+            if 'amount' in form.changed_data and not form.errors:
+                new_balances, amount_error = validate_green_slip_amount_change(
+                    duplicate_obj, form.cleaned_data['amount']
+                )
+                if amount_error:
+                    form.add_error('amount', amount_error)
+                else:
+                    saved.balance_left_from = new_balances['balance_left_from']
+                    saved.balance_left_to = new_balances['balance_left_to']
+                    if (saved.balance_left_from != duplicate_obj.balance_left_from
+                            and 'balance_left_from' not in update_fields):
+                        update_fields.append('balance_left_from')
+                    if (saved.balance_left_to != duplicate_obj.balance_left_to
+                            and 'balance_left_to' not in update_fields):
+                        update_fields.append('balance_left_to')
+
+            if not form.errors:
+                if not update_fields:
+                    messages.info(request, 'No changes were made.')
+                    return redirect('finance_view', pmt_instance.file_number_from)
+
+                with transaction.atomic():
+                    saved.save(update_fields=update_fields)
+
+                    changes = build_form_field_changes(
+                        duplicate_obj, saved, form.changed_data)
+                    if saved.balance_left_from != duplicate_obj.balance_left_from:
+                        changes['balance_left_from'] = {
+                            'old_value': str(duplicate_obj.balance_left_from),
+                            'new_value': str(saved.balance_left_from),
+                            '_label': 'Balance remaining (from side)',
+                        }
+                    if saved.balance_left_to != duplicate_obj.balance_left_to:
+                        changes['balance_left_to'] = {
+                            'old_value': str(duplicate_obj.balance_left_to),
+                            'new_value': str(saved.balance_left_to),
+                            '_label': 'Balance remaining (to side)',
+                        }
+                    changes['reason'] = {
+                        'old_value': '',
+                        'new_value': 'Edited green slip',
+                    }
+                    if slip_usage.get('has_final_invoice'):
+                        final_labels = sorted({
+                            row['invoice_label']
+                            for row in (
+                                slip_usage.get('from_usages', [])
+                                + slip_usage.get('to_usages', [])
+                            )
+                            if row.get('is_final')
+                        })
+                        if final_labels:
+                            changes['linked_final_invoices'] = {
+                                'old_value': '',
+                                'new_value': ', '.join(final_labels),
+                                '_label': 'Linked final invoices',
+                            }
+                    create_modification(
+                        user=request.user,
+                        modified_obj=saved,
+                        changes=changes,
+                    )
+
+                messages.success(request, 'Successfully updated Green Slip.')
+                return redirect('finance_view', pmt_instance.file_number_from)
+
+        if form.errors:
             error_message = 'Form is not valid. Please correct the errors:'
             for field, errors in form.errors.items():
                 error_message += f'\n{field}: {", ".join(errors)}'
             messages.error(request, error_message)
     else:
-        form = LedgerAccountTransfersForm(instance=pmt_instance)
+        form = GreenSlipEditForm(instance=pmt_instance)
+        apply_green_slip_edit_locks(form, slip_usage)
 
-    return render(request, 'edit_models.html', {'form': form, 'title': 'Edit Green Slip', 'file_number': pmt_instance.file_number_from.file_number})
+    return render(request, 'edit_models.html', {
+        'form': form,
+        'title': 'Edit Green Slip',
+        'file_number': pmt_instance.file_number_from.file_number,
+        'slip_usage': slip_usage,
+    })
 
 
 @login_required
@@ -5070,18 +5244,25 @@ def allocate_monies(request):
                 request, 'Amount to allocate cannot exceed slip balance.')
             return redirect('finance_view', file_number=invoice.file_number.file_number)
 
-        due_left = invoice.total_due_left
+        file_number_str = invoice.file_number.file_number
         approved_credit_total = get_invoice_approved_credit_total(invoice)
-        effective_due_left = get_effective_invoice_due(
-            invoice, approved_credit_total)
+        effective_due_left = get_invoice_allocatable_due(
+            invoice,
+            file_number_str,
+            approved_credit_total=approved_credit_total,
+        )
         if amt_to_allocate > effective_due_left:
             messages.error(
                 request,
                 f'Amount to allocate cannot exceed invoice due after credit notes (£{effective_due_left}).'
             )
-            return redirect('finance_view', file_number=invoice.file_number.file_number)
+            return redirect('finance_view', file_number=file_number_str)
 
-        balance = due_left - amt_to_allocate
+        due_left = get_invoice_due_for_allocation_update(
+            invoice,
+            file_number_str,
+            approved_credit_total=approved_credit_total,
+        )
 
         # Store previous values for modification tracking
         prev_slip_amount_allocated = slip.amount_allocated
@@ -5100,10 +5281,7 @@ def allocate_monies(request):
         slip.balance_left = slip.amount - total_allocated
 
         invoice.cash_allocated_slips.add(slip.id)
-        if balance <= 0:
-            invoice.total_due_left = 0
-        else:
-            invoice.total_due_left = balance
+        sync_invoice_total_due_left(invoice, file_number_str)
 
         # Create modification record for invoice
         invoice_changes = {'prev_total_due_left': str(due_left),
@@ -6257,26 +6435,100 @@ def generate_ledgers_report(request, file_number):
 
 
 @login_required
-def edit_invoice(request, id):
-    if request.method == 'POST':
+def reopen_invoice(request, id):
+    if request.method != 'POST':
+        messages.error(request, 'Invalid request method.')
+        return redirect('index')
 
-        invoice = Invoices.objects.filter(id=id).first()
+    invoice = get_object_or_404(Invoices, pk=id)
+    file_number = invoice.file_number.file_number
+
+    if not request.user.is_manager:
+        messages.error(request, 'Only managers can reopen final invoices.')
+        return redirect('finance_view', file_number=file_number)
+
+    if invoice.state != 'F':
+        messages.info(request, 'Only final invoices can be reopened.')
+        return redirect('finance_view', file_number=file_number)
+
+    prev_state = invoice.state
+    invoice.state = 'D'
+    invoice.save(update_fields=['state'])
+
+    create_modification(
+        request.user,
+        invoice,
+        {
+            'state': {
+                'old_value': prev_state,
+                'new_value': 'D',
+                '_label': 'Invoice state',
+            },
+            'reason': {
+                'old_value': '',
+                'new_value': (
+                    f'Reopened final invoice #{invoice.invoice_number} for editing'
+                ),
+            },
+        },
+    )
+    messages.success(
+        request,
+        f'Invoice #{invoice.invoice_number} reopened as draft. Financial fields can now be edited.',
+    )
+    return redirect('edit_invoice', id=invoice.id)
+
+
+@login_required
+def edit_invoice(request, id):
+    invoice = get_object_or_404(Invoices, pk=id)
+
+    if request.method == 'POST':
+        if invoice.state == 'F':
+            duplicate_obj = Invoices.objects.get(pk=invoice.pk)
+            invoice.payable_by = request.POST.get('payable_by', invoice.payable_by)
+            invoice.description = request.POST.get('description', invoice.description)
+            invoice.by_email = 'by_email' in request.POST
+            invoice.by_post = 'by_post' in request.POST
+
+            changed_fields = [
+                field for field in ('payable_by', 'description', 'by_email', 'by_post')
+                if getattr(invoice, field) != getattr(duplicate_obj, field)
+            ]
+
+            if not changed_fields:
+                messages.info(request, 'No changes were made.')
+                return redirect('finance_view', file_number=invoice.file_number.file_number)
+
+            with transaction.atomic():
+                invoice.save(update_fields=changed_fields)
+                changes = build_form_field_changes(
+                    duplicate_obj, invoice, changed_fields)
+                changes['reason'] = {
+                    'old_value': '',
+                    'new_value': (
+                        f'Updated delivery details on final invoice '
+                        f'#{invoice.invoice_number}'
+                    ),
+                }
+                create_modification(request.user, invoice, changes)
+
+            messages.success(request, 'Invoice delivery details updated.')
+            return redirect('finance_view', file_number=invoice.file_number.file_number)
 
         serializer = InvoicesSerializer(invoice)
         prev_serialized_data = serializer.to_dict()
         if invoice.state == 'D':
-            if request.POST['state'] == 'F':
-                largest_invoice_number = Invoices.objects.aggregate(Max('invoice_number'))[
-                    'invoice_number__max']
-                invoice.invoice_number = largest_invoice_number + 1
+            if request.POST.get('state') == 'F':
+                if invoice.invoice_number is None:
+                    largest_invoice_number = Invoices.objects.aggregate(
+                        Max('invoice_number'))['invoice_number__max']
+                    invoice.invoice_number = (largest_invoice_number or 0) + 1
                 invoice.state = 'F'
 
         invoice.payable_by = request.POST['payable_by']
-        if 'by_email' in request.POST:
-            invoice.by_email = True
-
-        if 'by_post' in request.POST:
-            invoice.by_post = True
+        invoice.by_email = 'by_email' in request.POST
+        invoice.by_post = 'by_post' in request.POST
 
         desc = request.POST['description']
         invoice.description = desc
@@ -6451,8 +6703,6 @@ def edit_invoice(request, id):
 
         return redirect('finance_view', file_number=invoice.file_number)
     else:
-        invoice = Invoices.objects.filter(id=id).first()
-
         our_costs = invoice.our_costs
 
         costs = ast.literal_eval(our_costs) if type(
@@ -6462,17 +6712,33 @@ def edit_invoice(request, id):
         our_costs_desc = ast.literal_eval(our_costs_desc_pre) if type(
             our_costs_desc_pre) != type([]) else our_costs_desc_pre
         our_costs_rows = []
+        our_costs_readonly = []
         for i in range(len(costs)):
+            desc = our_costs_desc[i]
+            amount = round(Decimal(costs[i]), 2)
+            our_costs_readonly.append({'description': desc, 'amount': amount})
 
-            our_costs_display = f"""
+            if invoice.state == 'F':
+                our_costs_display = f"""
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mt-2">
+                <div class="col-span-5">
+                    <p class="text-sm text-gray-800 py-2">{desc}</p>
+                </div>
+                <div class="col-span-5">
+                    <p class="text-sm text-gray-800 py-2">£{amount}</p>
+                </div>
+            </div>
+            """
+            else:
+                our_costs_display = f"""
             <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mt-2">
                 <div class="col-span-5">
                     <input type="text" class="form-input" id="our_costs_description" placeholder="Costs Description"
-                    name="our_costs_desc[]" value="{our_costs_desc[i]}">
+                    name="our_costs_desc[]" value="{desc}">
                 </div>
                 <div class="col-span-5">
                     <input required type="number" step="0.01" class="form-input" name="our_costs[]" id="our_costs"
-                    placeholder="£0.00" value={round(Decimal(costs[i]), 2)}>
+                    placeholder="£0.00" value={amount}>
                 </div>
                 <div class="col-span-2 flex items-center">
                     <span type='button' class='btn btn-danger px-4' onclick="removeField(this);" >-</span>
@@ -6506,94 +6772,116 @@ def edit_invoice(request, id):
         pink_slips = []
         blue_slips = []
         green_slips = []
+        attached_slip_lines = []
+        is_final_locked = invoice.state == 'F'
 
-        for slip in slips:
-            if slip.id in disbs_ids or slip.id in moa_ids:
-                checked = 'checked'
-            else:
-                checked = ''
-            if slip.ledger_account == 'C':
-                ledger_acc = 'Client'
-            else:
-                ledger_acc = 'Office'
-            if (slip.is_money_out == True and slip.balance_left > 0) or slip.id in disbs_ids:
+        if is_final_locked:
+            for slip in invoice.disbs_ids.all().order_by('date'):
+                attached_slip_lines.append(
+                    f'Pink — payment to {slip.pmt_person}: £{slip.amount} '
+                    f'({slip.date.strftime("%d/%m/%Y")})'
+                )
+            for slip in invoice.moa_ids.all().order_by('date'):
+                attached_slip_lines.append(
+                    f'Blue — payment from {slip.pmt_person}: £{slip.amount} '
+                    f'({slip.date.strftime("%d/%m/%Y")})'
+                )
+            for slip in invoice.green_slip_ids.all().order_by('date'):
+                attached_slip_lines.append(
+                    f'Green — transfer {slip.file_number_from} → '
+                    f'{slip.file_number_to}: £{slip.amount} '
+                    f'({slip.date.strftime("%d/%m/%Y")})'
+                )
 
-                slip_display = f"""
-                 <div class="form-check">
-                    <input class="form-check-input" name="pink_slips[]" type="checkbox" value="{slip.id}" {checked}>
-                    <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{slip.description}'">
-                    Payment to&nbsp;<b >'{slip.pmt_person}'</b>&nbsp;of £{slip.amount}
-                    from {ledger_acc} Ledger on {slip.date.strftime('%d/%m/%Y')}</label>
-                </div>
-                """
-                pink_slips.append(mark_safe(slip_display))
-            elif slip.id in moa_ids or slip.balance_left > 0:
-                if isinstance(slip.amount_invoiced, str):
-                    amount_invoiced = json.loads(slip.amount_invoiced)
-                elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
-                    amount_invoiced = json.loads(
-                        slip.amount_invoiced.decode('utf-8'))
-                elif isinstance(slip.amount_invoiced, dict):
-                    amount_invoiced = slip.amount_invoiced
+        if not is_final_locked:
+            for slip in slips:
+                if slip.id in disbs_ids or slip.id in moa_ids:
+                    checked = 'checked'
                 else:
-                    raise ValueError(
-                        "Unsupported type for slip.amount_invoiced")
-
-                if slip.id in moa_ids:
-                    amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
+                    checked = ''
+                if slip.ledger_account == 'C':
+                    ledger_acc = 'Client'
                 else:
-                    amt = slip.balance_left
-                slip_display = f"""
-                 <div class="form-check">
-                    <input class="form-check-input" name="blue_slips[]" type="checkbox" value="{slip.id}" {checked}>
-                    <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{slip.description}'">
-                    Payment from&nbsp;<b >'{slip.pmt_person}'</b>&nbsp;of £{amt} from (£{slip.amount})
-                    from {ledger_acc} Ledger on {slip.date.strftime('%d/%m/%Y')}</label>
-                </div>
-                """
-                blue_slips.append(mark_safe(slip_display))
+                    ledger_acc = 'Office'
+                if (slip.is_money_out == True and slip.balance_left > 0) or slip.id in disbs_ids:
 
-        for slip in green_slips_objs:
-
-            if slip.id in green_slip_ids:
-                checked = "checked"
-            else:
-                checked = ""
-
-            if slip.file_number_from == invoice.file_number:
-                if slip.balance_left_from > 0 or slip.id in green_slip_ids:
                     slip_display = f"""
-                                    <div class="form-check">
-                                        <input class="form-check-input" name="green_slips[]" type="checkbox" value="{slip.id}" {checked}>
-                                        <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{slip.description}'">
-                                            Transfer to&nbsp;<b >{slip.file_number_to}</b> of £{slip.amount} on {slip.date.strftime('%d/%m/%Y')}
-                                        </label>
-                                    </div>
-                                    """
-                    green_slips.append(mark_safe(slip_display))
-            if slip.file_number_to == invoice.file_number:
-                if slip.id in green_slip_ids or slip.balance_left_to > 0:
+                     <div class="form-check">
+                        <input class="form-check-input" name="pink_slips[]" type="checkbox" value="{slip.id}" {checked}>
+                        <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{slip.description}'">
+                        Payment to&nbsp;<b >'{slip.pmt_person}'</b>&nbsp;of £{slip.amount}
+                        from {ledger_acc} Ledger on {slip.date.strftime('%d/%m/%Y')}</label>
+                    </div>
+                    """
+                    pink_slips.append(mark_safe(slip_display))
+                elif slip.id in moa_ids or slip.balance_left > 0:
+                    if isinstance(slip.amount_invoiced, str):
+                        amount_invoiced = json.loads(slip.amount_invoiced)
+                    elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
+                        amount_invoiced = json.loads(
+                            slip.amount_invoiced.decode('utf-8'))
+                    elif isinstance(slip.amount_invoiced, dict):
+                        amount_invoiced = slip.amount_invoiced
+                    else:
+                        raise ValueError(
+                            "Unsupported type for slip.amount_invoiced")
 
-                    amount_invoiced = json.loads(slip.amount_invoiced_to) if slip.amount_invoiced_to != {
-                    } else slip.amount_invoiced_to
-                    if slip.id in green_slip_ids:
+                    if slip.id in moa_ids:
                         amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
                     else:
-                        amt = slip.balance_left_to
+                        amt = slip.balance_left
                     slip_display = f"""
-                                    <div class="form-check">
-                                        <input class="form-check-input" name="green_slips[]" type="checkbox" value="{slip.id}" {checked}>
-                                        <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{slip.description}'">
-                                        Transfer from&nbsp;<b >{slip.file_number_from}</b> of £{amt} (from £{slip.amount}) {slip.date.strftime('%d/%m/%Y')}</label>
-                                    </div>
-                                    """
-                    green_slips.append(mark_safe(slip_display))
+                     <div class="form-check">
+                        <input class="form-check-input" name="blue_slips[]" type="checkbox" value="{slip.id}" {checked}>
+                        <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{slip.description}'">
+                        Payment from&nbsp;<b >'{slip.pmt_person}'</b>&nbsp;of £{amt} from (£{slip.amount})
+                        from {ledger_acc} Ledger on {slip.date.strftime('%d/%m/%Y')}</label>
+                    </div>
+                    """
+                    blue_slips.append(mark_safe(slip_display))
+
+            for slip in green_slips_objs:
+
+                if slip.id in green_slip_ids:
+                    checked = "checked"
+                else:
+                    checked = ""
+
+                if slip.file_number_from == invoice.file_number:
+                    if slip.balance_left_from > 0 or slip.id in green_slip_ids:
+                        slip_display = f"""
+                                        <div class="form-check">
+                                            <input class="form-check-input" name="green_slips[]" type="checkbox" value="{slip.id}" {checked}>
+                                            <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{slip.description}'">
+                                                Transfer to&nbsp;<b >{slip.file_number_to}</b> of £{slip.amount} on {slip.date.strftime('%d/%m/%Y')}
+                                            </label>
+                                        </div>
+                                        """
+                        green_slips.append(mark_safe(slip_display))
+                if slip.file_number_to == invoice.file_number:
+                    if slip.id in green_slip_ids or slip.balance_left_to > 0:
+
+                        amount_invoiced = json.loads(slip.amount_invoiced_to) if slip.amount_invoiced_to != {
+                        } else slip.amount_invoiced_to
+                        if slip.id in green_slip_ids:
+                            amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
+                        else:
+                            amt = slip.balance_left_to
+                        slip_display = f"""
+                                        <div class="form-check">
+                                            <input class="form-check-input" name="green_slips[]" type="checkbox" value="{slip.id}" {checked}>
+                                            <label class="form-check-label" data-toggle="tooltip" data-bs-title="Description: '{slip.description}'">
+                                            Transfer from&nbsp;<b >{slip.file_number_from}</b> of £{amt} (from £{slip.amount}) {slip.date.strftime('%d/%m/%Y')}</label>
+                                        </div>
+                                        """
+                        green_slips.append(mark_safe(slip_display))
 
         context = {
             'invoice_id': invoice.id,
             'file_number': invoice.file_number.file_number,
             'state': invoice.state,
             'date': invoice.date.strftime('%Y-%m-%d'),
+            'date_display': invoice.date.strftime('%d/%m/%Y'),
             'payable_by': invoice.payable_by,
             'by_email': invoice.by_email,
             'by_post': invoice.by_post,
@@ -6605,8 +6893,12 @@ def edit_invoice(request, id):
             'pink_slips': pink_slips,
             'blue_slips': blue_slips,
             'green_slips': green_slips,
-            'green_slip_ids': green_slip_ids
-
+            'green_slip_ids': green_slip_ids,
+            'is_final_locked': is_final_locked,
+            'can_reopen': request.user.is_manager and is_final_locked,
+            'attached_slip_lines': attached_slip_lines,
+            'invoice_number': invoice.invoice_number,
+            'manual_vat_display': round(Decimal(str(invoice.vat or 0)), 2),
         }
         return render(request, 'edit_invoice.html', context)
 
@@ -8082,8 +8374,11 @@ def invoices_list(request):
         for invoice in invoices:
             total_cost_invoice, vat_inv, total_cost_and_vat = calculate_invoice_total_with_vat(
                 invoice)
-            effective_due = get_effective_invoice_due(
-                invoice, approved_credit_totals.get(invoice.id, Decimal('0')))
+            effective_due = get_invoice_amount_due(
+                invoice,
+                invoice.file_number.file_number,
+                approved_credit_totals.get(invoice.id, Decimal('0')),
+            )
 
             # Update invoice attributes dynamically
             invoice.our_costs = total_cost_invoice

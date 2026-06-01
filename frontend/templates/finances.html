@@ -8,6 +8,8 @@
 <style>
   details > summary { list-style: none; }
   details > summary::-webkit-details-marker { display: none; }
+  details.finance-item > summary:hover { background-color: rgb(249 250 251); }
+  details.finance-item[open] > summary { background-color: rgb(249 250 251 / 0.7); }
 </style>
 
 <div class="space-y-5">
@@ -46,119 +48,118 @@
                 <h2 class="text-base font-semibold text-gray-900">Finance activity</h2>
                 <p class="text-xs text-gray-500 mt-0.5">Invoices, slips and credit notes</p>
             </div>
-            <div class="divide-y divide-gray-100">
-                {% for invoice in invoices %}
-                <details class="group py-1">
-                    <summary class="flex cursor-pointer items-start justify-between gap-3 py-3 border-l-4 pl-3" style="border-color: {% if invoice.state == 'D' %}{{ colors.draft_invoice }}{% else %}{{ colors.invoice }}{% endif %};">
+            <div class="space-y-1">
+                {% for item in finance_activity %}
+                {% if item.kind == 'invoice' %}
+                {% with invoice=item.invoice %}
+                <details class="finance-item group rounded-lg">
+                    <summary class="flex cursor-pointer items-start justify-between gap-3 py-3 px-2 border-l-4 rounded-r-lg" style="border-color: {% if invoice.state == 'D' %}{{ colors.draft_invoice }}{% else %}{{ colors.invoice }}{% endif %};">
                         <div class="min-w-0 flex-1">
                             <p class="text-sm font-medium text-gray-900 leading-snug">
-                                {% if invoice.state == 'D' %}<span class="badge-gray mr-1">Draft</span>{% endif %}
-                                Invoice{% if invoice.number != None %} {{ invoice.number }}{% endif %}
+                                {% if invoice.state == 'D' %}Draft invoice{% else %}Invoice #{{ invoice.number }}{% endif %}
                             </p>
-                            <p class="text-xs text-gray-500 mt-1">{{ invoice.date }} · £{{ invoice.total_cost_and_vat }} incl. VAT</p>
+                            <p class="text-xs text-gray-500 mt-1">
+                                {{ invoice.date }} · £{{ invoice.total_cost_and_vat|intcomma }} incl. VAT
+                                {% if invoice.state == 'F' and invoice.display_due_left > 0 %} · Due £{{ invoice.display_due_left|intcomma }}{% endif %}
+                                {% if invoice.detail.is_account_credit %} · Credit on account{% endif %}
+                            </p>
                         </div>
+                        <p class="shrink-0 text-xs text-right mt-0.5 text-gray-400">
+                            <span>Running bal </span>
+                            <span>{% if item.running_balance < 0 %}-£{{ item.running_balance|intcomma|slice:"1:" }}{% else %}£{{ item.running_balance|intcomma }}{% endif %}</span>
+                        </p>
                         <svg class="w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                     </summary>
-                    <div class="pb-4 pl-3 text-sm text-gray-700 space-y-2">
-                        <p><span class="text-gray-500">Date:</span> {{ invoice.date }} · <span class="text-gray-500">No:</span> {{ invoice.number }}</p>
-                        {% if invoice.desc %}<p>{{ invoice.desc }}</p>{% endif %}
-                        <div class="text-sm">{{ invoice.costs }}</div>
-                        <div class="text-sm">{{ invoice.pink_slips }}</div>
-                        <div class="text-sm">{{ invoice.blue_slips }}</div>
-                        <div class="text-sm">{{ invoice.green_slips }}</div>
-                        <div class="text-sm">{{ invoice.cash_allocated_slips }}</div>
-                        <div class="text-sm">{{ invoice.credit_notes }}</div>
-                        <div class="text-sm">{{ invoice.total_due }}</div>
-                        <div class="flex flex-wrap gap-3 text-xs pt-1">
-                            <a class="link" href="{% url 'download_invoice' invoice.id %}">Download invoice</a>
-                            <a class="link" href="{% url 'download_credited_invoice' invoice.id %}">Download credited invoice</a>
-                            <a class="link" href="{% url 'edit_invoice' invoice.id %}">Edit invoice</a>
-                        </div>
+                    <div class="pb-3 pt-1 px-2">
+                        {% include 'includes/finance_invoice_body.html' %}
                     </div>
                 </details>
-                {% endfor %}
-
-                {% for credit_note in credit_notes %}
-                <details class="group py-1">
-                    <summary class="flex cursor-pointer items-start justify-between gap-3 py-3 border-l-4 pl-3" style="border-color: {{ colors.credit_note }};">
+                {% endwith %}
+                {% elif item.kind == 'credit_note' %}
+                {% with credit_note=item.credit_note %}
+                <details class="finance-item group rounded-lg">
+                    <summary class="flex cursor-pointer items-start justify-between gap-3 py-3 px-2 border-l-4 rounded-r-lg" style="border-color: {{ colors.credit_note }};">
                         <div class="min-w-0 flex-1">
-                            <p class="text-sm font-medium text-gray-900 leading-snug">Credit note · Invoice {{ credit_note.invoice_number|default:"Draft" }}</p>
-                            <p class="text-xs text-gray-500 mt-1">{{ credit_note.date }} · £{{ credit_note.amount|intcomma }} · {{ credit_note.status_display }}</p>
+                            <p class="text-sm font-medium text-gray-900 leading-snug">Credit note</p>
+                            <p class="text-xs text-gray-500 mt-1">Invoice {{ credit_note.invoice_number|default:"Draft" }} · {{ credit_note.date }} · £{{ credit_note.amount|intcomma }} · {{ credit_note.status_display }}</p>
                         </div>
+                        <p class="shrink-0 text-xs text-right mt-0.5 text-gray-400">
+                            <span>Running bal </span>
+                            <span>{% if item.running_balance < 0 %}-£{{ item.running_balance|intcomma|slice:"1:" }}{% else %}£{{ item.running_balance|intcomma }}{% endif %}</span>
+                        </p>
                         <svg class="w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                     </summary>
-                    <div class="pb-4 pl-3 text-sm text-gray-700 space-y-2">
-                        <dl class="grid grid-cols-1 gap-1.5 text-xs">
-                            <div><dt class="text-gray-500 inline">Date:</dt> <dd class="inline">{{ credit_note.date }}</dd></div>
-                            <div><dt class="text-gray-500 inline">Amount excl. VAT:</dt> <dd class="inline">£{{ credit_note.net_amount|intcomma }}</dd></div>
-                            <div><dt class="text-gray-500 inline">VAT (@{{ current_vat_rate_percent }}%):</dt> <dd class="inline">£{{ credit_note.vat_amount|intcomma }}</dd></div>
-                            <div><dt class="text-gray-500 inline">Total credit:</dt> <dd class="inline">£{{ credit_note.amount|intcomma }}</dd></div>
-                            <div><dt class="text-gray-500 inline">Reason:</dt> <dd class="inline">{{ credit_note.reason }}</dd></div>
-                            {% if credit_note.approved_on %}<div><dt class="text-gray-500 inline">Approved:</dt> <dd class="inline">{{ credit_note.approved_by|default:"-" }} on {{ credit_note.approved_on|date:'d/m/Y H:i' }}</dd></div>{% endif %}
-                        </dl>
-                        <div class="flex flex-wrap gap-3 text-xs pt-1">
-                            <a class="link" href="{% url 'download_credit_note' credit_note.id %}">Download credit note</a>
-                            {% if credit_note.can_edit %}<a class="link" href="{% url 'edit_credit_note' credit_note.id %}">Edit</a>{% endif %}
+                    <div class="pb-3 pt-1 px-2 ml-1 border-l-2 border-gray-100 pl-3 space-y-3">
+                        <div class="rounded-lg border border-gray-100 bg-white overflow-hidden">
+                            <dl class="grid grid-cols-1 divide-y divide-gray-50 text-xs">
+                                <div class="flex justify-between gap-3 px-3 py-2"><dt class="text-gray-500">Date</dt><dd class="text-gray-800">{{ credit_note.date }}</dd></div>
+                                <div class="flex justify-between gap-3 px-3 py-2"><dt class="text-gray-500">Amount excl. VAT</dt><dd class="text-gray-800">£{{ credit_note.net_amount|intcomma }}</dd></div>
+                                <div class="flex justify-between gap-3 px-3 py-2"><dt class="text-gray-500">VAT (@{{ current_vat_rate_percent }}%)</dt><dd class="text-gray-800">£{{ credit_note.vat_amount|intcomma }}</dd></div>
+                                <div class="flex justify-between gap-3 px-3 py-2 font-medium"><dt class="text-gray-900">Total credit</dt><dd class="text-gray-900">£{{ credit_note.amount|intcomma }}</dd></div>
+                                <div class="px-3 py-2"><dt class="text-gray-500">Reason</dt><dd class="text-gray-800 mt-0.5">{{ credit_note.reason }}</dd></div>
+                                {% if credit_note.approved_on %}
+                                <div class="px-3 py-2"><dt class="text-gray-500">Approved</dt><dd class="text-gray-800 mt-0.5">{{ credit_note.approved_by|default:"-" }} · {{ credit_note.approved_on|date:'d/m/Y H:i' }}</dd></div>
+                                {% endif %}
+                            </dl>
+                        </div>
+                        <div class="flex flex-wrap gap-x-4 gap-y-2 pt-1 border-t border-gray-100">
+                            <a class="link text-xs" href="{% url 'download_credit_note' credit_note.id %}">Download credit note</a>
+                            {% if credit_note.can_edit %}<a class="link text-xs" href="{% url 'edit_credit_note' credit_note.id %}">Edit</a>{% endif %}
                             {% if credit_note.can_review %}
-                            <a class="link" href="{% url 'approve_credit_note' credit_note.id %}">Approve</a>
-                            <a class="link text-red-700" href="{% url 'reject_credit_note' credit_note.id %}">Reject</a>
+                            <a class="link text-xs" href="{% url 'approve_credit_note' credit_note.id %}">Approve</a>
+                            <a class="link text-xs text-red-700" href="{% url 'reject_credit_note' credit_note.id %}">Reject</a>
                             {% endif %}
                         </div>
                     </div>
                 </details>
-                {% endfor %}
-
-                {% for slip in pmts_slips %}
-                <details class="group py-1">
-                    <summary class="flex cursor-pointer items-start justify-between gap-3 py-3 border-l-4 pl-3" style="border-color: {% if slip.is_money_out %}#ffc0cb{% else %}#add8e6{% endif %};">
+                {% endwith %}
+                {% elif item.kind == 'pmts_slip' %}
+                {% with slip=item.pmts_slip slip_usage=item.slip_usage %}
+                <details class="finance-item group rounded-lg">
+                    <summary class="flex cursor-pointer items-start justify-between gap-3 py-3 px-2 border-l-4 rounded-r-lg" style="border-color: {% if slip.is_money_out %}#ffc0cb{% else %}#add8e6{% endif %};">
                         <div class="min-w-0 flex-1">
                             <p class="text-sm font-medium text-gray-900 leading-snug">
                                 {% if slip.is_money_out %}Payment to{% else %}Payment from{% endif %} {{ slip.pmt_person }}
                             </p>
-                            <p class="text-xs text-gray-500 mt-1">{{ slip.date|date:'d/m/Y' }} · £{{ slip.amount|intcomma }}</p>
+                            <p class="text-xs text-gray-500 mt-1">
+                                {% if slip.is_money_out %}Pink slip{% else %}Blue slip{% endif %}
+                                · {{ slip.date|date:'d/m/Y' }} · £{{ slip.amount|intcomma }}
+                            </p>
                         </div>
+                        <p class="shrink-0 text-xs text-right mt-0.5 text-gray-400">
+                            <span>Running bal </span>
+                            <span>{% if item.running_balance < 0 %}-£{{ item.running_balance|intcomma|slice:"1:" }}{% else %}£{{ item.running_balance|intcomma }}{% endif %}</span>
+                        </p>
                         <svg class="w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                     </summary>
-                    <div class="pb-4 pl-3 text-sm text-gray-700">
-                        <dl class="grid grid-cols-1 gap-1.5 text-xs mb-3">
-                            <div><dt class="text-gray-500 inline">Via:</dt> <dd class="inline">{{ slip.get_mode_of_pmt_display }}</dd></div>
-                            <div><dt class="text-gray-500 inline">Ledger:</dt> <dd class="inline">{{ slip.get_ledger_account_display }}</dd></div>
-                            {% if slip.description %}<div><dt class="text-gray-500 inline">Description:</dt> <dd class="inline">{{ slip.description }}</dd></div>{% endif %}
-                        </dl>
-                        <div class="flex flex-wrap gap-3 text-xs">
-                            <a class="link" href="{% url 'download_pmts_slip' slip.id %}">Print slip</a>
-                            <a class="link" href="{% url 'edit_pmts_slip' slip.id %}">Edit slip</a>
-                        </div>
+                    <div class="pb-3 pt-1 px-2">
+                        {% include 'includes/finance_pmts_slip_body.html' %}
                     </div>
                 </details>
-                {% endfor %}
-
-                {% for slip in green_slips %}
-                <details class="group py-1">
-                    <summary class="flex cursor-pointer items-start justify-between gap-3 py-3 border-l-4 pl-3" style="border-color: {{ colors.green }};">
+                {% endwith %}
+                {% elif item.kind == 'green_slip' %}
+                {% with slip=item.green_slip slip_usage=item.slip_usage %}
+                <details class="finance-item group rounded-lg">
+                    <summary class="flex cursor-pointer items-start justify-between gap-3 py-3 px-2 border-l-4 rounded-r-lg" style="border-color: {{ colors.green }};">
                         <div class="min-w-0 flex-1">
                             <p class="text-sm font-medium text-gray-900 leading-snug">Transfer {{ slip.file_number_from }} → {{ slip.file_number_to }}</p>
-                            <p class="text-xs text-gray-500 mt-1">{{ slip.date|date:'d/m/Y' }} · £{{ slip.amount|intcomma }}</p>
+                            <p class="text-xs text-gray-500 mt-1">Green slip · {{ slip.date|date:'d/m/Y' }} · £{{ slip.amount|intcomma }}</p>
                         </div>
+                        <p class="shrink-0 text-xs text-right mt-0.5 text-gray-400">
+                            <span>Running bal </span>
+                            <span>{% if item.running_balance < 0 %}-£{{ item.running_balance|intcomma|slice:"1:" }}{% else %}£{{ item.running_balance|intcomma }}{% endif %}</span>
+                        </p>
                         <svg class="w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                     </summary>
-                    <div class="pb-4 pl-3 text-sm text-gray-700">
-                        <dl class="grid grid-cols-1 gap-1.5 text-xs mb-3">
-                            <div><dt class="text-gray-500 inline">From ledger:</dt> <dd class="inline">{{ slip.get_from_ledger_account_display }}</dd></div>
-                            <div><dt class="text-gray-500 inline">To ledger:</dt> <dd class="inline">{{ slip.get_to_ledger_account_display }}</dd></div>
-                            {% if slip.description %}<div><dt class="text-gray-500 inline">Description:</dt> <dd class="inline">{{ slip.description }}</dd></div>{% endif %}
-                        </dl>
-                        <div class="flex flex-wrap gap-3 text-xs">
-                            <a class="link" href="{% url 'download_green_slip' slip.id %}">Print slip</a>
-                            <a class="link" href="{% url 'edit_green_slip' slip.id %}">Edit slip</a>
-                        </div>
+                    <div class="pb-3 pt-1 px-2">
+                        {% include 'includes/finance_green_slip_body.html' %}
                     </div>
                 </details>
-                {% endfor %}
-
-                {% if not invoices and not credit_notes and not pmts_slips and not green_slips %}
-                <p class="py-8 text-center text-sm text-gray-400">No finance activity recorded yet.</p>
+                {% endwith %}
                 {% endif %}
+                {% empty %}
+                <p class="py-8 text-center text-sm text-gray-400">No finance activity recorded yet.</p>
+                {% endfor %}
             </div>
         </div>
 
@@ -200,13 +201,19 @@
 
             <div id="invoiceForm" class="div-container finance-form-panel hidden">
                 <div class="flex items-start justify-between gap-3 pb-3 mb-4 border-b border-gray-100">
-                    <h3 class="text-base font-semibold text-gray-900">Add invoice</h3>
+                    <div>
+                        <h3 class="text-base font-semibold text-gray-900">Add invoice</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">Create a draft or final invoice for this matter</p>
+                    </div>
                     <button type="button" class="text-gray-500 hover:text-gray-900 text-xl leading-none" data-close-finance-form aria-label="Close">&times;</button>
                 </div>
-                <form class="w-full grid grid-cols-12 gap-2" method="post" action="{% url 'add_invoice' file_number %}">
+                <form class="w-full grid grid-cols-12 gap-4" method="post" action="{% url 'add_invoice' file_number %}" id="addInvoiceForm" data-vat-rate="{{ current_vat_rate_percent }}">
                     {% csrf_token %}
-                    {% include 'forms/add_invoice.html' with slips=pmts_slips green_slips=green_slips file_number_id=file_number_id %}
-                    <button class="col-span-2 btn-primary text-xs mt-2">Submit</button>
+                    {% include 'forms/add_invoice.html' %}
+                    <div class="col-span-12 flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
+                        <button type="submit" class="btn-primary text-xs">Create invoice</button>
+                        <button type="button" class="btn-secondary text-xs" data-close-finance-form>Cancel</button>
+                    </div>
                 </form>
             </div>
 
@@ -248,60 +255,23 @@
 
             <div id="greenSlipForm" class="div-container finance-form-panel hidden">
                 <div class="flex items-start justify-between gap-3 pb-3 mb-4 border-b border-gray-100">
-                    <h3 class="text-base font-semibold text-gray-900">Add green slip</h3>
+                    <div>
+                        <h3 class="text-base font-semibold text-gray-900">Add green slip</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">Transfer funds between matter files</p>
+                    </div>
                     <button type="button" class="text-gray-500 hover:text-gray-900 text-xl leading-none" data-close-finance-form aria-label="Close">&times;</button>
                 </div>
-                <form class="space-y-2" method="post" action="{% url 'add_green_slip' file_number %}">
+                <form class="space-y-4" method="post" action="{% url 'add_green_slip' file_number %}">
                     {% csrf_token %}
-                    {{ green_slip_form.as_p }}
-                    <button class="btn-primary text-xs mt-2">Submit</button>
+                    {% include 'forms/add_green_slip.html' with green_slip_form=green_slip_form %}
+                    <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
+                        <button type="submit" class="btn-primary text-xs">Add green slip</button>
+                        <button type="button" class="btn-secondary text-xs" data-close-finance-form>Cancel</button>
+                    </div>
                 </form>
             </div>
 
-            <div class="div-container overflow-x-auto">
-                <div class="pb-3 mb-3 border-b border-gray-100">
-                    <h2 class="text-base font-semibold text-gray-900">Cash allocation</h2>
-                    <p class="text-xs text-gray-500 mt-0.5">Allocate unallocated payments to invoices</p>
-                </div>
-                <table class="w-full text-sm text-left text-gray-600">
-                    <thead>
-                        <tr class="text-xs uppercase text-gray-500 border-b border-gray-100">
-                            <th class="py-2 pe-3">Invoice</th>
-                            <th class="py-2 pe-3">Allocation</th>
-                            <th class="py-2">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        {% for slip in pmts_slips %}
-                            {% if slip.is_money_out != True and slip.balance_left > 0 %}
-                            <tr class="align-top">
-                                <form action="{% url 'allocate_monies' %}" method="POST">
-                                    {% csrf_token %}
-                                    <td class="py-3 pe-3">
-                                        <select class="form-input text-xs" name="invoice_num" required>
-                                            {% for invoice in invoices %}
-                                                {% if invoice.state == 'F' and invoice.total_due_left > 0 %}
-                                                <option>{{ invoice.number }}</option>
-                                                {% endif %}
-                                            {% endfor %}
-                                        </select>
-                                    </td>
-                                    <td class="py-3 pe-3 text-xs">
-                                        £<input name="amt_to_allocate" class="form-input inline w-24 text-xs" value="{{ slip.balance_left }}">
-                                        from {{ slip.pmt_person }} · £{{ slip.amount|intcomma }} · {{ slip.get_ledger_account_display }} · {{ slip.date|date:'d/m/Y' }}
-                                    </td>
-                                    <td class="py-3">
-                                        <button class="btn-primary text-xs" name="slip_id" value="{{ slip.id }}" type="submit">Allocate</button>
-                                    </td>
-                                </form>
-                            </tr>
-                            {% endif %}
-                        {% empty %}
-                        <tr><td colspan="3" class="py-6 text-center text-sm text-gray-400">No payments available to allocate.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+            {% include 'includes/finance_cash_allocation.html' %}
         </div>
     </div>
 </div>
@@ -328,6 +298,202 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelectorAll('[data-close-finance-form]').forEach(function (btn) {
         btn.addEventListener('click', hideFinanceForms);
+    });
+
+    document.querySelectorAll('.no-slip-msg').forEach(function (msg) {
+        var section = msg.closest('div.rounded-lg');
+        var list = section ? section.querySelector('.invoice-slip-list') : null;
+        if (section && list && !list.querySelector('label')) {
+            msg.classList.remove('hidden');
+            list.classList.add('hidden');
+        }
+    });
+
+    document.querySelectorAll('.invoice-slip-actions').forEach(function (actions) {
+        var slipName = actions.getAttribute('data-slip-name');
+        if (!slipName) return;
+
+        var selectAllBtn = actions.querySelector('.invoice-slip-select-all');
+        var unselectAllBtn = actions.querySelector('.invoice-slip-unselect-all');
+
+        function setSlipChecks(checked) {
+            document.querySelectorAll('input[name="' + slipName + '"]').forEach(function (input) {
+                input.checked = checked;
+            });
+        }
+
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener('click', function () {
+                setSlipChecks(true);
+            });
+        }
+        if (unselectAllBtn) {
+            unselectAllBtn.addEventListener('click', function () {
+                setSlipChecks(false);
+            });
+        }
+    });
+
+    var invoiceForm = document.getElementById('addInvoiceForm');
+    if (invoiceForm) {
+        var vatRate = parseFloat(invoiceForm.getAttribute('data-vat-rate') || '0') / 100;
+        var subtotalEl = document.getElementById('invoice-costs-subtotal');
+        var vatEl = document.getElementById('invoice-costs-vat');
+        var totalEl = document.getElementById('invoice-costs-total');
+
+        function formatMoney(value) {
+            return '£' + value.toLocaleString('en-GB', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+        }
+
+        function updateInvoiceCostPreview() {
+            var subtotal = 0;
+            invoiceForm.querySelectorAll('input[name="our_costs[]"]').forEach(function (input) {
+                var value = parseFloat(input.value);
+                if (!isNaN(value)) {
+                    subtotal += value;
+                }
+            });
+            var vat = Math.round(subtotal * vatRate * 100) / 100;
+            var total = Math.round((subtotal + vat) * 100) / 100;
+            if (subtotalEl) subtotalEl.textContent = formatMoney(subtotal);
+            if (vatEl) vatEl.textContent = formatMoney(vat);
+            if (totalEl) totalEl.textContent = formatMoney(total);
+        }
+
+        window.updateInvoiceCostPreview = updateInvoiceCostPreview;
+
+        invoiceForm.addEventListener('input', function (event) {
+            if (event.target && event.target.name === 'our_costs[]') {
+                updateInvoiceCostPreview();
+            }
+        });
+        updateInvoiceCostPreview();
+    }
+
+    var greenSlipRoot = document.getElementById('greenSlipAddForm');
+    if (greenSlipRoot) {
+        var currentFileId = greenSlipRoot.getAttribute('data-current-file-id');
+        var fromSelect = greenSlipRoot.querySelector('[name="file_number_from"]');
+        var toSelect = greenSlipRoot.querySelector('[name="file_number_to"]');
+        var directionButtons = greenSlipRoot.querySelectorAll('.green-slip-direction-btn');
+
+        function pickOtherFile(selectEl) {
+            for (var i = 0; i < selectEl.options.length; i++) {
+                if (selectEl.options[i].value !== currentFileId) {
+                    selectEl.selectedIndex = i;
+                    return;
+                }
+            }
+        }
+
+        function setGreenSlipDirection(direction) {
+            if (!fromSelect || !toSelect || !currentFileId) return;
+            directionButtons.forEach(function (btn) {
+                btn.classList.toggle('ring-2', btn.getAttribute('data-direction') === direction);
+                btn.classList.toggle('ring-zinc-700', btn.getAttribute('data-direction') === direction);
+            });
+            if (direction === 'in') {
+                toSelect.value = currentFileId;
+                toSelect.disabled = true;
+                fromSelect.disabled = false;
+                if (fromSelect.value === currentFileId) {
+                    pickOtherFile(fromSelect);
+                }
+            } else {
+                fromSelect.value = currentFileId;
+                fromSelect.disabled = true;
+                toSelect.disabled = false;
+                if (toSelect.value === currentFileId) {
+                    pickOtherFile(toSelect);
+                }
+            }
+        }
+
+        directionButtons.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                setGreenSlipDirection(btn.getAttribute('data-direction'));
+            });
+        });
+
+        setGreenSlipDirection('out');
+
+        greenSlipRoot.closest('form').addEventListener('submit', function () {
+            if (fromSelect) fromSelect.disabled = false;
+            if (toSelect) toSelect.disabled = false;
+        });
+    }
+
+    function parseMoney(value) {
+        var parsed = parseFloat(value);
+        return isNaN(parsed) ? 0 : parsed;
+    }
+
+    function formatAllocationMoney(value) {
+        return value.toLocaleString('en-GB', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+    }
+
+    function getSelectedInvoiceDue(selectEl) {
+        if (!selectEl || selectEl.selectedIndex < 0) return 0;
+        var option = selectEl.options[selectEl.selectedIndex];
+        return parseMoney(option.getAttribute('data-due'));
+    }
+
+    function getAllocationMax(form) {
+        var slipBalance = parseMoney(form.getAttribute('data-slip-balance'));
+        var invoiceDue = getSelectedInvoiceDue(form.querySelector('.allocation-invoice-select'));
+        return Math.min(slipBalance, invoiceDue);
+    }
+
+    function updateAllocationForm(form) {
+        var amountInput = form.querySelector('.allocation-amount-input');
+        var hint = form.querySelector('.allocation-hint');
+        var maxAllowed = getAllocationMax(form);
+        if (amountInput) {
+            amountInput.max = maxAllowed > 0 ? maxAllowed : '';
+        }
+        if (hint) {
+            if (maxAllowed <= 0) {
+                hint.textContent = 'No amount can be allocated for the selected invoice.';
+            } else {
+                hint.textContent = 'Maximum £' + formatAllocationMoney(maxAllowed) + ' (limited by slip balance and invoice due).';
+            }
+        }
+    }
+
+    document.querySelectorAll('.cash-allocation-form').forEach(function (form) {
+        var invoiceSelect = form.querySelector('.allocation-invoice-select');
+        var amountInput = form.querySelector('.allocation-amount-input');
+        var maxBtn = form.querySelector('.allocation-max-btn');
+
+        updateAllocationForm(form);
+
+        if (invoiceSelect) {
+            invoiceSelect.addEventListener('change', function () {
+                updateAllocationForm(form);
+            });
+        }
+
+        if (maxBtn && amountInput) {
+            maxBtn.addEventListener('click', function () {
+                var maxAllowed = getAllocationMax(form);
+                amountInput.value = maxAllowed > 0 ? maxAllowed.toFixed(2) : '';
+            });
+        }
+
+        form.addEventListener('submit', function (event) {
+            var maxAllowed = getAllocationMax(form);
+            var amount = parseMoney(amountInput ? amountInput.value : 0);
+            if (maxAllowed <= 0 || amount <= 0 || amount > maxAllowed) {
+                event.preventDefault();
+                updateAllocationForm(form);
+            }
+        });
     });
 });
 </script>

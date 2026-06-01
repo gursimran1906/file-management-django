@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load humanize %}
 {% block title %}Edit {{ title }}{% endblock %}
 {% block container %}
 
@@ -17,6 +18,138 @@
         </div>
     </div>
 
+    {% if slip_usage %}
+    <div class="div-container">
+        <h2 class="text-base font-semibold text-gray-900 mb-1">Invoice &amp; allocation usage</h2>
+        <p class="text-xs text-gray-500 mb-4">Read-only — managed when invoices are created or monies are allocated.</p>
+        {% if slip_usage.amount_edit_note %}
+        <p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4">{{ slip_usage.amount_edit_note }}</p>
+        {% endif %}
+        {% if not slip_usage.amount_editable %}
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-4">
+            <div class="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                <dt class="text-xs text-gray-500">Slip amount (locked)</dt>
+                <dd class="font-medium text-gray-900">£{{ slip_usage.slip_amount|intcomma }}</dd>
+            </div>
+        </dl>
+        {% endif %}
+
+        {% if slip_usage.invoiced is not None %}
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-4">
+            <div class="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                <dt class="text-xs text-gray-500">Balance remaining</dt>
+                <dd class="font-medium text-gray-900">£{{ slip_usage.balance_left|intcomma }}</dd>
+            </div>
+            <div class="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                <dt class="text-xs text-gray-500">Used on invoices / allocations</dt>
+                <dd class="font-medium text-gray-900">£{{ slip_usage.committed|intcomma }}</dd>
+            </div>
+        </dl>
+
+        {% if slip_usage.invoiced %}
+        <div class="mb-4">
+            <h3 class="text-sm font-medium text-gray-800 mb-2">Invoiced</h3>
+            <ul class="divide-y divide-gray-100 rounded border border-gray-200 text-sm">
+                {% for row in slip_usage.invoiced %}
+                <li class="flex items-center justify-between gap-3 px-3 py-2">
+                    <span class="text-gray-700">
+                        {{ row.invoice_label }}
+                        {% if row.is_final %}<span class="ml-1 inline-flex items-center rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-700">Final</span>{% endif %}
+                    </span>
+                    <span class="font-medium text-gray-900 shrink-0">£{{ row.amount|intcomma }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if slip_usage.allocated %}
+        <div class="mb-4">
+            <h3 class="text-sm font-medium text-gray-800 mb-2">Cash allocated</h3>
+            <ul class="divide-y divide-gray-100 rounded border border-gray-200 text-sm">
+                {% for row in slip_usage.allocated %}
+                <li class="flex items-center justify-between gap-3 px-3 py-2">
+                    <span class="text-gray-700">
+                        {{ row.invoice_label }}
+                        {% if row.is_final %}<span class="ml-1 inline-flex items-center rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-700">Final</span>{% endif %}
+                    </span>
+                    <span class="font-medium text-gray-900 shrink-0">£{{ row.amount|intcomma }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if not slip_usage.has_usage %}
+        <p class="text-sm text-gray-500">This slip has not been used on any invoice yet.</p>
+        {% endif %}
+
+        {% else %}
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-4">
+            <div class="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                <dt class="text-xs text-gray-500">Balance remaining (from side)</dt>
+                <dd class="font-medium text-gray-900">£{{ slip_usage.balance_left_from|intcomma }}</dd>
+            </div>
+            <div class="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                <dt class="text-xs text-gray-500">Balance remaining (to side)</dt>
+                <dd class="font-medium text-gray-900">£{{ slip_usage.balance_left_to|intcomma }}</dd>
+            </div>
+        </dl>
+
+        {% if slip_usage.from_usages %}
+        <div class="mb-4">
+            <h3 class="text-sm font-medium text-gray-800 mb-2">Invoiced from source file</h3>
+            <ul class="divide-y divide-gray-100 rounded border border-gray-200 text-sm">
+                {% for row in slip_usage.from_usages %}
+                <li class="flex items-center justify-between gap-3 px-3 py-2">
+                    <span class="text-gray-700">
+                        {{ row.invoice_label }}
+                        {% if row.is_final %}<span class="ml-1 inline-flex items-center rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-700">Final</span>{% endif %}
+                    </span>
+                    <span class="font-medium text-gray-900 shrink-0">£{{ row.amount|intcomma }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if slip_usage.to_usages %}
+        <div class="mb-4">
+            <h3 class="text-sm font-medium text-gray-800 mb-2">Invoiced on destination file</h3>
+            <ul class="divide-y divide-gray-100 rounded border border-gray-200 text-sm">
+                {% for row in slip_usage.to_usages %}
+                <li class="flex items-center justify-between gap-3 px-3 py-2">
+                    <span class="text-gray-700">
+                        {{ row.invoice_label }}
+                        {% if row.is_final %}<span class="ml-1 inline-flex items-center rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-700">Final</span>{% endif %}
+                    </span>
+                    <span class="font-medium text-gray-900 shrink-0">£{{ row.amount|intcomma }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if not slip_usage.has_usage %}
+        <p class="text-sm text-gray-500">This transfer has not been used on any invoice yet.</p>
+        {% endif %}
+
+        {% if slip_usage.has_usage %}
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mt-2">
+            <div class="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                <dt class="text-xs text-gray-500">From file (locked)</dt>
+                <dd class="font-medium text-gray-900">{{ slip_usage.file_number_from }}</dd>
+            </div>
+            <div class="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                <dt class="text-xs text-gray-500">To file (locked)</dt>
+                <dd class="font-medium text-gray-900">{{ slip_usage.file_number_to }}</dd>
+            </div>
+        </dl>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+
     <form class="div-container" method="post">
         {% csrf_token %}
         {% if file_number %}
@@ -24,7 +157,9 @@
         {% endif %}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             {% for field in form %}
-                {% if field.field.widget.input_type == 'checkbox' %}
+                {% if field.field.widget.input_type == 'hidden' %}
+                    {{ field }}
+                {% elif field.field.widget.input_type == 'checkbox' %}
                     <label class="flex items-center gap-3 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
                         {{ field }}
                         <span>{{ field.label }}</span>
