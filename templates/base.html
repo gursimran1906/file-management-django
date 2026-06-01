@@ -146,7 +146,7 @@
     {% block styles %}{% endblock %}
     <script>
       document.addEventListener('DOMContentLoaded', function() {
-          var unreadPoliciesExist = {{ unread_policies_exist|lower|safe }};
+          var unreadPoliciesExist = {% if unread_policies_exist %}true{% else %}false{% endif %};
           
           function getCookie(name) {
               const value = `; ${document.cookie}`;

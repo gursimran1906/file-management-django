@@ -533,3 +533,81 @@ class BundleTests(TestCase):
         self.assertIn('First page', reader.pages[2].extract_text())
         document.refresh_from_db()
         self.assertEqual((document.page_start, document.page_end), (2, 3))
+
+
+class FinanceActivityLedgerDeltaTests(TestCase):
+    def test_invoice_affects_office_only(self):
+        from decimal import Decimal
+        from unittest.mock import MagicMock
+
+        from .views import _finance_activity_ledger_deltas
+
+        invoice = {'total_cost_and_vat': Decimal('120.00')}
+        client_delta, office_delta = _finance_activity_ledger_deltas(
+            'invoice', 'CV0001', invoice=invoice)
+        self.assertEqual(client_delta, Decimal('0'))
+        self.assertEqual(office_delta, Decimal('-120.00'))
+
+    def test_client_slip_affects_client_ledger_only(self):
+        from decimal import Decimal
+        from unittest.mock import MagicMock
+
+        from .views import _finance_activity_ledger_deltas
+
+        slip = MagicMock()
+        slip.ledger_account = 'C'
+        slip.is_money_out = False
+        slip.amount = Decimal('50.00')
+        client_delta, office_delta = _finance_activity_ledger_deltas(
+            'pmts_slip', 'CV0001', pmts_slip=slip)
+        self.assertEqual(client_delta, Decimal('50.00'))
+        self.assertEqual(office_delta, Decimal('0'))
+
+    def test_same_file_client_to_office_transfer(self):
+        from decimal import Decimal
+        from unittest.mock import MagicMock
+
+        from .views import _finance_activity_ledger_deltas
+
+        slip = MagicMock()
+        slip.file_number_from.file_number = 'CV0001'
+        slip.file_number_to.file_number = 'CV0001'
+        slip.amount = Decimal('100.00')
+        client_delta, office_delta = _finance_activity_ledger_deltas(
+            'green_slip', 'CV0001', green_slip=slip)
+        self.assertEqual(client_delta, Decimal('-100.00'))
+        self.assertEqual(office_delta, Decimal('100.00'))
+
+
+class FinanceActivitySortTests(TestCase):
+    def test_same_date_items_sort_by_kind_order_then_id(self):
+        from datetime import date
+
+        from .views import FINANCE_KIND_SORT_ORDER, _finance_activity_sort_key
+
+        shared_date = date(2024, 6, 15)
+
+        items = [
+            {
+                'kind': 'invoice',
+                'sort_date': shared_date,
+                'sort_kind_order': FINANCE_KIND_SORT_ORDER['invoice'],
+                'sort_id': 5,
+            },
+            {
+                'kind': 'pmts_slip',
+                'sort_date': shared_date,
+                'sort_kind_order': FINANCE_KIND_SORT_ORDER['pmts_slip'],
+                'sort_id': 10,
+            },
+            {
+                'kind': 'green_slip',
+                'sort_date': shared_date,
+                'sort_kind_order': FINANCE_KIND_SORT_ORDER['green_slip'],
+                'sort_id': 3,
+            },
+        ]
+
+        sorted_items = sorted(items, key=_finance_activity_sort_key)
+
+        self.assertEqual([item['sort_id'] for item in sorted_items], [10, 3, 5])

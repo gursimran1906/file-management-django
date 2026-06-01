@@ -44,16 +44,19 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="div-container max-h-[75vh] overflow-y-auto">
-            <div class="pb-3 mb-1 border-b border-gray-100">
-                <h2 class="text-base font-semibold text-gray-900">Finance activity</h2>
-                <p class="text-xs text-gray-500 mt-0.5">Invoices, slips and credit notes</p>
+            <div class="pb-3 mb-1 border-b border-gray-100 flex items-end justify-between gap-3">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-900">Finance activity</h2>
+                    <p class="text-xs text-gray-500 mt-0.5">Invoices, slips and credit notes</p>
+                </div>
+                <span class="text-[10px] text-gray-400 shrink-0 pb-0.5">Bal</span>
             </div>
             <div class="space-y-1">
                 {% for item in finance_activity %}
                 {% if item.kind == 'invoice' %}
                 {% with invoice=item.invoice %}
                 <details class="finance-item group rounded-lg">
-                    <summary class="flex cursor-pointer items-start justify-between gap-3 py-3 px-2 border-l-4 rounded-r-lg" style="border-color: {% if invoice.state == 'D' %}{{ colors.draft_invoice }}{% else %}{{ colors.invoice }}{% endif %};">
+                    <summary class="flex cursor-pointer items-center justify-between gap-2 py-2.5 px-2 border-l-4 rounded-r-lg" style="border-color: {% if invoice.state == 'D' %}{{ colors.draft_invoice }}{% else %}{{ colors.invoice }}{% endif %};">
                         <div class="min-w-0 flex-1">
                             <p class="text-sm font-medium text-gray-900 leading-snug">
                                 {% if invoice.state == 'D' %}Draft invoice{% else %}Invoice #{{ invoice.number }}{% endif %}
@@ -64,11 +67,8 @@
                                 {% if invoice.detail.is_account_credit %} · Credit on account{% endif %}
                             </p>
                         </div>
-                        <p class="shrink-0 text-xs text-right mt-0.5 text-gray-400">
-                            <span>Running bal </span>
-                            <span>{% if item.running_balance < 0 %}-£{{ item.running_balance|intcomma|slice:"1:" }}{% else %}£{{ item.running_balance|intcomma }}{% endif %}</span>
-                        </p>
-                        <svg class="w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        {% include 'includes/finance_running_balances.html' %}
+                        <svg class="w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                     </summary>
                     <div class="pb-3 pt-1 px-2">
                         {% include 'includes/finance_invoice_body.html' %}
@@ -78,16 +78,13 @@
                 {% elif item.kind == 'credit_note' %}
                 {% with credit_note=item.credit_note %}
                 <details class="finance-item group rounded-lg">
-                    <summary class="flex cursor-pointer items-start justify-between gap-3 py-3 px-2 border-l-4 rounded-r-lg" style="border-color: {{ colors.credit_note }};">
+                    <summary class="flex cursor-pointer items-center justify-between gap-2 py-2.5 px-2 border-l-4 rounded-r-lg" style="border-color: {{ colors.credit_note }};">
                         <div class="min-w-0 flex-1">
                             <p class="text-sm font-medium text-gray-900 leading-snug">Credit note</p>
                             <p class="text-xs text-gray-500 mt-1">Invoice {{ credit_note.invoice_number|default:"Draft" }} · {{ credit_note.date }} · £{{ credit_note.amount|intcomma }} · {{ credit_note.status_display }}</p>
                         </div>
-                        <p class="shrink-0 text-xs text-right mt-0.5 text-gray-400">
-                            <span>Running bal </span>
-                            <span>{% if item.running_balance < 0 %}-£{{ item.running_balance|intcomma|slice:"1:" }}{% else %}£{{ item.running_balance|intcomma }}{% endif %}</span>
-                        </p>
-                        <svg class="w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        {% include 'includes/finance_running_balances.html' %}
+                        <svg class="w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                     </summary>
                     <div class="pb-3 pt-1 px-2 ml-1 border-l-2 border-gray-100 pl-3 space-y-3">
                         <div class="rounded-lg border border-gray-100 bg-white overflow-hidden">
@@ -116,7 +113,7 @@
                 {% elif item.kind == 'pmts_slip' %}
                 {% with slip=item.pmts_slip slip_usage=item.slip_usage %}
                 <details class="finance-item group rounded-lg">
-                    <summary class="flex cursor-pointer items-start justify-between gap-3 py-3 px-2 border-l-4 rounded-r-lg" style="border-color: {% if slip.is_money_out %}#ffc0cb{% else %}#add8e6{% endif %};">
+                    <summary class="flex cursor-pointer items-center justify-between gap-2 py-2.5 px-2 border-l-4 rounded-r-lg" style="border-color: {% if slip.is_money_out %}#ffc0cb{% else %}#add8e6{% endif %};">
                         <div class="min-w-0 flex-1">
                             <p class="text-sm font-medium text-gray-900 leading-snug">
                                 {% if slip.is_money_out %}Payment to{% else %}Payment from{% endif %} {{ slip.pmt_person }}
@@ -126,11 +123,8 @@
                                 · {{ slip.date|date:'d/m/Y' }} · £{{ slip.amount|intcomma }}
                             </p>
                         </div>
-                        <p class="shrink-0 text-xs text-right mt-0.5 text-gray-400">
-                            <span>Running bal </span>
-                            <span>{% if item.running_balance < 0 %}-£{{ item.running_balance|intcomma|slice:"1:" }}{% else %}£{{ item.running_balance|intcomma }}{% endif %}</span>
-                        </p>
-                        <svg class="w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        {% include 'includes/finance_running_balances.html' %}
+                        <svg class="w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                     </summary>
                     <div class="pb-3 pt-1 px-2">
                         {% include 'includes/finance_pmts_slip_body.html' %}
@@ -140,16 +134,13 @@
                 {% elif item.kind == 'green_slip' %}
                 {% with slip=item.green_slip slip_usage=item.slip_usage %}
                 <details class="finance-item group rounded-lg">
-                    <summary class="flex cursor-pointer items-start justify-between gap-3 py-3 px-2 border-l-4 rounded-r-lg" style="border-color: {{ colors.green }};">
+                    <summary class="flex cursor-pointer items-center justify-between gap-2 py-2.5 px-2 border-l-4 rounded-r-lg" style="border-color: {{ colors.green }};">
                         <div class="min-w-0 flex-1">
                             <p class="text-sm font-medium text-gray-900 leading-snug">Transfer {{ slip.file_number_from }} → {{ slip.file_number_to }}</p>
                             <p class="text-xs text-gray-500 mt-1">Green slip · {{ slip.date|date:'d/m/Y' }} · £{{ slip.amount|intcomma }}</p>
                         </div>
-                        <p class="shrink-0 text-xs text-right mt-0.5 text-gray-400">
-                            <span>Running bal </span>
-                            <span>{% if item.running_balance < 0 %}-£{{ item.running_balance|intcomma|slice:"1:" }}{% else %}£{{ item.running_balance|intcomma }}{% endif %}</span>
-                        </p>
-                        <svg class="w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        {% include 'includes/finance_running_balances.html' %}
+                        <svg class="w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                     </summary>
                     <div class="pb-3 pt-1 px-2">
                         {% include 'includes/finance_green_slip_body.html' %}
@@ -181,6 +172,16 @@
                     <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 min-w-0">
                         <p class="text-xs text-gray-500">Net balance</p>
                         <p class="mt-0.5 text-base font-semibold truncate {% if total_monies_balance < 0 %}text-red-600{% else %}text-green-700{% endif %}">£{{ total_monies_balance|intcomma }}</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2.5 mt-2.5">
+                    <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 min-w-0">
+                        <p class="text-xs text-gray-500">Client account</p>
+                        <p class="mt-0.5 text-base font-semibold truncate {% if client_account_balance < 0 %}text-red-600{% else %}text-gray-900{% endif %}">{% if client_account_balance < 0 %}-£{{ client_account_balance|intcomma|slice:"1:" }}{% else %}£{{ client_account_balance|intcomma }}{% endif %}</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 min-w-0">
+                        <p class="text-xs text-gray-500">Office account</p>
+                        <p class="mt-0.5 text-base font-semibold truncate {% if office_account_balance < 0 %}text-red-600{% else %}text-gray-900{% endif %}">{% if office_account_balance < 0 %}-£{{ office_account_balance|intcomma|slice:"1:" }}{% else %}£{{ office_account_balance|intcomma }}{% endif %}</p>
                     </div>
                 </div>
             </div>

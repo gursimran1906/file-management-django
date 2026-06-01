@@ -4273,6 +4273,58 @@ def _finance_activity_balance_delta(kind, file_number, *, invoice=None, credit_n
     return Decimal('0')
 
 
+def _finance_activity_ledger_deltas(kind, file_number, *, invoice=None, credit_note=None, pmts_slip=None, green_slip=None):
+    """Return (client_delta, office_delta) matching ledger report logic."""
+    zero = Decimal('0')
+    if kind == 'invoice':
+        return zero, -invoice['total_cost_and_vat']
+    if kind == 'credit_note':
+        if credit_note['status'] == 'F':
+            return zero, credit_note['amount']
+        return zero, zero
+    if kind == 'pmts_slip':
+        amount = pmts_slip.amount
+        if pmts_slip.ledger_account == 'C':
+            delta = -amount if pmts_slip.is_money_out else amount
+            return delta, zero
+        delta = -amount if pmts_slip.is_money_out else amount
+        return zero, delta
+    if kind == 'green_slip':
+        if green_slip.file_number_from.file_number == green_slip.file_number_to.file_number:
+            return -green_slip.amount, green_slip.amount
+        amount = green_slip.amount
+        ledger = green_slip.from_ledger_account
+        if green_slip.file_number_from.file_number == file_number:
+            if ledger == 'C':
+                return -amount, zero
+            return zero, -amount
+        if ledger == 'C':
+            return amount, zero
+        return zero, amount
+    return zero, zero
+
+
+def _financial_chronological_sort_key(sort_date, sort_kind_order=0, sort_id=0):
+    """Sort by transaction date (paper date), then ledger item type, then id."""
+    return (sort_date, sort_kind_order, sort_id)
+
+
+FINANCE_KIND_SORT_ORDER = {
+    'pmts_slip': 0,
+    'green_slip': 1,
+    'invoice': 2,
+    'credit_note': 3,
+}
+
+
+def _finance_activity_sort_key(item):
+    return _financial_chronological_sort_key(
+        item['sort_date'],
+        item.get('sort_kind_order', 0),
+        item.get('sort_id', 0),
+    )
+
+
 @login_required
 def finance_view(request, file_number):
     file_obj = WIP.objects.select_related(
@@ -4317,7 +4369,7 @@ def finance_view(request, file_number):
             'id': credit_note.id,
             'date': credit_note.date.strftime('%d/%m/%Y'),
             'sort_date': credit_note.date,
-            'sort_timestamp': credit_note.timestamp,
+            'sort_kind_order': FINANCE_KIND_SORT_ORDER['credit_note'],
             'invoice_number': credit_note.invoice.invoice_number,
             'amount': gross_amount,
             'net_amount': net_amount,
@@ -4383,6 +4435,7 @@ def finance_view(request, file_number):
             'desc': invoice.description,
             'date': invoice.date.strftime('%d/%m/%Y'),
             'sort_date': invoice.date,
+            'sort_kind_order': FINANCE_KIND_SORT_ORDER['invoice'],
             'detail': detail,
             'total_due_left': effective_due_left,
             'available_due_left': available_due_left,
@@ -4425,56 +4478,78 @@ def finance_view(request, file_number):
 
     finance_activity = []
     for invoice in invoices_data:
+        client_delta, office_delta = _finance_activity_ledger_deltas(
+            'invoice', file_number, invoice=invoice)
         finance_activity.append({
             'kind': 'invoice',
             'sort_date': invoice['sort_date'],
-            'sort_timestamp': None,
+            'sort_kind_order': FINANCE_KIND_SORT_ORDER['invoice'],
+            'sort_id': invoice['id'],
             'balance_delta': _finance_activity_balance_delta(
                 'invoice', file_number, invoice=invoice),
+            'client_balance_delta': client_delta,
+            'office_balance_delta': office_delta,
             'invoice': invoice,
         })
     for credit_note in credit_notes_data:
+        client_delta, office_delta = _finance_activity_ledger_deltas(
+            'credit_note', file_number, credit_note=credit_note)
         finance_activity.append({
             'kind': 'credit_note',
             'sort_date': credit_note['sort_date'],
-            'sort_timestamp': credit_note['sort_timestamp'],
+            'sort_kind_order': FINANCE_KIND_SORT_ORDER['credit_note'],
+            'sort_id': credit_note['id'],
             'balance_delta': _finance_activity_balance_delta(
                 'credit_note', file_number, credit_note=credit_note),
+            'client_balance_delta': client_delta,
+            'office_balance_delta': office_delta,
             'credit_note': credit_note,
         })
     for slip in pmts_slips:
+        client_delta, office_delta = _finance_activity_ledger_deltas(
+            'pmts_slip', file_number, pmts_slip=slip)
         finance_activity.append({
             'kind': 'pmts_slip',
             'sort_date': slip.date,
-            'sort_timestamp': None,
+            'sort_kind_order': FINANCE_KIND_SORT_ORDER['pmts_slip'],
+            'sort_id': slip.id,
             'balance_delta': _finance_activity_balance_delta(
                 'pmts_slip', file_number, pmts_slip=slip),
+            'client_balance_delta': client_delta,
+            'office_balance_delta': office_delta,
             'pmts_slip': slip,
             'slip_usage': get_pmt_slip_usage_summary(slip),
         })
     for slip in green_slips:
+        client_delta, office_delta = _finance_activity_ledger_deltas(
+            'green_slip', file_number, green_slip=slip)
         finance_activity.append({
             'kind': 'green_slip',
             'sort_date': slip.date,
-            'sort_timestamp': None,
+            'sort_kind_order': FINANCE_KIND_SORT_ORDER['green_slip'],
+            'sort_id': slip.id,
             'balance_delta': _finance_activity_balance_delta(
                 'green_slip', file_number, green_slip=slip),
+            'client_balance_delta': client_delta,
+            'office_balance_delta': office_delta,
             'green_slip': slip,
             'slip_usage': get_green_slip_usage_summary(slip),
         })
 
-    def _activity_sort_key(item):
-        return (
-            item['sort_date'],
-            item['sort_timestamp'] or timezone.make_aware(datetime.min),
-        )
-
-    finance_activity.sort(key=_activity_sort_key)
+    finance_activity.sort(key=_finance_activity_sort_key)
     running_balance = Decimal('0')
+    running_client_balance = Decimal('0')
+    running_office_balance = Decimal('0')
     for item in finance_activity:
         running_balance += item['balance_delta']
+        running_client_balance += item['client_balance_delta']
+        running_office_balance += item['office_balance_delta']
         item['running_balance'] = round(running_balance, 2)
-    finance_activity.sort(key=_activity_sort_key, reverse=True)
+        item['running_client_balance'] = round(running_client_balance, 2)
+        item['running_office_balance'] = round(running_office_balance, 2)
+    finance_activity.sort(key=_finance_activity_sort_key, reverse=True)
+    client_account_balance = round(running_client_balance, 2)
+    office_account_balance = round(running_office_balance, 2)
 
     attachable_pink_slip_count = sum(
         1 for slip in pmts_slips if slip.is_money_out and slip.balance_left > 0)
@@ -4499,6 +4574,7 @@ def finance_view(request, file_number):
     ]
 
     return render(request, 'finances.html', {'total_monies_in': total_in, 'total_monies_out': total_out, 'total_monies_balance': total_balance,
+                                             'client_account_balance': client_account_balance, 'office_account_balance': office_account_balance,
                                              'pmts_slips': pmts_slips, 'file_number': file_number, 'file_number_id': file_number_id,
                                              'matter': file_obj,
                                              'colors': colors,
@@ -6187,6 +6263,9 @@ def get_all_financials(file_number):
             desc = f"Payment from {slip.pmt_person} - {slip.description}"
 
         obj = {'date': slip.date.strftime('%d/%m/%Y'),
+               'sort_date': slip.date,
+               'sort_kind_order': FINANCE_KIND_SORT_ORDER['pmts_slip'],
+               'sort_id': slip.id,
                'desc': desc,
                'type': type_obj,
                'ledger': slip.ledger_account,
@@ -6206,6 +6285,9 @@ def get_all_financials(file_number):
             desc = f"Transfer from {slip.file_number_from}"
 
         obj = {'date': slip.date.strftime('%d/%m/%Y'),
+               'sort_date': slip.date,
+               'sort_kind_order': FINANCE_KIND_SORT_ORDER['green_slip'],
+               'sort_id': slip.id,
                'desc': desc,
                'type': type_obj,
                'ledger': slip.from_ledger_account,
@@ -6223,6 +6305,9 @@ def get_all_financials(file_number):
 
         _, _, total_cost_invoice = calculate_invoice_total_with_vat(invoice)
         obj = {'date': invoice.date.strftime('%d/%m/%Y'),
+               'sort_date': invoice.date,
+               'sort_kind_order': FINANCE_KIND_SORT_ORDER['invoice'],
+               'sort_id': invoice.id,
                'desc': desc,
                'type': type_obj,
                'ledger': 'O',
@@ -6234,6 +6319,9 @@ def get_all_financials(file_number):
         invoice_number = credit_note.invoice.invoice_number or 'Draft'
         obj = {
             'date': credit_note.date.strftime('%d/%m/%Y'),
+            'sort_date': credit_note.date,
+            'sort_kind_order': FINANCE_KIND_SORT_ORDER['credit_note'],
+            'sort_id': credit_note.id,
             'desc': f'Credit Note for ANP Invoice {invoice_number}',
             'type': 'money_in',
             'ledger': 'O',
@@ -6241,18 +6329,14 @@ def get_all_financials(file_number):
         }
         all_objects.append(obj)
 
-    def sort_rows(rows):
-        def get_sort_key(row):
-            # Handling empty dates
-            date_str = row['date'] if row['date'] else '01/01/0001'
-
-            date_time = datetime.strptime(date_str, '%d/%m/%Y')
-            return date_time
-
-        sorted_rows = sorted(rows, key=get_sort_key)
-        return sorted_rows
-
-    sorted_rows = sort_rows(all_objects)
+    sorted_rows = sorted(
+        all_objects,
+        key=lambda row: _financial_chronological_sort_key(
+            row['sort_date'],
+            row.get('sort_kind_order', 0),
+            row.get('sort_id', 0),
+        ),
+    )
     return sorted_rows
 
 
