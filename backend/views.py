@@ -4854,22 +4854,26 @@ def edit_credit_note(request, id):
 @login_required
 def add_pink_slip(request, file_number):
     if request.method == 'POST':
-        request_post_copy = request.POST.copy()
-        file_number_id = WIP.objects.filter(file_number=file_number).first().id
-        request_post_copy['file_number'] = file_number_id
-        request_post_copy['is_money_out'] = True
-        request_post_copy['balance_left'] = request_post_copy['amount']
-        request_post_copy['created_by'] = request.user
-        form = PmtsForm(request_post_copy)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Pink Slip successfully added.')
+        matter = WIP.objects.filter(file_number=file_number).first()
+        if not matter:
+            messages.error(request, 'Matter not found.')
             return redirect('finance_view', file_number=file_number)
-        else:
-            error_message = 'Form is not valid. Please correct the errors:'
-            for field, errors in form.errors.items():
-                error_message += f'\n{field}: {", ".join(errors)}'
-            messages.error(request, error_message)
+        try:
+            from .pmt_slip_service import create_pmt_slip
+            create_pmt_slip(
+                matter=matter,
+                user=request.user,
+                is_money_out=True,
+                ledger_account=request.POST.get('ledger_account', 'C'),
+                amount=request.POST.get('amount'),
+                description=request.POST.get('description', ''),
+                pmt_person=request.POST.get('pmt_person', ''),
+                date=request.POST.get('date'),
+                mode_of_pmt=request.POST.get('mode_of_pmt', 'BT'),
+            )
+            messages.success(request, 'Pink Slip successfully added.')
+        except ValueError as exc:
+            messages.error(request, f'Form is not valid: {exc}')
     else:
         messages.error(request, 'Invalid request method.')
 
@@ -4879,22 +4883,26 @@ def add_pink_slip(request, file_number):
 @login_required
 def add_blue_slip(request, file_number):
     if request.method == 'POST':
-        request_post_copy = request.POST.copy()
-        file_number_id = WIP.objects.filter(file_number=file_number).first().id
-        request_post_copy['file_number'] = file_number_id
-        request_post_copy['is_money_out'] = False
-        request_post_copy['balance_left'] = request_post_copy['amount']
-        request_post_copy['created_by'] = request.user
-        form = PmtsForm(request_post_copy)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Blue Slip successfully added.')
+        matter = WIP.objects.filter(file_number=file_number).first()
+        if not matter:
+            messages.error(request, 'Matter not found.')
             return redirect('finance_view', file_number=file_number)
-        else:
-            error_message = 'Form is not valid. Please correct the errors:'
-            for field, errors in form.errors.items():
-                error_message += f'\n{field}: {", ".join(errors)}'
-            messages.error(request, error_message)
+        try:
+            from .pmt_slip_service import create_pmt_slip
+            create_pmt_slip(
+                matter=matter,
+                user=request.user,
+                is_money_out=False,
+                ledger_account=request.POST.get('ledger_account', 'C'),
+                amount=request.POST.get('amount'),
+                description=request.POST.get('description', ''),
+                pmt_person=request.POST.get('pmt_person', ''),
+                date=request.POST.get('date'),
+                mode_of_pmt=request.POST.get('mode_of_pmt', 'BT'),
+            )
+            messages.success(request, 'Blue Slip successfully added.')
+        except ValueError as exc:
+            messages.error(request, f'Form is not valid: {exc}')
     else:
         messages.error(request, 'Invalid request method.')
 
@@ -11323,6 +11331,7 @@ _BUNDLE_INDEX_RULE_GREY = None
 _BUNDLE_PAGE_NUMBER_FONT_SIZE = 20
 _BUNDLE_PAGE_NUMBER_RIGHT_MARGIN = 18
 _BUNDLE_PAGE_NUMBER_BOTTOM_MARGIN = 16
+_BUNDLE_PAGE_NUMBER_PADDING = 4
 _BUNDLE_INDEX_SERIF_FONT = 'Times-Roman'
 _BUNDLE_INDEX_SERIF_FONT_BOLD = 'Times-Bold'
 _SEMIBOLD_OFFSET = 0.3
@@ -11805,14 +11814,30 @@ def _add_page_number(page, page_number):
     number_buffer = BytesIO()
     temp_canvas = canvas.Canvas(number_buffer, pagesize=(width, height))
 
-    temp_canvas.setFont(_BUNDLE_INDEX_SERIF_FONT_BOLD,
-                        _BUNDLE_PAGE_NUMBER_FONT_SIZE)
-    temp_canvas.setFillColorRGB(0, 0, 0)
-
+    text = str(page_number)
     x_position = width - _BUNDLE_PAGE_NUMBER_RIGHT_MARGIN
     y_position = _BUNDLE_PAGE_NUMBER_BOTTOM_MARGIN
+    text_width = temp_canvas.stringWidth(
+        text,
+        _BUNDLE_INDEX_SERIF_FONT_BOLD,
+        _BUNDLE_PAGE_NUMBER_FONT_SIZE,
+    )
+    padding = _BUNDLE_PAGE_NUMBER_PADDING
 
-    temp_canvas.drawRightString(x_position, y_position, str(page_number))
+    temp_canvas.setFillColorRGB(1, 1, 1)
+    temp_canvas.setStrokeColorRGB(1, 1, 1)
+    temp_canvas.rect(
+        x_position - text_width - padding,
+        y_position - padding,
+        text_width + (padding * 2),
+        _BUNDLE_PAGE_NUMBER_FONT_SIZE + (padding * 2),
+        fill=1,
+        stroke=0,
+    )
+    temp_canvas.setFillColorRGB(0, 0, 0)
+    temp_canvas.setFont(_BUNDLE_INDEX_SERIF_FONT_BOLD,
+                        _BUNDLE_PAGE_NUMBER_FONT_SIZE)
+    temp_canvas.drawRightString(x_position, y_position, text)
     temp_canvas.save()
     number_buffer.seek(0)
 

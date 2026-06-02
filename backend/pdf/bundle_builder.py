@@ -9,19 +9,14 @@ logger = logging.getLogger(__name__)
 PAGE_NUMBER_FONT_SIZE = 20
 PAGE_NUMBER_RIGHT_MARGIN = 18
 PAGE_NUMBER_BOTTOM_MARGIN = 16
+PAGE_NUMBER_PADDING = 4
 PAGE_NUMBER_FONT = 'Times-Bold'
-PAGE_NUMBER_PDF_FONT = '/Times-Bold'
 
 
 def _page_number_text_width(text):
     from reportlab.pdfbase.pdfmetrics import stringWidth
 
     return stringWidth(str(text), PAGE_NUMBER_FONT, PAGE_NUMBER_FONT_SIZE)
-
-
-def _page_number_x_position(page_width, text):
-    """Right-align page number text, matching ReportLab drawRightString behaviour."""
-    return page_width - PAGE_NUMBER_RIGHT_MARGIN - _page_number_text_width(text)
 
 
 def qpdf_available():
@@ -75,43 +70,51 @@ def _concat_with_qpdf(output_path, page_inputs):
     _run_qpdf(args)
 
 
+def _build_page_number_overlay(page_width, page_height, page_number):
+    """Build a single-page PDF overlay with a white backing box and page number."""
+    from io import BytesIO
+
+    from reportlab.pdfgen import canvas
+
+    text = str(page_number)
+    text_width = _page_number_text_width(text)
+    x_right = page_width - PAGE_NUMBER_RIGHT_MARGIN
+    y_bottom = PAGE_NUMBER_BOTTOM_MARGIN
+    padding = PAGE_NUMBER_PADDING
+
+    buffer = BytesIO()
+    overlay_canvas = canvas.Canvas(buffer, pagesize=(page_width, page_height))
+    overlay_canvas.setFillColorRGB(1, 1, 1)
+    overlay_canvas.setStrokeColorRGB(1, 1, 1)
+    overlay_canvas.rect(
+        x_right - text_width - padding,
+        y_bottom - padding,
+        text_width + (padding * 2),
+        PAGE_NUMBER_FONT_SIZE + (padding * 2),
+        fill=1,
+        stroke=0,
+    )
+    overlay_canvas.setFillColorRGB(0, 0, 0)
+    overlay_canvas.setFont(PAGE_NUMBER_FONT, PAGE_NUMBER_FONT_SIZE)
+    overlay_canvas.drawRightString(x_right, y_bottom, text)
+    overlay_canvas.save()
+    buffer.seek(0)
+    return buffer
+
+
 def _stamp_page_numbers(input_path, output_path):
     import pikepdf
-    from pikepdf import Name
+    from pikepdf import Page
 
     pdf = pikepdf.Pdf.open(input_path)
     for page_number, page in enumerate(pdf.pages, start=1):
         width = float(page.mediabox[2])
-        text = str(page_number)
-        x = _page_number_x_position(width, text)
-        y = PAGE_NUMBER_BOTTOM_MARGIN
-        stream = (
-            f'q BT {PAGE_NUMBER_PDF_FONT} '.encode()
-            + str(PAGE_NUMBER_FONT_SIZE).encode()
-            + b' Tf '
-            + f'{x} {y} Td ({text}) Tj ET Q'.encode()
+        height = float(page.mediabox[3])
+        overlay_pdf = pikepdf.open(
+            _build_page_number_overlay(width, height, page_number),
         )
-
-        if '/Resources' not in page:
-            page.Resources = pikepdf.Dictionary()
-        if '/Font' not in page.Resources:
-            page.Resources.Font = pikepdf.Dictionary()
-        font_key = Name(PAGE_NUMBER_PDF_FONT)
-        if font_key not in page.Resources.Font:
-            page.Resources.Font[font_key] = pikepdf.Dictionary(
-                Type=Name('/Font'),
-                Subtype=Name('/Type1'),
-                BaseFont=Name('/Times-Bold'),
-            )
-
-        overlay = pikepdf.Stream(pdf, stream)
-        if isinstance(page.Contents, pikepdf.Array):
-            page.Contents.append(overlay)
-        elif page.Contents is not None:
-            existing = page.Contents.read_bytes()
-            page.Contents = pdf.make_stream(existing + stream)
-        else:
-            page.Contents = overlay
+        Page(page).add_overlay(Page(overlay_pdf.pages[0]))
+        overlay_pdf.close()
 
     pdf.save(output_path)
     pdf.close()
