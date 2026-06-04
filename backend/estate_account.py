@@ -1,10 +1,10 @@
-import ast
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from django.db.models import Q
 from django.utils import timezone
 
+from .utils import parse_invoice_list_field
 from .models import (
     CURRENT_VAT_RATE,
     CreditNote,
@@ -21,9 +21,7 @@ from .models import (
 
 
 def calculate_invoice_total_with_vat(invoice):
-    our_costs = invoice.our_costs
-    costs = ast.literal_eval(our_costs) if not isinstance(
-        our_costs, list) else our_costs
+    costs = parse_invoice_list_field(invoice.our_costs)
     total_cost_invoice = Decimal('0')
     for cost in costs:
         total_cost_invoice += Decimal(str(cost))

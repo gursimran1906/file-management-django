@@ -60,6 +60,9 @@
                         <div class="min-w-0 flex-1">
                             <p class="text-sm font-medium text-gray-900 leading-snug">
                                 {% if invoice.state == 'D' %}Draft invoice{% else %}Invoice #{{ invoice.number }}{% endif %}
+                                {% if invoice.is_matter_final_invoice %}
+                                <span class="ml-1.5 inline-flex items-center rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">Final invoice</span>
+                                {% endif %}
                             </p>
                             <p class="text-xs text-gray-500 mt-1">
                                 {{ invoice.date }} · £{{ invoice.total_cost_and_vat|intcomma }} incl. VAT
@@ -119,8 +122,7 @@
                                 {% if slip.is_money_out %}Payment to{% else %}Payment from{% endif %} {{ slip.pmt_person }}
                             </p>
                             <p class="text-xs text-gray-500 mt-1">
-                                {% if slip.is_money_out %}Pink slip{% else %}Blue slip{% endif %}
-                                · {{ slip.date|date:'d/m/Y' }} · £{{ slip.amount|intcomma }}
+                                {{ slip.date|date:'d/m/Y' }} · {{ slip.get_ledger_account_display }} account · £{{ slip.amount|intcomma }}
                             </p>
                         </div>
                         {% include 'includes/finance_running_balances.html' %}
@@ -136,8 +138,14 @@
                 <details class="finance-item group rounded-lg">
                     <summary class="flex cursor-pointer items-center justify-between gap-2 py-2.5 px-2 border-l-4 rounded-r-lg" style="border-color: {{ colors.green }};">
                         <div class="min-w-0 flex-1">
-                            <p class="text-sm font-medium text-gray-900 leading-snug">Transfer {{ slip.file_number_from }} → {{ slip.file_number_to }}</p>
-                            <p class="text-xs text-gray-500 mt-1">Green slip · {{ slip.date|date:'d/m/Y' }} · £{{ slip.amount|intcomma }}</p>
+                            <p class="text-sm font-medium text-gray-900 leading-snug">
+                                {% if slip.file_number_from_id == slip.file_number_to_id %}
+                                    C-O TFR
+                                {% else %}
+                                    Transfer {{ slip.file_number_from }} → {{ slip.file_number_to }}
+                                {% endif %}
+                            </p>
+                            <p class="text-xs text-gray-500 mt-1">{{ slip.date|date:'d/m/Y' }} · £{{ slip.amount|intcomma }}</p>
                         </div>
                         {% include 'includes/finance_running_balances.html' %}
                         <svg class="w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>

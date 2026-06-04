@@ -1,0 +1,50 @@
+<p class="text-xs text-gray-500 mb-3">Pending payments with payee and account (client or office). Convert to pink or blue slip when ready.</p>
+<div class="estate-lines-table-wrap overflow-x-auto">
+    <table class="estate-lines-table w-full text-sm">
+        <thead>
+            <tr>
+                <th>Payee</th>
+                <th>Description</th>
+                <th>Account</th>
+                <th>Direction</th>
+                <th>Projected</th>
+                <th>Actual</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="cs-schedule-list">
+            {% for row in statement_data.schedule %}
+            <tr class="estate-line-row {% if row.ledger_variance or row.amount_variance %}bg-amber-50{% endif %}" data-schedule-id="{{ row.id }}">
+                <td>{{ row.payee_name }}</td>
+                <td class="text-xs">{{ row.description }}</td>
+                <td>
+                    {% if statement_data.metadata.is_editable and row.status == 'pending' %}
+                    <select class="bundle-linear-field text-xs" data-sched-field="ledger_account">
+                        <option value="C" {% if row.ledger_account == 'C' %}selected{% endif %}>Client</option>
+                        <option value="O" {% if row.ledger_account == 'O' %}selected{% endif %}>Office</option>
+                    </select>
+                    {% else %}
+                    {{ row.ledger_account_display }}
+                    {% if row.ledger_variance %}<span class="text-amber-700 text-xs block">Slip: {{ row.slip_ledger_account_display }}</span>{% endif %}
+                    {% endif %}
+                </td>
+                <td class="text-xs">{% if row.direction == 'add' %}Money in{% else %}Money out{% endif %}</td>
+                <td class="tabular-nums">{{ row.projected_amount_display }}</td>
+                <td class="tabular-nums">{% if row.actual_amount_display %}{{ row.actual_amount_display }}{% else %}—{% endif %}</td>
+                <td class="text-xs">{{ row.status_display }}</td>
+                <td>
+                    {% if statement_data.metadata.is_editable and row.status == 'pending' %}
+                    <button type="button" class="bundle-linear-btn text-xs" data-sched-create-slip="{{ row.id }}">Create slip</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-gray-500 text-xs py-2">No scheduled payments yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if statement_data.metadata.is_editable %}
+<button type="button" class="bundle-linear-btn text-xs mt-3" id="cs-schedule-add">Add payment</button>
+{% endif %}

@@ -489,6 +489,10 @@ class Invoices(models.Model):
     payable_by = models.CharField(default='Client', max_length=255)
     by_email = models.BooleanField(null=True, blank=True)
     by_post = models.BooleanField(null=True, blank=True)
+    is_matter_final_invoice = models.BooleanField(
+        default=False,
+        help_text='Marks this as the closing invoice for the matter (shown on printed invoices).',
+    )
     description = models.TextField()
     our_costs_desc = models.JSONField(default=dict)
     our_costs = models.JSONField(default=dict)
@@ -1430,3 +1434,299 @@ class EstateAccountSigner(models.Model):
 
     def __str__(self):
         return self.signer_name
+
+
+class CompletionStatement(models.Model):
+    STATUS_DRAFT = 'draft'
+    STATUS_FINALISED = 'finalised'
+    STATUS_CHOICES = (
+        (STATUS_DRAFT, 'Draft'),
+        (STATUS_FINALISED, 'Finalised'),
+    )
+    TRANSACTION_SALE = 'sale'
+    TRANSACTION_PURCHASE = 'purchase'
+    TRANSACTION_TYPE_CHOICES = (
+        (TRANSACTION_SALE, 'Sale'),
+        (TRANSACTION_PURCHASE, 'Purchase'),
+    )
+
+    id = models.AutoField(primary_key=True)
+    matter = models.OneToOneField(
+        WIP, on_delete=models.CASCADE, related_name='completion_statement')
+    status = models.CharField(
+        max_length=16, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    transaction_type = models.CharField(
+        max_length=16, choices=TRANSACTION_TYPE_CHOICES, default=TRANSACTION_SALE)
+    completion_monies = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    is_leasehold = models.BooleanField(default=False)
+    property_address = models.TextField(blank=True)
+    completion_date = models.DateField(null=True, blank=True)
+    contract_date = models.DateField(null=True, blank=True)
+    prepared_by_name = models.CharField(
+        max_length=255, default='ANP Solicitors')
+    prepared_by_address = models.TextField(default=DEFAULT_PREPARED_BY_ADDRESS)
+    notes = models.TextField(blank=True)
+    finance_snapshot = models.JSONField(null=True, blank=True)
+    finalised_at = models.DateTimeField(null=True, blank=True)
+    finalised_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='completion_statements_finalised')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'Completion Statement - {self.matter.file_number}'
+
+
+class CompletionStatementFinanceLineOverride(models.Model):
+    SOURCE_SLIP = 'slip'
+    SOURCE_GREEN_SLIP = 'green_slip'
+    SOURCE_INVOICE = 'invoice'
+    SOURCE_CREDIT_NOTE = 'credit_note'
+    SOURCE_TYPE_CHOICES = (
+        (SOURCE_SLIP, 'Payment slip'),
+        (SOURCE_GREEN_SLIP, 'Green slip'),
+        (SOURCE_INVOICE, 'Invoice'),
+        (SOURCE_CREDIT_NOTE, 'Credit note'),
+    )
+    DIRECTION_ADD = 'add'
+    DIRECTION_LESS = 'less'
+    DIRECTION_CHOICES = (
+        (DIRECTION_ADD, 'Add'),
+        (DIRECTION_LESS, 'Less'),
+    )
+
+    id = models.AutoField(primary_key=True)
+    completion_statement = models.ForeignKey(
+        CompletionStatement, on_delete=models.CASCADE,
+        related_name='finance_overrides')
+    source_type = models.CharField(max_length=16, choices=SOURCE_TYPE_CHOICES)
+    source_id = models.PositiveIntegerField()
+    is_excluded = models.BooleanField(default=False)
+    date_override = models.DateField(null=True, blank=True)
+    description_override = models.CharField(max_length=500, blank=True)
+    amount_override = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    direction_override = models.CharField(
+        max_length=8, choices=DIRECTION_CHOICES, null=True, blank=True)
+    sort_order = models.IntegerField(default=0)
+
+    class Meta:
+        unique_together = ('completion_statement', 'source_type', 'source_id')
+
+    def __str__(self):
+        return f'{self.source_type}:{self.source_id}'
+
+
+class CompletionStatementManualEntry(models.Model):
+    DIRECTION_ADD = 'add'
+    DIRECTION_LESS = 'less'
+    DIRECTION_CHOICES = (
+        (DIRECTION_ADD, 'Add'),
+        (DIRECTION_LESS, 'Less'),
+    )
+
+    id = models.AutoField(primary_key=True)
+    completion_statement = models.ForeignKey(
+        CompletionStatement, on_delete=models.CASCADE,
+        related_name='manual_entries')
+    direction = models.CharField(max_length=8, choices=DIRECTION_CHOICES)
+    date = models.DateField(null=True, blank=True)
+    description = models.CharField(max_length=500)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    is_pending = models.BooleanField(default=True)
+    is_system_managed = models.BooleanField(default=False)
+    sort_order = models.IntegerField(default=0)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['sort_order', 'date', 'id']
+
+    def __str__(self):
+        return f'{self.direction}: {self.description}'
+
+
+class CompletionStatementMortgageRedemption(models.Model):
+    id = models.AutoField(primary_key=True)
+    completion_statement = models.OneToOneField(
+        CompletionStatement, on_delete=models.CASCADE,
+        related_name='mortgage_redemption')
+    lender_name = models.CharField(max_length=255, blank=True)
+    loan_account_ref = models.CharField(max_length=100, blank=True)
+    redemption_figure = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    redemption_statement_date = models.DateField(null=True, blank=True)
+    daily_interest_amount = models.DecimalField(
+        max_digits=12, decimal_places=4, default=Decimal('0.00'))
+    completion_date = models.DateField(null=True, blank=True)
+    calculated_days = models.PositiveIntegerField(default=0)
+    calculated_interest = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    linked_manual_entry = models.ForeignKey(
+        CompletionStatementManualEntry, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mortgage_redemption_link')
+
+    def __str__(self):
+        return f'Mortgage redemption - {self.lender_name or "Lender"}'
+
+
+class CompletionStatementApportionment(models.Model):
+    ITEM_RENT = 'rent'
+    ITEM_SERVICE_CHARGE = 'service_charge'
+    ITEM_GROUND_RENT = 'ground_rent'
+    ITEM_INSURANCE = 'insurance'
+    ITEM_OTHER = 'other'
+    ITEM_TYPE_CHOICES = (
+        (ITEM_RENT, 'Rent'),
+        (ITEM_SERVICE_CHARGE, 'Service charge'),
+        (ITEM_GROUND_RENT, 'Ground rent'),
+        (ITEM_INSURANCE, 'Insurance'),
+        (ITEM_OTHER, 'Other'),
+    )
+    DIRECTION_ADD = 'add'
+    DIRECTION_LESS = 'less'
+    DIRECTION_CHOICES = (
+        (DIRECTION_ADD, 'Add'),
+        (DIRECTION_LESS, 'Less'),
+    )
+
+    id = models.AutoField(primary_key=True)
+    completion_statement = models.ForeignKey(
+        CompletionStatement, on_delete=models.CASCADE,
+        related_name='apportionments')
+    item_type = models.CharField(
+        max_length=32, choices=ITEM_TYPE_CHOICES, default=ITEM_OTHER)
+    description = models.CharField(max_length=500)
+    annual_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    period_start = models.DateField(null=True, blank=True)
+    period_end = models.DateField(null=True, blank=True)
+    paid_in_advance = models.BooleanField(default=True)
+    completion_date = models.DateField(null=True, blank=True)
+    seller_days = models.PositiveIntegerField(default=0)
+    buyer_days = models.PositiveIntegerField(default=0)
+    calculated_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    direction = models.CharField(max_length=8, choices=DIRECTION_CHOICES)
+    sort_order = models.IntegerField(default=0)
+    linked_manual_entry = models.ForeignKey(
+        CompletionStatementManualEntry, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='apportionment_link')
+
+    class Meta:
+        ordering = ['sort_order', 'id']
+
+    def __str__(self):
+        return self.description
+
+
+class CompletionStatementProceedsDistribution(models.Model):
+    SHARE_FRACTION = 'fraction'
+    SHARE_PERCENT = 'percent'
+    SHARE_FIXED = 'fixed'
+    SHARE_REMAINDER = 'remainder'
+    SHARE_MODE_CHOICES = (
+        (SHARE_FRACTION, 'Fraction'),
+        (SHARE_PERCENT, 'Percent'),
+        (SHARE_FIXED, 'Fixed amount'),
+        (SHARE_REMAINDER, 'Remainder'),
+    )
+
+    id = models.AutoField(primary_key=True)
+    completion_statement = models.ForeignKey(
+        CompletionStatement, on_delete=models.CASCADE,
+        related_name='proceeds_distributions')
+    payee_name = models.CharField(max_length=255)
+    reference = models.CharField(max_length=255, blank=True)
+    share_mode = models.CharField(
+        max_length=16, choices=SHARE_MODE_CHOICES, default=SHARE_FRACTION)
+    share_value = models.CharField(max_length=32, blank=True)
+    projected_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    actual_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    penny_adjustment = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    linked_slip = models.ForeignKey(
+        PmtsSlips, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='proceeds_distribution_links')
+    linked_manual_entry = models.ForeignKey(
+        CompletionStatementManualEntry, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='proceeds_distribution_link')
+    sort_order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['sort_order', 'id']
+
+    def __str__(self):
+        return self.payee_name
+
+
+class CompletionStatementScheduledPayment(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_SLIP_CREATED = 'slip_created'
+    STATUS_COMPLETED = 'completed'
+    STATUS_CHOICES = (
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_SLIP_CREATED, 'Slip created'),
+        (STATUS_COMPLETED, 'Completed'),
+    )
+    SOURCE_MANUAL = 'manual'
+    SOURCE_MORTGAGE = 'mortgage'
+    SOURCE_APPORTIONMENT = 'apportionment'
+    SOURCE_DISTRIBUTION = 'distribution'
+    SOURCE_MAIN_LINE = 'main_line'
+    SOURCE_KIND_CHOICES = (
+        (SOURCE_MANUAL, 'Manual'),
+        (SOURCE_MORTGAGE, 'Mortgage redemption'),
+        (SOURCE_APPORTIONMENT, 'Apportionment'),
+        (SOURCE_DISTRIBUTION, 'Distribution'),
+        (SOURCE_MAIN_LINE, 'Main line'),
+    )
+    LEDGER_CLIENT = 'C'
+    LEDGER_OFFICE = 'O'
+    LEDGER_ACCOUNT_CHOICES = (
+        (LEDGER_CLIENT, 'Client account'),
+        (LEDGER_OFFICE, 'Office account'),
+    )
+    DIRECTION_ADD = 'add'
+    DIRECTION_LESS = 'less'
+    DIRECTION_CHOICES = (
+        (DIRECTION_ADD, 'Add'),
+        (DIRECTION_LESS, 'Less'),
+    )
+
+    id = models.AutoField(primary_key=True)
+    completion_statement = models.ForeignKey(
+        CompletionStatement, on_delete=models.CASCADE,
+        related_name='scheduled_payments')
+    payee_name = models.CharField(max_length=255)
+    description = models.CharField(max_length=500, blank=True)
+    reference = models.CharField(max_length=255, blank=True)
+    direction = models.CharField(max_length=8, choices=DIRECTION_CHOICES)
+    ledger_account = models.CharField(
+        max_length=1, choices=LEDGER_ACCOUNT_CHOICES, default=LEDGER_CLIENT)
+    projected_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    actual_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    payment_date = models.DateField(null=True, blank=True)
+    status = models.CharField(
+        max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    linked_slip = models.ForeignKey(
+        PmtsSlips, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='scheduled_payment_links')
+    source_kind = models.CharField(
+        max_length=16, choices=SOURCE_KIND_CHOICES, default=SOURCE_MANUAL)
+    source_id = models.PositiveIntegerField(null=True, blank=True)
+    sort_order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['sort_order', 'id']
+        unique_together = ('completion_statement', 'source_kind', 'source_id')
+
+    def __str__(self):
+        return f'{self.payee_name} - {self.projected_amount}'

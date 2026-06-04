@@ -4,8 +4,8 @@
         Net {% if item.running_balance < 0 %}-£{{ item.running_balance|intcomma|slice:"1:" }}{% else %}£{{ item.running_balance|intcomma }}{% endif %}
     </p>
     <p class="text-[9px] text-gray-300 mt-0.5 whitespace-nowrap">
-        C {% if item.running_client_balance < 0 %}-£{{ item.running_client_balance|intcomma|slice:"1:" }}{% else %}£{{ item.running_client_balance|intcomma }}{% endif %}
-        <span class="text-gray-200 mx-0.5">·</span>
         O {% if item.running_office_balance < 0 %}-£{{ item.running_office_balance|intcomma|slice:"1:" }}{% else %}£{{ item.running_office_balance|intcomma }}{% endif %}
+        <span class="text-gray-200 mx-0.5">·</span>
+        C {% if item.running_client_balance < 0 %}-£{{ item.running_client_balance|intcomma|slice:"1:" }}{% else %}£{{ item.running_client_balance|intcomma }}{% endif %}
     </p>
 </div>

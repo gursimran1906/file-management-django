@@ -158,7 +158,7 @@ class TempSlipsAdmin(admin.ModelAdmin):
 
 @admin.register(Invoices)
 class InvoicesAdmin(admin.ModelAdmin):
-    list_display = ['id', 'invoice_number', 'state', 'file_number', 'date', 'payable_by',
+    list_display = ['id', 'invoice_number', 'state', 'is_matter_final_invoice', 'file_number', 'date', 'payable_by',
                     'by_email', 'by_post', 'description', 'vat', 'total_due_left', 'created_by', 'timestamp']
 
 

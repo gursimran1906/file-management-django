@@ -132,4 +132,534 @@
   .nav-divider {
     @apply my-2 border-t border-gray-100;
   }
+
+  /* Bundle / estate / completion statement editor (migrated from bundle-tree.css) */
+  .bundle-edit-page {
+    @apply text-[#1b1b1b];
+  }
+
+  .bundle-edit-label,
+  .bundle-edit-section-label {
+    @apply block text-[0.6875rem] font-medium uppercase tracking-wide text-gray-400 mb-1.5;
+  }
+
+  .bundle-edit-title-input {
+    @apply block w-full max-w-md border-0 bg-transparent p-0 text-lg font-semibold leading-snug text-gray-900 focus:outline-none;
+  }
+
+  .bundle-edit-meta {
+    @apply mt-1 text-[0.8125rem] text-gray-500;
+  }
+
+  .bundle-linear-panel {
+    @apply rounded-lg border border-gray-200 bg-white px-4 py-3.5;
+  }
+
+  .bundle-linear-btn {
+    @apply inline-flex min-h-[1.875rem] items-center justify-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[0.8125rem] font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900;
+  }
+
+  .bundle-linear-btn-primary {
+    @apply border-gray-900 bg-gray-900 text-white hover:border-black hover:bg-black hover:text-white;
+  }
+
+  .bundle-linear-btn-ghost {
+    @apply border-transparent bg-transparent hover:border-transparent;
+  }
+
+  .bundle-linear-field {
+    @apply h-9 rounded-md border border-transparent bg-transparent px-2 text-[0.8125rem] text-gray-900 shadow-none hover:bg-gray-50 focus:border-gray-300 focus:bg-white focus:outline-none focus:ring-[3px] focus:ring-indigo-500/10;
+  }
+
+  .bundle-linear-select {
+    @apply h-[1.875rem] rounded-md border border-gray-200 bg-white py-0 pl-2 pr-7 text-xs text-gray-600;
+  }
+
+  .bundle-structure-panel {
+    @apply rounded-xl border border-gray-200 bg-gradient-to-b from-slate-50 to-white p-4;
+  }
+
+  .bundle-structure-panel h3 {
+    @apply mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500;
+  }
+
+  .bundle-structure-list,
+  .bundle-structure-list ul {
+    @apply m-0 list-none p-0;
+  }
+
+  .bundle-structure-section {
+    @apply inline-flex items-center gap-1.5 text-[0.8125rem] font-semibold text-blue-700;
+  }
+
+  .bundle-structure-section::before {
+    content: '▸';
+    @apply text-xs text-blue-300;
+  }
+
+  .bundle-structure-doc {
+    @apply text-[0.8125rem] text-gray-700;
+  }
+
+  .bundle-structure-doc-date {
+    @apply ml-1.5 text-xs text-gray-500;
+  }
+
+  .bundle-structure-doc-date::before {
+    content: '·';
+    @apply mr-1.5 text-gray-300;
+  }
+
+  .bundle-structure-empty {
+    @apply text-xs italic text-gray-400;
+  }
+
+  .bundle-tree-root {
+    @apply relative;
+  }
+
+  .bundle-tree-section {
+    @apply relative pb-5 pl-1;
+  }
+
+  .bundle-tree-section + .bundle-tree-section {
+    @apply mt-1;
+  }
+
+  .bundle-tree-node-section {
+    @apply mb-3 flex items-center gap-2.5;
+  }
+
+  .bundle-tree-badge {
+    @apply min-w-[2.75rem] shrink-0 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-center text-[0.625rem] font-bold uppercase tracking-wide text-blue-700;
+  }
+
+  .bundle-tree-node-doc .doc-index-label {
+    @apply min-w-[2.25rem] border-gray-300 bg-gray-100 text-gray-700;
+  }
+
+  .bundle-tree-doc-body {
+    @apply mb-2.5 rounded-xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm transition-[border-color,box-shadow] hover:border-gray-300 hover:shadow;
+  }
+
+  .bundle-doc-grid {
+    @apply grid items-center gap-x-2.5 gap-y-2;
+    grid-template-columns: auto auto minmax(0, 1fr) 10.75rem auto;
+  }
+
+  .bundle-doc-grid .document-description-input,
+  .bundle-doc-grid .document-date-input {
+    @apply h-9 min-w-0 border-gray-200 bg-gray-50 text-sm focus:border-blue-300 focus:bg-white;
+  }
+
+  .bundle-doc-grid .document-description-input {
+    @apply font-medium text-gray-900;
+  }
+
+  .bundle-doc-grid .document-date-input {
+    @apply text-[0.8125rem] text-gray-700;
+  }
+
+  .bundle-doc-meta {
+    @apply col-span-3 flex min-w-0 items-center gap-2 text-xs text-gray-500;
+    grid-column: 3 / -1;
+  }
+
+  .bundle-doc-pdf-tag {
+    @apply inline-flex shrink-0 items-center rounded bg-red-50 px-1.5 py-0.5 text-[0.625rem] font-bold uppercase tracking-wide text-red-700;
+  }
+
+  .bundle-doc-filename {
+    @apply min-w-0 truncate;
+  }
+
+  .bundle-doc-meta-sep {
+    @apply h-[3px] w-[3px] shrink-0 rounded-full bg-gray-300;
+  }
+
+  .bundle-doc-pages {
+    @apply shrink-0 text-gray-600;
+  }
+
+  .document-drag-handle {
+    @apply shrink-0 cursor-grab select-none text-sm leading-none text-gray-400 hover:text-blue-600;
+  }
+
+  .bundle-doc-display-name {
+    @apply truncate text-sm font-medium text-gray-900;
+  }
+
+  .bundle-doc-display-date {
+    @apply whitespace-nowrap text-[0.8125rem] text-gray-500;
+  }
+
+  .bundle-doc-actions {
+    @apply flex shrink-0 items-center justify-end gap-1.5;
+  }
+
+  .bundle-remove-btn,
+  .bundle-doc-delete {
+    @apply inline-flex h-6 w-6 items-center justify-center rounded p-0 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600;
+  }
+
+  .bundle-remove-btn svg,
+  .bundle-doc-delete svg {
+    @apply h-3.5 w-3.5;
+  }
+
+  .bundle-tree-section-card {
+    @apply rounded-[0.875rem] border border-gray-200 bg-neutral-50 p-4 pb-3;
+  }
+
+  .bundle-tree-section-card .section-header {
+    @apply mb-0;
+  }
+
+  .section-footer {
+    @apply ml-[1.35rem] mt-3 flex justify-start pl-6 pt-1;
+  }
+
+  .section-empty-state {
+    @apply flex flex-col items-center justify-center gap-3 rounded-[0.625rem] border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center;
+  }
+
+  .section-empty-text {
+    @apply m-0 text-sm text-gray-500;
+  }
+
+  .bundle-u-hidden {
+    display: none !important;
+  }
+
+  .document-placeholder {
+    @apply ml-0 rounded-[0.625rem] border border-dashed border-gray-300 bg-gray-50;
+  }
+
+  #bundle-upload-overlay {
+    @apply fixed inset-0 z-[9999] flex items-center justify-center bg-gray-900/45 p-4;
+  }
+
+  #bundle-upload-overlay.hidden {
+    display: none;
+  }
+
+  .bundle-upload-panel {
+    @apply flex min-w-[16rem] max-w-sm flex-col items-center gap-3 rounded-xl bg-white px-7 py-6 text-center shadow-xl;
+  }
+
+  .bundle-upload-spinner {
+    @apply h-8 w-8 animate-spin rounded-full border-[3px] border-gray-200 border-t-blue-600;
+  }
+
+  .bundle-upload-message {
+    @apply text-sm font-medium text-gray-900;
+  }
+
+  .bundle-upload-subtext {
+    @apply text-xs text-gray-500;
+  }
+
+  .bundle-doc-pages-loading,
+  .bundle-page-toggle-loading {
+    @apply text-gray-400;
+  }
+
+  .bundle-documents-load-banner {
+    @apply mt-3 flex flex-col gap-1.5 text-xs text-gray-500;
+  }
+
+  .bundle-inline-progress {
+    @apply h-[0.35rem] overflow-hidden rounded-full bg-gray-200;
+  }
+
+  .bundle-inline-progress-bar {
+    @apply h-full rounded-full bg-blue-600 transition-[width] duration-200;
+  }
+
+  .section-card:not(.bundle-section-manual-order) .document-drag-handle {
+    @apply pointer-events-none invisible;
+  }
+
+  .section-date-sort {
+    @apply min-w-[9rem];
+  }
+
+  .court-heading-field {
+    @apply min-h-8 rounded-md border border-transparent bg-transparent px-2 py-1.5 text-gray-900 shadow-none hover:bg-white/70 focus:border-gray-300 focus:bg-white focus:outline-none focus:ring-[3px] focus:ring-indigo-500/10;
+  }
+
+  .court-heading-row-right {
+    @apply justify-end;
+  }
+
+  .court-parties-stage {
+    @apply w-full;
+  }
+
+  .court-v-divider {
+    @apply my-1.5 w-full text-center text-[0.95rem] font-semibold uppercase tracking-wide;
+  }
+
+  .court-heading-rule {
+    @apply mb-4 border-0 border-t border-gray-400;
+  }
+
+  .court-heading-foot {
+    @apply flex flex-col items-center gap-2 px-0 py-3 pb-5;
+  }
+
+  .court-heading-foot .court-heading-field {
+    @apply max-w-2xl;
+  }
+
+  .court-heading-foot + .court-heading-rule {
+    @apply mb-5;
+  }
+
+  .court-footer-line {
+    @apply text-[0.8125rem] font-semibold normal-case;
+  }
+
+  #estate-account-app .estate-auto-textarea,
+  #completion-statement-app .estate-auto-textarea {
+    @apply min-h-9 resize-none overflow-hidden px-2 py-1.5 leading-snug;
+    field-sizing: content;
+  }
+
+  #estate-account-app .estate-lines-table,
+  #completion-statement-app .estate-lines-table {
+    @apply w-full border-collapse text-[0.8125rem] text-gray-900;
+  }
+
+  #estate-account-app .estate-lines-table th,
+  #completion-statement-app .estate-lines-table th {
+    @apply whitespace-nowrap border-b border-gray-200 px-2.5 py-2 text-left text-[0.6875rem] font-medium uppercase tracking-wide text-gray-500;
+  }
+
+  #estate-account-app .estate-lines-table-amount,
+  #completion-statement-app .estate-lines-table-amount {
+    @apply w-32 text-right;
+  }
+
+  #estate-account-app .estate-lines-table-actions,
+  #completion-statement-app .estate-lines-table-actions {
+    @apply w-44;
+  }
+
+  #estate-account-app .estate-lines-table td,
+  #completion-statement-app .estate-lines-table td {
+    @apply border-b border-gray-100 px-2.5 py-1.5 align-middle;
+  }
+
+  #estate-account-app .estate-lines-table tbody tr:last-child td,
+  #completion-statement-app .estate-lines-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  #estate-account-app .estate-lines-table .estate-empty-msg td,
+  #completion-statement-app .estate-lines-table .estate-empty-msg td {
+    @apply px-2.5 py-5 text-center text-xs text-gray-400;
+  }
+
+  #estate-account-app .estate-line-source,
+  #completion-statement-app .estate-line-source {
+    @apply w-24 whitespace-nowrap;
+  }
+
+  #estate-account-app .estate-line-date-cell,
+  #completion-statement-app .estate-line-date-cell {
+    @apply w-40;
+  }
+
+  #estate-account-app .estate-line-amount-cell,
+  #completion-statement-app .estate-line-amount-cell {
+    @apply w-32;
+  }
+
+  #estate-account-app .estate-line-actions-cell,
+  #completion-statement-app .estate-line-actions-cell {
+    @apply w-44 text-right;
+  }
+
+  #estate-account-app .estate-line-badge,
+  #completion-statement-app .estate-line-badge {
+    @apply inline-flex items-center justify-center whitespace-nowrap rounded px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide;
+  }
+
+  #estate-account-app .estate-line-badge--finance,
+  #completion-statement-app .estate-line-badge--finance {
+    @apply bg-blue-100 text-blue-700;
+  }
+
+  #estate-account-app .estate-line-badge--pink-slip,
+  #completion-statement-app .estate-line-badge--pink-slip {
+    @apply bg-pink-100 text-pink-700;
+  }
+
+  #estate-account-app .estate-line-badge--blue-slip,
+  #completion-statement-app .estate-line-badge--blue-slip {
+    @apply bg-sky-100 text-sky-700;
+  }
+
+  #estate-account-app .estate-line-section,
+  #completion-statement-app .estate-line-section,
+  #completion-statement-app .estate-line-direction {
+    @apply h-8 min-w-[6.5rem] text-xs;
+  }
+
+  #estate-account-app .estate-line-badge--manual,
+  #completion-statement-app .estate-line-badge--manual {
+    @apply bg-amber-100 text-amber-800;
+  }
+
+  #estate-account-app .estate-line-badge--empty,
+  #completion-statement-app .estate-line-badge--empty,
+  #estate-account-app .estate-line-action-empty,
+  #completion-statement-app .estate-line-action-empty {
+    @apply text-gray-400;
+  }
+
+  #estate-account-app .estate-lines-table .bundle-linear-field,
+  #completion-statement-app .estate-lines-table .bundle-linear-field {
+    @apply w-full min-w-0;
+  }
+
+  #estate-account-app .estate-line-date,
+  #completion-statement-app .estate-line-date,
+  #estate-account-app .estate-line-desc,
+  #completion-statement-app .estate-line-desc,
+  #estate-account-app .estate-line-amount,
+  #completion-statement-app .estate-line-amount,
+  #completion-statement-app .estate-line-add-amount,
+  #completion-statement-app .estate-line-less-amount {
+    @apply h-8;
+  }
+
+  #estate-account-app .estate-line-amount,
+  #completion-statement-app .estate-line-amount,
+  #completion-statement-app .estate-line-add-amount,
+  #completion-statement-app .estate-line-less-amount {
+    @apply text-right tabular-nums;
+  }
+
+  #estate-account-app .estate-line-actions,
+  #completion-statement-app .estate-line-actions {
+    @apply inline-flex items-center justify-end gap-2.5;
+  }
+
+  #estate-account-app .estate-line-action-label,
+  #completion-statement-app .estate-line-action-label {
+    @apply inline-flex items-center gap-1 whitespace-nowrap text-xs text-gray-500;
+  }
+
+  #estate-account-app .estate-line-delete-btn,
+  #completion-statement-app .estate-line-delete-btn {
+    @apply whitespace-nowrap text-xs text-red-600 hover:underline;
+  }
+
+  #estate-account-app .estate-line-action-label--muted,
+  #completion-statement-app .estate-line-action-label--muted {
+    @apply italic text-gray-400;
+  }
+
+  #estate-account-app .estate-lines-table-wrap,
+  #completion-statement-app .estate-lines-table-wrap {
+    @apply overflow-x-auto rounded-lg border border-gray-200 bg-white;
+  }
+
+  #estate-account-app .estate-details-panel summary,
+  #completion-statement-app .estate-details-panel summary {
+    @apply list-none;
+  }
+
+  #estate-account-app .estate-details-panel summary::-webkit-details-marker,
+  #completion-statement-app .estate-details-panel summary::-webkit-details-marker {
+    display: none;
+  }
+
+  #estate-account-app .estate-details-summary,
+  #completion-statement-app .estate-details-summary {
+    @apply flex cursor-pointer items-center justify-between gap-4 py-0.5;
+  }
+
+  #estate-account-app .estate-details-title,
+  #completion-statement-app .estate-details-title {
+    @apply text-sm font-medium text-gray-900;
+  }
+
+  #estate-account-app .estate-details-collapsed-summary,
+  #completion-statement-app .estate-details-collapsed-summary {
+    @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-right text-xs font-normal text-gray-500;
+  }
+
+  #estate-account-app .estate-details-panel[open] .estate-details-collapsed-summary,
+  #completion-statement-app .estate-details-panel[open] .estate-details-collapsed-summary {
+    display: none;
+  }
+
+  #estate-account-app .estate-signer-grid,
+  #completion-statement-app .estate-signer-grid {
+    @apply grid items-center gap-x-2 gap-y-1.5;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  }
+
+  #estate-account-app .estate-signer-grid .estate-auto-textarea,
+  #completion-statement-app .estate-signer-grid .estate-auto-textarea {
+    @apply min-h-9;
+  }
+
+  #completion-statement-app .estate-line-balance-cell {
+    @apply w-32 text-right text-[0.8125rem] font-semibold tabular-nums text-gray-500;
+  }
+
+  #completion-statement-app .cs-running-balance {
+    @apply inline-block min-w-[5rem];
+  }
+
+  #completion-statement-app .cs-line-readonly {
+    @apply block text-[0.8125rem] text-gray-900;
+  }
+
+  #completion-statement-app .cs-line-readonly--title {
+    @apply font-medium;
+  }
+
+  #completion-statement-app .cs-line-readonly--amount {
+    @apply text-right tabular-nums;
+  }
+
+  @media (max-width: 768px) {
+    .bundle-doc-grid {
+      grid-template-columns: auto auto minmax(0, 1fr);
+    }
+
+    .bundle-doc-grid .document-date-input,
+    .bundle-doc-grid .bundle-doc-display-date {
+      grid-column: 3;
+    }
+
+    .bundle-doc-grid .bundle-doc-actions {
+      grid-column: 1 / -1;
+      @apply justify-end;
+    }
+
+    .bundle-doc-meta {
+      grid-column: 1 / -1;
+    }
+
+    #estate-account-app .estate-lines-table-wrap,
+    #completion-statement-app .estate-lines-table-wrap {
+      @apply -mx-1;
+    }
+
+    #estate-account-app .estate-signer-grid,
+    #completion-statement-app .estate-signer-grid {
+      grid-template-columns: 1fr auto;
+    }
+
+    #estate-account-app .estate-signer-grid .estate-auto-textarea,
+    #completion-statement-app .estate-signer-grid .estate-auto-textarea {
+      grid-column: 1 / -1;
+    }
+  }
 }

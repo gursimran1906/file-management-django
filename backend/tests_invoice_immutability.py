@@ -84,6 +84,20 @@ class InvoiceImmutabilityTests(TestCase):
         self.assertEqual(
             Modifications.objects.filter(object_id=self.invoice.id).count(), 1)
 
+    def test_locked_invoice_matter_final_flag_can_be_toggled(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse('edit_invoice', args=[self.invoice.id]),
+            {
+                'payable_by': 'Client',
+                'description': 'Probate costs',
+                'is_matter_final_invoice': 'on',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.invoice.refresh_from_db()
+        self.assertTrue(self.invoice.is_matter_final_invoice)
+
     def test_final_invoice_financial_post_ignored(self):
         slip = PmtsSlips.objects.create(
             file_number=self.matter,

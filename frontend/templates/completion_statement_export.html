@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <style>
+        @page { size: A4; margin: 2cm 1.8cm 2.2cm 1.8cm; }
+        body { font-family: "Times New Roman", Times, serif; font-size: 11pt; color: #000; line-height: 1.35; }
+        .draft-watermark { position: fixed; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 72pt; color: rgba(180, 180, 180, 0.35); font-weight: bold; z-index: -1; }
+        .header-block { text-align: center; margin-bottom: 0.8cm; }
+        .header-block h1 { font-size: 16pt; margin: 0 0 0.2cm; text-decoration: underline; }
+        .section-title { font-weight: bold; margin-top: 0.6cm; margin-bottom: 0.2cm; border-bottom: 1px solid #000; }
+        table.lines { width: 100%; border-collapse: collapse; margin-top: 0.3cm; }
+        table.lines th, table.lines td { padding: 0.15cm 0.2cm; vertical-align: top; }
+        table.lines th { border-bottom: 1px solid #000; text-align: left; }
+        table.lines td.amount { text-align: right; width: 2.5cm; }
+        .outcome { margin-top: 0.5cm; font-weight: bold; font-size: 12pt; }
+    </style>
+</head>
+<body>
+    {% if data.metadata.status == 'draft' %}<div class="draft-watermark">DRAFT</div>{% endif %}
+    <div class="header-block">
+        <h1>Completion Statement</h1>
+        <p>{{ data.metadata.transaction_type_display }}{% if data.metadata.is_leasehold %} · Leasehold{% endif %}</p>
+    </div>
+    <p><strong>Client:</strong> {{ data.metadata.client_names }} · <strong>File:</strong> {{ data.metadata.file_number }}</p>
+    {% if data.metadata.property_address %}<p><strong>Property:</strong> {{ data.metadata.property_address }}</p>{% endif %}
+
+    <p class="section-title">Main statement</p>
+    <table class="lines">
+        <thead>
+            <tr><th>Description</th><th class="amount">Money in</th><th class="amount">Money out</th><th class="amount">Balance</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{ data.completion_monies_line.description }}</td>
+                <td class="amount">{% if data.completion_monies_line.direction == 'add' %}{{ data.completion_monies_line.amount_display }}{% endif %}</td>
+                <td class="amount">{% if data.completion_monies_line.direction == 'less' %}{{ data.completion_monies_line.amount_display }}{% endif %}</td>
+                <td class="amount">{{ data.completion_monies_line.running_balance_display }}</td>
+            </tr>
+            {% for line in data.lines %}{% if not line.is_excluded %}
+            <tr>
+                <td>{{ line.description }}</td>
+                <td class="amount">{% if line.direction == 'add' %}{{ line.amount_display }}{% endif %}</td>
+                <td class="amount">{% if line.direction == 'less' %}{{ line.amount_display }}{% endif %}</td>
+                <td class="amount">{{ line.running_balance_display }}</td>
+            </tr>
+            {% endif %}{% endfor %}
+        </tbody>
+    </table>
+    <p>Money in total: {{ data.totals.money_in_total_display|default:data.totals.add_total_display }}</p>
+    <p>Money out total: {{ data.totals.money_out_total_display|default:data.totals.less_total_display }}</p>
+    <p class="outcome">{{ data.totals.outcome_label }}</p>
+
+    {% if data.mortgage_redemption %}
+    <p class="section-title">Mortgage redemption</p>
+    <p>Lender: {{ data.mortgage_redemption.lender_name }} · Days: {{ data.mortgage_redemption.calculated_days }} · Total: {{ data.mortgage_redemption.total_amount_display }}</p>
+    {% endif %}
+
+    {% if data.apportionments %}
+    <p class="section-title">Apportionments</p>
+    <table class="lines"><thead><tr><th>Description</th><th class="amount">Amount</th></tr></thead><tbody>
+    {% for row in data.apportionments %}<tr><td>{{ row.description }}</td><td class="amount">{{ row.calculated_amount_display }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% endif %}
+
+    {% if data.proceeds_distribution.rows %}
+    <p class="section-title">Proceeds distribution</p>
+    <table class="lines"><thead><tr><th>Payee</th><th class="amount">Amount</th></tr></thead><tbody>
+    {% for row in data.proceeds_distribution.rows %}<tr><td>{{ row.payee_name }}</td><td class="amount">{{ row.display_amount_display }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% endif %}
+
+    {% if data.schedule %}
+    <p class="section-title">Schedule of payments</p>
+    <table class="lines"><thead><tr><th>Payee</th><th>Account</th><th class="amount">Projected</th><th class="amount">Actual</th><th>Status</th></tr></thead><tbody>
+    {% for row in data.schedule %}
+    <tr>
+        <td>{{ row.payee_name }}</td>
+        <td>{{ row.ledger_account_display }}</td>
+        <td class="amount">{{ row.projected_amount_display }}</td>
+        <td class="amount">{{ row.actual_amount_display|default:"—" }}</td>
+        <td>{{ row.status_display }}</td>
+    </tr>
+    {% endfor %}
+    </tbody></table>
+    {% endif %}
+</body>
+</html>

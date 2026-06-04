@@ -18,7 +18,12 @@
     <div class="logoDiv">
       <img src="{% static 'images/anp-logo.svg' %}" alt="ANP Logo" />
     </div>
+    {{matter_final_heading}}
+    {% if matter_final_heading %}
+    <h2 class="docSubtitle">Credited Invoice</h2>
+    {% else %}
     <h1 class="docTitle">Credited Invoice</h1>
+    {% endif %}
     <div class="overflow-auto">
       <table>
         <thead>

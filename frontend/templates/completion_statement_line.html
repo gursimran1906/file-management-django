@@ -1,0 +1,88 @@
+<tr class="estate-line-row{% if line.is_excluded %} estate-line-row--excluded{% endif %}{% if pinned %} estate-line-row--pinned{% endif %}"
+    data-line-kind="{{ line.line_kind }}"
+    {% if line.id %}data-line-id="{{ line.id }}"{% endif %}
+    {% if line.source_type %}data-source-type="{{ line.source_type }}" data-source-id="{{ line.source_id }}"{% endif %}
+    {% if pinned %}data-pinned="true"{% endif %}>
+    <td class="estate-line-source">
+        {% if pinned %}
+        <span class="estate-line-badge estate-line-badge--pinned">Anchor</span>
+        {% elif line.from_finances %}
+        <span class="estate-line-badge estate-line-badge--finance{% if line.source_type == 'slip' %}{% if line.is_money_out %} estate-line-badge--pink-slip{% else %} estate-line-badge--blue-slip{% endif %}{% endif %}">{{ line.source_label|default:"Finances" }}</span>
+        {% elif line.line_kind == 'manual' %}
+        <span class="estate-line-badge estate-line-badge--manual">{% if line.is_pending %}Pending{% else %}Manual{% endif %}</span>
+        {% else %}
+        <span class="estate-line-badge estate-line-badge--empty" aria-hidden="true">—</span>
+        {% endif %}
+    </td>
+    <td class="estate-line-date-cell">
+        {% if pinned %}
+        <span class="cs-line-readonly">{{ line.date|default:"—" }}</span>
+        {% else %}
+        <input type="date" class="estate-line-date bundle-linear-field w-full" data-line-field="date"
+               value="{{ line.date_iso|default:'' }}" data-original-value="{{ line.date_iso|default:'' }}"
+               {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        {% endif %}
+    </td>
+    <td class="estate-line-desc-cell">
+        {% if pinned %}
+        <span class="cs-line-readonly cs-line-readonly--title">{{ line.description }}</span>
+        {% else %}
+        <input type="text" class="estate-line-desc bundle-linear-field w-full" data-line-field="description"
+               value="{{ line.description|default:'' }}" data-original-value="{{ line.description|default:'' }}"
+               placeholder="Description" {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        {% endif %}
+    </td>
+    <td class="estate-line-amount-cell">
+        {% if pinned %}
+        <span class="cs-line-readonly cs-line-readonly--amount">{% if line.direction == 'add' %}{{ line.amount_display }}{% endif %}</span>
+        {% else %}
+        <input type="number" step="0.01" class="estate-line-add-amount estate-line-amount bundle-linear-field w-full"
+               data-line-field="add_amount" data-direction="add"
+               value="{% if line.direction == 'add' %}{{ line.amount|default:'' }}{% endif %}"
+               placeholder="0.00" {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        {% endif %}
+    </td>
+    <td class="estate-line-amount-cell">
+        {% if pinned %}
+        <span class="cs-line-readonly cs-line-readonly--amount">{% if line.direction == 'less' %}{{ line.amount_display }}{% endif %}</span>
+        {% else %}
+        <input type="number" step="0.01" class="estate-line-less-amount estate-line-amount bundle-linear-field w-full"
+               data-line-field="less_amount" data-direction="less"
+               value="{% if line.direction == 'less' %}{{ line.amount|default:'' }}{% endif %}"
+               placeholder="0.00" {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        {% endif %}
+    </td>
+    <td class="estate-line-balance-cell">
+        <span class="cs-running-balance">{{ line.running_balance_display|default:"" }}</span>
+    </td>
+    <td class="estate-line-actions-cell">
+        {% if line.from_finances and statement_data.metadata.is_editable %}
+        <div class="estate-line-actions">
+            <select class="estate-line-direction bundle-linear-field" data-line-field="direction"
+                    data-original-value="{{ line.direction }}" aria-label="Direction">
+                <option value="add" {% if line.direction == 'add' %}selected{% endif %}>Add</option>
+                <option value="less" {% if line.direction == 'less' %}selected{% endif %}>Less</option>
+            </select>
+            <label class="estate-line-action-label">
+                <input type="checkbox" data-line-field="is_excluded" {% if line.is_excluded %}checked{% endif %}> Exclude
+            </label>
+        </div>
+        {% elif line.from_finances %}
+        <span class="estate-line-action-label estate-line-action-label--muted">{{ line.direction|title }}</span>
+        {% if line.is_excluded %}
+        <span class="estate-line-action-label estate-line-action-label--muted">· Excluded</span>
+        {% endif %}
+        {% elif line.line_kind == 'manual' and statement_data.metadata.is_editable %}
+        <div class="estate-line-actions">
+            <label class="estate-line-action-label">
+                <input type="checkbox" data-line-field="is_pending" {% if line.is_pending %}checked{% endif %}> Pending
+            </label>
+            <button type="button" class="estate-line-delete-btn" data-delete-line>Delete</button>
+        </div>
+        {% elif pinned %}
+        <span class="estate-line-action-label estate-line-action-label--muted">{{ line.direction|title }}</span>
+        {% else %}
+        <span class="estate-line-action-empty" aria-hidden="true">—</span>
+        {% endif %}
+    </td>
+</tr>

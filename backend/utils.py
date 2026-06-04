@@ -1,9 +1,10 @@
+import ast
+import json
 from .models import MatterEmails, WIP
 from users.models import CustomUser
 from django.db import connection
 from django.contrib.contenttypes.models import ContentType
 from .models import Modifications
-import json
 import os
 import re
 from datetime import datetime
@@ -118,6 +119,31 @@ def parse_json_field(value):
     return value
 
 
+def parse_invoice_list_field(value):
+    """Normalise our_costs / our_costs_desc JSONField values to a list."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        return []
+    if isinstance(value, str):
+        if not value or value == '{}':
+            return []
+        for parser in (json.loads, ast.literal_eval):
+            try:
+                parsed = parser(value)
+                break
+            except (ValueError, SyntaxError, json.JSONDecodeError):
+                parsed = None
+        if isinstance(parsed, list):
+            return parsed
+        return []
+    if isinstance(value, (tuple, set)):
+        return list(value)
+    if value in (None, ''):
+        return []
+    return []
+
+
 def _invoice_label(invoice):
     if invoice is None:
         return None
@@ -154,6 +180,17 @@ def get_pmt_slip_allocated_total(slip):
 
 def _invoice_is_final(invoice):
     return invoice is not None and invoice.state == 'F'
+
+
+def invoice_is_matter_final(invoice):
+    return bool(invoice and getattr(invoice, 'is_matter_final_invoice', False))
+
+
+def invoice_matter_final_pdf_heading(invoice):
+    """Centered page heading for printed/downloaded invoices when marked as matter final."""
+    if not invoice_is_matter_final(invoice):
+        return ''
+    return '<h1 class="docTitle">Final Invoice</h1>'
 
 
 def _invoice_usage_row(invoice, invoice_id, amount):

@@ -1,0 +1,32 @@
+{% load static %}
+
+<div class="flex flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-100 p-1 mb-4" role="tablist">
+    <button type="button" class="home-task-tab is-active rounded-md px-3 py-1.5 text-xs font-medium transition-colors" data-cs-tab="main" role="tab" aria-selected="true">Main statement</button>
+    {% if statement_data.metadata.transaction_type == 'sale' %}
+    <button type="button" class="home-task-tab rounded-md px-3 py-1.5 text-xs font-medium transition-colors" data-cs-tab="mortgage" role="tab">Mortgage redemption</button>
+    <button type="button" class="home-task-tab rounded-md px-3 py-1.5 text-xs font-medium transition-colors" data-cs-tab="distribution" role="tab">Proceeds distribution</button>
+    {% endif %}
+    <button type="button" class="home-task-tab rounded-md px-3 py-1.5 text-xs font-medium transition-colors" data-cs-tab="apportionment" role="tab">Apportionments</button>
+    <button type="button" class="home-task-tab rounded-md px-3 py-1.5 text-xs font-medium transition-colors" data-cs-tab="schedule" role="tab">Schedule of payments</button>
+</div>
+
+<div class="cs-tab-panel" data-cs-panel="main">
+    {% include 'includes/completion_statement_main_panel.html' %}
+</div>
+
+{% if statement_data.metadata.transaction_type == 'sale' %}
+<div class="cs-tab-panel hidden" data-cs-panel="mortgage">
+    <div class="bundle-linear-panel">{% include 'includes/completion_statement_mortgage.html' %}</div>
+</div>
+<div class="cs-tab-panel hidden" data-cs-panel="distribution">
+    <div class="bundle-linear-panel">{% include 'includes/completion_statement_distribution.html' %}</div>
+</div>
+{% endif %}
+
+<div class="cs-tab-panel hidden" data-cs-panel="apportionment">
+    <div class="bundle-linear-panel">{% include 'includes/completion_statement_apportionments.html' %}</div>
+</div>
+
+<div class="cs-tab-panel hidden" data-cs-panel="schedule">
+    <div class="bundle-linear-panel">{% include 'includes/completion_statement_schedule.html' %}</div>
+</div>

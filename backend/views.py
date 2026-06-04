@@ -21,6 +21,7 @@ from .utils import (
     validate_pmt_slip_amount_change,
     validate_green_slip_amount_change,
     validate_green_slip_file_change,
+    invoice_matter_final_pdf_heading,
 )
 from .audit import (
     audit_client_key_document_formset,
@@ -4443,6 +4444,7 @@ def finance_view(request, file_number):
                 Decimal('0') if detail['is_account_credit']
                 else detail['balance_due']
             ),
+            'is_matter_final_invoice': invoice.is_matter_final_invoice,
         }
 
         invoices_data.append(data)
@@ -4854,26 +4856,25 @@ def edit_credit_note(request, id):
 @login_required
 def add_pink_slip(request, file_number):
     if request.method == 'POST':
+        request_post_copy = request.POST.copy()
         matter = WIP.objects.filter(file_number=file_number).first()
         if not matter:
             messages.error(request, 'Matter not found.')
             return redirect('finance_view', file_number=file_number)
-        try:
-            from .pmt_slip_service import create_pmt_slip
-            create_pmt_slip(
-                matter=matter,
-                user=request.user,
-                is_money_out=True,
-                ledger_account=request.POST.get('ledger_account', 'C'),
-                amount=request.POST.get('amount'),
-                description=request.POST.get('description', ''),
-                pmt_person=request.POST.get('pmt_person', ''),
-                date=request.POST.get('date'),
-                mode_of_pmt=request.POST.get('mode_of_pmt', 'BT'),
-            )
+        request_post_copy['file_number'] = matter.id
+        request_post_copy['is_money_out'] = True
+        request_post_copy['balance_left'] = request_post_copy['amount']
+        request_post_copy['created_by'] = request.user
+        form = PmtsForm(request_post_copy)
+        if form.is_valid():
+            form.save()
             messages.success(request, 'Pink Slip successfully added.')
-        except ValueError as exc:
-            messages.error(request, f'Form is not valid: {exc}')
+            return redirect('finance_view', file_number=file_number)
+        else:
+            error_message = 'Form is not valid. Please correct the errors:'
+            for field, errors in form.errors.items():
+                error_message += f'\n{field}: {", ".join(errors)}'
+            messages.error(request, error_message)
     else:
         messages.error(request, 'Invalid request method.')
 
@@ -4883,26 +4884,25 @@ def add_pink_slip(request, file_number):
 @login_required
 def add_blue_slip(request, file_number):
     if request.method == 'POST':
+        request_post_copy = request.POST.copy()
         matter = WIP.objects.filter(file_number=file_number).first()
         if not matter:
             messages.error(request, 'Matter not found.')
             return redirect('finance_view', file_number=file_number)
-        try:
-            from .pmt_slip_service import create_pmt_slip
-            create_pmt_slip(
-                matter=matter,
-                user=request.user,
-                is_money_out=False,
-                ledger_account=request.POST.get('ledger_account', 'C'),
-                amount=request.POST.get('amount'),
-                description=request.POST.get('description', ''),
-                pmt_person=request.POST.get('pmt_person', ''),
-                date=request.POST.get('date'),
-                mode_of_pmt=request.POST.get('mode_of_pmt', 'BT'),
-            )
+        request_post_copy['file_number'] = matter.id
+        request_post_copy['is_money_out'] = False
+        request_post_copy['balance_left'] = request_post_copy['amount']
+        request_post_copy['created_by'] = request.user
+        form = PmtsForm(request_post_copy)
+        if form.is_valid():
+            form.save()
             messages.success(request, 'Blue Slip successfully added.')
-        except ValueError as exc:
-            messages.error(request, f'Form is not valid: {exc}')
+            return redirect('finance_view', file_number=file_number)
+        else:
+            error_message = 'Form is not valid. Please correct the errors:'
+            for field, errors in form.errors.items():
+                error_message += f'\n{field}: {", ".join(errors)}'
+            messages.error(request, error_message)
     else:
         messages.error(request, 'Invalid request method.')
 
@@ -5189,6 +5189,9 @@ def add_invoice(request, file_number):
             request_post_copy['by_email'] = True
         if 'by_post' in request_post_copy:
             request_post_copy['by_post'] = True
+        request_post_copy['is_matter_final_invoice'] = (
+            'is_matter_final_invoice' in request.POST
+        )
 
         request_post_copy['our_costs_desc'] = json.dumps(
             request.POST.getlist('our_costs_desc[]'))
@@ -5660,6 +5663,20 @@ def download_invoice(request, id):
                 margin: 0;
                 padding: 0;
             }
+            .docTitle {
+                text-align: center;
+                font-size: 28px;
+                font-weight: bold;
+                margin-top: 4px;
+                margin-bottom: 8px;
+            }
+            .docSubtitle {
+                text-align: center;
+                font-size: 20px;
+                font-weight: bold;
+                margin-top: 0;
+                margin-bottom: 8px;
+            }
             .overflow-auto {
                 padding-top: 0;
             }
@@ -5704,9 +5721,12 @@ def download_invoice(request, id):
             
             """
 
+    matter_final_heading = invoice_matter_final_pdf_heading(invoice)
+
     html = render_to_string('download_templates/invoice.html', {'invoice_number': invoice.invoice_number,
                                                                 'style': style,
                                                                 'state': mark_safe(state),
+                                                                'matter_final_heading': mark_safe(matter_final_heading),
                                                                 'file_details_display': mark_safe(file_details_display),
                                                                 'desc_and_cost_display': mark_safe(desc_and_cost_display),
                                                                 'pink_slips_display': mark_safe(pink_slips_display),
@@ -6032,6 +6052,13 @@ def download_credited_invoice(request, id):
                 margin-top: 4px;
                 margin-bottom: 8px;
             }
+            .docSubtitle {
+                text-align: center;
+                font-size: 20px;
+                font-weight: bold;
+                margin-top: 0;
+                margin-bottom: 8px;
+            }
             .overflow-auto {
                 padding-top: 0;
             }
@@ -6071,10 +6098,13 @@ def download_credited_invoice(request, id):
             }
             """
 
+    matter_final_heading = invoice_matter_final_pdf_heading(invoice)
+
     html = render_to_string('download_templates/credited_invoice.html', {
         'invoice_number': invoice.invoice_number,
         'style': style,
         'state': mark_safe(state),
+        'matter_final_heading': mark_safe(matter_final_heading),
         'file_details_display': mark_safe(file_details_display),
         'desc_and_cost_display': mark_safe(desc_and_cost_display),
         'pink_slips_display': mark_safe(pink_slips_display),
@@ -6582,9 +6612,18 @@ def edit_invoice(request, id):
             invoice.description = request.POST.get('description', invoice.description)
             invoice.by_email = 'by_email' in request.POST
             invoice.by_post = 'by_post' in request.POST
+            invoice.is_matter_final_invoice = (
+                'is_matter_final_invoice' in request.POST
+            )
 
             changed_fields = [
-                field for field in ('payable_by', 'description', 'by_email', 'by_post')
+                field for field in (
+                    'payable_by',
+                    'description',
+                    'by_email',
+                    'by_post',
+                    'is_matter_final_invoice',
+                )
                 if getattr(invoice, field) != getattr(duplicate_obj, field)
             ]
 
@@ -6621,6 +6660,7 @@ def edit_invoice(request, id):
         invoice.payable_by = request.POST['payable_by']
         invoice.by_email = 'by_email' in request.POST
         invoice.by_post = 'by_post' in request.POST
+        invoice.is_matter_final_invoice = 'is_matter_final_invoice' in request.POST
 
         desc = request.POST['description']
         invoice.description = desc
@@ -6977,6 +7017,7 @@ def edit_invoice(request, id):
             'payable_by': invoice.payable_by,
             'by_email': invoice.by_email,
             'by_post': invoice.by_post,
+            'is_matter_final_invoice': invoice.is_matter_final_invoice,
             'description': invoice.description,
             'our_costs_rows': our_costs_rows,
             'vat_mode': invoice.vat_calculation_mode or 'auto',

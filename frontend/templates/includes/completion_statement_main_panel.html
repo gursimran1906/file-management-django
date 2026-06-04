@@ -1,0 +1,116 @@
+<details class="bundle-linear-panel estate-details-panel" open>
+    <summary class="estate-details-summary">
+        <span class="estate-details-title">Cover &amp; dates</span>
+        <span class="estate-details-collapsed-summary" id="cs-summary-header">{{ statement_data.summaries.header }}</span>
+    </summary>
+    <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label class="form-label">Transaction type
+            <select class="bundle-linear-field w-full mt-1" data-header-field="transaction_type"
+                    {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+                <option value="sale" {% if statement_data.metadata.transaction_type == 'sale' %}selected{% endif %}>Sale</option>
+                <option value="purchase" {% if statement_data.metadata.transaction_type == 'purchase' %}selected{% endif %}>Purchase</option>
+            </select>
+        </label>
+        <label class="form-label">Leasehold
+            <select class="bundle-linear-field w-full mt-1" data-header-field="is_leasehold"
+                    {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+                <option value="false" {% if not statement_data.metadata.is_leasehold %}selected{% endif %}>No</option>
+                <option value="true" {% if statement_data.metadata.is_leasehold %}selected{% endif %}>Yes</option>
+            </select>
+        </label>
+        <label class="form-label">Completion monies
+            <input type="number" step="0.01" class="bundle-linear-field w-full mt-1 text-right tabular-nums" data-header-field="completion_monies"
+                   value="{{ statement_data.metadata.completion_monies }}"
+                   {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        </label>
+        <label class="form-label">Completion date
+            <input type="date" class="bundle-linear-field w-full mt-1" data-header-field="completion_date"
+                   value="{{ statement_data.metadata.completion_date }}"
+                   {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        </label>
+        <label class="form-label">Contract date
+            <input type="date" class="bundle-linear-field w-full mt-1" data-header-field="contract_date"
+                   value="{{ statement_data.metadata.contract_date }}"
+                   {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        </label>
+        <label class="form-label md:col-span-2">Property address
+            <textarea class="estate-auto-textarea bundle-linear-field w-full mt-1" data-header-field="property_address"
+                      {% if not statement_data.metadata.is_editable %}disabled{% endif %}>{{ statement_data.metadata.property_address }}</textarea>
+        </label>
+    </div>
+</details>
+
+<details class="bundle-linear-panel estate-details-panel" open>
+    <summary class="estate-details-summary">
+        <span class="estate-details-title">Statement lines</span>
+        <span class="estate-details-collapsed-summary" id="cs-summary-lines">{{ statement_data.summaries.lines }}</span>
+    </summary>
+    <p class="text-xs text-gray-500 mt-3 mb-2">Completion monies is the anchor. Money in and money out lines must balance to zero.</p>
+    <div class="estate-lines-table-wrap mt-2 overflow-x-auto">
+        <table class="estate-lines-table w-full">
+            <thead>
+                <tr>
+                    <th scope="col">Source</th>
+                    <th scope="col">Date</th>
+                    <th scope="col">Description</th>
+                    <th scope="col" class="estate-lines-table-amount">Money in</th>
+                    <th scope="col" class="estate-lines-table-amount">Money out</th>
+                    <th scope="col" class="estate-lines-table-amount">Balance</th>
+                    <th scope="col" class="estate-lines-table-actions"></th>
+                </tr>
+            </thead>
+            <tbody id="cs-lines-list">
+                {% include 'completion_statement_line.html' with line=statement_data.completion_monies_line pinned=True %}
+                {% for line in statement_data.lines %}
+                {% include 'completion_statement_line.html' with line=line %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if statement_data.metadata.is_editable %}
+    <div class="flex flex-wrap gap-2 mt-3">
+        <button type="button" class="bundle-linear-btn text-xs" data-add-line="add">Add money in line</button>
+        <button type="button" class="bundle-linear-btn text-xs" data-add-line="less">Add money out line</button>
+    </div>
+    {% endif %}
+</details>
+
+<div class="bundle-linear-panel" id="cs-totals-panel">
+    <p class="bundle-edit-section-label mb-3">Totals</p>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5">
+            <span class="block text-[0.6875rem] font-medium uppercase tracking-wide text-gray-400 mb-1">Money in total</span>
+            <strong class="text-[0.9375rem] font-semibold tabular-nums text-gray-900" id="cs-add-total">{{ statement_data.totals.money_in_total_display|default:statement_data.totals.add_total_display }}</strong>
+        </div>
+        <div class="rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5">
+            <span class="block text-[0.6875rem] font-medium uppercase tracking-wide text-gray-400 mb-1">Money out total</span>
+            <strong class="text-[0.9375rem] font-semibold tabular-nums text-gray-900" id="cs-less-total">{{ statement_data.totals.money_out_total_display|default:statement_data.totals.less_total_display }}</strong>
+        </div>
+        <div class="rounded-md border border-gray-200 bg-white px-3 py-2.5">
+            <span class="block text-[0.6875rem] font-medium uppercase tracking-wide text-gray-400 mb-1">Running balance</span>
+            <strong class="text-[0.9375rem] font-semibold tabular-nums text-gray-900" id="cs-balance-total">{{ statement_data.totals.balance_display }}</strong>
+        </div>
+    </div>
+</div>
+
+<details class="bundle-linear-panel estate-details-panel">
+    <summary class="estate-details-summary">
+        <span class="estate-details-title">Prepared by &amp; notes</span>
+        <span class="estate-details-collapsed-summary" id="cs-summary-prepared">{{ statement_data.metadata.prepared_by_name|default:"Not set" }}</span>
+    </summary>
+    <div class="mt-4 grid grid-cols-1 gap-3">
+        <label class="form-label">Prepared by name
+            <input type="text" class="bundle-linear-field w-full mt-1" data-header-field="prepared_by_name"
+                   value="{{ statement_data.metadata.prepared_by_name }}"
+                   {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        </label>
+        <label class="form-label">Prepared by address
+            <textarea class="estate-auto-textarea bundle-linear-field w-full mt-1" data-header-field="prepared_by_address"
+                      {% if not statement_data.metadata.is_editable %}disabled{% endif %}>{{ statement_data.metadata.prepared_by_address }}</textarea>
+        </label>
+        <label class="form-label">Notes
+            <textarea class="estate-auto-textarea bundle-linear-field w-full mt-1" data-header-field="notes"
+                      {% if not statement_data.metadata.is_editable %}disabled{% endif %}>{{ statement_data.metadata.notes }}</textarea>
+        </label>
+    </div>
+</details>

@@ -7,8 +7,11 @@
   <div class="div-container py-3">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-900">
-          {% if is_final_locked %}Final invoice #{{ invoice_number }}{% else %}Edit invoice{% endif %}
+        <h1 class="text-2xl font-semibold text-gray-900 flex flex-wrap items-center gap-2">
+          <span>{% if is_final_locked %}Final invoice #{{ invoice_number }}{% else %}Edit invoice{% endif %}</span>
+          {% if is_matter_final_invoice %}
+          <span class="inline-flex items-center rounded bg-violet-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-violet-800">Final invoice for matter</span>
+          {% endif %}
         </h1>
         <p class="text-sm text-gray-600 mt-1">
           {% if is_final_locked %}
@@ -61,13 +64,21 @@
         <label class="form-label">Payable by</label>
         <input required type="text" class="form-input" name="payable_by" placeholder="eg. Client" value="{{ payable_by }}">
       </div>
-      <div class='md:col-span-1 flex items-center gap-4'>
-        <label class="mt-4 form-label">By email</label>
-        <input class="mt-4 ml-2 form-check-input" type="checkbox" name="by_email" {% if by_email == True %}checked{% endif %}>
-
-        <label class="mt-4 form-label">By post</label>
-        <input class="mt-4 ml-2 form-check-input" type="checkbox" name="by_post"{% if by_post == True %}checked{% endif %}>
+      <div class='md:col-span-2 flex flex-wrap items-center gap-x-6 gap-y-2'>
+        <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input class="form-check-input" type="checkbox" name="by_email" {% if by_email == True %}checked{% endif %}>
+          <span>By email</span>
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input class="form-check-input" type="checkbox" name="by_post" {% if by_post == True %}checked{% endif %}>
+          <span>By post</span>
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input class="form-check-input" type="checkbox" name="is_matter_final_invoice" {% if is_matter_final_invoice %}checked{% endif %}>
+          <span>Final invoice for matter</span>
+        </label>
       </div>
+      <p class="text-xs text-gray-500 md:col-span-2 -mt-2">When ticked, a centred &ldquo;Final Invoice&rdquo; heading appears on the downloaded PDF.</p>
       <div class="col-span-2">
         <label class="form-label">Description</label>
         <textarea required class="form-input" name="description">{{ description }}</textarea>

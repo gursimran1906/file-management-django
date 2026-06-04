@@ -1,0 +1,46 @@
+<p class="text-xs text-gray-500 mb-3">Split net sale proceeds across payees. Draft shows projected amounts; final shows received amounts from slips.</p>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+    <div class="rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5">
+        <span class="block text-[0.6875rem] font-medium uppercase tracking-wide text-gray-400 mb-1">Pool to distribute</span>
+        <strong class="text-sm font-semibold tabular-nums" id="cs-dist-pool">{{ statement_data.proceeds_distribution.pool_total_display|default:'£0.00' }}</strong>
+    </div>
+</div>
+<div class="estate-lines-table-wrap overflow-x-auto">
+    <table class="estate-lines-table w-full text-sm">
+        <thead>
+            <tr>
+                <th>Payee</th>
+                <th>Share</th>
+                <th>Projected</th>
+                <th id="cs-dist-actual-header">{% if statement_data.metadata.status == 'finalised' %}Received{% else %}Will receive{% endif %}</th>
+                <th>Penny adj.</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="cs-distribution-list">
+            {% for row in statement_data.proceeds_distribution.rows %}
+            <tr class="estate-line-row" data-distribution-id="{{ row.id }}">
+                <td><input type="text" class="bundle-linear-field text-xs w-full" data-dist-field="payee_name" value="{{ row.payee_name }}" {% if not statement_data.metadata.is_editable %}disabled{% endif %}></td>
+                <td>
+                    <select class="bundle-linear-field text-xs" data-dist-field="share_mode" {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+                        <option value="fraction" {% if row.share_mode == 'fraction' %}selected{% endif %}>Fraction</option>
+                        <option value="percent" {% if row.share_mode == 'percent' %}selected{% endif %}>Percent</option>
+                        <option value="fixed" {% if row.share_mode == 'fixed' %}selected{% endif %}>Fixed</option>
+                        <option value="remainder" {% if row.share_mode == 'remainder' %}selected{% endif %}>Remainder</option>
+                    </select>
+                    <input type="text" class="bundle-linear-field text-xs w-16 mt-1" data-dist-field="share_value" value="{{ row.share_value }}" placeholder="1/2" {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+                </td>
+                <td class="tabular-nums">{{ row.projected_amount_display }}</td>
+                <td class="tabular-nums">{{ row.display_amount_display }}</td>
+                <td class="tabular-nums text-xs">{{ row.penny_adjustment }}</td>
+                <td>{% if statement_data.metadata.is_editable %}<button type="button" class="text-red-600 text-xs" data-dist-delete="{{ row.id }}">Delete</button>{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="text-gray-500 text-xs py-2">No distribution payees yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if statement_data.metadata.is_editable %}
+<button type="button" class="bundle-linear-btn text-xs mt-3" id="cs-distribution-add">Add payee</button>
+{% endif %}

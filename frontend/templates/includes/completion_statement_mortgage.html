@@ -1,0 +1,51 @@
+<div class="space-y-3" id="cs-mortgage-panel">
+    {% with m=statement_data.mortgage_redemption %}
+    <p class="text-xs text-gray-500">Calculate mortgage redemption from lender figure plus daily interest to completion date. Syncs to the main statement as money out.</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label class="form-label">Lender name
+            <input type="text" class="bundle-linear-field w-full mt-1" data-mortgage-field="lender_name"
+                   value="{{ m.lender_name|default:'' }}"
+                   {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        </label>
+        <label class="form-label">Loan account reference
+            <input type="text" class="bundle-linear-field w-full mt-1" data-mortgage-field="loan_account_ref"
+                   value="{{ m.loan_account_ref|default:'' }}"
+                   {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        </label>
+        <label class="form-label">Redemption figure (£)
+            <input type="number" step="0.01" class="bundle-linear-field w-full mt-1 text-right tabular-nums" data-mortgage-field="redemption_figure"
+                   value="{{ m.redemption_figure|default:'0.00' }}"
+                   {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        </label>
+        <label class="form-label">Redemption statement date
+            <input type="date" class="bundle-linear-field w-full mt-1" data-mortgage-field="redemption_statement_date"
+                   value="{{ m.redemption_statement_date|default:'' }}"
+                   {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        </label>
+        <label class="form-label">Daily interest (£)
+            <input type="number" step="0.0001" class="bundle-linear-field w-full mt-1 text-right tabular-nums" data-mortgage-field="daily_interest_amount"
+                   value="{{ m.daily_interest_amount|default:'0.00' }}"
+                   {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        </label>
+        <label class="form-label">Completion date (for calc)
+            <input type="date" class="bundle-linear-field w-full mt-1" data-mortgage-field="completion_date"
+                   value="{{ m.completion_date|default:statement_data.metadata.completion_date }}"
+                   {% if not statement_data.metadata.is_editable %}disabled{% endif %}>
+        </label>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
+        <div class="rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5">
+            <span class="block text-[0.6875rem] font-medium uppercase tracking-wide text-gray-400 mb-1">Days</span>
+            <strong class="text-sm font-semibold tabular-nums" id="cs-mortgage-days">{{ m.calculated_days|default:0 }}</strong>
+        </div>
+        <div class="rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5">
+            <span class="block text-[0.6875rem] font-medium uppercase tracking-wide text-gray-400 mb-1">Interest added</span>
+            <strong class="text-sm font-semibold tabular-nums" id="cs-mortgage-interest">{{ m.calculated_interest_display|default:'£0.00' }}</strong>
+        </div>
+        <div class="rounded-md border border-gray-200 bg-white px-3 py-2.5">
+            <span class="block text-[0.6875rem] font-medium uppercase tracking-wide text-gray-400 mb-1">Total redemption</span>
+            <strong class="text-sm font-semibold tabular-nums" id="cs-mortgage-total">{{ m.total_amount_display|default:'£0.00' }}</strong>
+        </div>
+    </div>
+    {% endwith %}
+</div>

@@ -19,6 +19,7 @@ class InvoicesSerializer:
             'payable_by': self.invoice_instance.payable_by,
             'by_email': self.invoice_instance.by_email,
             'by_post': self.invoice_instance.by_post,
+            'is_matter_final_invoice': self.invoice_instance.is_matter_final_invoice,
             'description': self.invoice_instance.description,
             'our_costs_desc': self.invoice_instance.our_costs_desc,
             'our_costs': self.invoice_instance.our_costs,

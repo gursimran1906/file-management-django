@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Completion Statement - {{ file_number }}{% endblock %}
+{% block container_class %}container{% endblock %}
+
+{% block container %}
+<link rel="stylesheet" href="{% static 'css/bundle-tree.css' %}">
+<style>
+  .home-task-tab { color: rgb(75 85 99); }
+  .home-task-tab:hover { color: rgb(17 24 39); }
+  .home-task-tab.is-active { background-color: white; color: rgb(17 24 39); box-shadow: 0 1px 2px rgb(0 0 0 / 0.06); }
+</style>
+
+<div class="space-y-5">
+    <div class="div-container py-3">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                    <h1 class="text-2xl font-semibold text-gray-900">{{ file_number }}</h1>
+                    {% if statement_data.metadata.status == 'finalised' %}
+                    <span class="badge-green">Finalised</span>
+                    {% else %}
+                    <span class="badge-gray">Draft</span>
+                    {% endif %}
+                    <span class="badge-gray">{{ statement_data.metadata.transaction_type_display }}</span>
+                    {% if statement_data.metadata.is_leasehold %}<span class="badge-gray">Leasehold</span>{% endif %}
+                </div>
+                <p class="text-sm text-gray-600 mt-1">{{ statement_data.metadata.client_names|default:"Completion statement" }}</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+                <span id="cs-save-status" class="text-xs text-gray-500"></span>
+                <a href="{% url 'home' file_number %}" class="btn-secondary text-xs">Back to file</a>
+                <a href="{% url 'download_completion_statement' file_number %}" class="btn-primary text-xs">Download PDF</a>
+                {% if statement_data.metadata.is_editable %}
+                <button type="button" id="cs-finalise-btn" class="btn-secondary text-xs">Finalise</button>
+                {% elif request.user.is_manager %}
+                <button type="button" id="cs-reopen-btn" class="btn-secondary text-xs">Reopen</button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div id="completion-statement-app" class="bundle-edit-page space-y-4"
+         data-editable="{{ statement_data.metadata.is_editable|yesno:'true,false' }}"
+         data-file-number="{{ file_number }}"
+         data-update-url="{% url 'completion_statement_update' file_number %}"
+         data-line-update-url="{% url 'completion_statement_line_update' file_number %}"
+         data-line-add-url="{% url 'completion_statement_line_add' file_number %}"
+         data-line-delete-url="{% url 'completion_statement_line_delete' file_number %}"
+         data-status-url="{% url 'completion_statement_status' file_number %}"
+         data-mortgage-url="{% url 'completion_statement_mortgage_update' file_number %}"
+         data-apportionment-add-url="{% url 'completion_statement_apportionment_add' file_number %}"
+         data-apportionment-update-url="{% url 'completion_statement_apportionment_update' file_number %}"
+         data-apportionment-delete-url="{% url 'completion_statement_apportionment_delete' file_number %}"
+         data-distribution-add-url="{% url 'completion_statement_distribution_add' file_number %}"
+         data-distribution-update-url="{% url 'completion_statement_distribution_update' file_number %}"
+         data-distribution-delete-url="{% url 'completion_statement_distribution_delete' file_number %}"
+         data-schedule-add-url="{% url 'completion_statement_schedule_add' file_number %}"
+         data-schedule-update-url="{% url 'completion_statement_schedule_update' file_number %}"
+         data-schedule-delete-url="{% url 'completion_statement_schedule_delete' file_number %}"
+         data-schedule-create-slip-url="{% url 'completion_statement_schedule_create_slip' file_number 0 %}">
+        {% csrf_token %}
+
+        {% if not statement_data.metadata.is_editable %}
+        <div class="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900">
+            Finalised{% if completion_statement.finalised_at %} on {{ completion_statement.finalised_at|date:"d/m/Y" }}{% endif %}. Reopen to edit.
+        </div>
+        {% endif %}
+
+        <div class="bundle-linear-panel border {% if statement_data.totals.is_balanced %}border-green-200 bg-green-50{% else %}border-amber-200 bg-amber-50{% endif %}"
+             id="cs-balance-banner">
+            <p class="bundle-edit-section-label mb-1">Statement balance</p>
+            <p class="text-base font-semibold leading-snug {% if statement_data.totals.is_balanced %}text-green-800{% else %}text-amber-900{% endif %}"
+               id="cs-outcome-label">{{ statement_data.totals.outcome_label }}</p>
+            {% if not statement_data.totals.is_balanced and statement_data.metadata.is_editable %}
+            <p class="mt-1.5 text-xs text-gray-600">Adjust money in and money out lines until the balance reaches £0.00 before finalising.</p>
+            {% endif %}
+        </div>
+
+        {% include 'includes/completion_statement_tabs.html' %}
+    </div>
+</div>
+
+<script src="{% static 'js/completion-statement.js' %}"></script>
+{% endblock %}

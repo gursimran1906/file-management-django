@@ -1,11 +1,10 @@
 """Structured finance activity data for templates (no HTML strings)."""
 
-import ast
 from decimal import Decimal
 
 from .estate_account import calculate_invoice_total_with_vat
 from .models import CURRENT_VAT_RATE
-from .utils import parse_json_field
+from .utils import parse_invoice_list_field, parse_json_field
 
 
 def _credit_note_breakdown(gross_amount):
@@ -76,13 +75,8 @@ def build_invoice_finance_detail(
         status_labels,
         current_vat_rate_percent,
 ):
-    our_costs = invoice.our_costs
-    costs = ast.literal_eval(our_costs) if not isinstance(our_costs, list) else our_costs
-    our_costs_desc_pre = invoice.our_costs_desc
-    our_costs_desc = (
-        ast.literal_eval(our_costs_desc_pre)
-        if not isinstance(our_costs_desc_pre, list) else our_costs_desc_pre
-    )
+    costs = parse_invoice_list_field(invoice.our_costs)
+    our_costs_desc = parse_invoice_list_field(invoice.our_costs_desc)
 
     cost_lines = []
     for i, cost in enumerate(costs):

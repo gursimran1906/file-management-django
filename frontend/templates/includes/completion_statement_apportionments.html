@@ -1,0 +1,36 @@
+<p class="text-xs text-gray-500 mb-3">Apportion rent, service charge and ground rent. Amounts sync to the main statement.</p>
+<div class="estate-lines-table-wrap overflow-x-auto">
+    <table class="estate-lines-table w-full text-sm">
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Annual £</th>
+                <th>Period</th>
+                <th>Days (S/B)</th>
+                <th>Amount</th>
+                <th>In/Out</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="cs-apportionment-list">
+            {% for row in statement_data.apportionments %}
+            <tr class="estate-line-row" data-apportionment-id="{{ row.id }}">
+                <td>{{ row.item_type }}</td>
+                <td><input type="text" class="bundle-linear-field text-xs w-full" data-ap-field="description" value="{{ row.description }}" {% if not statement_data.metadata.is_editable %}disabled{% endif %}></td>
+                <td><input type="number" step="0.01" class="bundle-linear-field text-xs w-24 text-right tabular-nums" data-ap-field="annual_amount" value="{{ row.annual_amount }}" {% if not statement_data.metadata.is_editable %}disabled{% endif %}></td>
+                <td class="text-xs whitespace-nowrap">{{ row.period_start }} – {{ row.period_end }}</td>
+                <td class="tabular-nums text-xs">{{ row.seller_days }}/{{ row.buyer_days }}</td>
+                <td class="tabular-nums font-medium">{{ row.calculated_amount_display }}</td>
+                <td>{{ row.direction }}</td>
+                <td>{% if statement_data.metadata.is_editable %}<button type="button" class="text-red-600 text-xs" data-ap-delete="{{ row.id }}">Delete</button>{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-gray-500 text-xs py-2">No apportionments yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if statement_data.metadata.is_editable %}
+<button type="button" class="bundle-linear-btn text-xs mt-3" id="cs-apportionment-add">Add apportionment</button>
+{% endif %}
