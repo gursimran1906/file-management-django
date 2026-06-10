@@ -383,6 +383,10 @@
 
     function saveDistributionRow(row) {
         if (!editable) return Promise.resolve();
+        // Skip saving while the beneficiary name is blank so the user isn't
+        // interrupted by a "required" alert mid-typing.
+        const nameField = row.querySelector('[data-distribution-field="beneficiary_name"]');
+        if (nameField && !nameField.value.trim()) return Promise.resolve();
         return postJson(app.dataset.distributionUpdateUrl, distributionPayload(row)).then(data => {
             if (data.distribution) {
                 const net = row.querySelector('.distribution-net');
@@ -443,7 +447,7 @@
                     clearTimeout(distributionSaveTimers.get(row));
                     distributionSaveTimers.set(row, window.setTimeout(() => {
                         saveDistributionRow(row).catch(() => {});
-                    }, 400));
+                    }, 1000));
                 };
                 field.addEventListener('blur', handler);
                 field.addEventListener('input', handler);
