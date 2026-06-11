@@ -1,12 +1,20 @@
 {% extends 'base.html' %}
 {% block title %}Allocate · Meetings{% endblock %}
+{% block styles %}
+<style>
+  /* Make #content the scroll container so the tab bar can stick below the navbar. */
+  #content { height: calc(100vh - var(--navbar-height)); min-height: unset; overflow-y: auto; }
+</style>
+{% endblock %}
 {% block container %}
-<div class="allocate-shell px-4 py-8">
-  <div class="mb-2">
+<div class="allocate-shell px-4 pb-8">
+  <div class="pt-6 pb-3">
     <h1 class="text-xl font-semibold text-gray-900">Allocate</h1>
     <p class="mt-0.5 text-sm text-gray-400">Link incoming emails and meeting notes to matter files.</p>
   </div>
-  {% include 'partials/_allocate_tabs.html' %}
+  <div class="sticky top-0 z-30 bg-gray-50">
+    {% include 'partials/_allocate_tabs.html' %}
+  </div>
   <div id="allocate-panel" class="mt-6">
     {% include 'granola/_inbox_panel.html' %}
   </div>

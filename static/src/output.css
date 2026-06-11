@@ -2212,6 +2212,10 @@ textarea.form-input {
   top: 5rem;
 }
 
+.top-\[2\.6rem\] {
+  top: 2.6rem;
+}
+
 .z-10 {
   z-index: 10;
 }
@@ -2909,10 +2913,6 @@ textarea.form-input {
 
 .max-w-4xl {
   max-width: 56rem;
-}
-
-.max-w-6xl {
-  max-width: 72rem;
 }
 
 .max-w-full {
@@ -4028,11 +4028,6 @@ textarea.form-input {
   background-color: rgb(244 244 245 / var(--tw-bg-opacity, 1));
 }
 
-.bg-zinc-900 {
-  --tw-bg-opacity: 1;
-  background-color: rgb(24 24 27 / var(--tw-bg-opacity, 1));
-}
-
 .bg-opacity-50 {
   --tw-bg-opacity: 0.5;
 }
@@ -4329,6 +4324,10 @@ textarea.form-input {
 
 .pb-4 {
   padding-bottom: 1rem;
+}
+
+.pb-8 {
+  padding-bottom: 2rem;
 }
 
 .pl-0 {

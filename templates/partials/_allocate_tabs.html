@@ -55,6 +55,8 @@ navigation if JS is unavailable.{% endcomment %}
         panel.innerHTML = html;
         panel.style.opacity = '';
         panel.style.pointerEvents = '';
+        var sc = document.getElementById('content');
+        if (sc) sc.scrollTop = 0;
         if (push) history.pushState({ allocate: url }, '', url);
       })
       .catch(function () { window.location.href = url; });
