@@ -144,7 +144,7 @@
           <option value="">All matters</option>
           {% for matter in matters %}
           <option value="{{ matter.id }}" {% if filters.matter|add:"0" == matter.id %}selected{% endif %}>
-            {{ matter.file_number }} - {{ matter.client1.name }}{% if matter.client2 %} / {{ matter.client2.name }}{% endif %}
+            {{ matter.file_number }} - {{ matter.client1.name }}{% for extra in matter.additional_clients.all %} / {{ extra.name }}{% endfor %}
           </option>
           {% endfor %}
         </select>
@@ -313,7 +313,7 @@
             </div>
             <div>
               <dt class="text-gray-500">Client</dt>
-              <dd>{{ key_date.matter.client1.name }}{% if key_date.matter.client2 %} / {{ key_date.matter.client2.name }}{% endif %}</dd>
+              <dd>{{ key_date.matter.client1.name }}{% for extra in key_date.matter.additional_clients.all %} / {{ extra.name }}{% endfor %}</dd>
             </div>
             <div>
               <dt class="text-gray-500">Fee Earner</dt>

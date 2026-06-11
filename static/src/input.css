@@ -663,3 +663,8 @@
     }
   }
 }
+
+/* Granola disclosure (Summary & transcript / Dismissed) — global so it applies
+   even when the meetings panel is AJAX-loaded into another shell. */
+details.gr-disclose > summary { list-style: none; }
+details.gr-disclose > summary::-webkit-details-marker { display: none; }

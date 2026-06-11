@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Allocate · Meetings{% endblock %}
+{% block container %}
+<div class="allocate-shell px-4 py-8">
+  <div class="mb-2">
+    <h1 class="text-xl font-semibold text-gray-900">Allocate</h1>
+    <p class="mt-0.5 text-sm text-gray-400">Link incoming emails and meeting notes to matter files.</p>
+  </div>
+  {% include 'partials/_allocate_tabs.html' %}
+  <div id="allocate-panel" class="mt-6">
+    {% include 'granola/_inbox_panel.html' %}
+  </div>
+</div>
+{% endblock %}

@@ -6,13 +6,13 @@ from django.test import TestCase
 from django.urls import reverse
 
 from users.models import CustomUser
-from .completion_statement import (
+from ..completion_statement import (
     get_completion_statement_data,
     get_or_create_completion_statement,
     matter_is_conveyancing,
 )
-from .estate_account import calculate_invoice_total_with_vat
-from .models import (
+from ..estate_account import calculate_invoice_total_with_vat
+from ..models import (
     ClientContactDetails,
     CompletionStatement,
     CompletionStatementFinanceLineOverride,

@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block title %}Granola settings{% endblock %}
+{% block container %}
+<div class="mx-auto max-w-2xl px-4 py-6">
+
+  <div class="mb-6 flex items-center justify-between">
+    <h1 class="text-xl font-semibold text-gray-900">Granola settings</h1>
+    <div class="flex items-center gap-4 text-sm">
+      <a href="{% url 'granola_guide' %}" class="text-blue-600 hover:underline">Guide</a>
+      <a href="{% url 'granola_inbox' %}" class="text-blue-600 hover:underline">← Back to inbox</a>
+    </div>
+  </div>
+
+  <form method="post" class="space-y-5 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    {% csrf_token %}
+
+    <div>
+      <label class="flex items-center gap-2 text-sm font-medium text-gray-800">
+        <input type="checkbox" name="enabled" {% if config.enabled %}checked{% endif %}
+          class="h-4 w-4 rounded border-gray-300">
+        Enable scheduled sync (every 15 minutes, 07:00–18:00)
+      </label>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-800">Start date</label>
+      <input type="date" name="start_date" value="{{ config.start_date|date:'Y-m-d' }}"
+        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+      <p class="mt-1 text-xs text-gray-500">
+        The scheduled sync stays dormant until this date — you can enable it now and it
+        will switch on automatically. Leave blank to start immediately.
+        “Test connection” and “Sync now” work regardless of this date.
+      </p>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-800">Central API key</label>
+      {% if key_from_env %}
+      <p class="mt-1 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+        A key is currently provided via the <code>GRANOLA_API_KEY</code> environment
+        variable and is being used. Anything entered below is ignored while that is set.
+      </p>
+      {% endif %}
+      <input type="password" name="api_key" value="{{ config.api_key }}" autocomplete="off"
+        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
+        placeholder="grn_...">
+      <p class="mt-1 text-xs text-gray-500">
+        Generate in Granola under Settings → Connectors → API keys (Business plan),
+        with the <strong>Public notes</strong> scope so shared-folder notes from the
+        whole team are visible to this one key.
+      </p>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label class="block text-sm font-medium text-gray-800">Attendance notes folder</label>
+        <input type="text" name="attendance_folder" value="{{ config.attendance_folder }}"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          placeholder="Attendance Note">
+        <p class="mt-1 text-xs text-gray-500">Shared Granola folder → matter attendance notes.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-800">Free 30 min folder</label>
+        <input type="text" name="free30_folder" value="{{ config.free30_folder }}"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          placeholder="Free 30 min">
+        <p class="mt-1 text-xs text-gray-500">Shared Granola folder → Free 30 minute meetings.</p>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between gap-3">
+      <button type="submit" form="granola-test-form" class="btn-secondary">
+        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7Z"/></svg>
+        Test connection
+      </button>
+      <button type="submit"
+        class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+        Save settings
+      </button>
+    </div>
+  </form>
+  <form id="granola-test-form" method="post" action="{% url 'granola_test_connection' %}" class="hidden">{% csrf_token %}</form>
+
+  <div class="mt-6">
+    {% include 'granola/_note_format_guide.html' %}
+  </div>
+
+</div>
+{% endblock %}

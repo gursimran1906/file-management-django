@@ -92,9 +92,10 @@ class PricingItemAdmin(admin.ModelAdmin):
 
 @admin.register(WIP)
 class WIPAdmin(admin.ModelAdmin):
-    list_display = ['id', 'file_number', 'fee_earner', 'matter_description', 'client1', 'client2',
+    list_display = ['id', 'file_number', 'fee_earner', 'matter_description', 'client1',
                     'matter_type', 'file_status', 'file_location', 'zdrive_location',
                     'other_side', 'timestamp', 'created_by']
+    filter_horizontal = ['additional_clients']
 
 
 @admin.register(MatterKeyDate)

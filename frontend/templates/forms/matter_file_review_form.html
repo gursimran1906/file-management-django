@@ -28,7 +28,7 @@
         <div class='div-container grid grid-cols-1 md:grid-cols-12 gap-2'>
             <div class='md:col-span-6'>
                 <label class='form-label'>Client name</label>
-                <p class='form-input bg-gray-50'>{{ matter.client1.name }}{% if matter.client2 %}, {{ matter.client2.name }}{% endif %}</p>
+                <p class='form-input bg-gray-50'>{{ matter.client1.name }}{% for extra in matter.additional_clients.all %}, {{ extra.name }}{% endfor %}</p>
             </div>
             <div class='md:col-span-6'>
                 <label class='form-label'>Matter name</label>

@@ -1,278 +1,355 @@
-
-{% extends 'base.html' %} {% block title %}Edit file{% endblock %} 
+{% extends 'base.html' %} {% block title %}Edit file{% endblock %}
 {% block container %}
 {% load utils %}
 
 <div class="space-y-5">
-  <div class="div-container py-3">
+  <!-- Page header -->
+  <div class="div-container py-4">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
+        <a href="{% url 'home' file_number %}" class="link text-xs inline-flex items-center gap-1 mb-2">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          Back to file
+        </a>
         <h1 class="text-2xl font-semibold text-gray-900">Edit file</h1>
         <p class="text-sm text-gray-600 mt-1">{{ file_number }}</p>
       </div>
-      <a href="{% url 'home' file_number %}" class="btn-secondary text-xs shrink-0">Back to file</a>
     </div>
   </div>
 
-<form class="div-container grid grid-cols-1 md:grid-cols-12 gap-2" method="post" action="{% url 'edit_file' file_number %}">
-  {% csrf_token %}
+  <form method="post" action="{% url 'edit_file' file_number %}" class="space-y-5">
+    {% csrf_token %}
 
+    <!-- Section 1: Matter details -->
+    <section class="div-container">
+      <div class="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
+        <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-700 text-sm font-semibold">1</span>
+        <div>
+          <h2 class="text-base font-semibold text-gray-900">Matter details</h2>
+          <p class="text-xs text-gray-500 mt-0.5">Reference, fee earner, type and funding</p>
+        </div>
+      </div>
 
-  <div class="md:col-span-2">
-    <label class="form-label">File Number</label>
-    
-    <input
-      type="text"
-      class="form-input"
-      name="file_number"
-      pattern="[A-Z]{3}[0-9]{7}"
-      title="Please, try to match ANP0010001"
-      value="{{form.file_number.value}}"
-    />
-  </div>
-  
-  <div class="md:col-span-1 ">
-    <label class="form-label">Fee Earner</label>
-    <select class="form-input " name="fee_earner">
-      
-      {% if form_data.fee_earners %}
-            {% for fee_earner in form_data.fee_earners %}
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+        <div class="md:col-span-3">
+          <label class="form-label">File Number</label>
+          <input
+            type="text"
+            class="form-input"
+            name="file_number"
+            pattern="[A-Z]{3}[0-9]{7}"
+            title="Please, try to match ANP0010001"
+            value="{{form.file_number.value}}"
+          />
+        </div>
+
+        <div class="md:col-span-3">
+          <label class="form-label">Fee Earner</label>
+          <select class="form-input" name="fee_earner">
+            {% if form_data.fee_earners %}
+              {% for fee_earner in form_data.fee_earners %}
                 <option value="{{fee_earner.id}}" {% if fee_earner.id == form.fee_earner.value|add:"0" %} selected {% endif %}>{{ fee_earner }}</option>
+              {% endfor %}
+            {% else %}
+              <option value="" disabled>No fee earners available</option>
+            {% endif %}
+          </select>
+        </div>
+
+        <div class="md:col-span-3">
+          <label class="form-label">File Status</label>
+          <select name="file_status" class="form-input">
+            {% for status in form_data.file_status %}
+            <option value="{{status.id}}" {% if status.id == form.file_status.value|add:"0" %} selected {% endif %}>{{ status }}</option>
             {% endfor %}
-        {% else %}
-            <option value="" disabled>No fee earners available</option>
-        {% endif %}
-    </select>
-  </div>
+          </select>
+        </div>
 
-  <div class="md:col-span-1">
-    <label class="form-label">File Status</label>
-    <select name="file_status" class="form-input">
-      {% for status in form_data.file_status %}
-      
-      <option value={{status.id}} {% if status.id == form.file_status.value|add:"0" %} selected {% endif %} >{{ status }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="md:col-span-2">
-    <label class="form-label">Matter Descriptions</label>
-    <input type="text" class="form-input" name="matter_description" value="{{form.matter_description.value}}"/>
-  </div>
-  <div class="md:col-span-2">
-    <label class="form-label">File Location</label>
-    <select name="file_location" class="form-input">
-      {% for location in form_data.file_locations %}
-      <option value="{{location.id}}" {% if location.id == form.file_location.value|add:"0" %}selected{% endif %} >{{location}}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="md:col-span-2">
-    <label class="form-label">Z Drive Location</label>
-    <input type="text" class="form-input" name="zdrive_location" value="{{form.zdrive_location.value}}" />
-  </div>
-  <div class="md:col-span-2">
-    <label class="form-label">Funding</label>
-    <select name="funding" class="form-input">
-      <option {% if form.funding.value == 'PF' %}selected{% endif %} value="PF">Private Funding</option>
-      <option {% if form.funding.value == 'CFA' %}selected{% endif %} value="CFA">Conditional Fee Agreement</option>
-    </select>
-  </div>
+        <div class="md:col-span-3">
+          <label class="form-label">Matter Type</label>
+          <select name="matter_type" class="form-input">
+            {% for matter_type in form_data.matter_types %}
+            <option {% if matter_type.id == form.matter_type.value|add:"0" %}selected{% endif %} value="{{matter_type.id}}">{{matter_type}}</option>
+            {% endfor %}
+          </select>
+        </div>
 
-  <div class="md:col-span-2">
-    <label class="form-label">Matter Type</label>
-    <select name="matter_type" class="form-input">
-      {% for matter_type in form_data.matter_types %}
-      <option {% if matter_type.id == form.matter_type.value|add:"0" %}selected{% endif %} value="{{matter_type.id}}">{{matter_type}}</option>
-      {% endfor %}
-    </select>
-  </div>
- 
-  <div class="md:col-span-12 grid md:grid-cols-12 gap-2 ">
-    <div class="md:col-span-6">
-      <legend>Client 1</legend>
-      <select
-        id="Client1List"
-        onchange="toggleForm('Client1');"
-        class="form-input"
-        name="client1"
-      >
-        <option {% if form.client1.value == '0' %}selected{% endif %}  value="0">
-          <button class="dropdown-item" type="button" >
-            Select Client 1
-          </button>
-          <option value="-1">New Client</option>
-        </option>
-        {% for client in form_data.clients %}
-        <option {% if form.client1.value|add:"0" == client.id %}selected{% endif %} value="{{client.id}}">{{client.name}}</option>
-        {% endfor %}
-      </select>
-    </div>
+        <div class="md:col-span-3">
+          <label class="form-label">Funding</label>
+          <select name="funding" class="form-input">
+            <option {% if form.funding.value == 'PF' %}selected{% endif %} value="PF">Private Funding</option>
+            <option {% if form.funding.value == 'CFA' %}selected{% endif %} value="CFA">Conditional Fee Agreement</option>
+          </select>
+        </div>
 
-    <div class="md:col-span-6">
-      <legend>Client 2</legend>
-      <select
-        id="Client2List"
-        onchange="toggleForm('Client2');"
-        class="form-input"
-        name="client2"
-      >
-        <option selected value="0">
-          <button class="dropdown-item" type="button">
-            Select Client 2 (If new client choose New Client)
-          </button>
-        </option>
-        <option value="-1">New Client</option>
-        {% for client in form_data.clients %}
-        <option {% if form.client2.value|add:"0" == client.id %}selected{% endif %} value="{{client.id}}">{{client.name}}</option>
-        {% endfor %}
-      </select>
-    </div>
-  </div>
+        <div class="md:col-span-3">
+          <label class="form-label">File Location</label>
+          <select name="file_location" class="form-input">
+            {% for location in form_data.file_locations %}
+            <option value="{{location.id}}" {% if location.id == form.file_location.value|add:"0" %}selected{% endif %}>{{location}}</option>
+            {% endfor %}
+          </select>
+        </div>
 
-  <div class="md:col-span-12 grid md:grid-cols-12 gap-2">
-    <div id="inputNewClient1" style="display: none" class="md:col-span-6 ">
-      {% include 'forms/add_client_form.html' with client_number='1' %}
-    </div>
+        <div class="md:col-span-3">
+          <label class="form-label">Z Drive Location</label>
+          <input type="text" class="form-input" name="zdrive_location" value="{{form.zdrive_location.value}}" />
+        </div>
 
-    <div id="inputNewClient2" style="display: none" class="md:col-span-6 ">
-      {% include 'forms/add_client_form.html' with client_number='2' %}
-    </div>
-  </div>
+        <div class="md:col-span-3">
+          <label class="form-label">Matter Description</label>
+          <input type="text" class="form-input" name="matter_description" value="{{form.matter_description.value}}" />
+        </div>
+      </div>
+    </section>
 
-  <div class="md:col-span-12 grid md:grid-cols-12 gap-2 ">
-    <div class="md:col-span-6">
-      <legend>Authorised Party 1</legend>
-      <select
-        id="AP1List"
-        onchange="toggleForm('AP1');"
-        class="form-input"
-        name="authorised_party1"
-      >
-        <option selected value="0">
-          <button class="dropdown-item" type="button">
-            Select Authorised Party 1 (If same as client, choose nothing and if
-            not on list choose New)
-          </button>
-        </option>
-        <option value="-1">New</option>
-        {% for authorised_party in form_data.authorised_parties %}
-        <option value="{{ authorised_party.id}}" {% if form.authorised_party1.value|add:"0" == authorised_party.id %}selected{% endif %}>
-          <b>Name:</b>{{ authorised_party.name}},
-          <b>Relationship to Client:</b> {{
-          authorised_party.relationship_to_client}}
-        </option>
-        {% endfor %}
-      </select>
-    </div>
+    <!-- Section 2: Clients -->
+    <section class="div-container">
+      <div class="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
+        <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-700 text-sm font-semibold">2</span>
+        <div>
+          <h2 class="text-base font-semibold text-gray-900">Clients</h2>
+          <p class="text-xs text-gray-500 mt-0.5">All clients are treated equally — invoices, statements and correspondence include every client</p>
+        </div>
+      </div>
 
-    <div class="md:col-span-6">
-      <legend>Authorised Party 2</legend>
-      <select
-        id="AP2List"
-        onchange="toggleForm('AP2');"
-        class="form-input"
-        name="authorised_party2"
-      >
-        <option selected value="0">
-          <button class="dropdown-item" type="button">
-            Select Authorised Party 12(If same as client, choose nothing and if
-            not on list choose New)
-          </button>
-        </option>
-        <option value="-1">New</option>
-        {% for authorised_party in form_data.authorised_parties %}
-        <option value="{{ authorised_party.id}}" {% if form.authorised_party1.value|add:"0" == authorised_party.id %}selected{% endif %}>
-          <b>Name:</b>{{ authorised_party.name}},
-          <b>Relationship to Client:</b> {{
-          authorised_party.relationship_to_client }}
-        </option>
-        {% endfor %}
-      </select>
-    </div>
-  </div>
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+        <div class="md:col-span-6">
+          <label class="form-label">Client 1 <span class="text-red-500">*</span></label>
+          <select
+            id="Client1List"
+            onchange="toggleForm('Client1');"
+            class="form-input"
+            name="client1"
+          >
+            <option {% if form.client1.value == '0' %}selected{% endif %} value="0">Select a client (or choose New Client)</option>
+            <option value="-1">+ New Client</option>
+            {% for client in form_data.clients %}
+            <option {% if form.client1.value|add:"0" == client.id %}selected{% endif %} value="{{client.id}}">{{client.name}}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
 
-  <div class="md:col-span-12 grid md:grid-cols-12 gap-2">
-    <div id="inputNewAP1" style="display: none" class="md:col-span-6 ">
-      {% include 'forms/add_authorised_party_form.html' with authorised_party_number='1' %}
-    </div>
+      <div id="inputNewClient1" style="display: none">
+        <div class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 mt-3">
+          <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">New client 1 details</p>
+          {% include 'forms/add_client_form.html' with client_number='1' %}
+        </div>
+      </div>
 
-    <div id="inputNewAP2" style="display: none" class="md:col-span-6 ">
-      {% include 'forms/add_authorised_party_form.html' with authorised_party_number='2' %}
-    </div>
-  </div>
-  
-  <div class="md:col-span-6">
-    <legend>Other Side's Details</legend>
-    <select
-      id="OSList"
-      onchange="toggleForm('OS');"
-      class="form-input"
-      name="other_side"
-    >
-      <option selected value="0">
-        <button class="dropdown-item" type="button">
-          Select Other side
+      <!-- Additional clients (any number) -->
+      <div class="mt-5 pt-4 border-t border-gray-100">
+        <h3 class="text-sm font-semibold text-gray-900">Additional clients</h3>
+        <p class="text-xs text-gray-500 mt-0.5 mb-3">Add a row for each further client on this matter (for matters with more than two clients).</p>
+        <div id="additionalClientsContainer" data-next-index="{{ additional_clients_next_index }}" class="space-y-3">
+          {% for ac in additional_clients %}
+          <div class="additional-client-row rounded-lg border border-gray-200 p-4">
+            <div class="flex items-center justify-between mb-2">
+              <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Additional client</p>
+              <button type="button" class="btn-secondary text-xs" onclick="removeAdditionalClient(this)">Remove</button>
+            </div>
+            <select
+              id="Client{{ ac.index }}List"
+              onchange="toggleForm('Client{{ ac.index }}');"
+              class="form-input"
+              name="additional_client_{{ ac.index }}"
+            >
+              <option value="0">Select a client (or choose New Client)</option>
+              <option value="-1">+ New Client</option>
+              {% for client in form_data.clients %}
+              <option {% if client.id == ac.client.id %}selected{% endif %} value="{{client.id}}">{{client.name}}</option>
+              {% endfor %}
+            </select>
+            <div id="inputNewClient{{ ac.index }}" style="display: none">
+              <div class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 mt-3">
+                {% include 'forms/add_client_form.html' with client_number=ac.index %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <button type="button" class="btn-secondary text-xs mt-3 inline-flex items-center gap-1" onclick="addAdditionalClient()">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Add another client
         </button>
-      </option>
-      <option value="-1">New</option>
-      {% for os in form_data.othersides %}
-      <option value="{{os.id}}" {% if form.other_side.value|add:"0" == os.id %}selected{% endif %}>
-        Name:{{os.name}}, Address: {{os.address_line1}}, {{os.address_line2}},
-        {{os.postcode}}
-      </option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="md:col-span-7 grid md:grid-cols-12 gap-2" id="inputNewOS" style="display: none">
-    {% include 'forms/add_otherside_details_form.html' %}
-  </div>
+      </div>
 
-  <legend class='md:col-span-12'>Compliance</legend>
+      <template id="additionalClientTemplate">
+        <div class="additional-client-row rounded-lg border border-gray-200 p-4">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Additional client</p>
+            <button type="button" class="btn-secondary text-xs" onclick="removeAdditionalClient(this)">Remove</button>
+          </div>
+          <select
+            id="Client__N__List"
+            onchange="toggleForm('Client__N__');"
+            class="form-input"
+            name="additional_client___N__"
+          >
+            <option selected value="0">Select a client (or choose New Client)</option>
+            <option value="-1">+ New Client</option>
+            {% for client in form_data.clients %}
+            <option value="{{client.id}}">{{client.name}}</option>
+            {% endfor %}
+          </select>
+          <div id="inputNewClient__N__" style="display: none">
+            <div class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 mt-3">
+              {% include 'forms/add_client_form.html' with client_number='__N__' %}
+            </div>
+          </div>
+        </div>
+      </template>
+    </section>
 
-  <div class="md:col-span-2">
-    <label class="form-label">Date Client Care Sent</label>
-    <input type="date" class="form-input" name="date_of_client_care_sent" value="{{form.date_of_client_care_sent.value|date:'Y-m-d'}}"/>
-  </div>
+    <!-- Section 3: Authorised parties -->
+    <section class="div-container">
+      <div class="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
+        <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-700 text-sm font-semibold">3</span>
+        <div>
+          <h2 class="text-base font-semibold text-gray-900">Authorised parties</h2>
+          <p class="text-xs text-gray-500 mt-0.5">Optional — leave blank if the same as the client</p>
+        </div>
+      </div>
 
-  <div class="md:col-span-2">
-    <label class="form-label">Date Terms Of Engagement sent</label>
-    <input type="date" class="form-input" name="date_of_toe_sent" value="{{form.date_of_toe_sent.value|date:'Y-m-d'}}" />
-  </div>
-  <div class="md:col-span-2">
-    <label class="form-label">Date Terms Of Engagement received</label>
-    <input type="date" class="form-input" name="date_of_toe_rcvd" value="{{form.date_of_toe_rcvd.value|date:'Y-m-d'}}" />
-  </div>
-  <div class="md:col-span-3">
-    <label class="form-label">Date NCBA sent</label>
-    <input type="date" class="form-input" name="date_of_ncba_sent" value="{{form.date_of_ncba_sent.value|date:'Y-m-d'}}" />
-  </div>
-  <div class="md:col-span-3">
-    <label class="form-label">Date NCBA received</label>
-    <input type="date" class="form-input" name="date_of_ncba_rcvd" value="{{form.date_of_ncba_rcvd.value|date:'Y-m-d'}}"/>
-  </div>
-  <div class="md:col-span-6" id="KeyInfoDiv">
-  
-    <div class="grid grid-cols-12 gap-2">
-      <div class="col-span-12">
-        <legend>Key Information</legend>
-        <textarea
-          type="text"
-          class="form-input"
-          name="key_information"
-          
-        >{{form.key_information.value}}</textarea>
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+        <div class="md:col-span-6">
+          <label class="form-label">Authorised Party 1</label>
+          <select
+            id="AP1List"
+            onchange="toggleForm('AP1');"
+            class="form-input"
+            name="authorised_party1"
+          >
+            <option {% if form.authorised_party1.value == '0' or not form.authorised_party1.value %}selected{% endif %} value="0">Select an authorised party</option>
+            <option value="-1">+ New</option>
+            {% for authorised_party in form_data.authorised_parties %}
+            <option value="{{ authorised_party.id}}" {% if form.authorised_party1.value|add:"0" == authorised_party.id %}selected{% endif %}>{{ authorised_party.name}} — {{ authorised_party.relationship_to_client}}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="md:col-span-6">
+          <label class="form-label">Authorised Party 2</label>
+          <select
+            id="AP2List"
+            onchange="toggleForm('AP2');"
+            class="form-input"
+            name="authorised_party2"
+          >
+            <option {% if form.authorised_party2.value == '0' or not form.authorised_party2.value %}selected{% endif %} value="0">Select an authorised party</option>
+            <option value="-1">+ New</option>
+            {% for authorised_party in form_data.authorised_parties %}
+            <option value="{{ authorised_party.id}}" {% if form.authorised_party2.value|add:"0" == authorised_party.id %}selected{% endif %}>{{ authorised_party.name}} — {{ authorised_party.relationship_to_client }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div id="inputNewAP1" style="display: none">
+        <div class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 mt-3">
+          <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">New authorised party 1 details</p>
+          {% include 'forms/add_authorised_party_form.html' with authorised_party_number='1' %}
+        </div>
+      </div>
+
+      <div id="inputNewAP2" style="display: none">
+        <div class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 mt-3">
+          <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">New authorised party 2 details</p>
+          {% include 'forms/add_authorised_party_form.html' with authorised_party_number='2' %}
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: Other side -->
+    <section class="div-container">
+      <div class="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
+        <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-700 text-sm font-semibold">4</span>
+        <div>
+          <h2 class="text-base font-semibold text-gray-900">Other side's details</h2>
+          <p class="text-xs text-gray-500 mt-0.5">Optional — the opposing party on this matter</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+        <div class="md:col-span-6">
+          <label class="form-label">Other Side</label>
+          <select
+            id="OSList"
+            onchange="toggleForm('OS');"
+            class="form-input"
+            name="other_side"
+          >
+            <option {% if form.other_side.value == '0' or not form.other_side.value %}selected{% endif %} value="0">Select the other side</option>
+            <option value="-1">+ New</option>
+            {% for os in form_data.othersides %}
+            <option value="{{os.id}}" {% if form.other_side.value|add:"0" == os.id %}selected{% endif %}>{{os.name}} — {{os.address_line1}}, {{os.address_line2}}, {{os.postcode}}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div id="inputNewOS" style="display: none">
+        <div class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 mt-3">
+          <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">New other side details</p>
+          <div class="grid md:grid-cols-12 gap-2">
+            {% include 'forms/add_otherside_details_form.html' %}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5: Compliance & key information -->
+    <section class="div-container">
+      <div class="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
+        <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-700 text-sm font-semibold">5</span>
+        <div>
+          <h2 class="text-base font-semibold text-gray-900">Compliance &amp; key information</h2>
+          <p class="text-xs text-gray-500 mt-0.5">Client care, Terms of Engagement, NCBA and notes</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+        <div class="md:col-span-3">
+          <label class="form-label">Date Client Care Sent</label>
+          <input type="date" class="form-input" name="date_of_client_care_sent" value="{{form.date_of_client_care_sent.value|date:'Y-m-d'}}"/>
+        </div>
+        <div class="md:col-span-3">
+          <label class="form-label">Date ToE Sent</label>
+          <input type="date" class="form-input" name="date_of_toe_sent" value="{{form.date_of_toe_sent.value|date:'Y-m-d'}}" />
+        </div>
+        <div class="md:col-span-3">
+          <label class="form-label">Date ToE Received</label>
+          <input type="date" class="form-input" name="date_of_toe_rcvd" value="{{form.date_of_toe_rcvd.value|date:'Y-m-d'}}" />
+        </div>
+        <div class="md:col-span-3"></div>
+        <div class="md:col-span-3">
+          <label class="form-label">Date NCBA Sent</label>
+          <input type="date" class="form-input" name="date_of_ncba_sent" value="{{form.date_of_ncba_sent.value|date:'Y-m-d'}}" />
+        </div>
+        <div class="md:col-span-3">
+          <label class="form-label">Date NCBA Received</label>
+          <input type="date" class="form-input" name="date_of_ncba_rcvd" value="{{form.date_of_ncba_rcvd.value|date:'Y-m-d'}}"/>
+        </div>
+
+        <div class="md:col-span-6">
+          <label class="form-label">Key Information</label>
+          <textarea class="form-input" name="key_information" placeholder="Anything important to flag on this matter">{{form.key_information.value}}</textarea>
+        </div>
+        <div class="md:col-span-6">
+          <label class="form-label">Comments</label>
+          <textarea class="form-input" name="comments" placeholder="Internal notes">{{form.comments.value}}</textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sticky action bar -->
+    <div class="sticky bottom-0 z-10">
+      <div class="div-container flex items-center justify-between py-3">
+        <a href="{% url 'home' file_number %}" class="btn-secondary text-sm">Cancel</a>
+        <button type="submit" class="btn-primary text-sm">Save changes</button>
       </div>
     </div>
-  </div>
-
-  <div class="md:col-span-12">
-    <label class="form-label">Comments</label>
-    <textarea type="text" class="form-input" name="comments">{{form.comments.value}}</textarea>
-  </div>
-
-  <div class="md:col-span-12 mb-3">
-    <button type="submit" class="btn-primary text-xs">Save changes</button>
-  </div>
-</form>
+  </form>
 </div>
 {% endblock %}

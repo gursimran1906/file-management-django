@@ -145,7 +145,7 @@
             {% if event.person_label %}
               {{ event.person_label }}
             {% elif event.matter %}
-              {{ event.matter.client1.name }}{% if event.matter.client2 %} / {{ event.matter.client2.name }}{% endif %}
+              {{ event.matter.client1.name }}{% for extra in event.matter.additional_clients.all %} / {{ extra.name }}{% endfor %}
             {% endif %}
           </td>
           <td>{{ event.subtitle }}{% if event.location %}<br>{{ event.location }}{% endif %}{% if event.notes %}<br>{{ event.notes }}{% endif %}</td>

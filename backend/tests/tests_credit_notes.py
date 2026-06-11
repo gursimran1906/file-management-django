@@ -5,8 +5,8 @@ from django.test import TestCase
 from django.urls import reverse
 
 from users.models import CustomUser
-from .models import ClientContactDetails, CreditNote, Invoices, MatterType, WIP
-from .views import (
+from ..models import ClientContactDetails, CreditNote, Invoices, MatterType, WIP
+from ..views import (
     get_available_credit_amount,
     get_credit_note_max_amount,
     get_invoice_allocatable_due,
@@ -170,7 +170,7 @@ class InvoiceAllocatableDueTests(TestCase):
         )
 
     def test_allocatable_due_falls_back_to_computed_balance_after_credit_note(self):
-        from .views import get_invoice_allocatable_due
+        from ..views import get_invoice_allocatable_due
 
         CreditNote.objects.create(
             invoice=self.invoice,
@@ -200,7 +200,7 @@ class InvoiceAllocatableDueTests(TestCase):
         self.assertEqual(max_amount, Decimal('90.00'))
 
     def test_allocatable_due_reduced_by_cash_allocation_after_credit_note(self):
-        from .models import PmtsSlips
+        from ..models import PmtsSlips
 
         CreditNote.objects.create(
             invoice=self.invoice,

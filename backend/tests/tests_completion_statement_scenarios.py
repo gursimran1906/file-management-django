@@ -30,9 +30,9 @@ from django.test import TestCase
 from django.urls import reverse
 
 from users.models import CustomUser
-from .completion_statement import get_completion_statement_data, get_or_create_completion_statement
-from .estate_account import calculate_invoice_total_with_vat
-from .models import (
+from ..completion_statement import get_completion_statement_data, get_or_create_completion_statement
+from ..estate_account import calculate_invoice_total_with_vat
+from ..models import (
     ClientContactDetails,
     CompletionStatement,
     CompletionStatementFinanceLineOverride,
@@ -299,7 +299,7 @@ class SaleCompletionStatementScenarios(TestCase):
         Transfer from this sale file to the client's purchase file appears as a
         **less** line on the sale completion statement.
         """
-        from .models import LedgerAccountTransfers
+        from ..models import LedgerAccountTransfers
 
         purchase_matter = make_matter('CV-PUR-XFER', client_name='Bob Buyer')
         statement = get_or_create_completion_statement(self.matter, self.user)

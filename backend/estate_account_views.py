@@ -36,8 +36,8 @@ from .models import (
 def _require_probate_matter(file_number):
     matter = get_object_or_404(
         WIP.objects.select_related(
-            'matter_type', 'client1', 'client2', 'fee_earner', 'authorised_party1'
-        ),
+            'matter_type', 'client1', 'fee_earner', 'authorised_party1'
+        ).prefetch_related('additional_clients'),
         file_number=file_number,
     )
     if not matter_is_probate(matter):

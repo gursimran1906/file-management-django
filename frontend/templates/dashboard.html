@@ -97,7 +97,7 @@
    </div>
    
   <div id="kanban-board">
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
       <!-- To Do Column -->
       <div class="kanban-column rounded-lg border border-gray-100 bg-gray-50/60 p-3">
         <div class="flex justify-between items-center mb-2">
@@ -158,6 +158,26 @@
           <!-- Tasks will be loaded here -->
         </div>
       </div>
+      <!-- Admin Pool Column -->
+      <div class="kanban-column rounded-lg border border-indigo-100 bg-indigo-50/40 p-3">
+        <div class="flex justify-between items-center mb-2">
+          <div class="flex flex-col min-w-0">
+            <h3 class="text-sm font-semibold text-gray-900 flex items-center">
+              <span class="w-2 h-2 bg-indigo-500 rounded-full mr-1.5 shrink-0"></span>
+              Admin pool
+            </h3>
+            <p class="text-[11px] text-gray-500 ml-3.5">Shared · pick one up</p>
+          </div>
+          <span
+            class="bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded-full text-xs font-medium shrink-0"
+            id="admin-pool-count"
+            >0</span
+          >
+        </div>
+        <div class="space-y-2 min-h-64 max-h-[60vh] overflow-y-auto pr-0.5" id="admin-pool-tasks">
+          <!-- Tasks will be loaded here -->
+        </div>
+      </div>
     </div>
   </div>
   <!-- Minimized state -->
@@ -179,6 +199,11 @@
           class="bg-green-100 text-green-800 px-1.5 py-0.5 rounded-full font-medium"
           id="minimized-completed-count"
           >0 completed</span
+        >
+        <span
+          class="bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded-full font-medium"
+          id="minimized-admin-pool-count"
+          >0 in pool</span
         >
       </div>
         <button
@@ -220,7 +245,7 @@
           </div>
           <p class="text-sm text-gray-900 mt-0.5 leading-snug line-clamp-2">{{ file.matter_description|default:"No description" }}</p>
           <p class="mt-1 text-xs text-gray-500">
-            {% if file.client1 %}{{ file.client1.name }}{% endif %}{% if file.client2 %} · {{ file.client2.name }}{% endif %}
+            {% if file.client1 %}{{ file.client1.name }}{% endif %}{% for extra in file.additional_clients.all %} · {{ extra.name }}{% endfor %}
           </p>
           {% if invoices %}
           <div class="mt-1.5 flex flex-wrap gap-2">
@@ -472,7 +497,9 @@
             <label for="person" class="form-label">Assigned to</label>
             <select id="person" name="person" class="form-input text-sm" required>
               <option value="">Select a person...</option>
+              <option value="admin_pool">Admin pool (unassigned)</option>
             </select>
+            <p class="text-[11px] text-gray-500 mt-1">Choose "Admin pool" to add a shared task anyone can pick up.</p>
           </div>
 
           <div>
@@ -546,32 +573,37 @@
         const containers = {
             'to_do': document.getElementById('to-do-tasks'),
             'in_progress': document.getElementById('in-progress-tasks'),
-            'completed': document.getElementById('completed-tasks')
+            'completed': document.getElementById('completed-tasks'),
+            'admin_pool': document.getElementById('admin-pool-tasks')
         };
 
         const counts = {
             'to_do': document.getElementById('to-do-count'),
             'in_progress': document.getElementById('in-progress-count'),
-            'completed': document.getElementById('completed-count')
+            'completed': document.getElementById('completed-count'),
+            'admin_pool': document.getElementById('admin-pool-count')
         };
 
         const minimizedCounts = {
             'to_do': document.getElementById('minimized-to-do-count'),
             'in_progress': document.getElementById('minimized-in-progress-count'),
-            'completed': document.getElementById('minimized-completed-count')
+            'completed': document.getElementById('minimized-completed-count'),
+            'admin_pool': document.getElementById('minimized-admin-pool-count')
         };
 
         // Track loaded tasks per status
         const loadedTasks = {
             'to_do': 0,
             'in_progress': 0,
-            'completed': 0
+            'completed': 0,
+            'admin_pool': 0
         };
 
         const totalTasks = {
             'to_do': 0,
             'in_progress': 0,
-            'completed': 0
+            'completed': 0,
+            'admin_pool': 0
         };
 
         // Filter state
@@ -873,6 +905,16 @@
                 updateTaskStatus(taskId, newStatus);
             }
 
+            if (e.target.classList.contains('task-claim-btn')) {
+                const taskId = e.target.closest('.kanban-task').dataset.taskId;
+                claimTask(taskId);
+            }
+
+            if (e.target.classList.contains('task-release-btn')) {
+                const card = e.target.closest('.kanban-task');
+                releaseTask(card.dataset.taskId, card.dataset.status);
+            }
+
             if (e.target.classList.contains('load-more-btn')) {
                 const status = e.target.dataset.status;
                 loadMoreTasks(status);
@@ -940,6 +982,7 @@
             if (minimizedCounts[status]) {
                 const statusText = status === 'to_do' ? 'to do' :
                                 status === 'in_progress' ? 'in progress' :
+                                status === 'admin_pool' ? 'in pool' :
                                 'completed';
                 minimizedCounts[status].textContent = `${total} ${statusText}`;
             }
@@ -966,10 +1009,11 @@
             if (!container) return;
 
             const emptyDiv = document.createElement('div');
-            emptyDiv.className = 'text-center text-xs text-gray-500 py-6';
+            emptyDiv.className = 'empty-state text-center text-xs text-gray-500 py-6';
 
             const emptyText = status === 'to_do' ? 'No tasks to do' :
                             status === 'in_progress' ? 'No tasks in progress' :
+                            status === 'admin_pool' ? 'No tasks in the pool' :
                             'No tasks completed this week';
 
             emptyDiv.innerHTML = `<p>${emptyText}</p>`;
@@ -991,6 +1035,11 @@
 
         // Update task status via AJAX
         function updateTaskStatus(taskId, newStatus) {
+            // Remember where the card is moving from so we can slide it across
+            // instead of reloading the whole board.
+            const card = document.querySelector(`.kanban-task[data-task-id="${taskId}"]`);
+            const fromStatus = card ? card.dataset.status : null;
+
             fetch('/update-task-status/', {
                 method: 'POST',
                 headers: {
@@ -1005,12 +1054,17 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Reload initial tasks to refresh the view
-                    Object.keys(containers).forEach(status => {
-                        containers[status].innerHTML = '';
-                        loadedTasks[status] = 0;
-                    });
-                    loadInitialTasks();
+                    if (data.task && fromStatus && fromStatus !== newStatus) {
+                        // Smooth single-card move (same as claim/release).
+                        moveTaskCard(taskId, fromStatus, newStatus, data.task);
+                    } else {
+                        // Fallback: refresh the view if we can't animate.
+                        Object.keys(containers).forEach(status => {
+                            containers[status].innerHTML = '';
+                            loadedTasks[status] = 0;
+                        });
+                        loadInitialTasks();
+                    }
                 } else {
                     alert('Error updating task status: ' + data.error);
                 }
@@ -1018,6 +1072,136 @@
             .catch(error => {
                 console.error('Error:', error);
                 alert('Error updating task status');
+            });
+        }
+
+        // Standard easing curve (matches Tailwind's ease-in-out) for a smooth,
+        // consistent feel across every card move.
+        const EASE = 'cubic-bezier(0.4, 0, 0.2, 1)';
+
+        // Animate a card out of its column, then remove it from the DOM.
+        function animateCardOut(card) {
+            return new Promise(resolve => {
+                card.style.overflow = 'hidden';
+                card.style.maxHeight = card.offsetHeight + 'px';
+                void card.offsetHeight; // flush the starting height
+                card.style.transition =
+                    `opacity 0.2s ${EASE}, transform 0.2s ${EASE}, ` +
+                    `max-height 0.28s ${EASE}, margin 0.28s ${EASE}, padding 0.28s ${EASE}`;
+                card.style.opacity = '0';
+                card.style.transform = 'translateX(12px) scale(0.97)';
+                card.style.maxHeight = '0px';
+                card.style.marginTop = '0';
+                card.style.marginBottom = '0';
+                card.style.paddingTop = '0';
+                card.style.paddingBottom = '0';
+                let done = false;
+                const finish = () => { if (done) return; done = true; card.remove(); resolve(); };
+                card.addEventListener('transitionend', finish, { once: true });
+                setTimeout(finish, 360); // fallback if transitionend doesn't fire
+            });
+        }
+
+        // Build a card for the destination column and animate it in.
+        function animateCardIn(toStatus, taskData) {
+            const container = containers[toStatus];
+            if (!container) return;
+            const emptyState = container.querySelector('.empty-state');
+            if (emptyState) emptyState.remove();
+
+            const card = createTaskElement(taskData, toStatus);
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(-8px) scale(0.97)';
+            card.style.transition =
+                `opacity 0.26s ${EASE}, transform 0.26s ${EASE}, background-color 0.7s ${EASE}`;
+            card.style.backgroundColor = '#eef2ff'; // indigo-50 flash to draw the eye
+            container.insertBefore(card, container.firstChild);
+            requestAnimationFrame(() => {
+                card.style.opacity = '1';
+                card.style.transform = 'translateY(0) scale(1)';
+                setTimeout(() => { card.style.backgroundColor = ''; }, 300);
+            });
+        }
+
+        // Move a single card between columns without reloading the whole board.
+        function moveTaskCard(taskId, fromStatus, toStatus, taskData) {
+            const card = document.querySelector(`.kanban-task[data-task-id="${taskId}"]`);
+
+            // Keep counts in sync for both columns.
+            totalTasks[fromStatus] = Math.max(0, (totalTasks[fromStatus] || 0) - 1);
+            totalTasks[toStatus] = (totalTasks[toStatus] || 0) + 1;
+            loadedTasks[fromStatus] = Math.max(0, (loadedTasks[fromStatus] || 0) - 1);
+            loadedTasks[toStatus] = (loadedTasks[toStatus] || 0) + 1;
+            updateTaskCounts(fromStatus, totalTasks[fromStatus]);
+            updateTaskCounts(toStatus, totalTasks[toStatus]);
+
+            animateCardIn(toStatus, taskData);
+
+            if (card) {
+                animateCardOut(card).then(() => {
+                    const fromContainer = containers[fromStatus];
+                    if (fromContainer && !fromContainer.querySelector('.kanban-task')) {
+                        const loadMoreBtn = fromContainer.querySelector('.load-more-btn');
+                        if (loadMoreBtn) loadMoreBtn.remove();
+                        showEmptyState(fromStatus);
+                    }
+                });
+            }
+        }
+
+        // Pick up a task from the shared admin pool
+        function claimTask(taskId) {
+            fetch('/claim-task/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    task_id: taskId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.task) {
+                    // Slide the card from the pool into "To do" - no full reload.
+                    moveTaskCard(taskId, 'admin_pool', 'to_do', data.task);
+                } else {
+                    alert('Error picking up task: ' + data.error);
+                    loadInitialTasks();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error picking up task');
+            });
+        }
+
+        // Send a task back to the shared admin pool
+        function releaseTask(taskId, fromStatus) {
+            fetch('/release-task/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    task_id: taskId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.task) {
+                    // Slide the card from the personal column into the pool.
+                    moveTaskCard(taskId, fromStatus || 'to_do', 'admin_pool', data.task);
+                } else {
+                    alert('Error returning task to pool: ' + data.error);
+                    loadInitialTasks();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error returning task to pool');
             });
         }
 
@@ -1118,13 +1302,17 @@
                         <span class="text-[11px] text-gray-500">${getDateStatus(task.date)}</span>
                         <div class="flex items-center gap-2 shrink-0">
                             ${editHtml}
-                            ${getStatusButtons(status)}
+                            ${status === 'admin_pool' ? getClaimButton() : getStatusButtons(status)}
                         </div>
                     </div>
                 `;
             }
 
             return div;
+        }
+
+        function getClaimButton() {
+            return `<button class="task-claim-btn px-2 py-0.5 text-[11px] font-medium border border-indigo-200 bg-indigo-600 text-white rounded hover:bg-indigo-700 shrink-0">Pick up</button>`;
         }
 
         function getTaskMetaLine(task) {
@@ -1174,10 +1362,16 @@
 
         function getStatusButtons(status) {
             const btnClass = 'task-status-btn px-2 py-0.5 text-[11px] font-medium border border-gray-200 bg-white text-gray-700 rounded hover:bg-gray-50 shrink-0';
+            const poolBtn = '<button class="task-release-btn px-2 py-0.5 text-[11px] font-medium border border-indigo-200 bg-white text-indigo-700 rounded hover:bg-indigo-50 shrink-0" title="Send back to the admin pool">To pool</button>';
             switch(status) {
                 case 'to_do':
-                    return `<button class="${btnClass}" data-new-status="in_progress">Start</button>`;
+                    return `<div class="flex gap-1 shrink-0">
+                        <button class="${btnClass}" data-new-status="in_progress">Start</button>
+                        ${poolBtn}
+                    </div>`;
                 case 'in_progress':
+                    // No "To pool" here: an in-progress task must go back to
+                    // "To do" before it can be returned to the pool.
                     return `<div class="flex gap-1 shrink-0">
                         <button class="${btnClass}" data-new-status="to_do">Back</button>
                         <button class="${btnClass}" data-new-status="completed">Done</button>
@@ -1192,9 +1386,12 @@
             e.preventDefault();
             
             const formData = new FormData(addTaskForm);
+            const personValue = formData.get('person');
+            const isAdminPool = personValue === 'admin_pool';
             const taskData = {
                 file_number: formData.get('file_number'),
-                person: formData.get('person'),
+                person: isAdminPool ? null : personValue,
+                is_admin_pool: isAdminPool,
                 task: formData.get('task'),
                 date: formData.get('date'),
                 urgency: formData.get('urgency'),
@@ -1233,7 +1430,8 @@
                 .then(response => response.json())
                 .then(data => {
                     const personSelect = document.getElementById('person');
-                    personSelect.innerHTML = '<option value="">Select a person...</option>';
+                    personSelect.innerHTML = '<option value="">Select a person...</option>' +
+                        '<option value="admin_pool">Admin pool (unassigned)</option>';
                     data.users.forEach(user => {
                         const option = document.createElement('option');
                         option.value = user.id;

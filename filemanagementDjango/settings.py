@@ -275,8 +275,16 @@ CRONJOBS = [
     ('*/15 * * * *', 'email_sorting.utils.get_emails_and_store',
      '>>'+str(LOGS_DIR)+'/email_job.log 2>&1'),
     ('* * 15 * *', 'email_sorting.utils.remove_log_file',
-     '>>'+str(LOGS_DIR)+'/remove_log.log 2>&1')
+     '>>'+str(LOGS_DIR)+'/remove_log.log 2>&1'),
+    # Office hours only (07:00–18:xx). The first run each morning does a full
+    # catch-up scan for the overnight gap, so nothing is missed.
+    ('*/15 7-18 * * *', 'backend.granola.cron.sync_granola_notes',
+     '>>'+str(LOGS_DIR)+'/granola_job.log 2>&1'),
 ]
+
+# Central Granola API key. Prefer setting this via the environment; falls back
+# to the GranolaConfig row in the database when unset.
+GRANOLA_API_KEY = os.environ.get('GRANOLA_API_KEY', '')
 
 QUILL_CONFIGS = {
     'default': {

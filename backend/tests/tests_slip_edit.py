@@ -5,15 +5,15 @@ from django.test import TestCase
 from django.urls import reverse
 
 from users.models import CustomUser
-from .utils import (
+from ..utils import (
     green_slip_has_usage,
     pmt_slip_has_partial_invoice_usage,
     validate_green_slip_amount_change,
     validate_green_slip_file_change,
     validate_pmt_slip_amount_change,
 )
-from .models import LedgerAccountTransfers, MatterType, Modifications, PmtsSlips, WIP
-from .models import ClientContactDetails
+from ..models import LedgerAccountTransfers, MatterType, Modifications, PmtsSlips, WIP
+from ..models import ClientContactDetails
 
 
 def make_client(name='Test Client'):
@@ -121,7 +121,7 @@ class SlipEditValidationTests(TestCase):
         self.assertIn('200.00', error)
 
     def test_fully_invoiced_slip_on_final_invoice_blocks_amount_change(self):
-        from .models import Invoices
+        from ..models import Invoices
         invoice = Invoices.objects.create(
             file_number=self.matter,
             invoice_number=1001,
@@ -152,7 +152,7 @@ class SlipEditValidationTests(TestCase):
         self.assertIn('final invoice', error)
 
     def test_cash_allocated_to_final_invoice_allows_amount_increase(self):
-        from .models import Invoices
+        from ..models import Invoices
         invoice = Invoices.objects.create(
             file_number=self.matter,
             invoice_number=1002,
@@ -182,7 +182,7 @@ class SlipEditValidationTests(TestCase):
         self.assertEqual(balance, Decimal('400.00'))
 
     def test_fully_invoiced_slip_allows_increase_on_draft_invoice(self):
-        from .models import Invoices
+        from ..models import Invoices
         invoice = Invoices.objects.create(
             file_number=self.matter,
             invoice_number=None,

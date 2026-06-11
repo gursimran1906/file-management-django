@@ -362,11 +362,7 @@ def _compute_totals(completion_statement, completion_monies_line, lines):
 
 
 def _statement_metadata(completion_statement, matter):
-    client_names = []
-    if matter.client1:
-        client_names.append(matter.client1.name)
-    if matter.client2:
-        client_names.append(matter.client2.name)
+    client_names = [client.name for client in matter.all_clients]
     return {
         'id': completion_statement.id,
         'status': completion_statement.status,

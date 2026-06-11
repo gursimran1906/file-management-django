@@ -1,0 +1,40 @@
+{% comment %}Emails tab body. Rendered standalone for AJAX tab swaps (partial=1)
+and included by the full unallocated_emails.html shell.{% endcomment %}
+<form action="{% url 'allocate_emails' %}" method="POST">
+    {% csrf_token %}
+    <div class="div-container mb-4">
+        <div class="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3">
+            <div>
+                <label class="form-label" for="emailFilter">Filter by mailbox</label>
+                <select id="emailFilter" class="form-input text-sm" onchange="filterRows()">
+                    <option value="All">Show all</option>
+                    <option>mail@anpsolicitors.com</option>
+                    <option>family@anpsolicitors.com</option>
+                    <option>conveyancing@anpsolicitors.com</option>
+                    <option>privateclient@anpsolicitors.com</option>
+                    <option>disputeresolution@anpsolicitors.com</option>
+                    <option>riskmanagment@anpsolicitors.com</option>
+                </select>
+            </div>
+            <button class="btn-primary text-xs" type="submit">Allocate emails</button>
+        </div>
+    </div>
+
+    <div class="div-container overflow-x-auto">
+        <table class="table w-full text-sm">
+            <thead>
+                <tr class="thead">
+                    <th class="td">Index</th>
+                    <th class="td">Date Time</th>
+                    <th class="td">Email</th>
+                    <th class="td">Subject</th>
+                    <th class="td">Link</th>
+                    <th class="td">FileNumber</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for email in emails %}{{ email }}{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</form>

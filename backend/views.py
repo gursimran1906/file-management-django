@@ -1,6 +1,9 @@
 import logging
 import html
 from html import escape as html_escape
+from collections import defaultdict
+from functools import wraps
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.db import transaction
@@ -84,6 +87,37 @@ from backend.sharepoint.client import SharePointClientError
 
 logger = logging.getLogger('backend')
 CURRENT_VAT_RATE_PERCENT = int(CURRENT_VAT_RATE * 100)
+
+
+def manager_required(view_func):
+    """Hard-enforce manager access: non-managers get a 403, not a redirect."""
+    @wraps(view_func)
+    @login_required
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_manager:
+            raise PermissionDenied(
+                'This report is restricted to managers.')
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+
+def coerce_json_dict(value):
+    """Return a dict for a slip amount-invoiced field.
+
+    These fields are JSONFields that historically store a json.dumps()
+    string, but records left at the default ({}) or written as a plain
+    dict come back as dicts. Handle every case so callers don't crash on
+    json.loads(dict).
+    """
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        value = value.decode('utf-8')
+    if isinstance(value, str):
+        return json.loads(value) if value else {}
+    if value is None:
+        return {}
+    raise ValueError(f"Unsupported JSON value type: {type(value)!r}")
 
 MATTER_FILE_REVIEW_SECTIONS = [
     {
@@ -487,8 +521,8 @@ def get_user_dashboard_wips(user):
         default=len(wip_ids),
     )
     return WIP.objects.filter(id__in=wip_ids).select_related(
-        'client1', 'client2', 'file_status', 'fee_earner'
-    ).order_by(preserved_order)
+        'client1', 'file_status', 'fee_earner'
+    ).prefetch_related('additional_clients').order_by(preserved_order)
 
 
 def build_dashboard_files(user, display_limit=40):
@@ -529,8 +563,8 @@ def build_dashboard_files(user, display_limit=40):
             display_ids.append(wip_id)
             if wip_id not in wip_by_id:
                 extra = WIP.objects.filter(id=wip_id).select_related(
-                    'client1', 'client2', 'file_status', 'fee_earner'
-                ).first()
+                    'client1', 'file_status', 'fee_earner'
+                ).prefetch_related('additional_clients').first()
                 if extra:
                     wip_by_id[wip_id] = extra
 
@@ -566,8 +600,11 @@ def serialize_kanban_task(task, request_user, *, is_completed=False):
     if len(task_text) > 80:
         task_text = task_text[:80] + '...'
 
+    is_admin_pool = getattr(task, 'is_admin_pool', False)
     is_owner = task.person_id == request_user.id
-    can_edit = is_owner
+    # Pool tasks are unassigned, so the creator keeps the ability to edit them.
+    can_edit = is_owner or (
+        is_admin_pool and task.created_by_id == request_user.id)
     edit_url = ''
     if can_edit:
         if is_completed:
@@ -585,6 +622,7 @@ def serialize_kanban_task(task, request_user, *, is_completed=False):
         'assigned_to': task.person.get_full_name() if task.person else 'Unassigned',
         'created_by': task.created_by.get_full_name() if task.created_by else 'Unknown',
         'is_created_by_me': task.created_by_id == request_user.id if task.created_by_id else False,
+        'is_admin_pool': is_admin_pool,
         'can_edit': can_edit,
         'edit_url': edit_url,
     }
@@ -599,14 +637,14 @@ def get_key_document_expiry_alerts(wips, warning_days=30):
     client_file_numbers = {}
 
     rows = wips.filter(file_status__status__in=['Open', 'To Be Closed']).values(
-        'file_number', 'client1_id', 'client2_id')
+        'file_number', 'client1_id', 'additional_clients')
     for row in rows:
         if row['client1_id']:
             client_file_numbers.setdefault(
                 row['client1_id'], set()).add(row['file_number'])
-        if row['client2_id']:
+        if row['additional_clients']:
             client_file_numbers.setdefault(
-                row['client2_id'], set()).add(row['file_number'])
+                row['additional_clients'], set()).add(row['file_number'])
 
     documents = ClientKeyDocument.objects.filter(
         client_id__in=client_file_numbers.keys(),
@@ -634,13 +672,11 @@ def get_key_document_expiry_alerts(wips, warning_days=30):
 def get_missing_key_document_alerts(wips):
     active_wips = list(wips.filter(
         file_status__status__in=['Open', 'To Be Closed']
-    ).select_related('client1', 'client2').order_by('file_number'))
+    ).select_related('client1').prefetch_related('additional_clients').order_by('file_number'))
     client_ids = set()
     for matter in active_wips:
-        if matter.client1_id:
-            client_ids.add(matter.client1_id)
-        if matter.client2_id:
-            client_ids.add(matter.client2_id)
+        for client in matter.all_clients:
+            client_ids.add(client.id)
 
     existing_documents = ClientKeyDocument.objects.filter(
         client_id__in=client_ids
@@ -656,11 +692,7 @@ def get_missing_key_document_alerts(wips):
     ]
     alerts = []
     for matter in active_wips:
-        matter_clients = [matter.client1]
-        if matter.client2:
-            matter_clients.append(matter.client2)
-
-        for client in matter_clients:
+        for client in matter.all_clients:
             existing_categories = document_categories_by_client.get(
                 client.id, set())
             for category, label in required_categories:
@@ -687,9 +719,7 @@ def get_dashboard_key_document_scope_wips(user, key_doc_scope):
 
 
 def get_matter_key_documents(matter):
-    clients = [matter.client1]
-    if matter.client2:
-        clients.append(matter.client2)
+    clients = matter.all_clients
 
     documents = ClientKeyDocument.objects.filter(
         client__in=clients
@@ -845,7 +875,7 @@ def get_index_search_filter(search_by, val_to_search, show_archived):
 
     if search_by == 'ClientName':
         filter_factor &= Q(client1__name__icontains=val_to_search) | Q(
-            client2__name__icontains=val_to_search
+            additional_clients__name__icontains=val_to_search
         )
     elif search_by == 'FeeEarner':
         if val_to_search == "DC":
@@ -993,16 +1023,31 @@ def get_index_search_data(search_by, val_to_search, show_archived):
             output_field=CharField()
         )
     ).values(
+        'id',
         'file_number',
         'fee_earner__username',
         'matter_description',
         'client1__name',
-        'client2__name',
         'comments',
         'latest_last_work_date',
         'latest_last_work_person',
         'latest_last_work_task',
-    ).order_by('file_number')
+    ).order_by('file_number').distinct()
+
+    # Searching by client name now joins additional_clients (M2M), which can
+    # duplicate matter rows — .distinct() collapses them. Additional client
+    # names are attached per row below rather than via the values() projection
+    # (which would re-introduce row multiplication).
+    data = list(data)
+    additional_by_wip = {}
+    for wip in WIP.objects.filter(
+        id__in=[row['id'] for row in data]
+    ).prefetch_related('additional_clients'):
+        additional_by_wip[wip.id] = [
+            client.name for client in wip.additional_clients.all()]
+    for row in data:
+        row['additional_client_names'] = ' / '.join(
+            additional_by_wip.get(row['id'], []))
 
     return data
 
@@ -1132,10 +1177,159 @@ def update_task_status(request):
         # Allow both the assigned person and the creator to update the task
         task = get_object_or_404(NextWork, Q(id=task_id) & (
             Q(person=request.user) | Q(created_by=request.user)))
+        old_status = task.status
+        old_status_display = task.get_status_display()
         task.status = new_status
         task.save()
 
-        return JsonResponse({'success': True})
+        # Audit the status change on the task (surfaces in the matter's
+        # activity log via get_file_logs).
+        if old_status != new_status:
+            create_modification(request.user, task, {
+                'status': {
+                    'old_value': old_status_display,
+                    'new_value': task.get_status_display(),
+                    '_label': 'Task status',
+                }
+            })
+
+        # Return the serialized task so the board can animate a single card
+        # between columns instead of reloading everything. Completing a task
+        # creates a LastWork row (see NextWork.save); use that so the completed
+        # card carries the correct id and edit link.
+        if new_status == 'completed':
+            completed_entry = LastWork.objects.filter(
+                file_number=task.file_number,
+                person=task.person,
+                task=task.task,
+                date=task.date,
+            ).order_by('-timestamp').first()
+            serialized = serialize_kanban_task(
+                completed_entry or task, request.user, is_completed=True)
+        else:
+            serialized = serialize_kanban_task(task, request.user)
+
+        return JsonResponse({'success': True, 'task': serialized})
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@login_required
+@require_POST
+def claim_task(request):
+    """Pick up a task from the shared admin pool and assign it to yourself."""
+    try:
+        data = json.loads(request.body)
+        task_id = data.get('task_id')
+
+        if not task_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing task_id'
+            })
+
+        # Anyone may claim a pool task; once claimed it leaves the pool.
+        # filter().first() handles the race where two staff click "Pick up"
+        # at the same time - the second one gets a clean message.
+        task = NextWork.objects.filter(
+            id=task_id, is_admin_pool=True).first()
+        if task is None:
+            return JsonResponse({
+                'success': False,
+                'error': 'This task is no longer available in the pool.'
+            })
+
+        task.is_admin_pool = False
+        task.person = request.user
+        task.status = 'to_do'
+        task.save()
+
+        # Audit the pickup on the task (visible in the matter's activity log).
+        create_modification(request.user, task, {
+            'assignment': {
+                'old_value': 'Admin pool',
+                'new_value': request.user.get_full_name() or request.user.username,
+                '_label': 'Task picked up from pool',
+            }
+        })
+
+        return JsonResponse({
+            'success': True,
+            'task': serialize_kanban_task(task, request.user),
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@login_required
+@require_POST
+def release_task(request):
+    """Send a task back to the shared admin pool so anyone can pick it up."""
+    try:
+        data = json.loads(request.body)
+        task_id = data.get('task_id')
+
+        if not task_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing task_id'
+            })
+
+        # Only the assigned person or the creator may release a task.
+        task = NextWork.objects.filter(
+            Q(id=task_id) & ~Q(is_admin_pool=True) & (
+                Q(person=request.user) | Q(created_by=request.user))
+        ).first()
+        if task is None:
+            return JsonResponse({
+                'success': False,
+                'error': 'You can only return tasks assigned to you.'
+            })
+
+        # A task that is already in progress cannot be sent back to the pool -
+        # move it back to "To do" first.
+        if task.status == 'in_progress':
+            return JsonResponse({
+                'success': False,
+                'error': 'In-progress tasks cannot be moved to the pool. Move it back to "To do" first.'
+            })
+
+        previous_person = task.person
+        # save() clears the assignee and resets the status to "to do".
+        task.is_admin_pool = True
+        task.save()
+
+        # Audit the release on the task (visible in the matter's activity log).
+        create_modification(request.user, task, {
+            'assignment': {
+                'old_value': (previous_person.get_full_name() or previous_person.username) if previous_person else 'Assigned',
+                'new_value': 'Admin pool',
+                '_label': 'Task returned to pool',
+            }
+        })
+
+        return JsonResponse({
+            'success': True,
+            'task': serialize_kanban_task(task, request.user),
+        })
 
     except json.JSONDecodeError:
         return JsonResponse({
@@ -1171,9 +1365,11 @@ def load_initial_tasks(request):
             'person': request.user}
 
         # Load To Do tasks with smart ordering (urgency priority, then due date)
+        # Exclude admin pool tasks - they have their own column.
         to_do_tasks = NextWork.objects.filter(
             **base_filter_nextwork,
-            status='to_do'
+            status='to_do',
+            is_admin_pool=False
         ).select_related('person', 'created_by', 'file_number').extra(
             select={
                 'urgency_order': "CASE urgency WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END"
@@ -1191,7 +1387,8 @@ def load_initial_tasks(request):
         # Load In Progress tasks with smart ordering (urgency priority, then due date)
         in_progress_tasks = NextWork.objects.filter(
             **base_filter_nextwork,
-            status='in_progress'
+            status='in_progress',
+            is_admin_pool=False
         ).select_related('person', 'created_by', 'file_number').extra(
             select={
                 'urgency_order': "CASE urgency WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END"
@@ -1204,6 +1401,26 @@ def load_initial_tasks(request):
         task_data['in_progress'] = [
             serialize_kanban_task(task, request.user)
             for task in in_progress_limited
+        ]
+
+        # Load Admin pool tasks - shared, unassigned queue visible to everyone.
+        # This list is global and intentionally ignores the per-user filter.
+        admin_pool_tasks = NextWork.objects.filter(
+            is_admin_pool=True,
+            person__isnull=True,
+            status='to_do'
+        ).select_related('created_by', 'file_number').extra(
+            select={
+                'urgency_order': "CASE urgency WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END"
+            }
+        ).order_by('urgency_order', 'date')
+
+        total_counts['admin_pool'] = admin_pool_tasks.count()
+        admin_pool_limited = admin_pool_tasks if show_all else admin_pool_tasks[:count]
+
+        task_data['admin_pool'] = [
+            serialize_kanban_task(task, request.user)
+            for task in admin_pool_limited
         ]
 
         # Load Completed tasks (last 7 days)
@@ -1266,10 +1483,31 @@ def load_more_tasks(request):
         base_filter_lastwork = {'created_by': request.user} if filter_created_by_me else {
             'person': request.user}
 
-        if status in ['to_do', 'in_progress']:
+        if status == 'admin_pool':
+            # Shared, unassigned queue - global, ignores the per-user filter.
+            all_tasks = NextWork.objects.filter(
+                is_admin_pool=True,
+                person__isnull=True,
+                status='to_do'
+            ).select_related('created_by', 'file_number').extra(
+                select={
+                    'urgency_order': "CASE urgency WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END"
+                }
+            ).order_by('urgency_order', 'date')
+
+            total_count = all_tasks.count()
+            tasks = all_tasks[offset:offset + count]
+
+            tasks_data = [
+                serialize_kanban_task(task, request.user)
+                for task in tasks
+            ]
+
+        elif status in ['to_do', 'in_progress']:
             all_tasks = NextWork.objects.filter(
                 **base_filter_nextwork,
-                status=status
+                status=status,
+                is_admin_pool=False
             ).select_related('person', 'created_by', 'file_number').extra(
                 select={
                     'urgency_order': "CASE urgency WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END"
@@ -1387,7 +1625,7 @@ def get_risk_assessments_due_data(request):
         )
         risk_assessments_due = get_risk_assessments_due_queryset(
             risk_scope_wips
-        ).select_related('client1', 'client2')
+        ).select_related('client1').prefetch_related('additional_clients')
 
         data = []
         for assessment in risk_assessments_due:
@@ -1399,7 +1637,8 @@ def get_risk_assessments_due_data(request):
                 'file_number': assessment.file_number,
                 'matter_description': assessment.matter_description or '',
                 'client1_name': assessment.client1.name if assessment.client1 else '',
-                'client2_name': assessment.client2.name if assessment.client2 else '',
+                'additional_client_names': ' / '.join(
+                    client.name for client in assessment.additional_clients.all()),
                 'latest_assessment_date_display': (
                     assessment.latest_assessment_date.strftime('%d/%m/%Y')
                     if assessment.latest_assessment_date else None
@@ -1432,14 +1671,18 @@ def create_task(request):
     try:
         data = json.loads(request.body)
 
+        # A task with no assignee is filed into the shared admin pool.
+        is_admin_pool = bool(data.get('is_admin_pool')) or not data.get('person')
+
         # Create new NextWork instance
         task = NextWork(
             file_number_id=data.get('file_number'),
-            person_id=data.get('person'),
+            person_id=None if is_admin_pool else data.get('person'),
             task=data.get('task'),
             date=data.get('date') if data.get('date') else None,
             urgency=data.get('urgency', 'medium'),
             status=data.get('status', 'to_do'),
+            is_admin_pool=is_admin_pool,
             created_by=request.user
         )
         task.save()
@@ -1464,8 +1707,6 @@ def display_data_home_page(request, file_number):
             'fee_earner',
             'client1',
             'client1__created_by',
-            'client2',
-            'client2__created_by',
             'matter_type',
             'file_status',
             'file_location',
@@ -1473,6 +1714,9 @@ def display_data_home_page(request, file_number):
             'authorised_party1',
             'authorised_party2',
             'created_by',
+        ).prefetch_related(
+            'additional_clients',
+            'additional_clients__created_by',
         ).get(file_number=file_number)
         matter_file_reviews = MatterFileReview.objects.filter(
             matter=matter
@@ -1825,10 +2069,9 @@ def _build_central_key_dates_context(request):
         'matter_type',
         'file_status',
         'client1',
-        'client2',
         'authorised_party1',
         'authorised_party2',
-    )
+    ).prefetch_related('additional_clients')
 
     if selected_fee_earner:
         base_matters = base_matters.filter(fee_earner_id=selected_fee_earner)
@@ -1846,8 +2089,8 @@ def _build_central_key_dates_context(request):
     if client_search:
         base_matters = base_matters.filter(
             Q(client1__name__icontains=client_search)
-            | Q(client2__name__icontains=client_search)
-        )
+            | Q(additional_clients__name__icontains=client_search)
+        ).distinct()
 
     matter_ids = base_matters.values_list('id', flat=True)
 
@@ -1857,8 +2100,9 @@ def _build_central_key_dates_context(request):
         'matter__matter_type',
         'matter__file_status',
         'matter__client1',
-        'matter__client2',
         'created_by',
+    ).prefetch_related(
+        'matter__additional_clients',
     ).filter(
         matter_id__in=matter_ids,
         date__gte=date_from,
@@ -1936,9 +2180,8 @@ def _build_central_key_dates_context(request):
 
     if 'aml_due' in selected_sources:
         for matter in base_matters:
-            parties = [
-                (matter.client1, 'Client'),
-                (matter.client2, 'Client'),
+            parties = [(client, 'Client') for client in matter.all_clients]
+            parties += [
                 (matter.authorised_party1, 'Authorised party'),
                 (matter.authorised_party2, 'Authorised party'),
             ]
@@ -1964,22 +2207,16 @@ def _build_central_key_dates_context(request):
                     ))
 
     if 'id_expiry' in selected_sources:
-        client_ids = set(base_matters.values_list('client1_id', flat=True))
-        client_ids.update(
-            base_matters.exclude(client2_id__isnull=True).values_list(
-                'client2_id', flat=True)
-        )
-        client_ids.discard(None)
+        client_matters = {}
+        for matter in base_matters:
+            for client in matter.all_clients:
+                client_matters.setdefault(client.id, []).append(matter)
+        client_ids = set(client_matters.keys())
         documents = ClientKeyDocument.objects.filter(
             client_id__in=client_ids,
             expiry_date__gte=date_from,
             expiry_date__lte=date_to,
         ).select_related('client').order_by('expiry_date', 'client__name', 'category')
-        client_matters = {}
-        for matter in base_matters:
-            client_matters.setdefault(matter.client1_id, []).append(matter)
-            if matter.client2_id:
-                client_matters.setdefault(matter.client2_id, []).append(matter)
         for document in documents:
             for matter in client_matters.get(document.client_id, []):
                 events.append(_make_central_calendar_event(
@@ -2167,7 +2404,7 @@ def _build_central_key_dates_context(request):
         ).order_by('first_name', 'last_name', 'username'),
         'matter_types': MatterType.objects.all().order_by('type'),
         'file_statuses': FileStatus.objects.all().order_by('status'),
-        'matters': WIP.objects.select_related('client1', 'client2').order_by('file_number'),
+        'matters': WIP.objects.select_related('client1').prefetch_related('additional_clients').order_by('file_number'),
         'date_type_choices': MatterKeyDate.DATE_TYPE_CHOICES,
         'source_choices': KEY_DATE_SOURCE_CHOICES,
         'view_month_choices': VIEW_MONTH_CHOICES,
@@ -2204,9 +2441,7 @@ def _key_date_event_row(event):
     if matter:
         file_number = matter.file_number
         matter_description = matter.matter_description or ''
-        client = matter.client1.name
-        if matter.client2:
-            client = f'{client} / {matter.client2.name}'
+        client = ' / '.join(c.name for c in matter.all_clients)
         fee_earner = str(matter.fee_earner or '')
 
     return [
@@ -2311,10 +2546,11 @@ def get_file_logs(file_number, limit=None):
     file = WIP.objects.select_related(
         'created_by',
         'client1__created_by',
-        'client2__created_by',
         'authorised_party1__created_by',
         'authorised_party2__created_by',
         'other_side__created_by',
+    ).prefetch_related(
+        'additional_clients__created_by',
     ).filter(file_number=file_number).first()
     """
     Log: {datetime:datetime, description, user, type_of_data}
@@ -2338,38 +2574,24 @@ def get_file_logs(file_number, limit=None):
             'type': 'file_info'
         })
 
-    client_ids = [file.client1_id]
-    if file.client2_id:
-        client_ids.append(file.client2_id)
+    matter_clients = file.all_clients
+    client_ids = [client.id for client in matter_clients]
     client_modifications = get_modifications_by_object(
         ClientContactDetails, client_ids)
 
-    for modification in client_modifications.get(file.client1_id, []):
-        logs.append({
-            'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-            'desc': f'Client ({file.client1}) updated.',
-            'changes_list': build_change_items(modification.changes),
-            'user': modification.modified_by.username if modification.modified_by else None,
-            'type': 'client_info'
-        })
-    logs.append({'timestamp': file.client1.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                 'desc': f'Client ({file.client1}) Created.',
-                 'user': file.client1.created_by,
-                 'type': 'client_info'})
-
-    if file.client2:
-        logs.append({'timestamp': file.client2.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                     'desc': f'Client ({file.client2}) Created.',
-                     'user': file.client2.created_by,
-                     'type': 'client_info'})
-        for modification in client_modifications.get(file.client2_id, []):
+    for client in matter_clients:
+        for modification in client_modifications.get(client.id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Client ({file.client2}) updated.',
+                'desc': f'Client ({client}) updated.',
                 'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'client_info'
             })
+        logs.append({'timestamp': client.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
+                     'desc': f'Client ({client}) Created.',
+                     'user': client.created_by,
+                     'type': 'client_info'})
 
     authorised_party_ids = [
         party_id for party_id in [file.authorised_party1_id, file.authorised_party2_id]
@@ -2661,9 +2883,7 @@ def get_file_logs(file_number, limit=None):
                 'type': 'key_date'
             })
 
-    key_document_client_ids = [file.client1_id]
-    if file.client2_id:
-        key_document_client_ids.append(file.client2_id)
+    key_document_client_ids = [client.id for client in file.all_clients]
     key_documents = list(ClientKeyDocument.objects.filter(
         client_id__in=key_document_client_ids).select_related('client', 'verified_by'))
     key_document_modifications = get_modifications_by_object(
@@ -2802,6 +3022,30 @@ def add_new_client(request_post_copy, client_prefix, user):
     return client_contact.id
 
 
+def resolve_additional_client_ids(request_post_copy, user, exclude_id=None):
+    """Resolve every additional-client picker on the open/edit file form into a
+    list of ClientContactDetails ids.
+
+    Each additional-client row submits a field named ``additional_client_<n>``
+    holding either an existing client id, ``'-1'`` (a brand new client, whose
+    details live under the ``Client<n>...`` keys) or ``'0'``/'' (empty row).
+    The primary client (exclude_id) is never duplicated into the list."""
+    additional_ids = []
+    for key, value in request_post_copy.items():
+        if not key.startswith('additional_client_'):
+            continue
+        value = (value or '').strip()
+        if value in ('', '0'):
+            continue
+        if value == '-1':
+            suffix = key[len('additional_client_'):]
+            value = add_new_client(request_post_copy, suffix, user)
+        client_id = int(value)
+        if client_id != exclude_id and client_id not in additional_ids:
+            additional_ids.append(client_id)
+    return additional_ids
+
+
 def add_client_key_documents_from_post(request_post_copy, client_prefix, client, user):
     document_configs = [
         ('ProofOfID', 'proof_of_id'),
@@ -2909,8 +3153,6 @@ def add_new_otherside_details(request_post_copy, user):
 def preprocess_form_data(post_data):
     post_copy = post_data.copy()
 
-    post_copy['client2'] = None if post_copy['client2'] == '0' else post_copy['client2']
-
     post_copy['authorised_party1'] = None if post_copy['authorised_party1'] == '0' else post_copy['authorised_party1']
     post_copy['authorised_party2'] = None if post_copy['authorised_party2'] == '0' else post_copy['authorised_party2']
     post_copy['other_side'] = None if post_copy['other_side'] == '0' else post_copy['other_side']
@@ -2932,7 +3174,7 @@ def get_aml_checks_due_from_wips(wips, threshold_date, user=None, sort_by='date'
 
     relation_configs = [
         ('client1', 'Client', 'edit_client'),
-        ('client2', 'Client', 'edit_client'),
+        ('additional_clients', 'Client', 'edit_client'),
         ('authorised_party1', 'Authorised Party', 'edit_authorised_party'),
         ('authorised_party2', 'Authorised Party', 'edit_authorised_party'),
     ]
@@ -2996,9 +3238,13 @@ def open_new_file_page(request):
                 request_post_copy['client1'] = add_new_client(
                     request_post_copy, 1, request.user)
 
-            if request_post_copy['client2'] == '-1':
-                request_post_copy['client2'] = add_new_client(
-                    request_post_copy, 2, request.user)
+            primary_client_id = (
+                int(request_post_copy['client1'])
+                if request_post_copy.get('client1') not in (None, '', '0')
+                else None
+            )
+            additional_client_ids = resolve_additional_client_ids(
+                request_post_copy, request.user, exclude_id=primary_client_id)
 
             if request_post_copy['authorised_party1'] == '-1':
                 request_post_copy['authorised_party1'] = add_new_authorised_party(
@@ -3017,6 +3263,7 @@ def open_new_file_page(request):
             form = OpenFileForm(request_post_copy)
             if form.is_valid():
                 instance = form.save()
+                instance.additional_clients.set(additional_client_ids)
                 messages.success(request, 'File opened successfully.')
                 return redirect('index')
             else:
@@ -3441,14 +3688,31 @@ def edit_file(request, file_number):
     file = WIP.objects.filter(file_number=file_number).first()
     form_data = get_standard_data()
 
+    # Pre-render the matter's existing additional clients so the edit form shows
+    # one row per client (indices start at 2; Client 1 is the primary above).
+    existing_additional = list(file.additional_clients.all()) if file else []
+    additional_clients_ctx = [
+        {'index': position + 2, 'client': client}
+        for position, client in enumerate(existing_additional)
+    ]
+    additional_clients_next_index = len(existing_additional) + 2
+
     if request.method == 'POST':
         try:
 
             request_post_copy = preprocess_form_data(request.POST)
 
-            if request_post_copy['client2'] == '-1':
-                request_post_copy['client2'] = add_new_client(
-                    request_post_copy, 2, request.user)
+            if request_post_copy.get('client1') == '-1':
+                request_post_copy['client1'] = add_new_client(
+                    request_post_copy, 1, request.user)
+
+            primary_client_id = (
+                int(request_post_copy['client1'])
+                if request_post_copy.get('client1') not in (None, '', '0')
+                else None
+            )
+            additional_client_ids = resolve_additional_client_ids(
+                request_post_copy, request.user, exclude_id=primary_client_id)
 
             if request_post_copy['authorised_party1'] == '-1':
                 request_post_copy['authorised_party1'] = add_new_authorised_party(
@@ -3465,6 +3729,8 @@ def edit_file(request, file_number):
 
             form = OpenFileForm(request_post_copy, instance=file)
             duplicate_obj = copy.deepcopy(file)
+            previous_additional = sorted(
+                client.name for client in file.all_clients[1:])
             if form.is_valid():
                 changed_fields = form.changed_data
                 changes = {}
@@ -3475,10 +3741,19 @@ def edit_file(request, file_number):
                             'new_value': None
                         }
                 form.save()
+                file.additional_clients.set(additional_client_ids)
 
                 for field in changed_fields:
                     if field != 'created_by':
                         changes[field]['new_value'] = str(getattr(file, field))
+
+                new_additional = sorted(
+                    client.name for client in file.all_clients[1:])
+                if new_additional != previous_additional:
+                    changes['additional_clients'] = {
+                        'old_value': ', '.join(previous_additional),
+                        'new_value': ', '.join(new_additional),
+                    }
                 if changes:
                     create_modification(
                         user=request.user,
@@ -3495,19 +3770,25 @@ def edit_file(request, file_number):
                         messages.error(
                             request, f"{form[field].label}: {error}")
                         print(f"{form[field].label}: {error}")
-                return render(request, 'edit_file.html', {'form_data': form_data, 'form': form, 'file_number': file_number})
+                return render(request, 'edit_file.html', {'form_data': form_data, 'form': form, 'file_number': file_number,
+                                                          'additional_clients': additional_clients_ctx,
+                                                          'additional_clients_next_index': additional_clients_next_index})
 
         except Exception as e:
             messages.error(request, f"Error during file editing: {str(e)}")
             print(f"Error during file editing: {e}")
-            return render(request, 'edit_file.html', {'form_data': form_data, 'file_number': file_number})
+            return render(request, 'edit_file.html', {'form_data': form_data, 'file_number': file_number,
+                                                      'additional_clients': additional_clients_ctx,
+                                                      'additional_clients_next_index': additional_clients_next_index})
 
     else:
 
         form = OpenFileForm(instance=file)
 
     return render(request, 'edit_file.html', {'form': form, 'form_data': form_data,
-                                              'file_number': file_number})
+                                              'file_number': file_number,
+                                              'additional_clients': additional_clients_ctx,
+                                              'additional_clients_next_index': additional_clients_next_index})
 
 
 @login_required
@@ -3947,7 +4228,7 @@ def download_attendance_note(request, id):
 
     context = {
         'client1_name': a_n.file_number.client1.name,
-        'client2_name': a_n.file_number.client2.name if a_n.file_number.client2 else '',
+        'client2_name': ' & '.join(c.name for c in a_n.file_number.all_clients[1:]),
         'file_number': a_n.file_number.file_number,
         'date': a_n.date.strftime('%d/%m/%Y'),
         'start_time': a_n.start_time,
@@ -3989,7 +4270,7 @@ def download_attendance_notes_bulk(request, file_number):
         for note in attendance_notes:
             context = {
                 'client1_name': note.file_number.client1.name,
-                'client2_name': note.file_number.client2.name if note.file_number.client2 else '',
+                'client2_name': ' & '.join(c.name for c in note.file_number.all_clients[1:]),
                 'file_number': note.file_number.file_number,
                 'date': note.date.strftime('%d/%m/%Y'),
                 'start_time': note.start_time,
@@ -4227,7 +4508,7 @@ def download_sowc(request, file_number):
 
     writer = csv.writer(response)
 
-    writer.writerow(['', '', f'Client Name: {file.client1.name} Matter:{
+    writer.writerow(['', '', f'Client Name: {file.all_client_names} Matter:{
                     file.matter_description}[{file.file_number}]'])
     writer.writerow(['', '', f'Schedule of Work and Costs from {
                     first_date} to {last_date}'])
@@ -5212,78 +5493,79 @@ def add_invoice(request, file_number):
 
         if form.is_valid():
 
-            invoice_instance = form.save(commit=False)
-            invoice_instance.save()
+            with transaction.atomic():
+                invoice_instance = form.save(commit=False)
+                invoice_instance.save()
 
-            disbs_ids = [int(id_str)
-                         for id_str in request.POST.getlist('pink_slips[]')]
-            total_disbs = 0
-            for id in disbs_ids:
-                obj = PmtsSlips.objects.filter(id=id).first()
-                total_disbs = total_disbs + obj.amount
-                obj.amount_invoiced = json.dumps(str(obj.amount))
-                obj.balance_left = 0
-                obj.save()
-
-            total_costs_and_disbs = total_costs_and_vat + total_disbs
-            temp_costs = total_costs_and_disbs
-
-            green_slips_ids = [int(id_str)
-                               for id_str in request.POST.getlist('green_slips[]')]
-            for id in green_slips_ids:
-                obj = LedgerAccountTransfers.objects.filter(id=id).first()
-                if obj.file_number_from.file_number == file_number:
-                    obj.amount_invoiced_from = json.dumps(str(obj.amount))
-                    obj.balance_left_from = 0
-                else:
-                    temp_costs = temp_costs - obj.balance_left_to
-                    invoice_slip_obj = {str(invoice_instance.id): {
-                        'amt_invoiced': str(obj.balance_left_to), 'balance_left': ''}}
-                    if temp_costs < 0:
-                        obj.balance_left_to = obj.balance_left_to - total_costs_and_disbs
-                    elif temp_costs >= 0:
-                        obj.balance_left_to = 0
-                    invoice_slip_obj[str(invoice_instance.id)]['balance_left'] = str(
-                        obj.balance_left_to)
-                    prev_amount_invoiced_to_obj = json.loads(
-                        obj.amount_invoiced_to) if obj.amount_invoiced_to != {} else {}
-                    prev_amount_invoiced_to_obj.update(invoice_slip_obj)
-                    obj.amount_invoiced_to = json.dumps(
-                        prev_amount_invoiced_to_obj)
-                    total_costs_and_disbs = temp_costs
-                obj.save()
-
-            moa_ids = [int(id_str)
-                       for id_str in request.POST.getlist('blue_slips[]')]
-            for id in moa_ids:
-                obj = PmtsSlips.objects.filter(id=id).first()
-                temp_costs = temp_costs - obj.balance_left
-                invoice_slip_obj = {str(invoice_instance.id): {
-                    'amt_invoiced': str(obj.balance_left), 'balance_left': ''}}
-                if temp_costs < 0:
-                    obj.balance_left = obj.balance_left - total_costs_and_disbs
-                elif temp_costs >= 0:
+                disbs_ids = [int(id_str)
+                             for id_str in request.POST.getlist('pink_slips[]')]
+                total_disbs = 0
+                for id in disbs_ids:
+                    obj = PmtsSlips.objects.filter(id=id).first()
+                    total_disbs = total_disbs + obj.amount
+                    obj.amount_invoiced = json.dumps(str(obj.amount))
                     obj.balance_left = 0
+                    obj.save()
 
-                invoice_slip_obj[str(invoice_instance.id)
-                                 ]['balance_left'] = str(obj.balance_left)
-                prev_amount_invoiced_to_obj = json.loads(
-                    obj.amount_invoiced) if obj.amount_invoiced != {} else {}
-                prev_amount_invoiced_to_obj.update(invoice_slip_obj)
-                obj.amount_invoiced = json.dumps(prev_amount_invoiced_to_obj)
-                total_costs_and_disbs = temp_costs
-                obj.save()
+                total_costs_and_disbs = total_costs_and_vat + total_disbs
+                temp_costs = total_costs_and_disbs
 
-            if temp_costs <= 0:
-                invoice_instance.total_due_left = 0
-            else:
-                invoice_instance.total_due_left = temp_costs
+                green_slips_ids = [int(id_str)
+                                   for id_str in request.POST.getlist('green_slips[]')]
+                for id in green_slips_ids:
+                    obj = LedgerAccountTransfers.objects.filter(id=id).first()
+                    if obj.file_number_from.file_number == file_number:
+                        obj.amount_invoiced_from = json.dumps(str(obj.amount))
+                        obj.balance_left_from = 0
+                    else:
+                        temp_costs = temp_costs - obj.balance_left_to
+                        invoice_slip_obj = {str(invoice_instance.id): {
+                            'amt_invoiced': str(obj.balance_left_to), 'balance_left': ''}}
+                        if temp_costs < 0:
+                            obj.balance_left_to = obj.balance_left_to - total_costs_and_disbs
+                        elif temp_costs >= 0:
+                            obj.balance_left_to = 0
+                        invoice_slip_obj[str(invoice_instance.id)]['balance_left'] = str(
+                            obj.balance_left_to)
+                        prev_amount_invoiced_to_obj = coerce_json_dict(
+                            obj.amount_invoiced_to)
+                        prev_amount_invoiced_to_obj.update(invoice_slip_obj)
+                        obj.amount_invoiced_to = json.dumps(
+                            prev_amount_invoiced_to_obj)
+                        total_costs_and_disbs = temp_costs
+                    obj.save()
 
-            invoice_instance.disbs_ids.set(disbs_ids)
-            invoice_instance.moa_ids.set(moa_ids)
-            invoice_instance.green_slip_ids.set(green_slips_ids)
+                moa_ids = [int(id_str)
+                           for id_str in request.POST.getlist('blue_slips[]')]
+                for id in moa_ids:
+                    obj = PmtsSlips.objects.filter(id=id).first()
+                    temp_costs = temp_costs - obj.balance_left
+                    invoice_slip_obj = {str(invoice_instance.id): {
+                        'amt_invoiced': str(obj.balance_left), 'balance_left': ''}}
+                    if temp_costs < 0:
+                        obj.balance_left = obj.balance_left - total_costs_and_disbs
+                    elif temp_costs >= 0:
+                        obj.balance_left = 0
 
-            invoice_instance.save()
+                    invoice_slip_obj[str(invoice_instance.id)
+                                     ]['balance_left'] = str(obj.balance_left)
+                    prev_amount_invoiced_to_obj = coerce_json_dict(
+                        obj.amount_invoiced)
+                    prev_amount_invoiced_to_obj.update(invoice_slip_obj)
+                    obj.amount_invoiced = json.dumps(prev_amount_invoiced_to_obj)
+                    total_costs_and_disbs = temp_costs
+                    obj.save()
+
+                if temp_costs <= 0:
+                    invoice_instance.total_due_left = 0
+                else:
+                    invoice_instance.total_due_left = temp_costs
+
+                invoice_instance.disbs_ids.set(disbs_ids)
+                invoice_instance.moa_ids.set(moa_ids)
+                invoice_instance.green_slip_ids.set(green_slips_ids)
+
+                invoice_instance.save()
             messages.success(request, f'Invoice {
                              invoice_instance.invoice_number} successfully added. ')
             return redirect('finance_view', file_number=file_number)
@@ -5434,12 +5716,12 @@ def download_invoice(request, id):
         {invoice.file_number.client1.address_line2}<br>
         {invoice.file_number.client1.county}, {invoice.file_number.client1.postcode}
         </div>"""
-    if invoice.file_number.client2:
+    for extra_client in invoice.file_number.additional_clients.all():
         file_details_display = file_details_display + f"""
-            <div class="border-start ps-4">{invoice.file_number.client2.name}<br>
-            {invoice.file_number.client2.address_line1}<br>
-            {invoice.file_number.client2.address_line2}<br>
-            {invoice.file_number.client2.county}, {invoice.file_number.client2.postcode}
+            <div class="border-start ps-4">{extra_client.name}<br>
+            {extra_client.address_line1}<br>
+            {extra_client.address_line2}<br>
+            {extra_client.county}, {extra_client.postcode}
             </div>"""
     file_details_display = file_details_display + """ </td><td></td></tr>"""
     if invoice.payable_by == 'Client':
@@ -5450,11 +5732,11 @@ def download_invoice(request, id):
             payable_by}</td><td></td></tr>"
 
     file_details_display = file_details_display + payable_by
+    client_emails = ', '.join(invoice.file_number.all_client_emails)
     if invoice.by_email == True and invoice.by_post == True:
-        send_via = f'<b>By post and email to: </b>{
-            invoice.file_number.client1.email}'
+        send_via = f'<b>By post and email to: </b>{client_emails}'
     elif invoice.by_email == True:
-        send_via = f'<b>By email to: </b>{invoice.file_number.client1.email}'
+        send_via = f'<b>By email to: </b>{client_emails}'
     elif invoice.by_post == True:
         send_via = f'<b>By post</b>'
     else:
@@ -5529,15 +5811,7 @@ def download_invoice(request, id):
         blue_slips_display = "<tr><td colspan='2'><b>Less Monies Received</b></td></tr>"
         for slip in invoice.moa_ids.all():
 
-            if isinstance(slip.amount_invoiced, str):
-                amount_invoiced = json.loads(slip.amount_invoiced)
-            elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
-                amount_invoiced = json.loads(
-                    slip.amount_invoiced.decode('utf-8'))
-            elif isinstance(slip.amount_invoiced, dict):
-                amount_invoiced = slip.amount_invoiced
-            else:
-                raise ValueError("Unsupported type for slip.amount_invoiced")
+            amount_invoiced = coerce_json_dict(slip.amount_invoiced)
             date = slip.date.strftime('%d/%m/%Y')
             amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
 
@@ -5576,7 +5850,7 @@ def download_invoice(request, id):
                 green_slips_display = green_slips_display + \
                     f">£{slip.amount}</td></tr>"
             else:
-                amount_invoiced = json.loads(slip.amount_invoiced_to)
+                amount_invoiced = coerce_json_dict(slip.amount_invoiced_to)
 
                 date = slip.date.strftime('%d/%m/%Y')
                 amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
@@ -5741,7 +6015,7 @@ def download_invoice(request, id):
 
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="Invoice {invoice.invoice_number} - {
-        invoice.file_number.client1.name} ({invoice.file_number.matter_description}).pdf"'
+        invoice.file_number.all_client_names} ({invoice.file_number.matter_description}).pdf"'
     return response
 
 
@@ -5751,8 +6025,8 @@ def download_credited_invoice(request, id):
         Invoices.objects.select_related(
             'file_number',
             'file_number__client1',
-            'file_number__client2',
         ).prefetch_related(
+            'file_number__additional_clients',
             'disbs_ids',
             'moa_ids',
             'green_slip_ids',
@@ -5789,12 +6063,12 @@ def download_credited_invoice(request, id):
         {invoice.file_number.client1.address_line2}<br>
         {invoice.file_number.client1.county}, {invoice.file_number.client1.postcode}
         </div>"""
-    if invoice.file_number.client2:
+    for extra_client in invoice.file_number.additional_clients.all():
         file_details_display = file_details_display + f"""
-            <div class="border-start ps-4">{invoice.file_number.client2.name}<br>
-            {invoice.file_number.client2.address_line1}<br>
-            {invoice.file_number.client2.address_line2}<br>
-            {invoice.file_number.client2.county}, {invoice.file_number.client2.postcode}
+            <div class="border-start ps-4">{extra_client.name}<br>
+            {extra_client.address_line1}<br>
+            {extra_client.address_line2}<br>
+            {extra_client.county}, {extra_client.postcode}
             </div>"""
     file_details_display = file_details_display + """ </td><td></td></tr>"""
     if invoice.payable_by == 'Client':
@@ -5804,10 +6078,11 @@ def download_credited_invoice(request, id):
         payable_by = f"<tr><td><b>Payable by: </b>{payable_by}</td><td></td></tr>"
 
     file_details_display = file_details_display + payable_by
+    client_emails = ', '.join(invoice.file_number.all_client_emails)
     if invoice.by_email == True and invoice.by_post == True:
-        send_via = f'<b>By post and email to: </b>{invoice.file_number.client1.email}'
+        send_via = f'<b>By post and email to: </b>{client_emails}'
     elif invoice.by_email == True:
-        send_via = f'<b>By email to: </b>{invoice.file_number.client1.email}'
+        send_via = f'<b>By email to: </b>{client_emails}'
     elif invoice.by_post == True:
         send_via = f'<b>By post</b>'
     else:
@@ -6122,7 +6397,7 @@ def download_credited_invoice(request, id):
 
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response[
-        'Content-Disposition'] = f'attachment; filename="Credited Invoice {invoice.invoice_number} - {invoice.file_number.client1.name} ({invoice.file_number.matter_description}).pdf"'
+        'Content-Disposition'] = f'attachment; filename="Credited Invoice {invoice.invoice_number} - {invoice.file_number.all_client_names} ({invoice.file_number.matter_description}).pdf"'
     return response
 
 
@@ -6143,12 +6418,12 @@ def download_credit_note(request, id):
         {file_obj.client1.county}, {file_obj.client1.postcode}
         </div>
     """
-    if file_obj.client2:
+    for extra_client in file_obj.additional_clients.all():
         client_address_block = client_address_block + f"""
-            <div class="border-start ps-4">{file_obj.client2.name}<br>
-            {file_obj.client2.address_line1}<br>
-            {file_obj.client2.address_line2}<br>
-            {file_obj.client2.county}, {file_obj.client2.postcode}
+            <div class="border-start ps-4">{extra_client.name}<br>
+            {extra_client.address_line1}<br>
+            {extra_client.address_line2}<br>
+            {extra_client.county}, {extra_client.postcode}
             </div>
         """
 
@@ -6397,7 +6672,7 @@ def download_statement_account(request, file_number):
     writer = csv.writer(response)
 
     writer.writerow(
-        ['', f'Client Name: {file.client1.name} Matter:{file.matter_description}[{file.file_number}]'])
+        ['', f'Client Name: {file.all_client_names} Matter:{file.matter_description}[{file.file_number}]'])
     writer.writerow(['', f'Statement of Account'])
 
     writer.writerow([])
@@ -6441,7 +6716,7 @@ def generate_ledgers_report(request, file_number):
         </head>
         <body style="font-family: Times New Roman, Times, serif">
             <h2>Ledger</h2>
-            <h2>Client Name: {file.client1.name} Matter: {file.matter_description} [{file.file_number}]</h2>
+            <h2>Client Name: {file.all_client_names} Matter: {file.matter_description} [{file.file_number}]</h2>
             <table class='table table-striped'>
                 <thead>
                     <tr>
@@ -6701,137 +6976,131 @@ def edit_invoice(request, id):
         invoice.vat = vat_amount
         invoice.vat_calculation_mode = vat_mode
 
-        prev_pink_slip_ids = list(
-            invoice.disbs_ids.values_list('id', flat=True))
-        for id in prev_pink_slip_ids:
-            slip = PmtsSlips.objects.filter(id=id).first()
-            slip.balance_left = slip.amount
-            slip.amount_invoiced = json.dumps({})
-            slip.save()
+        with transaction.atomic():
+            prev_pink_slip_ids = list(
+                invoice.disbs_ids.values_list('id', flat=True))
+            for id in prev_pink_slip_ids:
+                slip = PmtsSlips.objects.filter(id=id).first()
+                slip.balance_left = slip.amount
+                slip.amount_invoiced = json.dumps({})
+                slip.save()
 
-        prev_moa_ids = list(invoice.moa_ids.values_list('id', flat=True))
+            prev_moa_ids = list(invoice.moa_ids.values_list('id', flat=True))
 
-        for id in prev_moa_ids:
-            slip = PmtsSlips.objects.filter(id=id).first()
-            if isinstance(slip.amount_invoiced, str):
-                amount_invoiced = json.loads(slip.amount_invoiced)
-            elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
-                amount_invoiced = json.loads(
-                    slip.amount_invoiced.decode('utf-8'))
-            elif isinstance(slip.amount_invoiced, dict):
-                amount_invoiced = slip.amount_invoiced
-            else:
-                raise ValueError("Unsupported type for slip.amount_invoiced")
-            inv_data = amount_invoiced.get(str(str(invoice.id)), {})
-            amount_inv = inv_data.get('amt_invoiced', 0)
-            balance_left = inv_data.get('balance_left', 0)
-
-            difference = round(Decimal(amount_inv) - Decimal(balance_left), 2)
-
-            amount_invoiced.pop(str(invoice.id), None)
-            slip.amount_invoiced = json.dumps(amount_invoiced)
-            slip.balance_left += difference
-            slip.save()
-
-        prev_green_slip_ids = list(
-            invoice.green_slip_ids.values_list('id', flat=True))
-
-        for id in prev_green_slip_ids:
-            slip = LedgerAccountTransfers.objects.filter(id=id).first()
-            if slip.file_number_to == invoice.file_number:
-                amount_invoiced = json.loads(slip.amount_invoiced_to)
+            for id in prev_moa_ids:
+                slip = PmtsSlips.objects.filter(id=id).first()
+                amount_invoiced = coerce_json_dict(slip.amount_invoiced)
                 inv_data = amount_invoiced.get(str(str(invoice.id)), {})
                 amount_inv = inv_data.get('amt_invoiced', 0)
                 balance_left = inv_data.get('balance_left', 0)
 
-                difference = round(Decimal(amount_inv) -
-                                   Decimal(balance_left), 2)
+                difference = round(Decimal(amount_inv) - Decimal(balance_left), 2)
 
                 amount_invoiced.pop(str(invoice.id), None)
-                slip.amount_invoiced_to = json.dumps(amount_invoiced)
-                slip.balance_left_to += difference
+                slip.amount_invoiced = json.dumps(amount_invoiced)
+                slip.balance_left += difference
                 slip.save()
-            else:
-                slip.balance_left_from = slip.amount
-                slip.amount_invoiced_from = json.dumps({})
 
-        disbs_ids = [int(id_str)
-                     for id_str in request.POST.getlist('pink_slips[]')]
-        total_disbs = 0
-        for id in disbs_ids:
-            obj = PmtsSlips.objects.filter(id=id).first()
-            total_disbs = total_disbs + obj.amount
-            obj.amount_invoiced = json.dumps(str(obj.amount))
-            obj.balance_left = 0
-            obj.save()
+            prev_green_slip_ids = list(
+                invoice.green_slip_ids.values_list('id', flat=True))
 
-        total_costs_and_disbs = total_costs_and_vat + total_disbs
-        temp_costs = total_costs_and_disbs
+            for id in prev_green_slip_ids:
+                slip = LedgerAccountTransfers.objects.filter(id=id).first()
+                if slip.file_number_to == invoice.file_number:
+                    amount_invoiced = coerce_json_dict(slip.amount_invoiced_to)
+                    inv_data = amount_invoiced.get(str(str(invoice.id)), {})
+                    amount_inv = inv_data.get('amt_invoiced', 0)
+                    balance_left = inv_data.get('balance_left', 0)
 
-        moa_ids = [int(id_str)
-                   for id_str in request.POST.getlist('blue_slips[]')]
-        for id in moa_ids:
-            obj = PmtsSlips.objects.filter(id=id).first()
-            temp_costs = temp_costs - obj.balance_left
-            invoice_slip_obj = {str(invoice.id): {'amt_invoiced': str(
-                obj.balance_left), 'balance_left': ''}}
-            if temp_costs < 0:
-                obj.balance_left = obj.balance_left - total_costs_and_disbs
-            elif temp_costs >= 0:
+                    difference = round(Decimal(amount_inv) -
+                                       Decimal(balance_left), 2)
+
+                    amount_invoiced.pop(str(invoice.id), None)
+                    slip.amount_invoiced_to = json.dumps(amount_invoiced)
+                    slip.balance_left_to += difference
+                    slip.save()
+                else:
+                    slip.balance_left_from = slip.amount
+                    slip.amount_invoiced_from = json.dumps({})
+                    slip.save()
+
+            disbs_ids = [int(id_str)
+                         for id_str in request.POST.getlist('pink_slips[]')]
+            total_disbs = 0
+            for id in disbs_ids:
+                obj = PmtsSlips.objects.filter(id=id).first()
+                total_disbs = total_disbs + obj.amount
+                obj.amount_invoiced = json.dumps(str(obj.amount))
                 obj.balance_left = 0
+                obj.save()
 
-            invoice_slip_obj[str(invoice.id)]['balance_left'] = str(
-                obj.balance_left)
-            prev_amount_invoiced_to_obj = json.loads(
-                obj.amount_invoiced) if obj.amount_invoiced != {} else {}
-            prev_amount_invoiced_to_obj.update(invoice_slip_obj)
-            obj.amount_invoiced = json.dumps(prev_amount_invoiced_to_obj)
-            total_costs_and_disbs = temp_costs
-            obj.save()
+            total_costs_and_disbs = total_costs_and_vat + total_disbs
+            temp_costs = total_costs_and_disbs
 
-        green_slips_ids = [int(id_str)
-                           for id_str in request.POST.getlist('green_slips[]')]
-        for id in green_slips_ids:
-            obj = LedgerAccountTransfers.objects.filter(id=id).first()
-            if obj.file_number_from == invoice.file_number:
-                obj.amount_invoiced_from = json.dumps(str(obj.amount))
-                obj.balance_left_from = 0
-            else:
-                temp_costs = temp_costs - obj.balance_left_to
+            moa_ids = [int(id_str)
+                       for id_str in request.POST.getlist('blue_slips[]')]
+            for id in moa_ids:
+                obj = PmtsSlips.objects.filter(id=id).first()
+                temp_costs = temp_costs - obj.balance_left
                 invoice_slip_obj = {str(invoice.id): {'amt_invoiced': str(
-                    obj.balance_left_to), 'balance_left': ''}}
+                    obj.balance_left), 'balance_left': ''}}
                 if temp_costs < 0:
-                    obj.balance_left_to = obj.balance_left_to - total_costs_and_disbs
+                    obj.balance_left = obj.balance_left - total_costs_and_disbs
                 elif temp_costs >= 0:
-                    obj.balance_left_to = 0
+                    obj.balance_left = 0
+
                 invoice_slip_obj[str(invoice.id)]['balance_left'] = str(
-                    obj.balance_left_to)
-                prev_amount_invoiced_to_obj = json.loads(
-                    obj.amount_invoiced_to) if obj.amount_invoiced_to != {} else {}
+                    obj.balance_left)
+                prev_amount_invoiced_to_obj = coerce_json_dict(
+                    obj.amount_invoiced)
                 prev_amount_invoiced_to_obj.update(invoice_slip_obj)
-                obj.amount_invoiced_to = json.dumps(
-                    prev_amount_invoiced_to_obj)
+                obj.amount_invoiced = json.dumps(prev_amount_invoiced_to_obj)
                 total_costs_and_disbs = temp_costs
-            obj.save()
+                obj.save()
 
-        if temp_costs <= 0:
-            invoice.total_due_left = 0
-        else:
-            invoice.total_due_left = temp_costs
+            green_slips_ids = [int(id_str)
+                               for id_str in request.POST.getlist('green_slips[]')]
+            for id in green_slips_ids:
+                obj = LedgerAccountTransfers.objects.filter(id=id).first()
+                if obj.file_number_from == invoice.file_number:
+                    obj.amount_invoiced_from = json.dumps(str(obj.amount))
+                    obj.balance_left_from = 0
+                else:
+                    temp_costs = temp_costs - obj.balance_left_to
+                    invoice_slip_obj = {str(invoice.id): {'amt_invoiced': str(
+                        obj.balance_left_to), 'balance_left': ''}}
+                    if temp_costs < 0:
+                        obj.balance_left_to = obj.balance_left_to - total_costs_and_disbs
+                    elif temp_costs >= 0:
+                        obj.balance_left_to = 0
+                    invoice_slip_obj[str(invoice.id)]['balance_left'] = str(
+                        obj.balance_left_to)
+                    prev_amount_invoiced_to_obj = coerce_json_dict(
+                        obj.amount_invoiced_to)
+                    prev_amount_invoiced_to_obj.update(invoice_slip_obj)
+                    obj.amount_invoiced_to = json.dumps(
+                        prev_amount_invoiced_to_obj)
+                    total_costs_and_disbs = temp_costs
+                obj.save()
 
-        invoice.disbs_ids.set(disbs_ids)
-        invoice.moa_ids.set(moa_ids)
-        invoice.green_slip_ids.set(green_slips_ids)
+            if temp_costs <= 0:
+                invoice.total_due_left = 0
+            else:
+                invoice.total_due_left = temp_costs
 
-        invoice.save()
-        serializer = InvoicesSerializer(invoice)
-        after_serialized_data = serializer.to_dict()
-        create_modification(
-            request.user,
-            invoice,
-            json.dumps({'prev': prev_serialized_data,
-                        'after': after_serialized_data})
-        )
+            invoice.disbs_ids.set(disbs_ids)
+            invoice.moa_ids.set(moa_ids)
+            invoice.green_slip_ids.set(green_slips_ids)
+
+            invoice.save()
+            serializer = InvoicesSerializer(invoice)
+            after_serialized_data = serializer.to_dict()
+            create_modification(
+                request.user,
+                invoice,
+                json.dumps({'prev': prev_serialized_data,
+                            'after': after_serialized_data})
+            )
 
         return redirect('finance_view', file_number=invoice.file_number)
     else:
@@ -6947,16 +7216,7 @@ def edit_invoice(request, id):
                     """
                     pink_slips.append(mark_safe(slip_display))
                 elif slip.id in moa_ids or slip.balance_left > 0:
-                    if isinstance(slip.amount_invoiced, str):
-                        amount_invoiced = json.loads(slip.amount_invoiced)
-                    elif isinstance(slip.amount_invoiced, (bytes, bytearray)):
-                        amount_invoiced = json.loads(
-                            slip.amount_invoiced.decode('utf-8'))
-                    elif isinstance(slip.amount_invoiced, dict):
-                        amount_invoiced = slip.amount_invoiced
-                    else:
-                        raise ValueError(
-                            "Unsupported type for slip.amount_invoiced")
+                    amount_invoiced = coerce_json_dict(slip.amount_invoiced)
 
                     if slip.id in moa_ids:
                         amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
@@ -6993,8 +7253,8 @@ def edit_invoice(request, id):
                 if slip.file_number_to == invoice.file_number:
                     if slip.id in green_slip_ids or slip.balance_left_to > 0:
 
-                        amount_invoiced = json.loads(slip.amount_invoiced_to) if slip.amount_invoiced_to != {
-                        } else slip.amount_invoiced_to
+                        amount_invoiced = coerce_json_dict(
+                            slip.amount_invoiced_to)
                         if slip.id in green_slip_ids:
                             amt = amount_invoiced[f"{invoice.id}"]['amt_invoiced']
                         else:
@@ -7087,7 +7347,10 @@ def unallocated_emails(request):
         'emails': rows
     }
 
-    return render(request, 'unallocated_emails.html', context=context)
+    # AJAX tab swap fetches just the panel body.
+    template = ('partials/_unallocated_emails_panel.html'
+                if request.GET.get('partial') else 'unallocated_emails.html')
+    return render(request, template, context=context)
 
 
 @login_required
@@ -7179,7 +7442,7 @@ def get_transfers_context():
     }
 
 
-@login_required
+@manager_required
 def download_cashier_data(request):
     if request.method == 'POST':
         cashier_action = request.POST.get('cashier_action')
@@ -7980,34 +8243,44 @@ def download_frontsheet(request, file_number):
     def client_check_label(client):
         return 'UK Business Check' if client and client.is_business else 'AML Check'
 
-    client1_check_label = client_check_label(file.client1)
-    if file.client2:
-        client2_name = file.client2.name
-        client2_address = f'{file.client2.address_line1},{
-            file.client2.address_line2},<br>{file.client2.county}, {file.client2.postcode}'
-        client2_contact_number = file.client2.contact_number
-        client2_email = file.client2.email
-        client2_dob = format_date(file.client2.dob)
-        client2_id_verified = 'Yes' if file.client2.id_verified else 'No'
-        client2_date_of_last_aml = format_date(file.client2.date_of_last_aml)
-        client2_terms_signed = 'Yes' if file.client2.terms_of_engagement_signed else 'No'
-        client2_ncba_signed = 'Yes' if file.client2.ncba_signed else 'No'
-        client2_pep_signed = 'Yes' if file.client2.pep_signed else 'No'
-        client2_sof_signed = 'Yes' if file.client2.source_of_funds_signed else 'No'
-        client2_check_label = client_check_label(file.client2)
-    else:
-        client2_name = ''
-        client2_address = ''
-        client2_contact_number = ''
-        client2_email = ''
-        client2_dob = ''
-        client2_id_verified = ''
-        client2_date_of_last_aml = ''
-        client2_terms_signed = ''
-        client2_ncba_signed = ''
-        client2_pep_signed = ''
-        client2_sof_signed = ''
-        client2_check_label = ''
+    def yes_no(flag):
+        return 'Yes' if flag else 'No'
+
+    # The frontsheet renders one column per client. value_cols is kept at a
+    # minimum of two so the layout (and the Authorised Party / Other Side rows
+    # below) match the original two-column sheet when there are 0-2 clients,
+    # and simply grows a column for each further client.
+    clients = file.all_clients
+    value_cols = max(len(clients), 2)
+    total_cols = value_cols + 1
+    ap2_span = value_cols - 1
+
+    def client_cells(value_fn):
+        cells = ''
+        for index in range(value_cols):
+            value = value_fn(clients[index]) if index < len(clients) else ''
+            cells += f"<td class='text-center'>{value}</td>"
+        return cells
+
+    client_header_cells = ''.join(
+        f"<td class='text-center'><b>CLIENT {index + 1}</b></td>"
+        for index in range(value_cols)
+    )
+    client_name_cells = client_cells(lambda c: c.name)
+    client_address_cells = client_cells(
+        lambda c: f'{c.address_line1}, {c.address_line2},<br>{c.county}, {c.postcode}')
+    client_contact_cells = client_cells(lambda c: c.contact_number)
+    client_email_cells = client_cells(lambda c: c.email)
+    client_dob_cells = client_cells(lambda c: format_date(c.dob))
+    client_check_type_cells = client_cells(client_check_label)
+    client_last_check_cells = client_cells(
+        lambda c: format_date(c.date_of_last_aml))
+    client_id_verified_cells = client_cells(lambda c: yes_no(c.id_verified))
+    client_terms_cells = client_cells(
+        lambda c: yes_no(c.terms_of_engagement_signed))
+    client_ncba_cells = client_cells(lambda c: yes_no(c.ncba_signed))
+    client_pep_cells = client_cells(lambda c: yes_no(c.pep_signed))
+    client_sof_cells = client_cells(lambda c: yes_no(c.source_of_funds_signed))
 
     if file.authorised_party1:
         ap1_name = file.authorised_party1.name
@@ -8080,179 +8353,166 @@ def download_frontsheet(request, file_number):
                 <tbody>
                 <tr>
                     <td style="font-weight: 900; font-size:12px;" ><h3>FILE NUMBER</h3></td>
-                    <td style="font-weight: 900 !important; font-size:16px; !important; text-align:center !important;" colspan='2'>{file.file_number}</td>
+                    <td style="font-weight: 900 !important; font-size:16px; !important; text-align:center !important;" colspan='{value_cols}'>{file.file_number}</td>
 
                 </tr>
                 <tr>
                     <td>Z DRIVE LOCATION</td>
-                    <td class='text-center' colspan='2'>{file.zdrive_location or ''}</td>
+                    <td class='text-center' colspan='{value_cols}'>{file.zdrive_location or ''}</td>
                 </tr>
                 <tr>
-                    <td style="background-color:grey;"  colspan='3'></td>
+                    <td style="background-color:grey;"  colspan='{total_cols}'></td>
                 </tr>
                 <tr>
-                    <td class='' colspan='3'><b>CLIENT DETAILS</b></td>
+                    <td class='' colspan='{total_cols}'><b>CLIENT DETAILS</b></td>
                 </tr>
                 <tr>
                     <td></td>
-                    <td class='text-center'><b>CLIENT 1</b></td>
-                    <td class='text-center'><b>CLIENT 2</b></td>
+                    {client_header_cells}
                 </tr>
                 <tr>
                     <td>NAME</td>
-                    <td class='text-center'>{file.client1.name}</td>
-                    <td class='text-center'>{client2_name}</td>
+                    {client_name_cells}
                 </tr>
                 <tr>
                     <td>ADDRESS</td>
-                    <td class='text-center'>{file.client1.address_line1}, {file.client1.address_line2},<br>{file.client1.county}, {file.client1.postcode}</td>
-                    <td class='text-center'>{client2_address}</td>
+                    {client_address_cells}
                 </tr>
                 <tr>
                     <td>CONTACT NO.</td>
-                    <td class='text-center'>{file.client1.contact_number}</td>
-                    <td class='text-center'>{client2_contact_number}</td>
+                    {client_contact_cells}
                 </tr>
                 <tr>
                     <td>EMAIL</td>
-                    <td class='text-center'>{file.client1.email}</td>
-                    <td class='text-center'>{client2_email}</td>
+                    {client_email_cells}
                 </tr>
                 <tr >
                     <td>DATE OF BIRTH</td>
-                    <td class='text-center'>{format_date(file.client1.dob)}</td>
-                    <td class='text-center'>{client2_dob}</td>
+                    {client_dob_cells}
                 </tr>
                 <tr>
                     <td>CHECK TYPE</td>
-                    <td class='text-center'>{client1_check_label}</td>
-                    <td class='text-center'>{client2_check_label}</td>
+                    {client_check_type_cells}
                 </tr>
                 <tr >
                     <td>DATE OF LAST CHECK</td>
-                    <td class='text-center'>{format_date(file.client1.date_of_last_aml)}</td>
-                    <td class='text-center'>{client2_date_of_last_aml}</td>
+                    {client_last_check_cells}
                 </tr>
                 <tr>
                     <td>ID VERIFIED</td>
-                    <td class='text-center'>{'Yes' if file.client1.id_verified else 'No'}</td>
-                    <td class='text-center'>{client2_id_verified}</td>
+                    {client_id_verified_cells}
                 </tr>
                 <tr>
                     <td>SIGNED TERMS OF ENGAGEMENT</td>
-                    <td class='text-center'>{'Yes' if file.client1.terms_of_engagement_signed else 'No'}</td>
-                    <td class='text-center'>{client2_terms_signed}</td>
+                    {client_terms_cells}
                 </tr>
                 <tr>
                     <td>SIGNED NCBA</td>
-                    <td class='text-center'>{'Yes' if file.client1.ncba_signed else 'No'}</td>
-                    <td class='text-center'>{client2_ncba_signed}</td>
+                    {client_ncba_cells}
                 </tr>
                 <tr>
                     <td>SIGNED PEP</td>
-                    <td class='text-center'>{'Yes' if file.client1.pep_signed else 'No'}</td>
-                    <td class='text-center'>{client2_pep_signed}</td>
+                    {client_pep_cells}
                 </tr>
                 <tr>
                     <td>SIGNED SOF</td>
-                    <td class='text-center'>{'Yes' if file.client1.source_of_funds_signed else 'No'}</td>
-                    <td class='text-center'>{client2_sof_signed}</td>
+                    {client_sof_cells}
                 </tr>
                 <tr>
-                    <td style="background-color:grey;"  colspan='3'></td>
+                    <td style="background-color:grey;"  colspan='{total_cols}'></td>
                 </tr>
                 <tr>
                     <td>CLIENT CARE LETTER SENT</td>
-                    <td class='text-center' colspan='2'>{file.date_of_client_care_sent.strftime('%d/%m/%Y') if file.date_of_client_care_sent else ''}</td>
+                    <td class='text-center' colspan='{value_cols}'>{file.date_of_client_care_sent.strftime('%d/%m/%Y') if file.date_of_client_care_sent else ''}</td>
                 </tr>
                 <tr>
                     <td>FUNDING</td>
-                    <td class='text-center' colspan='2'>{'Private Funding' if file.funding == 'PF' else file.funding}</td>
+                    <td class='text-center' colspan='{value_cols}'>{'Private Funding' if file.funding == 'PF' else file.funding}</td>
                 </tr>
                 <tr>
-                    <td style="background-color:grey;"  colspan='3'></td>
+                    <td style="background-color:grey;"  colspan='{total_cols}'></td>
                 </tr>
                 <tr>
-                    <td class='' colspan='3'>AUTHORISED PARTIES</td>
+                    <td class='' colspan='{total_cols}'>AUTHORISED PARTIES</td>
                 </tr>
                 <tr>
                     <td></td>
                     <td class='text-center'><b>AUTHORISED PARTY 1</b></td>
-                    <td class='text-center'><b>AUTHORISED PARTY 2</b></td>
+                    <td class='text-center' colspan='{ap2_span}'><b>AUTHORISED PARTY 2</b></td>
                 </tr>
                 <tr>
                     <td>NAME</td>
                     <td class='text-center'>{ap1_name}</td>
-                    <td class='text-center'>{ap2_name}</td>
+                    <td class='text-center' colspan='{ap2_span}'>{ap2_name}</td>
                 </tr>
                 <tr>
                     <td>RELATIONSHIP</td>
                     <td class='text-center'>{ap1_relationship}</td>
-                    <td class='text-center'>{ap2_relationship}</td>
+                    <td class='text-center' colspan='{ap2_span}'>{ap2_relationship}</td>
                 </tr>
                 <tr>
                     <td>EMAIL</td>
                     <td class='text-center'>{ap1_email}</td>
-                    <td class='text-center'>{ap2_email}</td>
+                    <td class='text-center' colspan='{ap2_span}'>{ap2_email}</td>
                 </tr>
                 <tr>
                     <td>ADDRESS</td>
                     <td class='text-center'>{ap1_addr}</td>
-                    <td class='text-center'>{ap2_addr}</td>
+                    <td class='text-center' colspan='{ap2_span}'>{ap2_addr}</td>
                 </tr>
                 <tr>
                     <td>CONTACT NUMBER</td>
                     <td class='text-center'>{ap1_contact_number}</td>
-                    <td class='text-center'>{ap2_contact_number}</td>
+                    <td class='text-center' colspan='{ap2_span}'>{ap2_contact_number}</td>
                 </tr>
                 <tr>
                     <td>DATE OF ID CHECK</td>
                     <td class='text-center'>{ap1_date_id_check}</td>
-                    <td class='text-center'>{ap2_date_id_check}</td>
+                    <td class='text-center' colspan='{ap2_span}'>{ap2_date_id_check}</td>
                 </tr>
                 <tr>
                     <td>DATE OF LAST AML CHECK</td>
                     <td class='text-center'>{ap1_date_aml_check}</td>
-                    <td class='text-center'>{ap2_date_aml_check}</td>
+                    <td class='text-center' colspan='{ap2_span}'>{ap2_date_aml_check}</td>
                 </tr>
                 <tr>
-                    <td style="background-color:grey;"  colspan='3'></td>
+                    <td style="background-color:grey;"  colspan='{total_cols}'></td>
                 </tr>
                 <tr>
-                    <td colspan='3'><b>OTHER SIDE'S DETAILS</b></td>
+                    <td colspan='{total_cols}'><b>OTHER SIDE'S DETAILS</b></td>
                 </tr>
                 <tr>
                     <td>NAME</td>
-                    <td class='text-center' colspan='2'>{other_side_name}</td>
+                    <td class='text-center' colspan='{value_cols}'>{other_side_name}</td>
                 </tr>
                 <tr>
                     <td>ADDRESS</td>
-                    <td class='text-center' colspan='2'>{other_side_address}</td>
+                    <td class='text-center' colspan='{value_cols}'>{other_side_address}</td>
                 </tr>
                 <tr>
                     <td>MOBILE</td>
-                    <td class='text-center' colspan='2'>{other_side_mobile}</td>
+                    <td class='text-center' colspan='{value_cols}'>{other_side_mobile}</td>
                 </tr>
                 <tr>
                     <td>EMAIL</td>
-                    <td class='text-center' colspan='2'>{other_side_email}</td>
+                    <td class='text-center' colspan='{value_cols}'>{other_side_email}</td>
                 </tr>
                 <tr>
                     <td>SOLICITORS</td>
-                    <td class='text-center' colspan='2'>{other_side_solicitors}</td>
+                    <td class='text-center' colspan='{value_cols}'>{other_side_solicitors}</td>
                 </tr>
                 <tr>
                     <td>SOLICITORS - EMAIL</td>
-                    <td class='text-center' colspan='2'>{other_side_solicitors_email}</td>
+                    <td class='text-center' colspan='{value_cols}'>{other_side_solicitors_email}</td>
                 </tr>
                 <tr>
-                    <td style="background-color:grey;"  colspan='3'></td>
+                    <td style="background-color:grey;"  colspan='{total_cols}'></td>
                 </tr>
                 <tr>
-                    <td class='' colspan='3'><b>KEY INFORMATION</b></td>
+                    <td class='' colspan='{total_cols}'><b>KEY INFORMATION</b></td>
                 </tr>
                 <tr>
-                    <td class='' colspan='3'>{file.key_information}</td>
+                    <td class='' colspan='{total_cols}'>{file.key_information}</td>
                 </tr>
 
                 </tbody>
@@ -8470,7 +8730,7 @@ def download_policy_pdf(request, policy_version_id):
         return redirect('policies_display')
 
 
-@login_required
+@manager_required
 def invoices_list(request):
     # Get start and end dates from GET parameters
     start_date = request.GET.get('start_date')
@@ -8531,7 +8791,7 @@ def invoices_list(request):
         return redirect('index')
 
 
-@login_required
+@manager_required
 def download_invoices(request):
 
     if request.method == 'POST' and request.user.is_manager:
@@ -9039,7 +9299,7 @@ def edit_undertaking(request, id):
     return render(request, 'forms/edit_undertaking.html', context)
 
 
-@login_required
+@manager_required
 def management_reports(request):
     users = CustomUser.objects.filter(is_active=True).order_by('username')
 
@@ -9049,13 +9309,430 @@ def management_reports(request):
 
     risk_assessments_due = get_risk_assessments_due_queryset(WIP.objects.all())
     cpds = CPDTrainingLog.objects.all()
+    expired_client_ids = get_clients_with_expired_id()
 
     return render(request, 'management_reports.html', {
         'users': users,
         'aml_checks_due': unique_aml_checks_due,
         'risk_assessments_due': risk_assessments_due,
-        'cpds': cpds
+        'cpds': cpds,
+        'expired_client_ids': expired_client_ids,
     })
+
+
+@login_required
+def reports_hub(request):
+    """Central index of every firm-wide report and export.
+
+    Reports are grouped so compliance, management and finance each have one
+    place to look, rather than scattering report widgets across the dashboard.
+    To add a report, append an entry to the relevant group below - the
+    template renders whatever is here.
+    """
+    id_issues_count = len(
+        get_live_matter_client_document_issues('proof_of_id'))
+    poa_issues_count = len(
+        get_live_matter_client_document_issues('proof_of_address'))
+    risk_due_count = get_risk_assessments_due_queryset(WIP.objects.all()).count()
+    file_reviews_count = get_file_reviews_due_queryset(WIP.objects.all()).count()
+
+    report_groups = [
+        {
+            'title': 'Compliance',
+            'description': 'AML, risk and client due-diligence oversight.',
+            'reports': [
+                {
+                    'name': 'Proof of ID issues',
+                    'description': 'Live-matter clients missing or with an expired Proof of ID.',
+                    'url_name': 'report_expired_ids',
+                    'count': id_issues_count,
+                },
+                {
+                    'name': 'Proof of Address issues',
+                    'description': 'Live-matter clients missing or with an expired Proof of Address.',
+                    'url_name': 'report_expired_proof_of_address',
+                    'count': poa_issues_count,
+                },
+                {
+                    'name': 'File reviews due',
+                    'description': 'Open matters with no file review or an overdue one.',
+                    'url_name': 'report_file_reviews_due',
+                    'count': file_reviews_count,
+                },
+                {
+                    'name': 'Risk assessments due',
+                    'description': 'Matters with no risk assessment or overdue ongoing monitoring.',
+                    'url_name': 'download_risk_assessments_due',
+                    'count': risk_due_count,
+                    'download': True,
+                },
+                {
+                    'name': 'AML checks due',
+                    'description': 'Clients due an anti-money-laundering recheck.',
+                    'url_name': 'download_aml_checks_due',
+                    'download': True,
+                },
+                {
+                    'name': 'Key dates',
+                    'description': 'Firm-wide calendar of important matter key dates.',
+                    'url_name': 'central_key_dates',
+                },
+                {
+                    'name': 'Policies read by user',
+                    'description': 'Who has read each policy and which version.',
+                    'url_name': 'policies_read_per_user',
+                },
+            ],
+        },
+        {
+            'title': 'Management & HR',
+            'description': 'Team performance, workload and training.',
+            'manager_only': True,
+            'reports': [
+                {
+                    'name': 'Management reports',
+                    'description': 'AML, risk, holidays, CPD logs and team tasks in one view.',
+                    'url_name': 'management_reports',
+                },
+                {
+                    'name': 'Weekly work report',
+                    'description': 'Weekly work recorded per user.',
+                    'url_name': 'user_weekly_report',
+                },
+            ],
+        },
+        {
+            'title': 'Finance',
+            'description': 'Billing and cashier exports.',
+            'manager_only': True,
+            'reports': [
+                {
+                    'name': 'Invoices',
+                    'description': 'Searchable list of all invoices.',
+                    'url_name': 'invoices_list',
+                },
+                {
+                    'name': 'Invoices export',
+                    'description': 'Download every invoice as a spreadsheet.',
+                    'url_name': 'download_invoices',
+                    'download': True,
+                },
+                {
+                    'name': "Cashier's data",
+                    'description': 'Export ledger/cashier data for the accounts team.',
+                    'url_name': 'download_cashier_data',
+                    'download': True,
+                },
+            ],
+        },
+    ]
+
+    return render(request, 'reports_hub.html', {
+        'report_groups': report_groups,
+        'id_issues_count': id_issues_count,
+        'poa_issues_count': poa_issues_count,
+        'risk_due_count': risk_due_count,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Report preview framework
+#
+# A report view builds a `rows` list plus `columns`/`filters` specs and hands
+# them to render_report(), which handles sorting, the filter bar, CSV export
+# (honouring the active filters) and rendering report_detail.html. To add a
+# report, write one view that prepares those structures - no template needed.
+# ---------------------------------------------------------------------------
+
+
+def _report_querystring(request, exclude=()):
+    """Current GET params, minus `export` and any keys in `exclude`."""
+    params = request.GET.copy()
+    for key in ('export',) + tuple(exclude):
+        params.pop(key, None)
+    return params.urlencode()
+
+
+def render_report(request, *, slug, title, description, filters, columns, rows):
+    """Sort, optionally export to CSV, and render a report preview page.
+
+    rows: list of {'cells': {col_key: {'value': str, 'href': url|None}},
+                   'sort': {col_key: comparable}}
+    columns: list of {'key', 'label', 'sortable'(bool), 'align'('left'|'right')}
+    filters: list of {'name', 'label', 'type'('text'|'select'|'number'),
+                      'value', 'options'(select only), 'placeholder'}
+    """
+    sort_param = request.GET.get('sort', '')
+    sort_key = sort_param.lstrip('-')
+    sort_desc = sort_param.startswith('-')
+    sortable_keys = {c['key'] for c in columns if c.get('sortable')}
+    if sort_key in sortable_keys:
+        rows = sorted(
+            rows,
+            key=lambda row: (row.get('sort', {}).get(sort_key) is None,
+                             row.get('sort', {}).get(sort_key)),
+            reverse=sort_desc,
+        )
+
+    if request.GET.get('export') == 'csv':
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = (
+            f'attachment; filename="{slug}_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+        )
+        writer = csv.writer(response)
+        writer.writerow([title])
+        writer.writerow(
+            ['Generated', timezone.localdate().strftime('%d/%m/%Y')])
+        writer.writerow([c['label'] for c in columns])
+        for row in rows:
+            writer.writerow([
+                row['cells'].get(c['key'], {}).get('value', '')
+                for c in columns
+            ])
+        return response
+
+    base_qs = _report_querystring(request, exclude=('sort',))
+    header_columns = []
+    for col in columns:
+        item = dict(col)
+        if col.get('sortable'):
+            is_active = col['key'] == sort_key
+            next_sort = ('-' + col['key']) if (is_active and not sort_desc) else col['key']
+            sep = '&' if base_qs else ''
+            item['sort_url'] = f"?{base_qs}{sep}sort={next_sort}"
+            item['sort_dir'] = ('desc' if sort_desc else 'asc') if is_active else ''
+        header_columns.append(item)
+
+    display_rows = []
+    for row in rows:
+        cells = []
+        for c in columns:
+            cell = row['cells'].get(c['key'], {'value': '', 'href': None})
+            cells.append({
+                'value': cell.get('value', ''),
+                'href': cell.get('href'),
+                'truncate': c.get('truncate', False),
+            })
+        display_rows.append(cells)
+
+    full_qs = _report_querystring(request)
+    export_url = f"?{full_qs}{'&' if full_qs else ''}export=csv"
+
+    return render(request, 'report_detail.html', {
+        'report_title': title,
+        'report_description': description,
+        'filters': filters,
+        'columns': header_columns,
+        'rows': display_rows,
+        'result_count': len(display_rows),
+        'export_url': export_url,
+        'filters_active': any(request.GET.get(f['name']) for f in filters),
+        'reset_url': request.path,
+    })
+
+
+def _client_key_document_report(request, *, category, slug, title, description):
+    """Shared preview report for client key document issues (ID / address).
+
+    Covers clients on live matters whose document is missing or expired.
+    """
+    source = get_live_matter_client_document_issues(category)
+
+    doc_types = sorted({r['document_type'] for r in source if r['document_type']})
+
+    q = request.GET.get('q', '').strip()
+    status = request.GET.get('status', '').strip()
+    doc_type = request.GET.get('doc_type', '').strip()
+    client_type = request.GET.get('client_type', '').strip()
+    min_days_raw = request.GET.get('min_days', '').strip()
+    try:
+        min_days = int(min_days_raw) if min_days_raw else None
+    except ValueError:
+        min_days = None
+
+    rows = []
+    for r in source:
+        if q and q.lower() not in r['client_name'].lower():
+            continue
+        if status == 'missing' and r['status'] != 'Missing':
+            continue
+        if status == 'expired' and r['status'] != 'Expired':
+            continue
+        if doc_type and r['document_type'] != doc_type:
+            continue
+        if client_type == 'business' and not r['is_business']:
+            continue
+        if client_type == 'individual' and r['is_business']:
+            continue
+        # Min-days only narrows expired rows; missing rows have no overdue age.
+        if min_days is not None and r['days_overdue'] is not None and r['days_overdue'] < min_days:
+            continue
+        rows.append({
+            'cells': {
+                'client': {'value': r['client_name'], 'href': None},
+                'type': {'value': 'Business' if r['is_business'] else 'Individual', 'href': None},
+                'status': {'value': r['status'], 'href': None},
+                'document': {'value': r['document_type'] or '—', 'href': None},
+                'reference': {'value': r['document_reference'] or '—', 'href': None},
+                'expiry': {'value': r['expiry_date'].strftime('%d/%m/%Y') if r['expiry_date'] else '—', 'href': None},
+                'overdue': {'value': str(r['days_overdue']) if r['days_overdue'] is not None else '—', 'href': None},
+                'verified_by': {'value': r['verified_by'] or '—', 'href': None},
+                'files': {'value': ', '.join(r['file_numbers']) or '—', 'href': None},
+            },
+            'sort': {
+                'client': r['client_name'].lower(),
+                'type': r['is_business'],
+                'status': r['status'],
+                'document': (r['document_type'] or '').lower(),
+                'expiry': r['expiry_date'],
+                'overdue': r['days_overdue'] if r['days_overdue'] is not None else -1,
+                'verified_by': (r['verified_by'] or '').lower(),
+            },
+        })
+
+    columns = [
+        {'key': 'client', 'label': 'Client', 'sortable': True, 'truncate': True},
+        {'key': 'type', 'label': 'Type', 'sortable': True},
+        {'key': 'status', 'label': 'Status', 'sortable': True},
+        {'key': 'document', 'label': 'Document', 'sortable': True, 'truncate': True},
+        {'key': 'reference', 'label': 'Reference', 'sortable': False, 'truncate': True},
+        {'key': 'expiry', 'label': 'Expiry', 'sortable': True},
+        {'key': 'overdue', 'label': 'Days overdue', 'sortable': True},
+        {'key': 'verified_by', 'label': 'Verified by', 'sortable': True, 'truncate': True},
+        {'key': 'files', 'label': 'Files', 'sortable': False, 'truncate': True},
+    ]
+
+    filters = [
+        {'name': 'q', 'label': 'Client name', 'type': 'text', 'value': q, 'placeholder': 'Search name…'},
+        {'name': 'status', 'label': 'Status', 'type': 'select', 'value': status,
+         'options': [{'value': '', 'label': 'All'},
+                     {'value': 'missing', 'label': 'Missing'},
+                     {'value': 'expired', 'label': 'Expired'}]},
+        {'name': 'doc_type', 'label': 'Document type', 'type': 'select', 'value': doc_type,
+         'options': [{'value': '', 'label': 'All'}] + [{'value': t, 'label': t} for t in doc_types]},
+        {'name': 'client_type', 'label': 'Client type', 'type': 'select', 'value': client_type,
+         'options': [{'value': '', 'label': 'All'},
+                     {'value': 'individual', 'label': 'Individual'},
+                     {'value': 'business', 'label': 'Business'}]},
+        {'name': 'min_days', 'label': 'Min days overdue', 'type': 'number', 'value': min_days_raw, 'placeholder': '0'},
+    ]
+
+    return render_report(request, slug=slug, title=title, description=description,
+                         filters=filters, columns=columns, rows=rows)
+
+
+@login_required
+def report_expired_ids(request):
+    return _client_key_document_report(
+        request,
+        category='proof_of_id',
+        slug='proof_of_id_issues',
+        title='Proof of ID issues',
+        description='Live-matter clients whose Proof of ID is missing or expired. Missing first, then most overdue.',
+    )
+
+
+@login_required
+def report_expired_proof_of_address(request):
+    return _client_key_document_report(
+        request,
+        category='proof_of_address',
+        slug='proof_of_address_issues',
+        title='Proof of Address issues',
+        description='Live-matter clients whose Proof of Address is missing or expired. Missing first, then most overdue.',
+    )
+
+
+@login_required
+def report_file_reviews_due(request):
+    today = timezone.localdate()
+    review_wips = (
+        get_file_reviews_due_queryset(WIP.objects.all())
+        .select_related('client1', 'fee_earner')
+    )
+
+    source = []
+    fee_earner_options = {}
+    for wip in review_wips:
+        fe_name = wip.fee_earner.get_full_name() if wip.fee_earner else ''
+        if wip.fee_earner_id:
+            fee_earner_options[str(wip.fee_earner_id)] = fe_name or wip.fee_earner.username
+        source.append({
+            'file_number': wip.file_number,
+            'matter': wip.matter_description or '',
+            'client': wip.client1.name if wip.client1 else '',
+            'fee_earner_id': str(wip.fee_earner_id) if wip.fee_earner_id else '',
+            'fee_earner': fe_name,
+            'last_review': wip.latest_review_date,
+            'never_reviewed': wip.latest_review_date is None,
+        })
+
+    q = request.GET.get('q', '').strip()
+    fee_earner = request.GET.get('fee_earner', '').strip()
+    status = request.GET.get('status', '').strip()
+
+    rows = []
+    for r in source:
+        if q:
+            haystack = f"{r['file_number']} {r['client']} {r['matter']}".lower()
+            if q.lower() not in haystack:
+                continue
+        if fee_earner and r['fee_earner_id'] != fee_earner:
+            continue
+        if status == 'never' and not r['never_reviewed']:
+            continue
+        if status == 'overdue' and r['never_reviewed']:
+            continue
+        rows.append({
+            'cells': {
+                'file_number': {'value': r['file_number'],
+                                'href': reverse('home', args=[r['file_number']]) if r['file_number'] else None},
+                'matter': {'value': r['matter'] or '—', 'href': None},
+                'client': {'value': r['client'] or '—', 'href': None},
+                'fee_earner': {'value': r['fee_earner'] or '—', 'href': None},
+                'last_review': {'value': r['last_review'].strftime('%d/%m/%Y') if r['last_review'] else 'Never', 'href': None},
+                'status': {'value': 'Never reviewed' if r['never_reviewed'] else 'Review overdue', 'href': None},
+            },
+            'sort': {
+                'file_number': r['file_number'],
+                'matter': r['matter'].lower(),
+                'client': r['client'].lower(),
+                'fee_earner': r['fee_earner'].lower(),
+                # Never-reviewed sorts oldest; date(min) keeps them first asc.
+                'last_review': r['last_review'] or timezone.localdate().replace(year=1900),
+                'status': r['never_reviewed'],
+            },
+        })
+
+    columns = [
+        {'key': 'file_number', 'label': 'File', 'sortable': True},
+        {'key': 'matter', 'label': 'Matter', 'sortable': True, 'truncate': True},
+        {'key': 'client', 'label': 'Client', 'sortable': True, 'truncate': True},
+        {'key': 'fee_earner', 'label': 'Fee earner', 'sortable': True, 'truncate': True},
+        {'key': 'last_review', 'label': 'Last review', 'sortable': True},
+        {'key': 'status', 'label': 'Status', 'sortable': True},
+    ]
+
+    filters = [
+        {'name': 'q', 'label': 'Search', 'type': 'text', 'value': q, 'placeholder': 'File, client or matter…'},
+        {'name': 'fee_earner', 'label': 'Fee earner', 'type': 'select', 'value': fee_earner,
+         'options': [{'value': '', 'label': 'All'}] + [
+             {'value': fid, 'label': name}
+             for fid, name in sorted(fee_earner_options.items(), key=lambda kv: kv[1].lower())
+         ]},
+        {'name': 'status', 'label': 'Status', 'type': 'select', 'value': status,
+         'options': [{'value': '', 'label': 'All'},
+                     {'value': 'never', 'label': 'Never reviewed'},
+                     {'value': 'overdue', 'label': 'Review overdue'}]},
+    ]
+
+    return render_report(
+        request,
+        slug='file_reviews_due',
+        title='File reviews due',
+        description='Open matters with no file review, or whose last review was over three months ago.',
+        filters=filters, columns=columns, rows=rows,
+    )
 
 
 @login_required
@@ -9224,7 +9901,7 @@ def calculate_weekly_report(user, start_date):
     return weekly_report
 
 
-@login_required
+@manager_required
 def weekly_report_view(request):
     user_id = request.GET.get("user")
     week_start = request.GET.get("week_start")
@@ -9321,7 +9998,7 @@ def download_user_risk_assessments_due(request):
     )
     risk_assessments_due = get_risk_assessments_due_queryset(
         risk_scope_wips
-    )
+    ).prefetch_related('additional_clients')
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = (
@@ -9338,7 +10015,7 @@ def download_user_risk_assessments_due(request):
         'File Number',
         'Matter Description',
         'Client 1',
-        'Client 2',
+        'Other Clients',
         'Last Risk Assessment Date',
         'Last Ongoing Monitoring Date',
         'Reason Due'
@@ -9353,7 +10030,7 @@ def download_user_risk_assessments_due(request):
             assessment.file_number,
             assessment.matter_description,
             assessment.client1.name if assessment.client1 else '',
-            assessment.client2.name if assessment.client2 else '',
+            ' / '.join(c.name for c in assessment.additional_clients.all()),
             assessment.latest_assessment_date,
             assessment.latest_monitoring_date,
             reason_due
@@ -9423,7 +10100,8 @@ def download_user_key_documents_due(request):
 
 @login_required
 def download_risk_assessments_due(request):
-    risk_assessments_due = get_risk_assessments_due_queryset(WIP.objects.all())
+    risk_assessments_due = get_risk_assessments_due_queryset(
+        WIP.objects.all()).prefetch_related('additional_clients')
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="risk_assessments_due_{timezone.now()}.csv"'
@@ -9435,7 +10113,7 @@ def download_risk_assessments_due(request):
         'File Number',
         'Matter Description',
         'Client 1',
-        'Client 2',
+        'Other Clients',
         'Last Risk Assessment Date',
         'Last Ongoing Monitoring Date',
         'Reason Due'
@@ -9450,10 +10128,181 @@ def download_risk_assessments_due(request):
             assessment.file_number,
             assessment.matter_description,
             assessment.client1.name if assessment.client1 else '',
-            assessment.client2.name if assessment.client2 else '',
+            ' / '.join(c.name for c in assessment.additional_clients.all()),
             assessment.latest_assessment_date,
             assessment.latest_monitoring_date,
             reason_due
+        ])
+
+    return response
+
+
+def get_clients_with_expired_key_document(category):
+    """All clients whose key document of ``category`` has passed its expiry date.
+
+    Returns a list of dicts ordered by most overdue first, each describing the
+    expired document plus the file numbers the client is associated with.
+    """
+    today = timezone.localdate()
+    expired_docs = (
+        ClientKeyDocument.objects
+        .filter(
+            category=category,
+            expiry_date__isnull=False,
+            expiry_date__lt=today,
+        )
+        .select_related('client', 'verified_by')
+        .order_by('expiry_date', 'client__name')
+    )
+
+    client_ids = {doc.client_id for doc in expired_docs}
+    client_file_numbers = defaultdict(set)
+    if client_ids:
+        for file_number, client_id in WIP.objects.filter(
+            client1_id__in=client_ids
+        ).values_list('file_number', 'client1_id'):
+            client_file_numbers[client_id].add(file_number)
+        for file_number, client_id in WIP.objects.filter(
+            additional_clients__in=client_ids
+        ).values_list('file_number', 'additional_clients'):
+            client_file_numbers[client_id].add(file_number)
+
+    rows = []
+    for doc in expired_docs:
+        rows.append({
+            'client_id': doc.client_id,
+            'client_name': doc.client.name if doc.client else '',
+            'is_business': doc.client.is_business if doc.client else False,
+            'document_type': doc.document_type,
+            'document_reference': doc.document_reference,
+            'issue_date': doc.issue_date,
+            'expiry_date': doc.expiry_date,
+            'days_overdue': (today - doc.expiry_date).days,
+            'verified_on': doc.verified_on,
+            'verified_by': doc.verified_by.get_full_name() if doc.verified_by else '',
+            'file_numbers': sorted(client_file_numbers.get(doc.client_id, [])),
+        })
+    return rows
+
+
+def get_clients_with_expired_id():
+    """Backwards-compatible wrapper: clients with an expired Proof of ID."""
+    return get_clients_with_expired_key_document('proof_of_id')
+
+
+def get_live_matter_client_document_issues(category):
+    """Clients on live matters whose `category` key document is missing or expired.
+
+    "Live" means the client sits on a matter with file status Open or To Be
+    Closed. A client is flagged when they have no document of this category at
+    all (Missing), or their best document of this category has expired
+    (Expired). Rows are ordered Missing first, then most-overdue first.
+    """
+    today = timezone.localdate()
+    active_wips = (
+        WIP.objects
+        .filter(file_status__status__in=['Open', 'To Be Closed'])
+        .select_related('client1')
+        .prefetch_related('additional_clients')
+    )
+
+    clients_by_id = {}
+    client_file_numbers = defaultdict(set)
+    for matter in active_wips:
+        for client in matter.all_clients:
+            clients_by_id[client.id] = client
+            client_file_numbers[client.id].add(matter.file_number)
+
+    if not clients_by_id:
+        return []
+
+    docs_by_client = defaultdict(list)
+    for doc in ClientKeyDocument.objects.filter(
+        client_id__in=clients_by_id.keys(), category=category,
+    ).select_related('verified_by'):
+        docs_by_client[doc.client_id].append(doc)
+
+    def _doc_rank(doc):
+        # Prefer a document that has an expiry, then the latest expiry.
+        return (doc.expiry_date is not None, doc.expiry_date or today)
+
+    rows = []
+    for client_id, client in clients_by_id.items():
+        docs = docs_by_client.get(client_id)
+        best = max(docs, key=_doc_rank) if docs else None
+
+        if best is None:
+            status, expiry, days_overdue = 'Missing', None, None
+            document_type = document_reference = verified_by = ''
+        elif best.expiry_date is None or best.expiry_date >= today:
+            # Present and either non-expiring or still valid - not an issue.
+            continue
+        else:
+            status, expiry = 'Expired', best.expiry_date
+            days_overdue = (today - best.expiry_date).days
+            document_type = best.document_type
+            document_reference = best.document_reference
+            verified_by = best.verified_by.get_full_name() if best.verified_by else ''
+
+        rows.append({
+            'client_id': client_id,
+            'client_name': client.name,
+            'is_business': client.is_business,
+            'status': status,
+            'document_type': document_type,
+            'document_reference': document_reference,
+            'expiry_date': expiry,
+            'days_overdue': days_overdue,
+            'verified_by': verified_by,
+            'file_numbers': sorted(client_file_numbers.get(client_id, [])),
+        })
+
+    rows.sort(key=lambda r: (
+        0 if r['status'] == 'Missing' else 1,
+        -(r['days_overdue'] or 0),
+        r['client_name'].lower(),
+    ))
+    return rows
+
+
+@login_required
+def download_expired_client_ids(request):
+    """Export every client with an expired Proof of ID as a CSV."""
+    rows = get_clients_with_expired_id()
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = (
+        f'attachment; filename="expired_client_ids_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+    )
+    writer = csv.writer(response)
+
+    writer.writerow(['Clients with Expired ID'])
+    writer.writerow(['Generated', timezone.localdate().strftime('%d/%m/%Y')])
+    writer.writerow([
+        'Client',
+        'Client Type',
+        'Document Type',
+        'Document Reference',
+        'Issue Date',
+        'Expiry Date',
+        'Days Overdue',
+        'Verified On',
+        'Verified By',
+        'File Number(s)',
+    ])
+
+    for row in rows:
+        writer.writerow([
+            row['client_name'],
+            'Business' if row['is_business'] else 'Individual',
+            row['document_type'],
+            row['document_reference'],
+            row['issue_date'].strftime('%d/%m/%Y') if row['issue_date'] else '',
+            row['expiry_date'].strftime('%d/%m/%Y') if row['expiry_date'] else '',
+            row['days_overdue'],
+            row['verified_on'].strftime('%d/%m/%Y') if row['verified_on'] else '',
+            row['verified_by'],
+            ', '.join(row['file_numbers']),
         ])
 
     return response
@@ -10887,7 +11736,14 @@ def _section_ordered_document_ids(section):
 def _open_document_pdf(document, cache=None):
     if cache is not None:
         return open(cache.local_path(document), 'rb')
-    return document.file.open('rb')
+    # Open a fresh handle straight from storage on every call. Re-using
+    # document.file.open('rb') fails with "The file cannot be reopened" on the
+    # second pass: the bundle is built in two passes (collect page counts, then
+    # merge) over the same BundleDocument objects, and a FieldFile caches and
+    # closes its underlying handle, so the merge pass would drop every document
+    # and leave only the index page.
+    field_file = document.file
+    return field_file.storage.open(field_file.name, 'rb')
 
 
 def _assign_document_page_ranges(documents_info, bundle):

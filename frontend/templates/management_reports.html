@@ -141,7 +141,47 @@
                         </td>
                     </tr>
                     {% endfor %}
-                    
+
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Clients with Expired ID -->
+        <div class="div-container max-h-[300px] overflow-auto">
+            <div class="flex flex-row justify-between mb-2">
+                <h2 class="text-lg text-gray-800 font-bold">Clients with Expired ID</h2>
+                <div>
+                    <a href="{% url 'download_expired_client_ids' %}"
+                        class="btn-secondary text-xs"
+                        onclick="handleDownload(event)">Download All</a>
+                </div>
+            </div>
+            <table class="min-w-full table-auto">
+                <thead>
+                    <tr class="border-b">
+                        <th class="py-2 text-left text-sm font-medium text-gray-600">Client</th>
+                        <th class="py-2 text-left text-sm font-medium text-gray-600">Document</th>
+                        <th class="py-2 text-left text-sm font-medium text-gray-600">Expired</th>
+                        <th class="py-2 text-left text-sm font-medium text-gray-600">Files</th>
+                    </tr>
+                </thead>
+                <tbody class="overflow-y-auto">
+                    {% for row in expired_client_ids %}
+                    <tr class="border-b">
+                        <td class="py-2 text-sm">{{ row.client_name }}</td>
+                        <td class="py-2 text-sm">{{ row.document_type|default:"Proof of ID" }}{% if row.document_reference %} ({{ row.document_reference }}){% endif %}</td>
+                        <td class="py-2 text-sm font-bold text-red-700">
+                            {{ row.expiry_date|date:"d/m/Y" }} · {{ row.days_overdue }} day{{ row.days_overdue|pluralize }} overdue
+                        </td>
+                        <td class="py-2 text-sm">
+                            {% for file_number in row.file_numbers %}<a href="{% url 'home' file_number %}" class="link">{{ file_number }}</a>{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-gray-400">—</span>{% endfor %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="py-2 text-sm text-gray-500">No clients have an expired ID.</td>
+                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>

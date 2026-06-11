@@ -39,8 +39,8 @@ from .pmt_slip_service import create_pmt_slip
 def _require_conveyancing_matter(file_number):
     matter = get_object_or_404(
         WIP.objects.select_related(
-            'matter_type', 'client1', 'client2', 'fee_earner'
-        ),
+            'matter_type', 'client1', 'fee_earner'
+        ).prefetch_related('additional_clients'),
         file_number=file_number,
     )
     if not matter_is_conveyancing(matter):

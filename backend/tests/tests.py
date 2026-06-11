@@ -9,8 +9,8 @@ from PyPDF2 import PdfReader
 from reportlab.pdfgen import canvas
 
 from users.models import CustomUser
-from .models import Bundle, BundleDocument, BundleSection
-from .views import _generate_bundle_pdf
+from ..models import Bundle, BundleDocument, BundleSection
+from ..views import _generate_bundle_pdf
 
 
 def bundle_pdf_bytes(pdf_result):
@@ -540,7 +540,7 @@ class FinanceActivityLedgerDeltaTests(TestCase):
         from decimal import Decimal
         from unittest.mock import MagicMock
 
-        from .views import _finance_activity_ledger_deltas
+        from ..views import _finance_activity_ledger_deltas
 
         invoice = {'total_cost_and_vat': Decimal('120.00')}
         client_delta, office_delta = _finance_activity_ledger_deltas(
@@ -552,7 +552,7 @@ class FinanceActivityLedgerDeltaTests(TestCase):
         from decimal import Decimal
         from unittest.mock import MagicMock
 
-        from .views import _finance_activity_ledger_deltas
+        from ..views import _finance_activity_ledger_deltas
 
         slip = MagicMock()
         slip.ledger_account = 'C'
@@ -567,7 +567,7 @@ class FinanceActivityLedgerDeltaTests(TestCase):
         from decimal import Decimal
         from unittest.mock import MagicMock
 
-        from .views import _finance_activity_ledger_deltas
+        from ..views import _finance_activity_ledger_deltas
 
         slip = MagicMock()
         slip.file_number_from.file_number = 'CV0001'
@@ -583,7 +583,7 @@ class FinanceActivitySortTests(TestCase):
     def test_same_date_items_sort_by_kind_order_then_id(self):
         from datetime import date
 
-        from .views import FINANCE_KIND_SORT_ORDER, _finance_activity_sort_key
+        from ..views import FINANCE_KIND_SORT_ORDER, _finance_activity_sort_key
 
         shared_date = date(2024, 6, 15)
 

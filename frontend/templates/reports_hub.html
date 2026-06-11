@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% load humanize %}
+{% block title %}Reports{% endblock %}
+{% block container_class %}container {% endblock %}
+{% block container %}
+<div class="space-y-5">
+    <div class="div-container py-3">
+        <h1 class="text-2xl font-semibold text-gray-900">Reports</h1>
+        <p class="text-sm text-gray-600 mt-1">
+            One central place for every firm-wide report and export — compliance, management and finance.
+        </p>
+    </div>
+
+    {% for group in report_groups %}
+    {% if not group.manager_only or request.user.is_manager %}
+    <div class="div-container">
+        <div class="mb-3 pb-3 border-b border-gray-100">
+            <h2 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                {{ group.title }}
+                {% if group.manager_only %}<span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">Managers</span>{% endif %}
+            </h2>
+            {% if group.description %}
+            <p class="text-xs text-gray-500 mt-0.5">{{ group.description }}</p>
+            {% endif %}
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {% for report in group.reports %}
+            <a href="{% url report.url_name %}"
+               class="group flex flex-col rounded-lg border border-gray-200 p-3 hover:border-zinc-400 hover:shadow-sm transition">
+                <div class="flex items-start justify-between gap-2">
+                    <span class="text-sm font-semibold text-gray-900 group-hover:text-zinc-700">{{ report.name }}</span>
+                    <span class="shrink-0 flex items-center gap-1.5">
+                        {% if report.count is not None %}
+                        <span class="text-[11px] font-medium px-1.5 py-0.5 rounded-full border {% if report.count %}bg-zinc-100 text-zinc-700 border-zinc-200{% else %}bg-gray-50 text-gray-400 border-gray-200{% endif %}">{{ report.count }}</span>
+                        {% endif %}
+                        {% if report.download %}
+                        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">CSV</span>
+                        {% endif %}
+                    </span>
+                </div>
+                <p class="text-xs text-gray-500 mt-1 leading-snug">{{ report.description }}</p>
+                <span class="mt-2 text-[11px] font-medium text-zinc-500 group-hover:text-zinc-700">
+                    {% if report.download %}Download &rarr;{% else %}Open &rarr;{% endif %}
+                </span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endblock %}

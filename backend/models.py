@@ -253,10 +253,13 @@ class WIP(models.Model):
     matter_description = models.CharField(
         max_length=500, null=True, blank=True)
 
+    # client1 is the primary/lead client for the matter. It drives all
+    # correspondence, invoicing, ledgers and report headers. Any further
+    # clients on the matter are held in additional_clients (no fixed limit).
     client1 = models.ForeignKey(ClientContactDetails, on_delete=models.SET(
         get_sentinel_user), related_name='client1_wip', )
-    client2 = models.ForeignKey(ClientContactDetails, on_delete=models.SET(
-        get_sentinel_user), related_name='client2_wip', null=True, blank=True)
+    additional_clients = models.ManyToManyField(
+        ClientContactDetails, related_name='additional_client_wips', blank=True)
 
     matter_type = models.ForeignKey(
         MatterType, on_delete=models.SET_NULL, related_name='matter_type', null=True)
@@ -268,12 +271,8 @@ class WIP(models.Model):
     other_side = models.ForeignKey(
         OthersideDetails, on_delete=models.SET_NULL, null=True, blank=True)
     date_of_client_care_sent = models.DateField(null=True, blank=True)
-    terms_of_engagement_client1 = models.BooleanField(null=True, blank=True)
-    terms_of_engagement_client2 = models.BooleanField(null=True, blank=True)
     date_of_toe_sent = models.DateField(null=True, blank=True)
     date_of_toe_rcvd = models.DateField(null=True, blank=True)
-    ncba_client1 = models.BooleanField(null=True, blank=True)
-    ncba_client2 = models.BooleanField(null=True, blank=True)
     date_of_ncba_sent = models.DateField(null=True, blank=True)
     date_of_ncba_rcvd = models.DateField(null=True, blank=True)
     zdrive_location = models.CharField(max_length=500, null=True, blank=True)
@@ -291,6 +290,30 @@ class WIP(models.Model):
         CustomUser, on_delete=models.SET_NULL, related_name='wip_created_by', null=True, blank=True)
 
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def all_clients(self):
+        """Every client on the matter (client1 first, then the additional
+        clients). All clients are treated equally — use this wherever the full
+        client list is needed: displays, AML/risk collection, search, and
+        invoicing/correspondence (addresses, names, email recipients)."""
+        clients = [self.client1] if self.client1_id else []
+        clients.extend(self.additional_clients.all())
+        return clients
+
+    @property
+    def all_client_names(self):
+        """All client names joined for headers, filenames and statements."""
+        return ' & '.join(client.name for client in self.all_clients)
+
+    @property
+    def all_client_emails(self):
+        """Distinct, non-empty client emails for correspondence, in order."""
+        emails = []
+        for client in self.all_clients:
+            if client.email and client.email not in emails:
+                emails.append(client.email)
+        return emails
 
     def __str__(self):
         return self.file_number
@@ -355,9 +378,16 @@ class NextWork(models.Model):
         max_length=10, choices=URGENCY_CHOICES, default='medium')
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
                                    related_name='next_work_created_by', null=True, blank=True)
+    is_admin_pool = models.BooleanField(default=False)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
+        # Admin pool tasks are unassigned and always sit in the "to do" queue
+        # until a staff member picks one up.
+        if self.is_admin_pool:
+            self.person = None
+            self.status = 'to_do'
+
         # Sync completed field with status
         if self.status == 'completed':
             self.completed = True
@@ -1730,3 +1760,135 @@ class CompletionStatementScheduledPayment(models.Model):
 
     def __str__(self):
         return f'{self.payee_name} - {self.projected_amount}'
+
+
+class GranolaConfig(models.Model):
+    """Central, team-wide configuration for the Granola integration.
+
+    A single row holds the shared API key and sync state. The API key can also
+    be supplied via the ``GRANOLA_API_KEY`` environment variable / Django
+    setting, which takes precedence over this row (see ``backend.granola``).
+    """
+    id = models.AutoField(primary_key=True)
+    api_key = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Central Granola API key (Settings → Connectors in Granola). '
+                  'Leave blank to use the GRANOLA_API_KEY environment variable.')
+    enabled = models.BooleanField(
+        default=False, help_text='Master switch for the scheduled Granola sync.')
+    start_date = models.DateField(
+        null=True, blank=True,
+        help_text='The scheduled sync stays dormant until this date (manual '
+                  '"Sync now" still works). Leave blank to start immediately.')
+    attendance_folder = models.CharField(
+        max_length=255, blank=True, default='Attendance Note',
+        help_text='Name of the shared Granola folder whose notes become matter '
+                  'attendance notes.')
+    free30_folder = models.CharField(
+        max_length=255, blank=True, default='Free 30 min',
+        help_text='Name of the shared Granola folder whose notes become Free '
+                  '30 minute meeting records.')
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    last_full_scan_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the last complete folder re-scan ran (catches notes '
+                  'added to a folder without bumping their updated_at).')
+    last_sync_status = models.TextField(
+        blank=True, default='', help_text='Outcome of the most recent sync run.')
+    updated_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='granola_config_updated_by')
+    timestamp = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Granola configuration'
+        verbose_name_plural = 'Granola configuration'
+
+    def __str__(self):
+        return f'Granola config (enabled={self.enabled})'
+
+    @classmethod
+    def get_solo(cls):
+        """Return the single config row, creating it on first access."""
+        obj = cls.objects.first()
+        if obj is None:
+            obj = cls.objects.create()
+        return obj
+
+
+class GranolaImportedNote(models.Model):
+    """Ledger of notes pulled from Granola.
+
+    Doubles as the de-duplication table (one row per Granola note id) and the
+    central review inbox: notes whose matter could not be auto-resolved sit in
+    ``STATUS_PENDING`` until a back-office user assigns them to a matter.
+    """
+    STATUS_PENDING = 'pending'      # awaiting manual matter assignment
+    STATUS_CREATED = 'created'      # attendance note created (auto or manual)
+    STATUS_IGNORED = 'ignored'      # dismissed by a reviewer
+    STATUS_ERROR = 'error'          # could not be processed
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending review'),
+        (STATUS_CREATED, 'Record created'),
+        (STATUS_IGNORED, 'Ignored'),
+        (STATUS_ERROR, 'Error'),
+    ]
+
+    TYPE_ATTENDANCE = 'attendance'  # -> MatterAttendanceNotes
+    TYPE_FREE30 = 'free30'          # -> Free30Mins
+    TYPE_CHOICES = [
+        (TYPE_ATTENDANCE, 'Attendance note'),
+        (TYPE_FREE30, 'Free 30 minutes'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    note_type = models.CharField(
+        max_length=16, choices=TYPE_CHOICES, default=TYPE_ATTENDANCE)
+    granola_note_id = models.CharField(max_length=255, unique=True)
+    title = models.CharField(max_length=500, blank=True, default='')
+    summary_md = models.TextField(
+        blank=True, default='', help_text='Raw Markdown summary from Granola.')
+    summary_html = models.TextField(
+        blank=True, default='',
+        help_text='Sanitised HTML rendered from the Markdown summary.')
+    transcript = models.TextField(
+        blank=True, default='', help_text='Plain-text transcript from Granola.')
+    transcript_json = models.JSONField(
+        null=True, blank=True,
+        help_text='Structured per-utterance transcript as returned by Granola.')
+    meeting_start = models.DateTimeField(null=True, blank=True)
+    meeting_end = models.DateTimeField(null=True, blank=True)
+    note_created_at = models.DateTimeField(null=True, blank=True)
+    owner_email = models.EmailField(
+        blank=True, default='', help_text='Email of the Granola note owner.')
+
+    parsed_file_number = models.CharField(max_length=20, blank=True, default='')
+    parsed_is_charged = models.BooleanField(default=True)
+    matched_file = models.ForeignKey(
+        WIP, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='granola_notes')
+    matched_fee_earner = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='granola_notes')
+
+    status = models.CharField(
+        max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    error_message = models.TextField(blank=True, default='')
+    attendance_note = models.OneToOneField(
+        MatterAttendanceNotes, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='granola_source')
+    free30_meeting = models.OneToOneField(
+        Free30Mins, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='granola_source')
+
+    reviewed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='granola_notes_reviewed')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-meeting_start', '-timestamp']
+
+    def __str__(self):
+        return f'{self.title or self.granola_note_id} ({self.status})'

@@ -6,12 +6,12 @@ from django.test import TestCase
 from django.urls import reverse
 
 from users.models import CustomUser
-from .estate_account import (
+from ..estate_account import (
     calculate_invoice_total_with_vat,
     get_estate_account_data,
     get_or_create_estate_account,
 )
-from .models import (
+from ..models import (
     ClientContactDetails,
     EstateAccount,
     EstateAccountFinanceLineOverride,
@@ -76,8 +76,7 @@ class EstateAccountTests(TestCase):
 
     def test_signers_are_matter_clients(self):
         client2 = make_client('Jane Beneficiary')
-        self.probate_matter.client2 = client2
-        self.probate_matter.save(update_fields=['client2'])
+        self.probate_matter.additional_clients.add(client2)
         estate_account = get_or_create_estate_account(self.probate_matter, self.user)
         data = get_estate_account_data(
             estate_account,
@@ -118,7 +117,7 @@ class EstateAccountTests(TestCase):
 
     def test_credit_note_reduces_invoice_debt(self):
         estate_account = get_or_create_estate_account(self.probate_matter, self.user)
-        from .models import CreditNote, Invoices
+        from ..models import CreditNote, Invoices
         invoice = Invoices.objects.create(
             file_number=self.probate_matter,
             invoice_number=1001,
@@ -150,7 +149,7 @@ class EstateAccountTests(TestCase):
 
     def test_money_out_pink_slip_with_invoice_defaults_to_debt(self):
         estate_account = get_or_create_estate_account(self.probate_matter, self.user)
-        from .models import Invoices
+        from ..models import Invoices
         invoice = Invoices.objects.create(
             file_number=self.probate_matter,
             invoice_number=1001,

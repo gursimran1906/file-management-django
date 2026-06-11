@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from users.models import CustomUser
-from .models import ClientContactDetails, Invoices, MatterType, Modifications, PmtsSlips, WIP
+from ..models import ClientContactDetails, Invoices, MatterType, Modifications, PmtsSlips, WIP
 
 
 def make_client(name='Test Client'):

@@ -1,0 +1,75 @@
+{% comment %}Shared tab bar for the Allocate section. Tabs swap their panel via
+fetch (no full reload), so switching is flicker-free. Falls back to normal
+navigation if JS is unavailable.{% endcomment %}
+<div class="border-b border-gray-200">
+  <nav class="-mb-px flex gap-6" aria-label="Allocate">
+    {% with u=request.resolver_match.url_name %}
+    <a href="{% url 'unallocated_emails' %}" data-allocate-tab
+      class="allocate-tab border-b-2 px-1 py-2.5 text-sm font-medium transition-colors {% if u == 'unallocated_emails' or u == 'allocate_emails' %}border-blue-600 text-blue-600{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %}">
+      Emails
+    </a>
+    <a href="{% url 'granola_inbox' %}" data-allocate-tab
+      class="allocate-tab border-b-2 px-1 py-2.5 text-sm font-medium transition-colors {% if u == 'granola_inbox' %}border-blue-600 text-blue-600{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %}">
+      Meetings
+    </a>
+    {% endwith %}
+  </nav>
+</div>
+
+<script>
+(function () {
+  if (window.__allocateTabsInit) return;
+  window.__allocateTabsInit = true;
+
+  // Used by the emails panel's mailbox filter (inline onchange).
+  window.filterRows = function () {
+    var sel = document.getElementById('emailFilter');
+    if (!sel) return;
+    var v = sel.value;
+    document.querySelectorAll('.email-row').forEach(function (row) {
+      var c = row.getAttribute('data-email') || '';
+      row.style.display = (v === 'All' || c.indexOf(v) !== -1) ? '' : 'none';
+    });
+  };
+
+  var ACTIVE = ['border-blue-600', 'text-blue-600'];
+  var INACTIVE = ['border-transparent', 'text-gray-500', 'hover:border-gray-300', 'hover:text-gray-700'];
+
+  function setActive(tab) {
+    document.querySelectorAll('.allocate-tab').forEach(function (t) {
+      var on = t === tab;
+      ACTIVE.forEach(function (c) { t.classList.toggle(c, on); });
+      INACTIVE.forEach(function (c) { t.classList.toggle(c, !on); });
+    });
+  }
+
+  function loadPanel(url, push) {
+    var panel = document.getElementById('allocate-panel');
+    if (!panel) { window.location.href = url; return; }
+    panel.style.opacity = '0.4';
+    panel.style.pointerEvents = 'none';
+    var sep = url.indexOf('?') === -1 ? '?' : '&';
+    fetch(url + sep + 'partial=1', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        panel.innerHTML = html;
+        panel.style.opacity = '';
+        panel.style.pointerEvents = '';
+        if (push) history.pushState({ allocate: url }, '', url);
+      })
+      .catch(function () { window.location.href = url; });
+  }
+
+  document.addEventListener('click', function (e) {
+    var tab = e.target.closest && e.target.closest('.allocate-tab');
+    if (!tab) return;
+    e.preventDefault();
+    if (tab.classList.contains('border-blue-600')) return;  // already active
+    setActive(tab);
+    loadPanel(tab.getAttribute('href'), true);
+  });
+
+  // Back/forward should restore the right tab.
+  window.addEventListener('popstate', function () { window.location.reload(); });
+})();
+</script>

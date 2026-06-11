@@ -200,6 +200,26 @@ function addFieldsUndertaking(id) {
   container.appendChild(fieldDiv);
 }
 
+// Adds another "additional client" row on the open/edit file forms. The
+// hidden <template> holds one row with __N__ placeholders; each new row gets
+// the next unused index so its field names (additional_client_<n>, Client<n>...)
+// stay unique. The matter supports any number of clients beyond Client 1.
+function addAdditionalClient() {
+  const template = document.getElementById("additionalClientTemplate");
+  const container = document.getElementById("additionalClientsContainer");
+  if (!template || !container) return;
+  const index = parseInt(container.dataset.nextIndex || "2", 10);
+  container.dataset.nextIndex = index + 1;
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = template.innerHTML.replace(/__N__/g, index).trim();
+  container.appendChild(wrapper.firstElementChild);
+}
+
+function removeAdditionalClient(button) {
+  const row = button.closest(".additional-client-row");
+  if (row) row.remove();
+}
+
 function toggleForm(divName) {
   const element = document.getElementById("inputNew" + divName);
   checkValue = document.getElementById(divName + "List");

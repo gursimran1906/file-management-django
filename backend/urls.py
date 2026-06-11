@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import add_memo, delete_memo, display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, edit_memo, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work, read_memo, update_task_status, load_initial_tasks, load_more_tasks, get_files, get_users, create_task
+from .views import add_memo, delete_memo, display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, download_expired_client_ids, edit_memo, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work, read_memo, update_task_status, load_initial_tasks, load_more_tasks, get_files, get_users, create_task, claim_task, release_task
 from .views import attendance_note_view, add_attendance_note, bulk_upload_attendance_notes, download_attendance_notes_bulk_template, download_attendance_notes_bulk, download_attendance_note, edit_attendance_note, correspondence_view, add_letter, edit_letter, download_sowc
 from .views import finance_view, add_blue_slip, add_pink_slip, add_green_slip, edit_pmts_slip, download_pmts_slip, edit_green_slip, download_green_slip, add_invoice, add_credit_note, approve_credit_note, reject_credit_note, edit_credit_note
 from .views import allocate_monies, download_statement_account, download_invoice, download_credited_invoice, download_credit_note, edit_invoice, reopen_invoice, unallocated_emails, allocate_emails
@@ -47,10 +47,15 @@ from .completion_statement_views import (
 from .views import download_cashier_data, edit_file, edit_client, edit_authorised_party, download_file_logs, download_frontsheet, generate_ledgers_report, user_dashboard, download_risk_assessment
 from .views import add_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring
 from .views import edit_ongoing_monitoring, download_document, onboarding_documents_display, edit_otherside, free30mins, download_free30mins, edit_free30mins
-from .views import undertakings, edit_undertaking, undertaking_file_download, add_policy, edit_policy, download_policy_pdf, management_reports, weekly_report_view, policies_read_per_user
+from .views import undertakings, edit_undertaking, undertaking_file_download, add_policy, edit_policy, download_policy_pdf, management_reports, reports_hub, report_expired_ids, report_expired_proof_of_address, report_file_reviews_due, weekly_report_view, policies_read_per_user
 from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundle_court_update, bundle_section_add, bundle_section_delete, bundle_section_update, bundle_section_reorder, bundle_document_upload, bundle_document_file, bundle_document_update, bundle_document_delete, bundle_document_pages_update, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_pdf_prepare, bundle_pdf_status, bundle_delete, bundle_share_link_status_view, bundle_share_link_create, bundle_share_link_revoke
 from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, download_user_key_documents_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review, internal_pricing
 from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, add_matter_key_document, central_key_dates, download_central_key_dates
+from .granola.views import (
+    granola_inbox, granola_assign_note, granola_ignore_note,
+    granola_settings, granola_sync_now, granola_create_free30,
+    granola_restore_note, granola_guide, granola_test_connection,
+)
 
 urlpatterns = [
     path('dashboard/', user_dashboard, name='user_dashboard'),
@@ -284,6 +289,12 @@ urlpatterns = [
     path('undertakings/edit/<int:id>/',
          edit_undertaking, name='edit_undertaking'),
 
+    path('reports/', reports_hub, name='reports_hub'),
+    path('reports/expired-ids/', report_expired_ids, name='report_expired_ids'),
+    path('reports/expired-proof-of-address/', report_expired_proof_of_address,
+         name='report_expired_proof_of_address'),
+    path('reports/file-reviews-due/', report_file_reviews_due,
+         name='report_file_reviews_due'),
     path('management_reports/', management_reports, name='management_reports'),
     path('internal_pricing/', internal_pricing, name='internal_pricing'),
     path('matter_pricing/', internal_pricing, name='matter_pricing'),
@@ -304,6 +315,8 @@ urlpatterns = [
          name='download_user_key_documents_due'),
     path('download_risk_assessments_due', download_risk_assessments_due,
          name='download_risk_assessments_due'),
+    path('download_expired_client_ids', download_expired_client_ids,
+         name='download_expired_client_ids'),
 
     path('memos/add/', add_memo, name='add_memo'),
     path('memos/<int:memo_id>/edit/', edit_memo, name='edit_memo'),
@@ -365,6 +378,8 @@ urlpatterns = [
 
     # Kanban Board AJAX endpoints
     path('update-task-status/', update_task_status, name='update_task_status'),
+    path('claim-task/', claim_task, name='claim_task'),
+    path('release-task/', release_task, name='release_task'),
     path('load-initial-tasks/', load_initial_tasks, name='load_initial_tasks'),
     path('load-more-tasks/', load_more_tasks, name='load_more_tasks'),
 
@@ -377,4 +392,19 @@ urlpatterns = [
 
     # Update comment endpoint
     path('update-comment/', update_comment, name='update_comment'),
+
+    # Granola integration (central back-office)
+    path('granola/', granola_inbox, name='granola_inbox'),
+    path('granola/guide/', granola_guide, name='granola_guide'),
+    path('granola/settings/', granola_settings, name='granola_settings'),
+    path('granola/sync/', granola_sync_now, name='granola_sync_now'),
+    path('granola/test/', granola_test_connection, name='granola_test_connection'),
+    path('granola/note/<int:note_id>/assign/', granola_assign_note,
+         name='granola_assign_note'),
+    path('granola/note/<int:note_id>/ignore/', granola_ignore_note,
+         name='granola_ignore_note'),
+    path('granola/note/<int:note_id>/restore/', granola_restore_note,
+         name='granola_restore_note'),
+    path('granola/note/<int:note_id>/create-free30/', granola_create_free30,
+         name='granola_create_free30'),
 ]

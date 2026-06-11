@@ -9,6 +9,7 @@ media/
 old_db_data/
 node_modules/
 scripts/
+graph_test_out/
 
 
 # Distribution / packaging

@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Granola notes guide{% endblock %}
+{% block container %}
+<div class="mx-auto max-w-2xl px-4 py-8">
+
+  <div class="mb-6">
+    <h1 class="text-xl font-semibold text-gray-900">How to write Granola notes</h1>
+    <p class="mt-1 text-sm text-gray-400">
+      Record call and meeting notes in Granola. If you follow the format below, they
+      are turned into attendance notes and Free 30 minute records automatically.
+    </p>
+  </div>
+
+  {% include 'granola/_note_format_guide.html' %}
+
+  <p class="mt-4 text-xs text-gray-400">
+    Save attendance notes in the “{{ config.attendance_folder|default:'Attendance Note' }}” folder
+    and Free 30 minute meetings in the “{{ config.free30_folder|default:'Free 30 min' }}” folder.
+  </p>
+
+</div>
+{% endblock %}

@@ -104,9 +104,7 @@ def _client_address(client):
 
 def _matter_client_signers(matter):
     signers = []
-    for sort_order, client in enumerate(
-        client for client in (matter.client1, matter.client2) if client
-    ):
+    for sort_order, client in enumerate(matter.all_clients):
         signers.append({
             'id': client.id,
             'signer_name': client.name,

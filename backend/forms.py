@@ -11,11 +11,10 @@ from django_quill.forms import QuillFormField
 class OpenFileForm(forms.ModelForm):
     class Meta:
         model = WIP
+        # additional_clients is handled manually in the view (custom add-client
+        # UI), so keep it off the ModelForm.
         exclude = [
-            'terms_of_engagement_client1',
-            'terms_of_engagement_client2',
-            'ncba_client1',
-            'ncba_client2',
+            'additional_clients',
         ]
 
     undertakings = forms.CharField(widget=forms.Textarea(attrs={'rows': 3}), required=False)
@@ -457,9 +456,7 @@ class MatterClientKeyDocumentForm(forms.ModelForm):
 
     def __init__(self, matter=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        client_ids = [matter.client1_id]
-        if matter.client2_id:
-            client_ids.append(matter.client2_id)
+        client_ids = [c.id for c in matter.all_clients]
         self.fields['client'].queryset = ClientContactDetails.objects.filter(
             id__in=client_ids
         )

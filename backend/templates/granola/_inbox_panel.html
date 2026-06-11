@@ -1,0 +1,201 @@
+{% comment %}Meetings tab body. Rendered standalone for AJAX tab swaps
+(partial=1) and included by the full granola/inbox.html shell.{% endcomment %}
+<!-- Meetings actions -->
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+  <p class="text-sm text-gray-500">Assign meeting notes to a matter to create attendance notes.</p>
+  <div class="flex items-center gap-2">
+    <a href="{% url 'granola_guide' %}" class="btn-secondary">
+      <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+      Guide
+    </a>
+    {% if request.user.is_manager %}
+    <form method="post" action="{% url 'granola_sync_now' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn-secondary">
+        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 0 0 4.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 0 1-15.357-2m15.357 2H15"/></svg>
+        Sync now
+      </button>
+    </form>
+    <a href="{% url 'granola_settings' %}" class="btn-secondary">
+      <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065Z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+      Settings
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+{% if config.last_sync_status %}
+<div class="mb-6 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-400">
+  <svg class="h-3.5 w-3.5 shrink-0 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+  <span class="min-w-0 flex-1 truncate"><span class="font-medium text-gray-700">Last sync</span> · {{ config.last_sync_status }}</span>
+  {% if config.last_full_scan_at %}<span class="hidden shrink-0 sm:inline" title="Full folder re-scan catches notes added to a folder out-of-band">Full re-scan {{ config.last_full_scan_at|date:"d/m/Y H:i" }}</span>{% endif %}
+  {% if not config.enabled %}<span class="badge-yellow shrink-0">Scheduled sync off</span>{% endif %}
+</div>
+{% endif %}
+
+<!-- Pending -->
+<div class="mb-3 flex items-center gap-2">
+  <h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Pending review</h2>
+  <span class="badge-gray">{{ pending_notes|length }}</span>
+</div>
+
+{% if pending_notes %}
+<div class="space-y-4">
+  {% for note in pending_notes %}
+  <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-colors hover:border-gray-300">
+
+    <div class="flex items-start justify-between gap-3 px-5 pt-5 pb-4">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h3 class="truncate text-[15px] font-semibold text-gray-900" title="{{ note.title }}">{{ note.title|default:"(untitled note)" }}</h3>
+          {% if note.note_type == 'free30' %}<span class="badge-purple">Free 30</span>{% endif %}
+          {% if note.parsed_file_number %}<span class="badge-zinc font-mono">{{ note.parsed_file_number }}</span>{% endif %}
+          {% if not note.parsed_is_charged %}<span class="badge-yellow">No charge</span>{% endif %}
+        </div>
+        <div class="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-gray-400">
+          {% if note.meeting_start %}
+          <span class="inline-flex items-center gap-1">
+            <svg class="h-3.5 w-3.5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/></svg>
+            {{ note.meeting_start|date:"d/m/Y H:i" }}
+          </span>
+          {% endif %}
+          {% if note.owner_email %}<span class="text-gray-200">•</span><span class="truncate">{{ note.owner_email }}</span>{% endif %}
+        </div>
+      </div>
+      <button type="submit" form="ignore-{{ note.id }}" title="Dismiss"
+        onclick="return confirm('Dismiss this note? It will move to the dismissed list, where you can restore it later.');"
+        class="shrink-0 rounded-md p-1 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <details class="gr-disclose group border-t border-gray-100">
+      <summary class="flex cursor-pointer select-none items-center gap-1.5 px-5 py-3 text-xs font-medium text-gray-400 hover:text-gray-600">
+        <svg class="h-3.5 w-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        Summary &amp; transcript
+      </summary>
+      <div class="border-t border-gray-100 px-5 py-4 text-sm text-gray-600">
+        <div class="prose prose-sm max-w-none">{{ note.summary_html|safe }}</div>
+        {% if note.transcript %}
+        <p class="mb-1.5 mt-3 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Transcript</p>
+        <pre class="max-h-52 overflow-y-auto whitespace-pre-wrap rounded-lg bg-gray-50 p-3 font-sans text-xs text-gray-500">{{ note.transcript }}</pre>
+        {% endif %}
+      </div>
+    </details>
+
+    {% if note.note_type == 'free30' %}
+    <form method="post" action="{% url 'granola_create_free30' note.id %}"
+      class="flex flex-wrap items-end gap-5 border-t border-gray-100 bg-gray-50/50 px-5 py-4">
+      {% csrf_token %}
+      <p class="w-full text-xs text-amber-600">{{ note.error_message|default:"Review the attendees, then create the meeting." }}</p>
+      <div class="w-56">
+        <label class="form-label">Fee earner</label>
+        <select name="fee_earner" class="form-input">
+          <option value="">Auto (note owner)</option>
+          {% for fe in fee_earners %}
+          <option value="{{ fe.id }}" {% if note.matched_fee_earner_id == fe.id %}selected{% endif %}>
+            {{ fe.first_name }} {{ fe.last_name }} ({{ fe.username }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn-primary ml-auto">
+        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Create Free 30 meeting
+      </button>
+    </form>
+    {% else %}
+    <form method="post" action="{% url 'granola_assign_note' note.id %}"
+      class="flex flex-wrap items-end gap-5 border-t border-gray-100 bg-gray-50/50 px-5 py-4">
+      {% csrf_token %}
+      <div class="w-32">
+        <label class="form-label">File number</label>
+        <input type="text" name="file_number" value="{{ note.parsed_file_number }}"
+          class="form-input font-mono uppercase" placeholder="ABC0010001" required autocomplete="off">
+      </div>
+      <div class="w-52">
+        <label class="form-label">Fee earner</label>
+        <select name="person_attended" class="form-input">
+          <option value="">Auto (matter / note owner)</option>
+          {% for fe in fee_earners %}
+          <option value="{{ fe.id }}" {% if note.matched_fee_earner_id == fe.id %}selected{% endif %}>
+            {{ fe.first_name }} {{ fe.last_name }} ({{ fe.username }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Chargeable</label>
+        <label class="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700">
+          <input type="checkbox" name="is_charged" {% if note.parsed_is_charged %}checked{% endif %}
+            class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500/20">
+          Charge time
+        </label>
+      </div>
+      <button type="submit" class="btn-primary ml-auto">
+        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Create attendance note
+      </button>
+    </form>
+    {% endif %}
+  </div>
+  <form id="ignore-{{ note.id }}" method="post" action="{% url 'granola_ignore_note' note.id %}" class="hidden">{% csrf_token %}</form>
+  {% endfor %}
+</div>
+{% else %}
+<div class="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50/50 px-4 py-12 text-center">
+  <svg class="h-7 w-7 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 13l4 4L19 7"/></svg>
+  <p class="text-sm font-medium text-gray-700">Nothing waiting for review</p>
+  <p class="text-xs text-gray-400">Notes that need attention will appear here after the next sync.</p>
+</div>
+{% endif %}
+
+{% if recent_notes %}
+<div class="mb-3 mt-10">
+  <h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Recently processed</h2>
+</div>
+<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+  <div class="divide-y divide-gray-100">
+    {% for note in recent_notes %}
+    <div class="flex items-center gap-3 px-4 py-3 text-sm">
+      <p class="min-w-0 flex-1 truncate font-medium text-gray-900">{{ note.title|default:note.granola_note_id }}</p>
+      {% if note.note_type == 'free30' %}<span class="badge-purple shrink-0">Free 30</span>
+      {% else %}<span class="badge-zinc shrink-0">Attendance</span>{% endif %}
+      <span class="w-24 shrink-0 font-mono text-xs text-gray-400">{% if note.matched_file %}{{ note.matched_file.file_number }}{% endif %}</span>
+      <span class="w-24 shrink-0 text-right">
+        {% if note.error_message %}<span class="badge-yellow" title="{{ note.error_message }}">Created · check</span>
+        {% else %}<span class="badge-green">Created</span>{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if dismissed_notes %}
+<details class="gr-disclose group mt-10">
+  <summary class="mb-3 flex cursor-pointer select-none items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400 hover:text-gray-600">
+    <svg class="h-3.5 w-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    Dismissed
+    <span class="badge-gray">{{ dismissed_notes|length }}</span>
+  </summary>
+  <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div class="divide-y divide-gray-100">
+      {% for note in dismissed_notes %}
+      <div class="flex items-center gap-3 px-4 py-3 text-sm">
+        <p class="min-w-0 flex-1 truncate text-gray-400">{{ note.title|default:note.granola_note_id }}</p>
+        {% if note.note_type == 'free30' %}<span class="badge-purple shrink-0">Free 30</span>
+        {% else %}<span class="badge-zinc shrink-0">Attendance</span>{% endif %}
+        <form method="post" action="{% url 'granola_restore_note' note.id %}" class="shrink-0">
+          {% csrf_token %}
+          <button type="submit" class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900">
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 0 0 4.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 0 1-15.357-2m15.357 2H15"/></svg>
+            Restore
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</details>
+{% endif %}

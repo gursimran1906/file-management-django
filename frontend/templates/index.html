@@ -198,7 +198,7 @@
             <th>Fee earner</th>
             <th>Matter</th>
             <th>Client 1</th>
-            <th>Client 2</th>
+            <th>Other clients</th>
             <th>Last work by</th>
             <th>Last work</th>
             <th>
@@ -222,7 +222,7 @@
             <td class="col-muted">{{ row.fee_earner__username|default:'—' }}</td>
             <td class="col-desc">{% if row.matter_description %}{{ row.matter_description }}{% else %}—{% endif %}</td>
             <td>{{ row.client1__name|default:'—' }}</td>
-            <td class="col-muted">{{ row.client2__name|default:'—' }}</td>
+            <td class="col-muted">{{ row.additional_client_names|default:'—' }}</td>
             <td class="col-muted">{{ row.latest_last_work_person|default:'—' }}</td>
             <td class="col-task">{% if row.latest_last_work_task %}{{ row.latest_last_work_task }}{% else %}—{% endif %}</td>
             <td class="col-date" data-last-activity="{{ row.latest_last_work_date|date:'Y-m-d' }}">{{ row.latest_last_work_date|date:"d/m/Y"|default:'—' }}</td>

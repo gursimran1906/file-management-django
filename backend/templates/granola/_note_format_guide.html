@@ -1,0 +1,38 @@
+{% comment %}How fee earners should write their Granola notes. Shared by the
+all-staff guide page and the manager-only settings page.{% endcomment %}
+<div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+  <p class="font-medium text-gray-800">Attendance notes — file number in the body</p>
+  <p class="mt-1 text-xs text-gray-500">
+    Notes saved in the “{{ config.attendance_folder|default:'Attendance Note' }}” folder. Put the
+    matter file number in the note body (best set up as a Granola note template):
+  </p>
+  <ul class="mt-2 list-disc space-y-1 pl-5">
+    <li><span class="font-mono">File number: ABC0010001</span> — links to matter ABC0010001, charged.</li>
+    <li><span class="font-mono">[ABC0010001]</span> — bracketed form also works.</li>
+    <li><span class="font-mono">File number: ABC0010001 (NC)</span> — links to ABC0010001, <em>not</em> charged.</li>
+    <li>No file number, or an unknown one → lands in the review inbox for manual assignment.</li>
+  </ul>
+
+  <p class="mt-4 font-medium text-gray-800">Free 30 minutes — parties template</p>
+  <p class="mt-1 text-xs text-gray-500">
+    Notes saved in the “{{ config.free30_folder|default:'Free 30 min' }}” folder. Add an
+    “Info of Parties” section (best set up as a Granola note template) so attendee
+    details are captured automatically:
+  </p>
+  <pre class="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs text-gray-700 border border-gray-200">## Info of Parties
+Party 1
+- Name: John Smith
+- Email: john@example.com
+- Phone: 07123 456789
+- Address: 1 High Street, London, Greater London, SW1A 1AA
+
+Party 2
+- Name: Jane Doe
+- Email: jane@example.com
+- Phone: 07900 000000</pre>
+  <p class="mt-1 text-xs text-gray-500">
+    Each party starts at a <span class="font-mono">Name:</span> line. County and postcode
+    are split out of a single <span class="font-mono">Address:</span> line automatically,
+    or you can give <span class="font-mono">County:</span> / <span class="font-mono">Postcode:</span> explicitly.
+  </p>
+</div>

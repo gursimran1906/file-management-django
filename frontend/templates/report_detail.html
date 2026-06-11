@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% block title %}{{ report_title }}{% endblock %}
+{% block container_class %}container {% endblock %}
+{% block container %}
+<div class="space-y-5">
+    <div class="div-container">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <a href="{% url 'reports_hub' %}" class="text-xs text-gray-500 hover:text-gray-900">&larr; Reports</a>
+                <h1 class="text-xl font-semibold text-gray-900 mt-1">{{ report_title }}</h1>
+                <p class="text-sm text-gray-600 mt-0.5">{{ report_description }}</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                <span class="badge-zinc">{{ result_count }} result{{ result_count|pluralize }}</span>
+                <a href="{{ export_url }}" class="btn-secondary text-sm">Export CSV</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="div-container">
+        <form method="get" class="space-y-3">
+            {% if request.GET.sort %}<input type="hidden" name="sort" value="{{ request.GET.sort }}">{% endif %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                {% for f in filters %}
+                <div>
+                    <label for="f_{{ f.name }}" class="form-label">{{ f.label }}</label>
+                    {% if f.type == 'select' %}
+                    <select id="f_{{ f.name }}" name="{{ f.name }}" class="form-input">
+                        {% for opt in f.options %}
+                        <option value="{{ opt.value }}" {% if opt.value == f.value %}selected{% endif %}>{{ opt.label }}</option>
+                        {% endfor %}
+                    </select>
+                    {% elif f.type == 'number' %}
+                    <input id="f_{{ f.name }}" type="number" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.placeholder }}" class="form-input">
+                    {% else %}
+                    <input id="f_{{ f.name }}" type="text" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.placeholder }}" class="form-input">
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="submit" class="btn-primary text-sm">Apply</button>
+                {% if filters_active %}<a href="{{ reset_url }}" class="btn-secondary text-sm">Clear</a>{% endif %}
+            </div>
+        </form>
+    </div>
+
+    <div class="div-container overflow-x-auto">
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    {% for col in columns %}
+                    <th class="py-2 px-2 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                        {% if col.sortable %}
+                        <a href="{{ col.sort_url }}" class="inline-flex items-center gap-1 hover:text-gray-900">
+                            <span>{{ col.label }}</span>
+                            {% if col.sort_dir == 'asc' %}<span class="text-gray-900">&uarr;</span>{% elif col.sort_dir == 'desc' %}<span class="text-gray-900">&darr;</span>{% else %}<span class="text-gray-300">&updownarrow;</span>{% endif %}
+                        </a>
+                        {% else %}
+                        {{ col.label }}
+                        {% endif %}
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                    {% for cell in row %}
+                    <td class="py-2 px-2 text-gray-700 align-top">
+                        {% if cell.truncate %}
+                        <span class="block truncate" style="max-width: 14rem" title="{{ cell.value }}">{% if cell.href %}<a href="{{ cell.href }}" class="link">{{ cell.value }}</a>{% else %}{{ cell.value }}{% endif %}</span>
+                        {% else %}
+                        {% if cell.href %}<a href="{{ cell.href }}" class="link">{{ cell.value }}</a>{% else %}{{ cell.value }}{% endif %}
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="{{ columns|length }}" class="py-6 text-center text-sm text-gray-500">
+                        No results{% if filters_active %} for these filters{% endif %}.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
