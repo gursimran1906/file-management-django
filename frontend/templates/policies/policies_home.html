@@ -9,7 +9,15 @@
       <p class="text-sm text-gray-600 mt-1">Review and acknowledge firm policies</p>
     </div>
     {% if policies %}
-    <a class="btn-secondary text-xs shrink-0" href="{% url 'download_all_policies_word' %}">Export all to Word (.zip)</a>
+    <a id="export-policies-btn" class="btn-secondary text-xs shrink-0 inline-flex items-center gap-2"
+       href="{% url 'download_all_policies_word' %}" aria-live="polite">
+      <svg data-export-spinner class="animate-spin h-3.5 w-3.5 hidden" xmlns="http://www.w3.org/2000/svg"
+           fill="none" viewBox="0 0 24 24" aria-hidden="true">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+      </svg>
+      <span data-export-label>Export all to Word (.zip)</span>
+    </a>
     {% endif %}
   </div>
 
@@ -108,4 +116,68 @@
     </div>
   </div>
 </div>
+
+<script>
+  (function () {
+    const btn = document.getElementById('export-policies-btn');
+    if (!btn) return;
+
+    const spinner = btn.querySelector('[data-export-spinner]');
+    const label = btn.querySelector('[data-export-label]');
+    const loadingClasses = ['opacity-60', 'pointer-events-none', 'cursor-not-allowed'];
+    let busy = false;
+
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (busy) return;              // block double presses
+      busy = true;
+
+      const url = btn.getAttribute('href');
+      const originalLabel = label ? label.textContent : '';
+      btn.classList.add.apply(btn.classList, loadingClasses);
+      btn.setAttribute('aria-disabled', 'true');
+      if (spinner) spinner.classList.remove('hidden');
+      if (label) label.textContent = 'Preparing…';
+
+      function restore() {
+        busy = false;
+        btn.classList.remove.apply(btn.classList, loadingClasses);
+        btn.removeAttribute('aria-disabled');
+        if (spinner) spinner.classList.add('hidden');
+        if (label) label.textContent = originalLabel;
+      }
+
+      fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function (resp) {
+          const ct = (resp.headers.get('Content-Type') || '').toLowerCase();
+          if (!resp.ok || ct.indexOf('zip') === -1) {
+            // Error/redirect (e.g. no policies) — follow it so the server message shows.
+            window.location.href = url;
+            return null;
+          }
+          const disp = resp.headers.get('Content-Disposition') || '';
+          const match = disp.match(/filename="?([^"]+)"?/);
+          const filename = match ? match[1] : 'ANP_Policies.zip';
+          return resp.blob().then(function (blob) {
+            return { blob: blob, filename: filename };
+          });
+        })
+        .then(function (result) {
+          if (!result) return;
+          const objectUrl = URL.createObjectURL(result.blob);
+          const a = document.createElement('a');
+          a.href = objectUrl;
+          a.download = result.filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(objectUrl);
+        })
+        .catch(function () {
+          window.location.href = url;  // fall back to a normal download
+        })
+        .finally(restore);
+    });
+  })();
+</script>
 {% endblock %}
