@@ -3,9 +3,14 @@
 {% block title %}ANP Policies{% endblock %}
 {% block container %}
 <div class="space-y-5">
-  <div class="div-container py-3">
-    <h1 class="text-2xl font-semibold text-gray-900">ANP policies</h1>
-    <p class="text-sm text-gray-600 mt-1">Review and acknowledge firm policies</p>
+  <div class="div-container py-3 flex flex-row items-center justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-900">ANP policies</h1>
+      <p class="text-sm text-gray-600 mt-1">Review and acknowledge firm policies</p>
+    </div>
+    {% if policies %}
+    <a class="btn-secondary text-xs shrink-0" href="{% url 'download_all_policies_docx' %}">Export all to Word</a>
+    {% endif %}
   </div>
 
   <div class="grid {% if policies_read %}lg:grid-cols-3{% else %}lg:grid-cols-2{% endif %} gap-4">
