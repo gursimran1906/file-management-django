@@ -8730,6 +8730,33 @@ def download_policy_pdf(request, policy_version_id):
         return redirect('policies_display')
 
 
+@login_required
+def download_all_policies_docx(request):
+    from .policy_export import build_policies_docx
+
+    policies = Policy.objects.order_by('description')
+    policy_versions = [(policy, policy.latest_version()) for policy in policies]
+
+    if not policy_versions:
+        messages.error(request, "There are no policies to export.")
+        return redirect('policies_display')
+
+    try:
+        data = build_policies_docx(policy_versions)
+    except Exception as e:
+        print(e)
+        messages.error(
+            request, f"An error occurred while generating the Word document: {str(e)}")
+        return redirect('policies_display')
+
+    response = HttpResponse(
+        data,
+        content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    )
+    response['Content-Disposition'] = 'attachment; filename="ANP_Policies.docx"'
+    return response
+
+
 @manager_required
 def invoices_list(request):
     # Get start and end dates from GET parameters

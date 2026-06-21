@@ -47,7 +47,7 @@ from .completion_statement_views import (
 from .views import download_cashier_data, edit_file, edit_client, edit_authorised_party, download_file_logs, download_frontsheet, generate_ledgers_report, user_dashboard, download_risk_assessment
 from .views import add_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring
 from .views import edit_ongoing_monitoring, download_document, onboarding_documents_display, edit_otherside, free30mins, download_free30mins, edit_free30mins
-from .views import undertakings, edit_undertaking, undertaking_file_download, add_policy, edit_policy, download_policy_pdf, management_reports, reports_hub, report_expired_ids, report_expired_proof_of_address, report_file_reviews_due, weekly_report_view, policies_read_per_user
+from .views import undertakings, edit_undertaking, undertaking_file_download, add_policy, edit_policy, download_policy_pdf, download_all_policies_docx, management_reports, reports_hub, report_expired_ids, report_expired_proof_of_address, report_file_reviews_due, weekly_report_view, policies_read_per_user
 from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundle_court_update, bundle_section_add, bundle_section_delete, bundle_section_update, bundle_section_reorder, bundle_document_upload, bundle_document_file, bundle_document_update, bundle_document_delete, bundle_document_pages_update, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_pdf_prepare, bundle_pdf_status, bundle_delete, bundle_share_link_status_view, bundle_share_link_create, bundle_share_link_revoke
 from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, download_user_key_documents_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review, internal_pricing
 from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, add_matter_key_document, central_key_dates, download_central_key_dates
@@ -269,6 +269,8 @@ urlpatterns = [
     path('policy/<int:policy_id>/edit/', edit_policy, name='edit_policy'),
     path('policy_version/<int:policy_version_id>/download/',
          download_policy_pdf, name='download_policy_pdf'),
+    path('policies/download/word/',
+         download_all_policies_docx, name='download_all_policies_docx'),
 
     path('onboarding_documents/', onboarding_documents_display,
          name='onboarding_documents'),
