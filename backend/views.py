@@ -8731,8 +8731,8 @@ def download_policy_pdf(request, policy_version_id):
 
 
 @login_required
-def download_all_policies_docx(request):
-    from .policy_export import build_policies_docx
+def download_all_policies_word(request):
+    from .policy_export import build_policies_zip
 
     policies = Policy.objects.order_by('description')
     policy_versions = [(policy, policy.latest_version()) for policy in policies]
@@ -8742,18 +8742,15 @@ def download_all_policies_docx(request):
         return redirect('policies_display')
 
     try:
-        data = build_policies_docx(policy_versions)
+        data = build_policies_zip(policy_versions)
     except Exception as e:
         print(e)
         messages.error(
-            request, f"An error occurred while generating the Word document: {str(e)}")
+            request, f"An error occurred while generating the Word files: {str(e)}")
         return redirect('policies_display')
 
-    response = HttpResponse(
-        data,
-        content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    )
-    response['Content-Disposition'] = 'attachment; filename="ANP_Policies.docx"'
+    response = HttpResponse(data, content_type='application/zip')
+    response['Content-Disposition'] = 'attachment; filename="ANP_Policies.zip"'
     return response
 
 
