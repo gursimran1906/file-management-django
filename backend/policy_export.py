@@ -12,6 +12,7 @@ carried across (a marker is inserted so nothing is silently dropped).
 """
 import io
 import re
+import zipfile
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 from django.utils import timezone
@@ -181,37 +182,57 @@ def html_to_docx(document, html):
                 _render_inline(document.add_paragraph(), child, {})
 
 
-def build_policies_docx(policies):
-    """Build a single .docx containing every policy and return the bytes.
+def _add_policy(document, policy, version, heading_level=0):
+    """Append one policy (title, metadata line, content) to *document*."""
+    document.add_heading(policy.description, level=heading_level)
 
-    *policies* is an iterable of ``(Policy, PolicyVersion | None)`` tuples, in the
-    order they should appear. Each policy starts on a new page.
-    """
+    if version is None:
+        document.add_paragraph("No versions available.")
+        return
+
+    meta = document.add_paragraph()
+    timestamp = version.timestamp
+    if timestamp is not None and timezone.is_aware(timestamp):
+        timestamp = timezone.localtime(timestamp)
+    bits = [f"Version {version.version_number}"]
+    if timestamp is not None:
+        bits.append(f"Updated {timestamp.strftime('%d/%m/%Y')}")
+    if version.changes_by:
+        bits.append(f"By {version.changes_by}")
+    meta.add_run("  ·  ".join(bits)).italic = True
+
+    html_to_docx(document, version.content.html)
+
+
+def build_policy_docx(policy, version):
+    """Build a standalone .docx for a single policy and return the bytes."""
     document = Document()
-    document.add_heading("ANP Policies", level=0)
-
-    for index, (policy, version) in enumerate(policies):
-        if index:
-            document.add_page_break()
-        document.add_heading(policy.description, level=1)
-
-        if version is None:
-            document.add_paragraph("No versions available.")
-            continue
-
-        meta = document.add_paragraph()
-        timestamp = version.timestamp
-        if timestamp is not None and timezone.is_aware(timestamp):
-            timestamp = timezone.localtime(timestamp)
-        bits = [f"Version {version.version_number}"]
-        if timestamp is not None:
-            bits.append(f"Updated {timestamp.strftime('%d/%m/%Y')}")
-        if version.changes_by:
-            bits.append(f"By {version.changes_by}")
-        meta.add_run("  ·  ".join(bits)).italic = True
-
-        html_to_docx(document, version.content.html)
-
+    _add_policy(document, policy, version)
     buffer = io.BytesIO()
     document.save(buffer)
+    return buffer.getvalue()
+
+
+def _safe_filename(name):
+    """Turn a policy description into a filesystem-safe base name."""
+    cleaned = re.sub(r"[^\w\s-]", "", name or "").strip()
+    cleaned = re.sub(r"\s+", "_", cleaned)
+    return cleaned or "policy"
+
+
+def build_policies_zip(policies):
+    """Build one .docx per policy and bundle them into a .zip; return the bytes.
+
+    *policies* is an iterable of ``(Policy, PolicyVersion | None)`` tuples. Each
+    file is named after the policy description; duplicate names get a numeric
+    suffix so nothing is overwritten inside the archive.
+    """
+    buffer = io.BytesIO()
+    used = {}
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for policy, version in policies:
+            base = _safe_filename(policy.description)
+            used[base] = used.get(base, 0) + 1
+            suffix = "" if used[base] == 1 else f"_{used[base]}"
+            archive.writestr(f"{base}{suffix}.docx", build_policy_docx(policy, version))
     return buffer.getvalue()
