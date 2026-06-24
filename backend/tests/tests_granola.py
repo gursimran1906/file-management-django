@@ -7,7 +7,8 @@ from django.test import TestCase
 from users.models import CustomUser
 from ..models import (ClientContactDetails, Free30Mins, GranolaImportedNote,
                      MatterAttendanceNotes, MatterType, WIP)
-from ..granola.parse import extract_file_ref, parse_parties, parse_title
+from ..granola.parse import (extract_file_ref, parse_meeting_times,
+                             parse_parties, parse_title)
 from ..granola.markdown_to_quill import markdown_to_html, markdown_to_quill_json
 from ..granola import ingest
 
@@ -110,8 +111,11 @@ class IngestTests(TestCase):
                 {'speaker': 'Lawyer', 'text': 'Hello'},
                 {'speaker': 'Client', 'text': 'Hi'},
             ],
-            'start_time': '2026-06-10T10:00:00+01:00',
-            'end_time': '2026-06-10T10:30:00+01:00',
+            'created_at': '2026-06-10T10:05:00+01:00',
+            'calendar_event': {
+                'scheduled_start_time': '2026-06-10T10:00:00+01:00',
+                'scheduled_end_time': '2026-06-10T10:30:00+01:00',
+            },
             'owner': {'email': 'fee@example.com'},
         }
         note.update(overrides)
@@ -193,6 +197,41 @@ class IngestTests(TestCase):
         imported = ingest._ingest_note(FakeClient(note), note)
         self.assertEqual(imported.matched_fee_earner, self.fee_earner)
 
+    def test_unit_from_calendar_event(self):
+        # The default fixture carries a 10:00–10:30 calendar event (30 min -> 5).
+        make_matter('GRN0001', fee_earner=self.fee_earner)
+        note = self._note()
+        imported = ingest._ingest_note(FakeClient(note), note)
+        self.assertEqual(imported.attendance_note.unit, 5)
+
+    def test_meeting_window_from_body_when_no_calendar_event(self):
+        # Ad-hoc recording: no calendar_event, so the window comes from the body.
+        make_matter('GRN0001', fee_earner=self.fee_earner)
+        note = self._note(summary=('File number: GRN0001\n'
+                                   'Start Time: 10:00 ; Finish Time: 10:30\n'))
+        note.pop('calendar_event')
+        imported = ingest._ingest_note(FakeClient(note), note)
+        self.assertEqual(imported.status, GranolaImportedNote.STATUS_CREATED)
+        self.assertIsNotNone(imported.meeting_end)
+        self.assertEqual(imported.attendance_note.unit, 5)  # 30 min / 6
+
+    def test_body_finish_completes_calendar_start(self):
+        # Calendar event with a start but no end -> body supplies the finish.
+        make_matter('GRN0001', fee_earner=self.fee_earner)
+        note = self._note(summary='File number: GRN0001\nFinish Time: 11:00\n')
+        note['calendar_event'] = {
+            'scheduled_start_time': '2026-06-10T10:00:00+01:00'}
+        imported = ingest._ingest_note(FakeClient(note), note)
+        self.assertEqual(imported.attendance_note.unit, 10)  # 60 min / 6
+
+    def test_no_end_anywhere_yields_single_unit(self):
+        make_matter('GRN0001', fee_earner=self.fee_earner)
+        note = self._note(summary='File number: GRN0001\nNo times given.')
+        note.pop('calendar_event')
+        imported = ingest._ingest_note(FakeClient(note), note)
+        self.assertIsNone(imported.meeting_end)
+        self.assertEqual(imported.attendance_note.unit, 1)
+
 
 class ParsePartiesTests(TestCase):
     def test_multiple_parties_with_inline_address(self):
@@ -228,6 +267,33 @@ class ParsePartiesTests(TestCase):
 
     def test_no_parties(self):
         self.assertEqual(parse_parties('Just some meeting chatter.'), [])
+
+
+class ParseMeetingTimesTests(TestCase):
+    def test_one_line_template(self):
+        t = parse_meeting_times('Start Time: 10:30 ; Finish Time: 11:15')
+        self.assertEqual((t.start.hour, t.start.minute), (10, 30))
+        self.assertEqual((t.finish.hour, t.finish.minute), (11, 15))
+
+    def test_separate_lines_and_end_label(self):
+        t = parse_meeting_times('Start Time: 9:00\nEnd Time: 9:45\n')
+        self.assertEqual((t.start.hour, t.start.minute), (9, 0))
+        self.assertEqual((t.finish.hour, t.finish.minute), (9, 45))
+
+    def test_am_pm_and_dot_separator(self):
+        t = parse_meeting_times('Start: 9.30am\nFinish: 1.15pm')
+        self.assertEqual((t.start.hour, t.start.minute), (9, 30))
+        self.assertEqual((t.finish.hour, t.finish.minute), (13, 15))
+
+    def test_blank_values_return_none(self):
+        t = parse_meeting_times('Start Time: ; Finish Time:')
+        self.assertIsNone(t.start)
+        self.assertIsNone(t.finish)
+
+    def test_no_labels_return_none(self):
+        t = parse_meeting_times('We talked about the matter for a while.')
+        self.assertIsNone(t.start)
+        self.assertIsNone(t.finish)
 
 
 class Free30IngestTests(TestCase):

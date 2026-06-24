@@ -12,6 +12,7 @@ routed to the central review inbox instead of being auto-created.
 """
 import re
 from dataclasses import dataclass
+from datetime import time as dt_time
 
 # File numbers in this system are short alphanumeric strings (WIP.file_number is
 # max_length=10). The optional trailing flag marks the note as not charged.
@@ -95,6 +96,71 @@ def extract_file_ref(text: str) -> FileRef:
         return FileRef(match.group('file_number').strip().upper(),
                        match.group('flag') is None)
     return FileRef(file_number=None, is_charged=True)
+
+
+# --- Meeting start / finish times in the note BODY ----------------------------
+#
+# Granola only exposes start/end times via a note's ``calendar_event`` (i.e. when
+# the meeting was on someone's calendar). For ad-hoc recordings there is no end
+# time, so fee earners record the window in the note body using a template line:
+#
+#     Start Time: 10:30 ; Finish Time: 11:15
+#     Start Time: 10.30am
+#     Finish Time: 12 noon
+#
+# We parse clock times only (no date); the ingest layer anchors them to the
+# meeting date so the attendance-note unit count reflects the real duration.
+
+# A clock time: "10", "10:30", "10.30", optional am/pm (with/without dots/space).
+_CLOCK = r'(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?m\.?|p\.?m\.?|noon|midnight)?'
+_START_TIME_RE = re.compile(
+    r'(?<![A-Za-z])start(?:\s*(?:time|ed|ing))?\s*[:\-–]?\s*' + _CLOCK, re.IGNORECASE)
+_FINISH_TIME_RE = re.compile(
+    r'(?<![A-Za-z])(?:finish|end)(?:\s*(?:time|ed|ing))?\s*[:\-–]?\s*' + _CLOCK,
+    re.IGNORECASE)
+
+
+@dataclass
+class MeetingTimes:
+    start: dt_time | None
+    finish: dt_time | None
+
+
+def _to_time(hour, minute, meridiem):
+    """Build a ``datetime.time`` from a parsed clock match, or ``None`` if bogus."""
+    h = int(hour)
+    m = int(minute or 0)
+    mer = (meridiem or '').replace('.', '').lower()
+    if mer == 'noon':
+        h, m = 12, 0
+    elif mer == 'midnight':
+        h, m = 0, 0
+    elif mer == 'pm' and h < 12:
+        h += 12
+    elif mer == 'am' and h == 12:
+        h = 0
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        return None
+    return dt_time(h, m)
+
+
+def _match_time(regex, text):
+    match = regex.search(text or '')
+    if not match:
+        return None
+    return _to_time(match.group(1), match.group(2), match.group(3))
+
+
+def parse_meeting_times(text: str) -> MeetingTimes:
+    """Extract ``Start Time:`` / ``Finish Time:`` clock times from a note body.
+
+    Returns ``MeetingTimes(start, finish)`` where each is a ``datetime.time`` or
+    ``None`` when the corresponding labelled line is absent or left blank.
+    """
+    return MeetingTimes(
+        start=_match_time(_START_TIME_RE, text),
+        finish=_match_time(_FINISH_TIME_RE, text),
+    )
 
 
 # --- "Info of parties" parsing (Free 30 minute meetings) ----------------------
