@@ -226,3 +226,57 @@ class HardEnforcementTests(TestCase):
         for name in ['reports_hub', 'report_expired_ids',
                      'report_expired_proof_of_address', 'report_file_reviews_due']:
             self.assertEqual(self.client.get(reverse(name)).status_code, 200, name)
+
+
+class AmlChecksDueReportTests(TestCase):
+    """The AML checks due report records the matter code(s) and fee earner(s)
+    for each entity whose AML check is overdue."""
+
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            username='aml', email='aml@example.com', first_name='Am',
+            last_name='Lee', password='password', max_holidays_in_year=20,
+        )
+        self.earner = CustomUser.objects.create_user(
+            username='fea', email='fea@example.com', first_name='Fee',
+            last_name='Earner', password='password', max_holidays_in_year=20,
+            is_matter_fee_earner=True,
+        )
+        self.overdue = timezone.localdate() - timedelta(days=800)
+
+    def test_aggregates_matter_codes_and_fee_earners_per_entity(self):
+        from ..views import get_aml_checks_due_from_wips
+
+        client = make_client('Overdue Client')
+        client.date_of_last_aml = self.overdue
+        client.save()
+        make_live_matter('AML0001', client, fee_earner=self.earner)
+        make_live_matter('AML0002', client, fee_earner=self.earner)
+
+        rows = get_aml_checks_due_from_wips(
+            WIP.objects.all(), timezone.now(), sort_by='name')
+
+        self.assertEqual(len(rows), 1)
+        entry = rows[0]
+        self.assertEqual(entry['entity_name'], 'Overdue Client')
+        self.assertEqual(sorted(entry['file_numbers']), ['AML0001', 'AML0002'])
+        self.assertEqual(entry['fee_earners'], ['fea'])
+
+    def test_csv_download_includes_matter_and_fee_earner_columns(self):
+        client = make_client('Overdue Client')
+        client.date_of_last_aml = self.overdue
+        client.save()
+        make_live_matter('AML0003', client, fee_earner=self.earner)
+
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('download_aml_checks_due'))
+        self.assertEqual(resp.status_code, 200)
+
+        reader = list(csv.reader(io.StringIO(resp.content.decode())))
+        header = reader[1]
+        self.assertIn('Matter Code(s)', header)
+        self.assertIn('Fee Earner(s)', header)
+
+        body = '\n'.join(','.join(r) for r in reader[2:])
+        self.assertIn('AML0003', body)
+        self.assertIn('fea', body)

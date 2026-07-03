@@ -3188,17 +3188,34 @@ def get_aml_checks_due_from_wips(wips, threshold_date, user=None, sort_by='date'
             entity_id=F(f'{relation}__id'),
             entity_name=F(f'{relation}__name'),
             date_of_last_aml=F(f'{relation}__date_of_last_aml'),
-        ).values('entity_id', 'entity_name', 'date_of_last_aml')
+        ).values(
+            'entity_id', 'entity_name', 'date_of_last_aml',
+            'file_number', 'fee_earner__username',
+        ).order_by('file_number')
 
         for result in relation_results:
             key = (entity_type, result['entity_id'])
-            results[key] = {
-                'entity_id': result['entity_id'],
-                'entity_name': result['entity_name'],
-                'entity_type': entity_type,
-                'date_of_last_aml': result['date_of_last_aml'],
-                'edit_url': reverse(edit_url_name, args=[result['entity_id']]),
-            }
+            entry = results.get(key)
+            if entry is None:
+                entry = {
+                    'entity_id': result['entity_id'],
+                    'entity_name': result['entity_name'],
+                    'entity_type': entity_type,
+                    'date_of_last_aml': result['date_of_last_aml'],
+                    'edit_url': reverse(edit_url_name, args=[result['entity_id']]),
+                    # An entity can sit on several open matters, so collect every
+                    # matter code / fee earner the overdue AML check relates to.
+                    'file_numbers': [],
+                    'fee_earners': [],
+                }
+                results[key] = entry
+
+            file_number = result['file_number']
+            if file_number and file_number not in entry['file_numbers']:
+                entry['file_numbers'].append(file_number)
+            fee_earner = result['fee_earner__username']
+            if fee_earner and fee_earner not in entry['fee_earners']:
+                entry['fee_earners'].append(fee_earner)
 
     if sort_by == 'name':
         return sorted(results.values(), key=lambda x: (x['entity_name'] or '', x['entity_type']))
@@ -10004,11 +10021,17 @@ def download_aml_checks_due(request):
     writer = csv.writer(response)
 
     writer.writerow(['AML Checks Due'])
-    writer.writerow(['Name', 'Type', 'Date of Last AML Check'])
+    writer.writerow(['Name', 'Type', 'Matter Code(s)', 'Fee Earner(s)',
+                     'Date of Last AML Check'])
 
     for check in unique_aml_checks_due:
-        writer.writerow([check['entity_name'], check['entity_type'],
-                         check['date_of_last_aml']])
+        writer.writerow([
+            check['entity_name'],
+            check['entity_type'],
+            ', '.join(check['file_numbers']),
+            ', '.join(check['fee_earners']),
+            check['date_of_last_aml'],
+        ])
 
     return response
 
