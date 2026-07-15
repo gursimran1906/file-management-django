@@ -11,6 +11,11 @@ chmod 644 /app/logs/*.log 2>/dev/null || true
 echo 'Running migrations...'
 python manage.py migrate
 
+# Ensure the database cache table exists (idempotent). The default cache uses
+# DatabaseCache so the bundle-PDF generation lock is shared across gunicorn workers.
+echo 'Ensuring cache table...'
+python manage.py createcachetable
+
 printenv > /etc/environment
 
 

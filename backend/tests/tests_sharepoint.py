@@ -517,3 +517,33 @@ class BundleDownloadReopenTests(TestCase):
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertEqual(b''.join(response.streaming_content), self.pdf_bytes)
         mock_ensure.assert_not_called()
+
+
+class QpdfExitCodeTests(TestCase):
+    """qpdf exit code 3 (success-with-warnings) must not be treated as failure.
+
+    Treating it as failure drops the fast on-disk builder to the fully-in-memory
+    PyPDF2 fallback, which is what OOM-kills the worker on large bundles.
+    """
+
+    def test_run_qpdf_treats_warning_exit_as_success(self):
+        from backend.pdf import bundle_builder
+
+        with patch('backend.pdf.bundle_builder.subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=3,
+                stderr='WARNING: input.pdf (object 633 0): object has offset 0',
+                stdout='',
+            )
+            # Must not raise even though the return code is non-zero.
+            bundle_builder._run_qpdf(['--empty', '--pages', '--', 'out.pdf'])
+
+    def test_run_qpdf_raises_on_error_exit(self):
+        from backend.pdf import bundle_builder
+
+        with patch('backend.pdf.bundle_builder.subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=2, stderr='qpdf: real error', stdout='',
+            )
+            with self.assertRaises(RuntimeError):
+                bundle_builder._run_qpdf(['--empty'])

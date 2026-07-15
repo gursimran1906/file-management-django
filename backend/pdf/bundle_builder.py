@@ -53,9 +53,19 @@ def _run_qpdf(args):
         capture_output=True,
         text=True,
     )
-    if result.returncode != 0:
+    # qpdf exit code 3 means "operation succeeded with warnings": the output file
+    # is still produced and valid (e.g. a source PDF with a minor structural quirk
+    # like "object has offset 0"). Treating it as a failure needlessly drops the
+    # build to the slow, fully-in-memory PyPDF2 fallback path, which is what OOMs
+    # the worker on large bundles. Only codes other than 0/3 are real failures.
+    if result.returncode not in (0, 3):
         raise RuntimeError(
             f'qpdf failed ({result.returncode}): {result.stderr or result.stdout}'
+        )
+    if result.returncode == 3:
+        logger.warning(
+            'qpdf completed with warnings: %s',
+            (result.stderr or result.stdout or '').strip(),
         )
 
 

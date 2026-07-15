@@ -62,10 +62,17 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_COOKIE_AGE = 36000
 
+# Database-backed cache so state is shared across gunicorn workers. The default
+# cache is used for the court-bundle PDF generation lock and progress (backend
+# views); with a per-process LocMemCache each of the 3 workers kept its own copy,
+# so the generation lock did not hold across workers (duplicate concurrent builds
+# racing to save the same PDF, and progress polls hitting a different worker saw
+# nothing). DatabaseCache gives an atomic, cross-worker cache.add() lock.
+# Requires the cache table: `python manage.py createcachetable` (run in entrypoint).
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'file-management-django',
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache_table',
     }
 }
 
