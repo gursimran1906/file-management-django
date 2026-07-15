@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+from datetime import timedelta
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
@@ -27,7 +28,12 @@ from backend.sharepoint.sharing import (
     create_bundle_share_link,
     revoke_share_link,
 )
-from backend.views import _collect_bundle_documents, _generate_bundle_pdf
+from backend.views import (
+    _bundle_pdf_is_current,
+    _collect_bundle_documents,
+    _generate_bundle_pdf,
+    _open_bundle_final_pdf,
+)
 from users.models import CustomUser
 
 
@@ -425,3 +431,89 @@ class BundleShareLinkTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('changed', response.json()['error'].lower())
         mock_create.assert_not_called()
+
+
+@override_settings(
+    USE_SHAREPOINT=True,
+    STORAGES={
+        'default': {'BACKEND': 'backend.storage.sharepoint.SharePointStorage'},
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'
+        },
+    },
+)
+class BundleDownloadReopenTests(TestCase):
+    """Regression tests for the SharePoint 'file cannot be reopened' download bug.
+
+    On SharePoint storage, _bundle_pdf_is_current's verify step opens and closes the
+    final_pdf FieldFile, leaving a closed handle cached on it. A subsequent
+    bundle.final_pdf.open('rb') then raised "The file cannot be reopened", so
+    bundle_download fell through to a full synchronous regeneration (which timed out /
+    OOM-killed the worker in production). _open_bundle_final_pdf opens a fresh handle
+    straight from storage instead.
+    """
+
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            username='bundle-reopen-user',
+            email='bundle-reopen@example.com',
+            first_name='B',
+            last_name='Reopen',
+            password='password',
+            max_holidays_in_year=20,
+        )
+        self.client.force_login(self.user)
+        self.pdf_bytes = make_pdf_bytes('Bundle final PDF')
+        self.bundle = Bundle.objects.create(
+            name='Reopen Bundle',
+            created_by=self.user,
+        )
+        self.final_path = bundle_final_pdf_upload_path(self.bundle, 'ignored.pdf')
+        self.bundle.final_pdf.name = self.final_path
+        self.bundle.save(update_fields=['final_pdf'])
+        # .update() bypasses auto_now on updated_at, so pdf_generated_at stays ahead
+        # of updated_at and pdf_is_current() is True.
+        Bundle.objects.filter(pk=self.bundle.pk).update(
+            pdf_generated_at=timezone.now() + timedelta(seconds=60)
+        )
+        self.bundle.refresh_from_db()
+
+    def test_verify_step_poisons_fieldfile_reopen(self):
+        """Documents the underlying Django FieldFile behaviour the fix works around."""
+        with patch(
+            'backend.storage.sharepoint.read_storage_file_bytes',
+            return_value=self.pdf_bytes,
+        ):
+            # verify_file=True opens and closes the SharePoint-backed handle...
+            self.assertTrue(_bundle_pdf_is_current(self.bundle))
+            # ...so reopening the same FieldFile now fails.
+            with self.assertRaises(ValueError):
+                self.bundle.final_pdf.open('rb')
+
+    def test_open_bundle_final_pdf_serves_after_verify(self):
+        """The helper serves bytes even after the verify step poisoned the cache."""
+        with patch(
+            'backend.storage.sharepoint.read_storage_file_bytes',
+            return_value=self.pdf_bytes,
+        ):
+            self.assertTrue(_bundle_pdf_is_current(self.bundle))
+            handle = _open_bundle_final_pdf(self.bundle)
+            try:
+                self.assertEqual(handle.read(), self.pdf_bytes)
+            finally:
+                handle.close()
+
+    @patch('backend.views._ensure_bundle_final_pdf')
+    def test_bundle_download_serves_without_regenerating(self, mock_ensure):
+        """A current bundle downloads straight from storage, no regeneration."""
+        with patch(
+            'backend.storage.sharepoint.read_storage_file_bytes',
+            return_value=self.pdf_bytes,
+        ):
+            response = self.client.get(
+                reverse('bundle_download', args=[self.bundle.id])
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertEqual(b''.join(response.streaming_content), self.pdf_bytes)
+        mock_ensure.assert_not_called()

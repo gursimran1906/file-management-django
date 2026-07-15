@@ -11631,9 +11631,14 @@ def bundle_download(request, bundle_id):
     if serve_only and progress and progress.get('status') == 'running':
         return JsonResponse({'error': 'PDF is not ready yet.'}, status=409)
 
-    if _bundle_pdf_is_current(bundle):
+    # verify_file=False: skip the open-and-read verify probe here because we open
+    # the file to serve it immediately below (and fall through to regeneration if
+    # that fails). Probing first would download the whole PDF from SharePoint twice
+    # and, worse, leave a closed handle cached on the FieldFile so the serve-open
+    # would raise "The file cannot be reopened".
+    if _bundle_pdf_is_current(bundle, verify_file=False):
         try:
-            pdf_file = bundle.final_pdf.open('rb')
+            pdf_file = _open_bundle_final_pdf(bundle)
         except Exception as exc:
             logger.warning(
                 'Could not open current bundle PDF for %s (%s): %s',
@@ -11652,7 +11657,7 @@ def bundle_download(request, bundle_id):
             return redirect('bundle_edit', bundle_id=bundle.id)
         bundle.refresh_from_db()
         try:
-            pdf_file = bundle.final_pdf.open('rb')
+            pdf_file = _open_bundle_final_pdf(bundle)
         except Exception as exc:
             logger.exception(
                 'Could not open generated bundle PDF for %s: %s', bundle.id, exc)
@@ -11790,6 +11795,19 @@ def _open_document_pdf(document, cache=None):
     # closes its underlying handle, so the merge pass would drop every document
     # and leave only the index page.
     field_file = document.file
+    return field_file.storage.open(field_file.name, 'rb')
+
+
+def _open_bundle_final_pdf(bundle):
+    """Open a fresh handle to the final bundle PDF straight from storage.
+
+    Mirrors _open_document_pdf: FieldFile.open('rb') raises "The file cannot be
+    reopened" for SharePoint-backed files once the cached handle has been opened
+    and closed (e.g. by _bundle_pdf_is_current's verify step), because the file
+    has no local path to reopen from. Going through storage.open returns a fresh
+    SharePointFile with freshly-downloaded bytes on every call.
+    """
+    field_file = bundle.final_pdf
     return field_file.storage.open(field_file.name, 'rb')
 
 
