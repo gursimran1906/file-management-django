@@ -13,6 +13,7 @@ import uuid
 from backend.sharepoint.paths import (
     bundle_document_upload_path,
     bundle_final_pdf_upload_path,
+    bundle_version_pdf_upload_path,
     undertaking_file_upload_path,
 )
 
@@ -1161,6 +1162,12 @@ class Bundle(models.Model):
     share_link_password = models.CharField(max_length=128, blank=True, default='')
     share_link_expires_at = models.DateTimeField(null=True, blank=True)
     share_link_created_at = models.DateTimeField(null=True, blank=True)
+    # The version currently promoted as "the" bundle PDF (Vercel-style
+    # production alias). ``final_pdf``/``pdf_generated_at`` above are kept as a
+    # denormalised mirror of this version so existing download/share paths work.
+    current_version = models.ForeignKey(
+        'BundleVersion', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+')
 
     def __str__(self):
         return f"{self.name} - {self.file_number}"
@@ -1189,10 +1196,55 @@ class Bundle(models.Model):
         ordering = ['-created_at']
 
 
+class BundleVersion(models.Model):
+    """An immutable rendered snapshot of a bundle's final PDF.
+
+    A new version is created each time the bundle is (re)generated with a
+    different output. Older versions are kept so share links created against
+    them keep working; a retention policy prunes stale, unshared versions.
+    """
+    bundle = models.ForeignKey(
+        Bundle, on_delete=models.CASCADE, related_name='versions')
+    version = models.PositiveIntegerField()
+    final_pdf = models.FileField(
+        upload_to=bundle_version_pdf_upload_path, max_length=255)
+    pdf_generated_at = models.DateTimeField(null=True, blank=True)
+    page_count = models.PositiveIntegerField(null=True, blank=True)
+    size_bytes = models.BigIntegerField(null=True, blank=True)
+    content_hash = models.CharField(max_length=64, blank=True, default='')
+    document_count = models.PositiveIntegerField(null=True, blank=True)
+    # A non-empty label or pinned=True protects a version from auto-pruning.
+    label = models.CharField(max_length=120, blank=True, default='')
+    pinned = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-version']
+        unique_together = ('bundle', 'version')
+
+    def __str__(self):
+        return f"{self.bundle.name} v{self.version}"
+
+    def is_current(self):
+        return self.bundle.current_version_id == self.id
+
+    def has_active_share_link(self):
+        return self.share_links.filter(revoked_at__isnull=True).exists()
+
+    def is_protected(self):
+        """True if retention must keep this version regardless of age."""
+        return bool(self.pinned or self.label or self.has_active_share_link())
+
+
 class BundleShareLink(models.Model):
     """Microsoft sharing link created for a bundle final PDF."""
     bundle = models.ForeignKey(
         Bundle, on_delete=models.CASCADE, related_name='share_links')
+    version = models.ForeignKey(
+        'BundleVersion', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='share_links')
     url = models.URLField(max_length=512)
     permission_id = models.CharField(max_length=255)
     password = models.CharField(max_length=128, blank=True, default='')

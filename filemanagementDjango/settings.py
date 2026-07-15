@@ -248,6 +248,9 @@ BUNDLE_SHARE_LINK_USE_PASSWORD = os.getenv(
     'BUNDLE_SHARE_LINK_USE_PASSWORD', 'true'
 ).lower() in ('true', '1', 'yes')
 BUNDLE_SHARE_LINK_SCOPE = os.getenv('BUNDLE_SHARE_LINK_SCOPE', 'anonymous').strip().lower()
+# How many recent bundle versions to always keep, even when unshared. Older
+# versions are pruned unless they are current, pinned/labelled, or still shared.
+BUNDLE_VERSION_KEEP_RECENT = int(os.getenv('BUNDLE_VERSION_KEEP_RECENT', '3'))
 
 if USE_SHAREPOINT:
     STORAGES = {
