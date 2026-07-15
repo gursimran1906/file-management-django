@@ -112,18 +112,67 @@ def _build_page_number_overlay(page_width, page_height, page_number):
     return buffer
 
 
+def _page_rotation(page):
+    """Return a page's effective /Rotate (0/90/180/270), following inheritance.
+
+    /Rotate can live on the page or be inherited from a /Pages ancestor. Walk up
+    the parent chain (bounded) so scanned pages that carry rotation are handled.
+    """
+    obj = page.obj
+    for _ in range(32):
+        if obj is None:
+            break
+        try:
+            rotate = obj.get('/Rotate')
+        except Exception:
+            break
+        if rotate is not None:
+            try:
+                return int(rotate) % 360
+            except (TypeError, ValueError):
+                return 0
+        try:
+            obj = obj.get('/Parent')
+        except Exception:
+            break
+    return 0
+
+
 def _stamp_page_numbers(input_path, output_path):
     import pikepdf
-    from pikepdf import Page
+    from pikepdf import Page, Rectangle
 
     pdf = pikepdf.Pdf.open(input_path)
     for page_number, page in enumerate(pdf.pages, start=1):
-        width = float(page.mediabox[2])
-        height = float(page.mediabox[3])
+        # Use the visible area (cropbox), honouring a non-zero origin, and place
+        # the overlay with an explicit rect so scanned pages whose box does not
+        # start at (0, 0) still get the number in the bottom-right corner.
+        box = page.cropbox
+        x0 = float(box[0])
+        y0 = float(box[1])
+        x1 = float(box[2])
+        y1 = float(box[3])
+        box_width = x1 - x0
+        box_height = y1 - y0
+
+        # Scanned pages are often stored upright with a /Rotate flag. add_overlay
+        # is rotation-aware, so the overlay must be sized to the *visual*
+        # (post-rotation) dimensions or the number lands rotated and off-corner.
+        rotation = _page_rotation(page)
+        if rotation in (90, 270):
+            visible_width, visible_height = box_height, box_width
+        else:
+            visible_width, visible_height = box_width, box_height
+
         overlay_pdf = pikepdf.open(
-            _build_page_number_overlay(width, height, page_number),
+            _build_page_number_overlay(
+                visible_width, visible_height, page_number
+            ),
         )
-        Page(page).add_overlay(Page(overlay_pdf.pages[0]))
+        Page(page).add_overlay(
+            Page(overlay_pdf.pages[0]),
+            rect=Rectangle(x0, y0, x1, y1),
+        )
         overlay_pdf.close()
 
     pdf.save(output_path)

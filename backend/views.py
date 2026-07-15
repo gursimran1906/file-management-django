@@ -12769,16 +12769,28 @@ def _add_page_number(page, page_number):
     from PyPDF2 import PdfReader
     from reportlab.pdfgen import canvas
 
+    # Scanned pages are often stored upright with a /Rotate flag (and sometimes a
+    # MediaBox that does not start at the origin). merge_page ignores /Rotate, so
+    # the number would otherwise be stamped in the unrotated frame and end up
+    # rotated and mid-edge once the viewer applies the rotation. Bake the rotation
+    # into the content first so the box below is the true, upright visible area.
+    page.transfer_rotation_to_content()
+
+    left = float(page.mediabox.left)
+    bottom = float(page.mediabox.bottom)
     width = float(page.mediabox.width)
     height = float(page.mediabox.height)
 
-    # Create an in-memory PDF with just the page number.
+    # Create an in-memory PDF with just the page number. Size it to the page's
+    # top-right so a non-zero MediaBox origin is honoured when the overlay merges.
     number_buffer = BytesIO()
-    temp_canvas = canvas.Canvas(number_buffer, pagesize=(width, height))
+    temp_canvas = canvas.Canvas(
+        number_buffer, pagesize=(left + width, bottom + height)
+    )
 
     text = str(page_number)
-    x_position = width - _BUNDLE_PAGE_NUMBER_RIGHT_MARGIN
-    y_position = _BUNDLE_PAGE_NUMBER_BOTTOM_MARGIN
+    x_position = left + width - _BUNDLE_PAGE_NUMBER_RIGHT_MARGIN
+    y_position = bottom + _BUNDLE_PAGE_NUMBER_BOTTOM_MARGIN
     text_width = temp_canvas.stringWidth(
         text,
         _BUNDLE_INDEX_SERIF_FONT_BOLD,
