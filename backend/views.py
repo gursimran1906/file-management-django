@@ -12,7 +12,7 @@ from django.db.models.functions import Cast, Coalesce, Greatest, Concat
 from .models import WIP, Memo, NextWork, LastWork, MatterKeyDate, FileStatus, FileLocation, MatterType, PricingItem, ClientContactDetails, ClientKeyDocument, AuthorisedParties
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
-from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, MatterFileReview
+from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, BundleVersion, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
 from .forms import PmtsForm, PmtsHalfForm, PmtsSlipEditForm, GreenSlipEditForm, apply_pmts_slip_edit_locks, apply_green_slip_edit_locks, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, MatterClientKeyDocumentForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm
@@ -69,12 +69,13 @@ from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, Http404
 from django.conf import settings
 from django.utils.dateparse import parse_date
+import hashlib
 import os
 import PyPDF2
 import zipfile
 from io import BytesIO
 from django.core.files.storage import default_storage
-from django.core.files.base import ContentFile, File
+from django.core.files.base import ContentFile
 from backend.sharepoint.bundle_cache import BundleTempCache
 from backend.sharepoint.sharing import (
     SharePointSharingError,
@@ -10707,56 +10708,49 @@ def _ensure_bundle_final_pdf(bundle, user=None, progress_callback=None):
         if progress_callback:
             progress_callback(95, 'Saving PDF...')
 
-        if bundle.final_pdf:
-            try:
-                default_storage.delete(bundle.final_pdf.name)
-            except Exception:
-                logger.warning(
-                    'Could not delete previous final PDF for bundle %s', bundle.id)
-
+        # Read the rendered bytes once: needed both to hash (for dedupe) and to
+        # persist as an immutable version.
         work_dir = None
-        output_bytes_len = 0
-        if build_stats is not None:
-            build_stats.start('save_final_pdf')
         if pdf_result.get('path'):
             output_path = pdf_result['path']
             work_dir = pdf_result.get('work_dir')
-            output_bytes_len = os.path.getsize(output_path)
             with open(output_path, 'rb') as pdf_file:
-                bundle.final_pdf.save(f'{bundle.uuid}.pdf', File(pdf_file))
+                pdf_bytes = pdf_file.read()
         else:
-            output_bytes_len = len(pdf_result['bytes'])
-            bundle.final_pdf.save(
-                f'{bundle.uuid}.pdf',
-                ContentFile(pdf_result['bytes']),
-            )
+            pdf_bytes = pdf_result['bytes']
+        output_bytes_len = len(pdf_bytes)
+
+        if build_stats is not None:
+            build_stats.start('save_final_pdf')
+        version, created_new = _save_bundle_version(
+            bundle,
+            pdf_bytes,
+            page_count=pdf_result.get('output_pages'),
+            document_count=len(documents_info),
+            user=user,
+        )
         if build_stats is not None:
             build_stats.finish_stage()
             build_stats.add_meta(
                 output_pages=pdf_result.get('output_pages'),
                 output_mb=round(output_bytes_len / (1024 * 1024), 2),
+                bundle_version=version.version,
+                new_version=created_new,
             )
             build_stats.log_summary()
         if work_dir:
             import shutil
             shutil.rmtree(work_dir, ignore_errors=True)
-        saved_name = bundle.final_pdf.name
-        now = timezone.now()
-        Bundle.objects.filter(pk=bundle.pk).update(
-            final_pdf=saved_name,
-            pdf_generated_at=now,
-            updated_at=now,
-        )
-        bundle.final_pdf.name = saved_name
-        bundle.pdf_generated_at = now
-        bundle.updated_at = now
         if user:
             log_bundle_event(
                 user,
                 bundle,
                 'Bundle PDF generated',
                 document_count=len(documents_info),
+                version=version.version,
             )
+        if created_new:
+            _prune_bundle_versions(bundle)
         if progress_callback:
             progress_callback(100, 'PDF ready')
         return True, None, True
@@ -10765,6 +10759,92 @@ def _ensure_bundle_final_pdf(bundle, user=None, progress_callback=None):
     finally:
         if cache_obj is not None:
             cache_obj.cleanup()
+
+
+def _save_bundle_version(bundle, pdf_bytes, *, page_count=None,
+                         document_count=None, user=None):
+    """Persist a freshly rendered bundle PDF as an immutable version.
+
+    Returns (version, created_new). When the rendered output is byte-identical
+    to the current version, no new version is created; the current one is reused
+    and just marked fresh (so ``pdf_is_current()`` returns True again).
+    """
+    content_hash = hashlib.sha256(pdf_bytes).hexdigest()
+    now = timezone.now()
+    current = bundle.current_version
+
+    if current is not None and current.content_hash \
+            and current.content_hash == content_hash:
+        Bundle.objects.filter(pk=bundle.pk).update(
+            pdf_generated_at=now, updated_at=now)
+        bundle.pdf_generated_at = now
+        bundle.updated_at = now
+        return current, False
+
+    next_version = (
+        bundle.versions.aggregate(m=Max('version'))['m'] or 0) + 1
+    version = BundleVersion(
+        bundle=bundle,
+        version=next_version,
+        pdf_generated_at=now,
+        page_count=page_count,
+        size_bytes=len(pdf_bytes),
+        content_hash=content_hash,
+        document_count=document_count,
+        created_by=user,
+    )
+    version.final_pdf.save(
+        f'v{next_version}.pdf', ContentFile(pdf_bytes), save=False)
+    version.save()
+
+    saved_name = version.final_pdf.name
+    Bundle.objects.filter(pk=bundle.pk).update(
+        current_version=version,
+        final_pdf=saved_name,
+        pdf_generated_at=now,
+        updated_at=now,
+    )
+    bundle.current_version = version
+    bundle.final_pdf.name = saved_name
+    bundle.pdf_generated_at = now
+    bundle.updated_at = now
+    return version, True
+
+
+def _prune_bundle_versions(bundle, keep_recent=None):
+    """Delete old versions that are safe to remove, bounding storage growth.
+
+    A version is kept if it is the current version, is within the most recent
+    ``keep_recent`` versions, is pinned/labelled, or still has a live share
+    link. Everything else has its file and row removed. Returns the count pruned.
+    """
+    if keep_recent is None:
+        keep_recent = getattr(settings, 'BUNDLE_VERSION_KEEP_RECENT', 3)
+
+    versions = list(bundle.versions.order_by('-version'))
+    recent_ids = {v.id for v in versions[:keep_recent]}
+    current_id = bundle.current_version_id
+    pruned = 0
+
+    for version in versions:
+        if version.id in recent_ids or version.id == current_id:
+            continue
+        if version.is_protected():
+            continue
+        if version.final_pdf and version.final_pdf.name:
+            try:
+                default_storage.delete(version.final_pdf.name)
+            except Exception:
+                logger.warning(
+                    'Could not delete pruned bundle version file %s',
+                    version.final_pdf.name,
+                )
+        version.delete()
+        pruned += 1
+
+    if pruned:
+        logger.info('Pruned %s old version(s) for bundle %s', pruned, bundle.id)
+    return pruned
 
 
 @login_required
@@ -11686,7 +11766,13 @@ def bundle_share_link_status_view(request, bundle_id):
 @login_required
 @require_POST
 def bundle_share_link_create(request, bundle_id):
-    """Create a view-only Microsoft share link for the bundle final PDF."""
+    """Create a view-only Microsoft share link for a bundle version's PDF.
+
+    Shares the current version by default, or a specific one when a
+    ``version_id`` is supplied. A specific version is an immutable snapshot, so
+    the "PDF must be up to date" guard only applies to the default (current)
+    case, where sharing a stale current PDF would be surprising.
+    """
     bundle = _get_accessible_bundle(request, bundle_id)
 
     try:
@@ -11698,17 +11784,24 @@ def bundle_share_link_create(request, bundle_id):
     if use_password is not None:
         use_password = bool(use_password)
 
-    ok, error = _require_current_bundle_pdf(bundle)
-    if not ok:
-        return JsonResponse(
-            {'error': error or 'The bundle PDF is not ready to share.'},
-            status=400,
-        )
+    version = None
+    version_id = payload.get('version_id')
+    if version_id:
+        version = get_object_or_404(
+            BundleVersion, id=version_id, bundle=bundle)
+    else:
+        ok, error = _require_current_bundle_pdf(bundle)
+        if not ok:
+            return JsonResponse(
+                {'error': error or 'The bundle PDF is not ready to share.'},
+                status=400,
+            )
 
     bundle.refresh_from_db()
     try:
         link_data = create_bundle_share_link(
             bundle,
+            version=version,
             use_password=use_password,
             created_by=request.user,
         )
@@ -11719,6 +11812,7 @@ def bundle_share_link_create(request, bundle_id):
         request.user,
         bundle,
         'External share link created',
+        version=link_data.get('version'),
     )
     status = bundle_share_link_status(bundle)
     return JsonResponse({
@@ -11727,6 +11821,7 @@ def bundle_share_link_create(request, bundle_id):
             'id': link_data['id'],
             'url': link_data['url'],
             'password': link_data.get('password') or '',
+            'version': link_data.get('version'),
             'expires_at': link_data['expires_at'],
             'status': link_data['status'],
             'active': link_data['active'],
@@ -11753,6 +11848,87 @@ def bundle_share_link_revoke(request, bundle_id, link_id):
         'revoked': revoked,
         **bundle_share_link_status(bundle),
     })
+
+
+@login_required
+def bundle_versions_view(request, bundle_id):
+    """Return the bundle's version history + share-link metadata."""
+    bundle = _get_accessible_bundle(request, bundle_id)
+    return JsonResponse(bundle_share_link_status(bundle))
+
+
+@login_required
+@require_POST
+def bundle_version_promote(request, bundle_id, version_id):
+    """Promote an existing version to be the bundle's current PDF."""
+    bundle = _get_accessible_bundle(request, bundle_id)
+    version = get_object_or_404(BundleVersion, id=version_id, bundle=bundle)
+
+    now = timezone.now()
+    Bundle.objects.filter(pk=bundle.pk).update(
+        current_version=version,
+        final_pdf=version.final_pdf.name,
+        pdf_generated_at=now,
+    )
+    bundle.refresh_from_db()
+    log_bundle_event(
+        request.user, bundle, 'Bundle version promoted', version=version.version)
+    return JsonResponse({
+        'success': True,
+        **bundle_share_link_status(bundle),
+    })
+
+
+@login_required
+@require_POST
+def bundle_version_pin(request, bundle_id, version_id):
+    """Pin/unpin (and optionally label) a version so retention keeps it."""
+    bundle = _get_accessible_bundle(request, bundle_id)
+    version = get_object_or_404(BundleVersion, id=version_id, bundle=bundle)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        payload = {}
+
+    pinned = payload.get('pinned')
+    version.pinned = (not version.pinned) if pinned is None else bool(pinned)
+    update_fields = ['pinned']
+    if 'label' in payload:
+        version.label = (payload.get('label') or '')[:120]
+        update_fields.append('label')
+    version.save(update_fields=update_fields)
+
+    log_bundle_event(
+        request.user,
+        bundle,
+        'Bundle version pinned' if version.pinned else 'Bundle version unpinned',
+        version=version.version,
+    )
+    return JsonResponse({
+        'success': True,
+        **bundle_share_link_status(bundle),
+    })
+
+
+@login_required
+def bundle_version_download(request, bundle_id, version_id):
+    """Download a specific immutable version's PDF."""
+    bundle = _get_accessible_bundle(request, bundle_id)
+    version = get_object_or_404(BundleVersion, id=version_id, bundle=bundle)
+    if not version.final_pdf or not version.final_pdf.name:
+        raise Http404('This version has no PDF.')
+    try:
+        pdf_file = version.final_pdf.storage.open(version.final_pdf.name, 'rb')
+    except Exception as exc:
+        logger.exception(
+            'Could not open bundle version %s PDF: %s', version.id, exc)
+        raise Http404('Could not read this version PDF.')
+    response = FileResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'attachment; filename="{bundle.name} v{version.version}.pdf"'
+    )
+    return response
 
 
 def _parse_order_ids(raw_values):
