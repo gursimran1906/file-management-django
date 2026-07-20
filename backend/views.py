@@ -3245,13 +3245,44 @@ def get_standard_data():
     return form_data
 
 
+class FileOpeningError(Exception):
+    """Raised to unwind the open-file transaction when the matter can't be saved.
+
+    Carries no message of its own — the caller has already queued the user
+    facing errors; this only exists to roll the transaction back."""
+
+
+def _open_file_error_context(request, form_data):
+    """Re-render context for a failed open-file POST.
+
+    Binds the form to the untouched POST rather than the working copy: by the
+    time we get here the copy holds ids of contact records the rollback has
+    just removed, whereas the raw POST still holds what the user actually
+    typed."""
+    return {
+        'form_data': form_data,
+        'form': OpenFileForm(request.POST),
+        # The client picker is rendered from this rather than the form field.
+        'client1': request.POST.get('client1'),
+    }
+
+
 @login_required
 def open_new_file_page(request):
     form_data = get_standard_data()
 
-    if request.method == 'POST':
-        request_post_copy = preprocess_form_data(request.POST)
-        try:
+    if request.method != 'POST':
+        return render(request, 'open_file.html', {'form_data': form_data})
+
+    request_post_copy = preprocess_form_data(request.POST)
+    form = None
+    try:
+        # Opening a file also creates the client / authorised party / other
+        # side records the matter points at. Keep the whole sequence in one
+        # transaction: if anything later fails, those contacts must go with it,
+        # otherwise every retry leaves another duplicate contact behind for
+        # staff to pick from.
+        with transaction.atomic():
             if request_post_copy['client1'] == '-1':
                 request_post_copy['client1'] = add_new_client(
                     request_post_copy, 1, request.user)
@@ -3279,24 +3310,34 @@ def open_new_file_page(request):
             request_post_copy['created_by'] = request.user
 
             form = OpenFileForm(request_post_copy)
-            if form.is_valid():
-                instance = form.save()
-                instance.additional_clients.set(additional_client_ids)
-                messages.success(request, 'File opened successfully.')
-                return redirect('index')
-            else:
-                # Add error messages to be displayed in the template
-                for field, errors in form.errors.items():
-                    for error in errors:
-                        messages.error(
-                            request, f"{form[field].label}: {error}")
-                return render(request, 'open_file.html', {'form_data': form_data, 'form': form})
+            if not form.is_valid():
+                # Roll the new contacts back with the failed matter.
+                raise FileOpeningError()
 
-        except Exception as e:
-            messages.error(request, f"Error during file opening: {str(e)}")
-            return render(request, 'open_file.html', {'form_data': form_data})
-    else:
-        return render(request, 'open_file.html', {'form_data': form_data})
+            instance = form.save()
+            instance.additional_clients.set(additional_client_ids)
+
+    except FileOpeningError:
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(request, f"{form[field].label}: {error}")
+        return render(request, 'open_file.html', _open_file_error_context(request, form_data))
+
+    except Exception:
+        # Don't leave staff staring at a form that silently refused to save —
+        # record the real cause so it can be diagnosed from the logs.
+        logger.exception(
+            'Failed to open new file (user=%s, file_number=%s)',
+            request.user, request.POST.get('file_number'))
+        messages.error(
+            request,
+            'Something went wrong opening this file and nothing was saved. '
+            'Please check the details and try again — if it keeps happening, '
+            'report it with the file number you used.')
+        return render(request, 'open_file.html', _open_file_error_context(request, form_data))
+
+    messages.success(request, 'File opened successfully.')
+    return redirect('index')
 
 
 @login_required
