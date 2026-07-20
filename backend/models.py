@@ -119,9 +119,12 @@ class OthersideDetails(models.Model):
     address_line1 = models.CharField(max_length=255, null=True, blank=True)
     address_line2 = models.CharField(max_length=255, null=True, blank=True)
     county = models.CharField(max_length=255, null=True, blank=True)
-    postcode = models.CharField(max_length=10, null=True, blank=True)
+    postcode = models.CharField(max_length=20, null=True, blank=True)
     email = models.CharField(max_length=255, null=True, blank=True)
-    contact_number = models.CharField(max_length=20, null=True, blank=True)
+    # Staff routinely qualify a number with a contact name or a second line
+    # ("07877 260701 (Daniel Edwards)"), so keep this in step with the 50 used
+    # by ClientContactDetails and AuthorisedParties.
+    contact_number = models.CharField(max_length=50, null=True, blank=True)
     solicitors = models.CharField(max_length=255, null=True, blank=True)
     solicitors_email = models.CharField(max_length=255, null=True, blank=True)
     created_by = models.ForeignKey(
