@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_time
 from django.views.decorators.http import require_POST
 
 from backend.models import GranolaConfig, GranolaImportedNote, WIP
@@ -17,6 +18,35 @@ from .ingest import (create_attendance_note_from_imported,
 def _require_manager(request):
     """Granola back-office screens are manager-only."""
     return bool(getattr(request.user, 'is_manager', False))
+
+
+def _parse_attendee_rows(post):
+    """Parse indexed attendee fields into a list of attendee dicts.
+
+    Mirrors the Free 30 "add meeting" form convention: row 0 uses bare field
+    names (``name``, ``email``, …), row *i* uses an ``i_`` prefix. Rows without a
+    name are skipped, so blank template rows are ignored.
+    """
+    try:
+        count = int(post.get('number_of_attendees') or 0)
+    except (TypeError, ValueError):
+        count = 0
+    rows = []
+    for i in range(count):
+        prefix = f'{i}_' if i > 0 else ''
+        name = (post.get(f'{prefix}name') or '').strip()
+        if not name:
+            continue
+        rows.append({
+            'name': name,
+            'email': (post.get(f'{prefix}email') or '').strip(),
+            'contact_number': (post.get(f'{prefix}contact_number') or '').strip(),
+            'address_line1': (post.get(f'{prefix}address_line1') or '').strip(),
+            'address_line2': (post.get(f'{prefix}address_line2') or '').strip(),
+            'county': (post.get(f'{prefix}county') or '').strip(),
+            'postcode': (post.get(f'{prefix}postcode') or '').strip(),
+        })
+    return rows
 
 
 @login_required
@@ -68,6 +98,9 @@ def granola_assign_note(request, note_id):
     note = create_attendance_note_from_imported(
         imported, file=matter, person_attended=person,
         is_charged=is_charged, created_by=request.user,
+        date=parse_date(request.POST.get('date') or ''),
+        start_time=parse_time(request.POST.get('start_time') or ''),
+        finish_time=parse_time(request.POST.get('finish_time') or ''),
     )
     imported.reviewed_by = request.user
     imported.reviewed_at = timezone.now()
@@ -81,7 +114,8 @@ def granola_assign_note(request, note_id):
 @login_required
 @require_POST
 def granola_create_free30(request, note_id):
-    """Create a Free 30 minute meeting from a pending (party-less) note."""
+    """Create a Free 30 minute meeting from a pending note, using the details a
+    reviewer completed in the Allocate inbox (attendees, times, fee earner)."""
     imported = get_object_or_404(GranolaImportedNote, id=note_id)
     fee_earner = None
     person_id = request.POST.get('fee_earner')
@@ -90,7 +124,12 @@ def granola_create_free30(request, note_id):
 
     meeting = create_free30_from_imported(
         imported, fee_earner=fee_earner or imported.matched_fee_earner,
-        created_by=request.user)
+        created_by=request.user,
+        attendees=_parse_attendee_rows(request.POST),
+        date=parse_date(request.POST.get('date') or ''),
+        start_time=parse_time(request.POST.get('start_time') or ''),
+        finish_time=parse_time(request.POST.get('finish_time') or ''),
+    )
     imported.reviewed_by = request.user
     imported.reviewed_at = timezone.now()
     imported.save(update_fields=['reviewed_by', 'reviewed_at'])

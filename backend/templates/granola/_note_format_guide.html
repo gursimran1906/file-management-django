@@ -1,38 +1,47 @@
 {% comment %}How fee earners should write their Granola notes. Shared by the
 all-staff guide page and the manager-only settings page.{% endcomment %}
 <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-  <p class="font-medium text-gray-800">Attendance notes — file number in the body</p>
+  <p class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+    Notes are recorded from one shared account, so add a
+    <span class="font-mono">Fee earner:</span> line with your 3-letter staff code
+    (e.g. <span class="font-mono">Fee earner: ABC</span>) to every note — otherwise
+    we can't tell who ran the meeting and it waits in Allocate.
+  </p>
+  <p class="mt-3 font-medium text-gray-800">Attendance notes — file number in the body</p>
   <p class="mt-1 text-xs text-gray-500">
     Notes saved in the “{{ config.attendance_folder|default:'Attendance Note' }}” folder. Put the
-    matter file number in the note body (best set up as a Granola note template):
+    matter file number, your fee-earner code, and the start/finish times in the note
+    body (best set up as a Granola note template):
   </p>
   <ul class="mt-2 list-disc space-y-1 pl-5">
     <li><span class="font-mono">File number: ABC0010001</span> — links to matter ABC0010001, charged.</li>
     <li><span class="font-mono">[ABC0010001]</span> — bracketed form also works.</li>
     <li><span class="font-mono">File number: ABC0010001 (NC)</span> — links to ABC0010001, <em>not</em> charged.</li>
-    <li>No file number, or an unknown one → lands in the review inbox for manual assignment.</li>
+    <li>A note files automatically only when the file number, fee earner and start &amp; finish times are all present; anything missing (or an unknown file number) → waits in <strong>Allocate → Meetings</strong> to be completed.</li>
   </ul>
   <p class="mt-3 text-xs text-gray-500">
-    Add the start and finish times on their own lines so the time recorded (units)
-    matches how long the call actually took:
+    The start and finish times set the time recorded (units), so add them on their own lines:
   </p>
   <pre class="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs text-gray-700 border border-gray-200">File number: ABC0010001
+Fee earner: ABC
 Start Time: 10:30
 Finish Time: 11:15</pre>
   <p class="mt-1 text-xs text-gray-500">
-    If you leave the times out we use the meeting's calendar event when there is one,
-    otherwise a single unit is recorded. Times like <span class="font-mono">9.30am</span>
-    also work; a blank <span class="font-mono">Finish Time:</span> is simply ignored.
+    A calendar event's times are used when there is one. Times like
+    <span class="font-mono">9.30am</span> also work. If no start/finish can be found
+    the note waits in Allocate so the times can be added there.
   </p>
 
   <p class="mt-4 font-medium text-gray-800">Free 30 minutes — parties template</p>
   <p class="mt-1 text-xs text-gray-500">
-    Notes saved in the “{{ config.free30_folder|default:'Free 30 min' }}” folder. Add an
-    “Info of Parties” section plus the start and finish times on their own lines (best
-    set up as a Granola note template) so attendee details and the meeting length are
-    captured automatically:
+    Notes saved in the “{{ config.free30_folder|default:'Free 30 min' }}” folder. Add your
+    <span class="font-mono">Fee earner:</span> line, an “Info of Parties” section, plus the
+    start and finish times (best set up as a Granola note template). A meeting is created
+    automatically only when the parties and the fee earner are both present; otherwise it
+    waits in <strong>Allocate → Meetings</strong>, where you add the missing details:
   </p>
-  <pre class="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs text-gray-700 border border-gray-200">Start Time: 14:00
+  <pre class="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs text-gray-700 border border-gray-200">Fee earner: ABC
+Start Time: 14:00
 Finish Time: 14:30
 
 ## Info of Parties
