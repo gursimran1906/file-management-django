@@ -4632,7 +4632,9 @@ def _finance_activity_ledger_deltas(kind, file_number, *, invoice=None, credit_n
         return zero, delta
     if kind == 'green_slip':
         if green_slip.file_number_from.file_number == green_slip.file_number_to.file_number:
-            return -green_slip.amount, green_slip.amount
+            if green_slip.from_ledger_account == 'C':
+                return -green_slip.amount, green_slip.amount    # C-O: client -, office +
+            return green_slip.amount, -green_slip.amount         # O-C: client +, office -
         amount = green_slip.amount
         ledger = green_slip.from_ledger_account
         if green_slip.file_number_from.file_number == file_number:
@@ -6647,8 +6649,12 @@ def get_all_financials(file_number):
 
     for slip in green_slips:
         if slip.file_number_from == slip.file_number_to:
-            type_obj = 'client_to_office_tfr'
-            desc = f"Client to Office Transfer"
+            if slip.from_ledger_account == 'C':
+                type_obj = 'client_to_office_tfr'
+                desc = f"Client to Office Transfer"
+            else:
+                type_obj = 'office_to_client_tfr'
+                desc = f"Office to Client Transfer"
         elif slip.file_number_from.file_number == file_number:
             type_obj = 'money_out'
             desc = f"Transfer to {slip.file_number_to}"
@@ -6738,10 +6744,10 @@ def download_statement_account(request, file_number):
     writer.writerow(
         ['Date', 'Description', 'Money In', 'Money Out', 'Balance'])
     balance = 0
-    client_to_office_tfr_rows = 0
+    same_matter_tfr_rows = 0
     for row in sorted_rows:
-        if row['type'] == 'client_to_office_tfr':
-            client_to_office_tfr_rows = client_to_office_tfr_rows + 1
+        if row['type'] in ('client_to_office_tfr', 'office_to_client_tfr'):
+            same_matter_tfr_rows = same_matter_tfr_rows + 1
             continue
         if row['type'] == 'money_out':
             balance = balance - row['amount']
@@ -6750,7 +6756,7 @@ def download_statement_account(request, file_number):
         writer.writerow([row['date'], row['desc'], row['amount'] if row['type'] ==
                         'money_in' else '', row['amount'] if row['type'] == 'money_out' else '', balance])
     writer.writerow([])
-    final_cell = (len(sorted_rows)-client_to_office_tfr_rows) + 4
+    final_cell = (len(sorted_rows)-same_matter_tfr_rows) + 4
     writer.writerow(
         ['', 'Total', f'=sum(c5:c{final_cell})', f'=sum(d5:d{final_cell})'])
     return response
@@ -6819,6 +6825,37 @@ def generate_ledgers_report(request, file_number):
             office_balance += row['amount']
             client_amount = ''
             office_amount = str(row['amount'])
+
+            html_content += f"""
+                <tr>
+                    <td>{row['date']}</td>
+                    <td>{row['desc']}</td>
+                    <td>{office_amount}</td>
+                    <td class="balance">{office_balance}</td>
+                    <td>{client_amount}</td>
+                    <td class="balance">{client_balance}</td>
+                </tr>
+            """
+            continue
+
+        if row['type'] == 'office_to_client_tfr':
+            office_balance -= row['amount']
+            office_amount = '-' + str(row['amount'])
+            client_amount = ''
+            html_content += f"""
+                <tr>
+                    <td>{row['date']}</td>
+                    <td>{row['desc']}</td>
+                    <td>{office_amount}</td>
+                    <td class="balance">{office_balance}</td>
+                    <td>{client_amount}</td>
+                    <td class="balance">{client_balance}</td>
+                </tr>
+             """
+
+            client_balance += row['amount']
+            office_amount = ''
+            client_amount = str(row['amount'])
 
             html_content += f"""
                 <tr>
