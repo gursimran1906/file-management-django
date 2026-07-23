@@ -165,20 +165,23 @@
     <p class="text-xs text-gray-500">Outstanding after credits &amp; allocations: <span class="font-medium text-gray-800">£{{ invoice.display_due_left|intcomma }}</span></p>
     {% endif %}
 
-    <div class="flex flex-wrap gap-x-4 gap-y-2 pt-1 border-t border-gray-100">
-        <a class="link text-xs" href="{% url 'download_invoice' invoice.id %}">Download invoice</a>
-        <a class="link text-xs" href="{% url 'download_credited_invoice' invoice.id %}">Download credited invoice</a>
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 pt-2 border-t border-gray-100">
         {% if invoice.state == 'F' %}
-        <a class="link text-xs" href="{% url 'edit_invoice' invoice.id %}">View invoice</a>
-        {% if can_reopen_invoice %}
-        <form method="post" action="{% url 'reopen_invoice' invoice.id %}" class="inline"
+        <a class="text-xs font-semibold text-blue-700 hover:text-blue-800 hover:underline" href="{% url 'edit_invoice' invoice.id %}">View invoice</a>
+        {% else %}
+        <a class="text-xs font-semibold text-blue-700 hover:text-blue-800 hover:underline" href="{% url 'edit_invoice' invoice.id %}">Edit invoice</a>
+        {% endif %}
+
+        <span class="text-gray-300 select-none" aria-hidden="true">·</span>
+        <a class="text-xs font-medium text-gray-500 hover:text-gray-700 hover:underline" href="{% url 'download_invoice' invoice.id %}">Download</a>
+
+        {% if invoice.state == 'F' and can_reopen_invoice %}
+        <span class="text-gray-300 select-none" aria-hidden="true">·</span>
+        <form method="post" action="{% url 'reopen_invoice' invoice.id %}" class="inline-flex"
               onsubmit="return confirm('Reopen final invoice #{{ invoice.number }} for full editing?');">
             {% csrf_token %}
-            <button type="submit" class="link text-xs bg-transparent border-0 p-0 cursor-pointer">Reopen as draft</button>
+            <button type="submit" class="text-xs font-medium text-amber-700 hover:text-amber-800 hover:underline bg-transparent border-0 p-0 cursor-pointer">Reopen as draft</button>
         </form>
-        {% endif %}
-        {% else %}
-        <a class="link text-xs" href="{% url 'edit_invoice' invoice.id %}">Edit invoice</a>
         {% endif %}
     </div>
 </div>
