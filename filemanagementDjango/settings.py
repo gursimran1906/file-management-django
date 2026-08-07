@@ -89,6 +89,7 @@ INSTALLED_APPS = [
     'users',
     'frontend',
     'backend',
+    'email_sorting',
     'django_quill',
     'django_crontab',
     'django.contrib.humanize',

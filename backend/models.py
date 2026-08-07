@@ -963,7 +963,8 @@ class MatterEmails(models.Model):
         CustomUser, on_delete=models.SET_NULL, null=True)
     units = models.IntegerField(null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
-    link = models.URLField(max_length=4096, null=True, blank=True)
+    # Indexed: the email sync de-dups by webLink (MatterEmails.link) on every insert.
+    link = models.URLField(max_length=4096, null=True, blank=True, db_index=True)
 
     def __str__(self):
         return (f'ID: {str(self.id)}, File Number: {self.file_number}')
