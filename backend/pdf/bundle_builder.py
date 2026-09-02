@@ -262,6 +262,50 @@ def _add_bookmarks(pdf_path, documents_info):
     pdf.close()
 
 
+def merge_pdf_files(paths, output_path):
+    """Concatenate whole PDF files (in order) into output_path using qpdf."""
+    _concat_with_qpdf(output_path, [(path, '1-z') for path in paths])
+
+
+def build_plain_combined_pdf(documents_info, cache, progress_callback=None):
+    """
+    Concatenate the bundle's documents into one PDF with no index page, no
+    page-number stamps and no bookmarks. Returns (output_path, work_dir);
+    the caller must delete work_dir.
+    """
+    if not qpdf_available():
+        raise RuntimeError('Plain combined PDF requires qpdf')
+
+    work_dir = tempfile.mkdtemp(prefix='bundle_combine_')
+    try:
+        page_inputs = []
+        doc_total = len(documents_info)
+        for doc_index, doc_info in enumerate(documents_info):
+            if progress_callback and doc_total:
+                percent = 10 + int(60 * (doc_index + 1) / doc_total)
+                label = (doc_info['description'] or 'document')[:48]
+                progress_callback(
+                    percent,
+                    f'Preparing document {doc_index + 1} of {doc_total}: {label}...',
+                )
+            source_path = cache.local_path(doc_info['document'])
+            page_spec = _page_range_spec(doc_info['page_indices'])
+            if page_spec:
+                page_inputs.append((source_path, page_spec))
+
+        if not page_inputs:
+            raise RuntimeError('No document pages to combine')
+
+        if progress_callback:
+            progress_callback(80, 'Concatenating PDFs...')
+        output_path = os.path.join(work_dir, 'combined.pdf')
+        _concat_with_qpdf(output_path, page_inputs)
+        return output_path, work_dir
+    except Exception:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise
+
+
 def build_bundle_pdf_fast(
     index_pdf_bytes,
     documents_info,

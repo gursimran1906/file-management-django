@@ -63,32 +63,55 @@
             margin: 0.5cm 0 0.3cm;
         }
 
+        /* Two-column row: the description cell wraps within its own column so
+           long text never runs underneath the right-aligned amount. */
         .line-item {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
             margin: 0.15cm 0;
         }
 
+        .line-desc {
+            display: table-cell;
+            vertical-align: top;
+            padding-right: 0.5cm;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+        }
+
         .line-amount {
-            float: right;
+            display: table-cell;
+            vertical-align: top;
+            width: 3.2cm;
+            text-align: right;
+            white-space: nowrap;
         }
 
         .total-line {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
             margin-top: 0.6cm;
             font-weight: bold;
-            text-decoration: underline;
         }
 
+        .total-line .line-desc,
         .total-line .line-amount {
-            float: right;
             text-decoration: underline;
         }
 
         .distribution-line {
             margin: 0.2cm 0;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
         }
 
         .notes {
             margin-top: 0.6cm;
             white-space: pre-line;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
         }
 
         .ack-title {
@@ -129,15 +152,15 @@
         {% for line in data.assets %}
         {% if not line.is_excluded %}
         <div class="line-item">
-            {% if line.date %}{{ line.date }} - {% endif %}{{ line.description }}
+            <span class="line-desc">{% if line.date %}{{ line.date }} - {% endif %}{{ line.description }}</span>
             <span class="line-amount">{{ line.amount_display }}</span>
         </div>
         {% endif %}
         {% empty %}
-        <div class="line-item">No assets recorded.</div>
+        <div class="line-item"><span class="line-desc">No assets recorded.</span></div>
         {% endfor %}
-        <div class="total-line clearfix">
-            Gross Value of Estate Carried Forward
+        <div class="total-line">
+            <span class="line-desc">Gross Value of Estate Carried Forward</span>
             <span class="line-amount">{{ data.totals.gross_estate_display }}</span>
         </div>
     </section>
@@ -148,24 +171,24 @@
             <p><strong><u>Estate Account</u></strong></p>
         </div>
         <div class="section-title">Assets (Cont.)</div>
-        <div class="line-item">Balance Brought forward <span class="line-amount">{{ data.totals.gross_estate_display }}</span></div>
+        <div class="line-item"><span class="line-desc">Balance Brought forward</span> <span class="line-amount">{{ data.totals.gross_estate_display }}</span></div>
         <div class="section-title">Debts due at Death</div>
         {% for line in data.debts %}
         {% if not line.is_excluded %}
         <div class="line-item">
-            {% if line.date %}{{ line.date }} - {% endif %}{{ line.description }}
+            <span class="line-desc">{% if line.date %}{{ line.date }} - {% endif %}{{ line.description }}</span>
             <span class="line-amount">{{ line.amount_display }}</span>
         </div>
         {% endif %}
         {% empty %}
-        <div class="line-item">No debts recorded.</div>
+        <div class="line-item"><span class="line-desc">No debts recorded.</span></div>
         {% endfor %}
-        <div class="total-line clearfix">
-            Total sums paid
+        <div class="total-line">
+            <span class="line-desc">Total sums paid</span>
             <span class="line-amount">{{ data.totals.total_debts_paid_display }}</span>
         </div>
-        <div class="total-line clearfix">
-            Net Value of the Estate
+        <div class="total-line">
+            <span class="line-desc">Net Value of the Estate</span>
             <span class="line-amount">{{ data.totals.net_estate_display }}</span>
         </div>
     </section>
@@ -175,10 +198,10 @@
             <h2>{{ data.metadata.deceased_name|upper }}</h2>
             <p><strong><u>Estate Account</u></strong></p>
         </div>
-        <div class="line-item">Balance Carried Forward <span class="line-amount">{{ data.totals.net_estate_display }}</span></div>
-        <div class="line-item">Inheritance tax <span class="line-amount">{{ data.totals.inheritance_tax_display }}</span></div>
-        <div class="total-line clearfix">
-            Balance available for Distribution
+        <div class="line-item"><span class="line-desc">Balance Carried Forward</span> <span class="line-amount">{{ data.totals.net_estate_display }}</span></div>
+        <div class="line-item"><span class="line-desc">Inheritance tax</span> <span class="line-amount">{{ data.totals.inheritance_tax_display }}</span></div>
+        <div class="total-line">
+            <span class="line-desc">Balance available for Distribution</span>
             <span class="line-amount">{{ data.totals.balance_for_distribution_display }}</span>
         </div>
     </section>
@@ -188,7 +211,7 @@
             <h2>{{ data.metadata.deceased_name|upper }}</h2>
             <p><strong><u>Distribution Account</u></strong></p>
         </div>
-        <div class="line-item">Balance available for distribution <span class="line-amount">{{ data.totals.balance_for_distribution_display }}</span></div>
+        <div class="line-item"><span class="line-desc">Balance available for distribution</span> <span class="line-amount">{{ data.totals.balance_for_distribution_display }}</span></div>
         {% if data.metadata.will_clause_text %}
         <p>{{ data.metadata.will_clause_text }}</p>
         {% endif %}
@@ -210,18 +233,18 @@
         {% for line in data.distribution_payments %}
         {% if not line.is_excluded %}
         <div class="line-item">
-            {% if line.date %}{{ line.date }} - {% endif %}{{ line.description }}
+            <span class="line-desc">{% if line.date %}{{ line.date }} - {% endif %}{{ line.description }}</span>
             <span class="line-amount">{{ line.amount_display }}</span>
         </div>
         {% endif %}
         {% endfor %}
-        <div class="total-line clearfix">
-            Total payments made
+        <div class="total-line">
+            <span class="line-desc">Total payments made</span>
             <span class="line-amount">{{ data.totals.distribution_payments_total_display }}</span>
         </div>
         {% endif %}
-        <div class="total-line clearfix">
-            Beneficiary total
+        <div class="total-line">
+            <span class="line-desc">Beneficiary total</span>
             <span class="line-amount">{{ data.totals.distribution_total_display }}</span>
         </div>
         {% if data.metadata.distribution_notes %}

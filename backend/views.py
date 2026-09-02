@@ -10975,6 +10975,124 @@ def bundle_section_reorder(request, bundle_id):
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
 
+def _merge_uploaded_pdfs(files):
+    """Merge uploaded PDF files (in the given order) into a single PDF's bytes."""
+    from backend.pdf.bundle_builder import merge_pdf_files, qpdf_available
+
+    if qpdf_available():
+        import shutil
+        import tempfile
+
+        work_dir = tempfile.mkdtemp(prefix='bundle_upload_merge_')
+        try:
+            paths = []
+            for index, file in enumerate(files):
+                path = os.path.join(work_dir, f'part_{index}.pdf')
+                with open(path, 'wb') as part_file:
+                    for chunk in file.chunks():
+                        part_file.write(chunk)
+                paths.append(path)
+            output_path = os.path.join(work_dir, 'merged.pdf')
+            merge_pdf_files(paths, output_path)
+            with open(output_path, 'rb') as merged_file:
+                return merged_file.read()
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+    from PyPDF2 import PdfReader, PdfWriter
+
+    writer = PdfWriter()
+    for file in files:
+        file.seek(0)
+        reader = PdfReader(file)
+        for page in reader.pages:
+            writer.add_page(page)
+    buffer = BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def _upload_combined_bundle_document(request, section, files, descriptions, dates):
+    """Merge several uploaded PDFs into one BundleDocument (one index item)."""
+    for file in files:
+        if not file.name.lower().endswith('.pdf'):
+            return JsonResponse(
+                {'error': f'Only PDF files are allowed: {file.name}'},
+                status=400,
+            )
+
+    description = (descriptions[0] if descriptions else '').strip()
+    date_str = dates[0] if dates and dates[0] else None
+
+    parsed_description, parsed_date = parse_bundle_filename(files[0].name)
+    if not description:
+        description = parsed_description
+    if not description:
+        return JsonResponse(
+            {'error': 'Description required for the combined document'},
+            status=400,
+        )
+
+    doc_date = None
+    if date_str:
+        try:
+            doc_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return JsonResponse(
+                {'error': 'Invalid date format for the combined document'},
+                status=400,
+            )
+    elif parsed_date:
+        doc_date = parsed_date
+
+    try:
+        merged_bytes = _merge_uploaded_pdfs(files)
+    except Exception as e:
+        logger.exception(
+            'Could not combine %s uploaded PDFs for section %s: %s',
+            len(files), section.id, e)
+        return JsonResponse(
+            {'error': 'Could not combine the uploaded PDFs. Check every file is a valid PDF.'},
+            status=400,
+        )
+
+    last_doc = section.documents.order_by('-order').first()
+    next_order = (last_doc.order + 1) if last_doc else 1
+
+    document = BundleDocument.objects.create(
+        section=section,
+        file=ContentFile(merged_bytes, name=files[0].name),
+        description=description,
+        date=doc_date,
+        order=next_order,
+    )
+
+    log_bundle_event(
+        request.user,
+        section.bundle,
+        'Documents combined into one item',
+        section=section.heading,
+        document=description,
+        file_count=len(files),
+    )
+
+    return JsonResponse({
+        'success': True,
+        'documents': [{
+            'id': document.id,
+            'description': document.description,
+            'date': document.date.strftime('%Y-%m-%d') if document.date else '',
+            'filename': document.file.name,
+            'order': document.order,
+        }],
+        'section': {
+            'id': section.id,
+            'date_sort': section.date_sort,
+            'document_ids': _section_ordered_document_ids(section),
+        },
+    })
+
+
 @login_required
 def bundle_document_upload(request, section_id):
     """Upload a document to a section"""
@@ -10986,9 +11104,14 @@ def bundle_document_upload(request, section_id):
         files = request.FILES.getlist('files[]')
         descriptions = request.POST.getlist('descriptions[]')
         dates = request.POST.getlist('dates[]')
+        combine = request.POST.get('combine') in ('1', 'true', 'on')
 
         if not files:
             return JsonResponse({'error': 'No files uploaded'}, status=400)
+
+        if combine and len(files) > 1:
+            return _upload_combined_bundle_document(
+                request, section, files, descriptions, dates)
 
         uploaded_docs = []
 
@@ -11450,6 +11573,77 @@ def bundle_download(request, bundle_id):
     if regenerated:
         response['X-Bundle-Regenerated'] = '1'
     return response
+
+
+@login_required
+def bundle_download_plain(request, bundle_id):
+    """Download all bundle documents merged into one PDF, with no index page
+    and no page-number stamps. Built fresh on every request; nothing is
+    persisted (no version, no stored page ranges)."""
+    from backend.pdf.bundle_builder import build_plain_combined_pdf, qpdf_available
+
+    bundle = _get_accessible_bundle(request, bundle_id)
+
+    def _fail(message):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'error': message}, status=400)
+        messages.error(request, message)
+        return redirect('bundle_edit', bundle_id=bundle.id)
+
+    cache_obj = BundleTempCache(bundle)
+    work_dir = None
+    try:
+        all_documents = [
+            document
+            for section in bundle.sections.all().order_by('order')
+            for document in section.documents.all().order_by('order')
+        ]
+        if all_documents:
+            cache_obj.prefetch_all(all_documents)
+        documents_info = _collect_bundle_documents(bundle, cache=cache_obj)
+        if not documents_info:
+            return _fail('Cannot combine documents: no valid documents with pages.')
+
+        if qpdf_available():
+            output_path, work_dir = build_plain_combined_pdf(
+                documents_info, cache_obj)
+            pdf_file = open(output_path, 'rb')
+        else:
+            from PyPDF2 import PdfReader, PdfWriter
+
+            writer = PdfWriter()
+            for doc_info in documents_info:
+                with _open_document_pdf(doc_info['document'], cache=cache_obj) as source:
+                    reader = PdfReader(BytesIO(source.read()))
+                    for page_index in doc_info['page_indices']:
+                        if page_index < len(reader.pages):
+                            writer.add_page(reader.pages[page_index])
+            buffer = BytesIO()
+            writer.write(buffer)
+            buffer.seek(0)
+            pdf_file = buffer
+
+        log_bundle_event(
+            request.user,
+            bundle,
+            'Combined PDF downloaded (no index)',
+            document_count=len(documents_info),
+        )
+        response = FileResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = \
+            f'attachment; filename="{bundle.name} (combined).pdf"'
+        return response
+    except Exception as e:
+        logger.exception(
+            'Could not build combined PDF for bundle %s: %s', bundle.id, e)
+        return _fail('Could not combine the documents into one PDF.')
+    finally:
+        cache_obj.cleanup()
+        if work_dir:
+            # The served file handle is already open; removing the directory
+            # is safe on POSIX because the inode lives until the handle closes.
+            import shutil
+            shutil.rmtree(work_dir, ignore_errors=True)
 
 
 @login_required
@@ -12152,6 +12346,11 @@ def _index_header_row_offset(bundle):
     rows = 1 + max(len(claimants), 1) + 1 + max(len(defendants), 1) + 5
     if len(bundle.court_name or '') > 42:
         rows += 1
+    for party in list(claimants) + list(defendants):
+        if len(str((party or {}).get('name') or '')) > 45:
+            rows += 1
+    if len(bundle.index_title or '') > 60:
+        rows += 1
     if bundle.hearing_line or bundle.conference_line:
         rows += 1
     return rows
@@ -12286,12 +12485,14 @@ def _wrap_court_heading_lines(canvas, text, max_width, font_name=None, font_size
         if canvas.stringWidth(line, font_name, font_size) <= max_width:
             wrapped.append(line)
             continue
-        chunk = line
-        while chunk and canvas.stringWidth(chunk, font_name, font_size) > max_width:
-            chunk = chunk[:-1]
-        if chunk and len(chunk) < len(line):
-            chunk = chunk[:-3].rstrip() + '...'
-        wrapped.append(chunk or line[:1])
+        while line:
+            chunk = line
+            while chunk and canvas.stringWidth(chunk, font_name, font_size) > max_width:
+                chunk = chunk[:-1]
+            if not chunk:
+                chunk = line[:1]
+            wrapped.append(chunk)
+            line = line[len(chunk):]
     return wrapped
 
 
@@ -12314,6 +12515,8 @@ def _draw_court_index_header(index_canvas, bundle, margin_x, page_width, top_y):
     footer_font_size = 10
     row1_leading = 20
     party_row_leading = 30
+    party_name_leading = 18
+    index_title_leading = 18
 
     case_text = (
         f'{case_label} {bundle.case_number.upper()}'
@@ -12352,66 +12555,76 @@ def _draw_court_index_header(index_canvas, bundle, margin_x, page_width, top_y):
         )
     y -= row1_leading * max(len(court_lines), 1) + 14
 
-    for party in claimants:
-        if party.get('name'):
-            _draw_semibold_text(
-                index_canvas,
-                _court_heading_text(party['name']),
-                page_width / 2,
-                y,
-                party_font_size,
-                align='center',
+    def draw_party_rows(parties):
+        nonlocal y
+        for party in parties:
+            role_text = _court_heading_text(party.get('role'))
+            role_width = (
+                _semibold_string_width(index_canvas, role_text, party_font_size)
+                if role_text else 0
             )
-        if party.get('role'):
-            _draw_semibold_text(
-                index_canvas,
-                _court_heading_text(party['role']),
-                page_width - margin_x,
-                y,
-                party_font_size,
-                align='right',
-            )
-        y -= party_row_leading
+            name_lines = []
+            if party.get('name'):
+                # Names are centred, so reserve the role's width on both sides
+                # to keep the wrapped name clear of the right-aligned role.
+                name_max_width = max(
+                    page_width - (2 * (margin_x + role_width + 12)), 120)
+                name_lines = _wrap_court_heading_lines(
+                    index_canvas,
+                    _court_heading_text(party['name']),
+                    name_max_width,
+                    font_size=party_font_size,
+                )
+            for line_index, line in enumerate(name_lines):
+                _draw_semibold_text(
+                    index_canvas,
+                    line,
+                    page_width / 2,
+                    y - (line_index * party_name_leading),
+                    party_font_size,
+                    align='center',
+                )
+            if role_text:
+                _draw_semibold_text(
+                    index_canvas,
+                    role_text,
+                    page_width - margin_x,
+                    y,
+                    party_font_size,
+                    align='right',
+                )
+            y -= party_row_leading + \
+                max(len(name_lines) - 1, 0) * party_name_leading
+
+    draw_party_rows(claimants)
 
     _draw_semibold_text(
         index_canvas, '-V-', page_width / 2, y, party_font_size, align='center')
     y -= party_row_leading
 
-    for party in defendants:
-        if party.get('name'):
-            _draw_semibold_text(
-                index_canvas,
-                _court_heading_text(party['name']),
-                page_width / 2,
-                y,
-                party_font_size,
-                align='center',
-            )
-        if party.get('role'):
-            _draw_semibold_text(
-                index_canvas,
-                _court_heading_text(party['role']),
-                page_width - margin_x,
-                y,
-                party_font_size,
-                align='right',
-            )
-        y -= party_row_leading
+    draw_party_rows(defendants)
 
     y -= 8
     index_canvas.setStrokeColor(_bundle_index_rule_color())
     index_canvas.line(margin_x, y, page_width - margin_x, y)
     y -= 20
 
-    _draw_semibold_text(
+    title_lines = _wrap_court_heading_lines(
         index_canvas,
         _court_heading_text(bundle.index_title or 'Index to the Bundle'),
-        page_width / 2,
-        y,
-        index_title_font_size,
-        align='center',
-    )
-    y -= 10
+        page_width - (2 * margin_x),
+        font_size=index_title_font_size,
+    ) or [_court_heading_text('Index to the Bundle')]
+    for line_index, line in enumerate(title_lines):
+        _draw_semibold_text(
+            index_canvas,
+            line,
+            page_width / 2,
+            y - (line_index * index_title_leading),
+            index_title_font_size,
+            align='center',
+        )
+    y -= (len(title_lines) - 1) * index_title_leading + 10
 
     footer_parts = []
     if bundle.hearing_line.strip():
@@ -12419,15 +12632,22 @@ def _draw_court_index_header(index_canvas, bundle, margin_x, page_width, top_y):
     if bundle.conference_line.strip():
         footer_parts.append(_court_heading_text(bundle.conference_line))
     if footer_parts:
-        _draw_semibold_text(
+        footer_lines = _wrap_court_heading_lines(
             index_canvas,
             '   '.join(footer_parts),
-            page_width / 2,
-            y,
-            footer_font_size,
-            align='center',
+            page_width - (2 * margin_x),
+            font_size=footer_font_size,
         )
-        y -= 12
+        for line_index, line in enumerate(footer_lines):
+            _draw_semibold_text(
+                index_canvas,
+                line,
+                page_width / 2,
+                y - (line_index * 12),
+                footer_font_size,
+                align='center',
+            )
+        y -= 12 * len(footer_lines)
 
     y -= 6
     index_canvas.line(margin_x, y, page_width - margin_x, y)
@@ -12537,11 +12757,13 @@ def _generate_index_pdf(bundle, documents_info):
         section_lines = []
         section_row_height = row_height
         if current_section != doc_info['section']:
+            # Measure with the bold font: the heading is drawn bold, and bold
+            # glyphs are wider, so measuring regular can overflow the band.
             section_lines = _wrap_index_text_lines(
                 index_canvas,
                 doc_info['section'],
                 section_max_width,
-                font_name=_BUNDLE_INDEX_SERIF_FONT,
+                font_name=_BUNDLE_INDEX_SERIF_FONT_BOLD,
                 font_size=index_font_size,
             )
             section_row_height = _index_row_min_height(

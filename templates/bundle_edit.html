@@ -48,6 +48,10 @@
                     onclick="downloadBundlePdf()"
                     class="btn-primary text-xs">Download PDF</button>
             <button type="button"
+                    onclick="downloadCombinedBundlePdf()"
+                    title="Merge every document into one PDF without an index page or page numbers"
+                    class="bundle-linear-btn text-xs">Download combined (no index)</button>
+            <button type="button"
                     onclick="deleteCurrentBundle()"
                     class="text-xs text-red-700 hover:text-red-900 px-2 py-1">Delete bundle</button>
         </div>
@@ -249,6 +253,10 @@
             </p>
             <label for="upload-files" class="block text-sm font-medium text-gray-700 mb-1">PDF files</label>
             <input id="upload-files" type="file" multiple accept=".pdf" class="form-input" onchange="handleUploadFiles(this)">
+            <label id="upload-combine-wrap" class="hidden mt-3 flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" id="upload-combine" class="rounded border-gray-300" onchange="handleUploadCombineToggle()">
+                Combine into a single document (one index entry)
+            </label>
             <div id="upload-list" class="mt-4 space-y-3"></div>
         </div>
         <div class="flex justify-end gap-2 border-t px-4 py-3 shrink-0">
@@ -940,6 +948,8 @@ function openUploadModal(sectionId) {
     const headingInput = document.querySelector(`.section-card[data-section-id="${sectionId}"] .section-heading-input`);
     document.getElementById('upload-modal-section').textContent = headingInput ? headingInput.value : '';
     document.getElementById('upload-files').value = '';
+    const combineCheckbox = document.getElementById('upload-combine');
+    if (combineCheckbox) combineCheckbox.checked = false;
     renderUploadRows(sectionId);
     document.getElementById('upload-modal').classList.remove('hidden');
     document.getElementById('upload-modal').classList.add('flex');
@@ -965,11 +975,44 @@ function handleUploadFiles(input) {
     renderUploadRows(sectionId);
 }
 
+function uploadCombineChecked() {
+    const checkbox = document.getElementById('upload-combine');
+    return !!(checkbox && checkbox.checked);
+}
+
+function handleUploadCombineToggle() {
+    if (activeUploadSectionId) renderUploadRows(activeUploadSectionId);
+}
+
 function renderUploadRows(sectionId) {
     const files = uploadFilesBySection[sectionId] || [];
     const list = document.getElementById('upload-list');
+    const combineWrap = document.getElementById('upload-combine-wrap');
+    if (combineWrap) combineWrap.classList.toggle('hidden', files.length < 2);
     if (files.length === 0) {
         list.innerHTML = `<div class="text-sm text-gray-500 border rounded bg-gray-50 p-4">Select one or more PDFs to continue.</div>`;
+        return;
+    }
+
+    if (uploadCombineChecked() && files.length > 1) {
+        const parsed = BundleFilenameUtils.parse(files[0].name);
+        const fileList = files.map((file, index) =>
+            `<li>${index + 1}. ${escapeHtml(file.name)}</li>`).join('');
+        list.innerHTML = `
+        <div class="border rounded p-3 bg-white">
+            <p class="text-xs text-gray-600 mb-2">These PDFs will be merged, in this order, into a single document with one index entry:</p>
+            <ul class="text-sm text-gray-900 space-y-0.5 mb-3">${fileList}</ul>
+            <div class="grid grid-cols-1 md:grid-cols-[1fr_11rem] gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1" for="upload-description-${sectionId}-combined">Description</label>
+                    <input id="upload-description-${sectionId}-combined" class="form-input upload-description-${sectionId}" value="${escapeHtml(parsed.description)}">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1" for="upload-date-${sectionId}-combined">Date</label>
+                    <input id="upload-date-${sectionId}-combined" type="date" class="form-input upload-date-${sectionId}" value="${escapeHtml(parsed.date)}">
+                </div>
+            </div>
+        </div>`;
         return;
     }
 
@@ -1010,25 +1053,38 @@ function saveUpload() {
     const dates = Array.from(document.querySelectorAll(`.upload-date-${sectionId}`));
     const saveBtn = document.getElementById('upload-save-btn');
     const cancelBtn = document.getElementById('upload-cancel-btn');
+    const combine = uploadCombineChecked() && files.length > 1;
 
     const fileEntries = [];
-    for (let i = 0; i < files.length; i++) {
-        const description = descriptions[i].value.trim();
+    if (combine) {
+        const description = descriptions[0] ? descriptions[0].value.trim() : '';
         if (!description) {
-            descriptions[i].focus();
+            descriptions[0]?.focus();
             return;
         }
-        fileEntries.push({
-            file: files[i],
-            description: description,
-            date: dates[i].value || '',
+        const date = dates[0] ? dates[0].value || '' : '';
+        files.forEach(file => {
+            fileEntries.push({file, description, date});
         });
+    } else {
+        for (let i = 0; i < files.length; i++) {
+            const description = descriptions[i].value.trim();
+            if (!description) {
+                descriptions[i].focus();
+                return;
+            }
+            fileEntries.push({
+                file: files[i],
+                description: description,
+                date: dates[i].value || '',
+            });
+        }
     }
 
     if (saveBtn) saveBtn.disabled = true;
     if (cancelBtn) cancelBtn.disabled = true;
 
-    uploadDocumentsToSection(sectionId, fileEntries)
+    uploadDocumentsToSection(sectionId, fileEntries, {combine})
         .then(() => {
             uploadFilesBySection[sectionId] = [];
             if (saveBtn) saveBtn.disabled = false;
@@ -1090,7 +1146,8 @@ function applyUploadedDocuments(sectionId, data) {
     return newDocumentIds;
 }
 
-function uploadDocumentsToSection(sectionId, fileEntries) {
+function uploadDocumentsToSection(sectionId, fileEntries, options) {
+    const opts = options || {};
     if (!fileEntries.length) {
         return Promise.resolve({ documents: [] });
     }
@@ -1101,14 +1158,26 @@ function uploadDocumentsToSection(sectionId, fileEntries) {
         }
     }
 
+    const combine = !!opts.combine && fileEntries.length > 1;
     const formData = new FormData();
-    fileEntries.forEach(entry => {
-        formData.append('files[]', entry.file);
-        formData.append('descriptions[]', entry.description.trim());
-        formData.append('dates[]', entry.date || '');
-    });
+    if (combine) {
+        fileEntries.forEach(entry => {
+            formData.append('files[]', entry.file);
+        });
+        formData.append('descriptions[]', fileEntries[0].description.trim());
+        formData.append('dates[]', fileEntries[0].date || '');
+        formData.append('combine', '1');
+    } else {
+        fileEntries.forEach(entry => {
+            formData.append('files[]', entry.file);
+            formData.append('descriptions[]', entry.description.trim());
+            formData.append('dates[]', entry.date || '');
+        });
+    }
 
-    const fileLabel = fileEntries.length === 1 ? '1 document' : `${fileEntries.length} documents`;
+    const fileLabel = combine
+        ? `${fileEntries.length} PDFs as one document`
+        : (fileEntries.length === 1 ? '1 document' : `${fileEntries.length} documents`);
     BundleUpload.show(`Uploading ${fileLabel}...`);
 
     return fetch(`/bundle/section/${sectionId}/document/upload/`, {
@@ -1278,6 +1347,28 @@ async function downloadBundlePdf() {
         subtext: 'Checking whether the bundle needs to be regenerated.',
         progressTitle: 'Generating PDF...',
     });
+}
+
+async function downloadCombinedBundlePdf() {
+    BundleUpload.show(
+        'Saving changes...',
+        'Applying your latest edits before combining the documents.',
+    );
+    try {
+        await flushPendingEdits();
+    } catch {
+        BundleUpload.hide();
+        return;
+    }
+
+    const nameInput = document.getElementById('bundle_name');
+    const filename = `${(nameInput?.value.trim() || '{{ bundle.name|escapejs }}')} (combined).pdf`;
+
+    BundleDownload.downloadPdf('{% url "bundle_download_plain" bundle.id %}', filename, {
+        message: 'Combining documents...',
+        subtext: 'Merging every document into one PDF without an index or page numbers.',
+        errorMessage: 'Could not combine the documents. Please try again.',
+    }).catch(() => {});
 }
 
 let courtBundleSettings = {{ court_bundle_json|safe }};
