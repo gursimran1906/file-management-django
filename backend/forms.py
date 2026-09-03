@@ -516,11 +516,21 @@ class OtherSideForm(forms.ModelForm):
             field.widget.attrs['class'] = 'form-input'
 
 class RiskAssessmentForm(forms.ModelForm):
-    
+
     class Meta:
         model = RiskAssessment
-        fields = '__all__'
-        
+        # Sign-off fields are set by the workflow (a fee earner signs off from
+        # the matter page), never picked on the form itself.
+        exclude = [
+            'due_diligence_signed_by',
+            'signoff_status',
+            'completed_by',
+            'completed_at',
+            'signed_off_by',
+            'signed_off_at',
+            'signoff_comments',
+        ]
+
         widgets = {
             'due_diligence_date': forms.DateInput(attrs={'type': 'date'}),
             'escalated_date':forms.DateInput(attrs={'type': 'date'}),

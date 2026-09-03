@@ -1136,6 +1136,22 @@ def user_dashboard(request):
         )
     ).filter(is_read=False).exists()
 
+    risk_assessments_awaiting_signoff = []
+    if user.is_matter_fee_earner:
+        risk_assessments_awaiting_signoff = list(
+            RiskAssessment.objects.filter(
+                signoff_status__in=[
+                    RiskAssessment.SIGNOFF_AWAITING,
+                    RiskAssessment.SIGNOFF_RETURNED,
+                ],
+                matter__isnull=False,
+            ).select_related('matter', 'matter__fee_earner', 'completed_by')
+            .order_by('-timestamp')
+        )
+        # The matter's own fee earner sees theirs first; others can cover.
+        risk_assessments_awaiting_signoff.sort(
+            key=lambda ra: 0 if ra.matter.fee_earner_id == user.id else 1)
+
     context = {
         'now': now,
         'user_next_works': user_next_works,
@@ -1155,6 +1171,7 @@ def user_dashboard(request):
         'key_doc_scope': validated_key_doc_scope,
         'file_reviews_due_files': file_reviews_due,
         'pending_credit_notes': pending_credit_notes,
+        'risk_assessments_awaiting_signoff': risk_assessments_awaiting_signoff,
     }
 
     return render(request, 'dashboard.html', context)
@@ -3340,6 +3357,40 @@ def open_new_file_page(request):
     return redirect('index')
 
 
+def _apply_risk_assessment_signoff(risk_assessment, user):
+    """Mark an assessment as signed off by `user` (a fee earner)."""
+    risk_assessment.signoff_status = RiskAssessment.SIGNOFF_SIGNED
+    risk_assessment.signed_off_by = user
+    risk_assessment.signed_off_at = timezone.now()
+    # Keep the legacy signer field in step so existing displays and the
+    # download template keep working for old and new records alike.
+    risk_assessment.due_diligence_signed_by = user
+    risk_assessment.signoff_comments = ''
+
+
+def _apply_risk_assessment_completion(risk_assessment, user):
+    """Record who completed the form; auto-sign when a fee earner did.
+
+    Returns the flash message to show. Fee earners completing their own
+    assessment see a one-step flow; anyone else sends it for sign-off.
+    """
+    risk_assessment.completed_by = user
+    risk_assessment.completed_at = timezone.now()
+    if user.is_matter_fee_earner:
+        _apply_risk_assessment_signoff(risk_assessment, user)
+        return 'Risk Assessment saved and signed off.'
+    risk_assessment.signoff_status = RiskAssessment.SIGNOFF_AWAITING
+    risk_assessment.signed_off_by = None
+    risk_assessment.signed_off_at = None
+    fee_earner = risk_assessment.matter.fee_earner if risk_assessment.matter else None
+    if fee_earner:
+        return (
+            'Risk Assessment saved and sent to '
+            f'{fee_earner.first_name} {fee_earner.last_name} for sign-off.'
+        )
+    return 'Risk Assessment saved and awaiting fee earner sign-off.'
+
+
 @login_required
 def add_risk_assessment(request, file_number):
     try:
@@ -3354,13 +3405,16 @@ def add_risk_assessment(request, file_number):
         form = RiskAssessmentForm(post_data)
 
         if form.is_valid():
-            risk_assessment = form.save()
+            risk_assessment = form.save(commit=False)
+            message = _apply_risk_assessment_completion(
+                risk_assessment, request.user)
+            risk_assessment.save()
             log_created(
                 request.user,
                 risk_assessment,
                 f'Risk assessment for {risk_assessment.matter.file_number}',
             )
-            messages.success(request, 'Risk Assessment successfully added.')
+            messages.success(request, message)
             return redirect('home', risk_assessment.matter.file_number)
         else:
             error_message = 'Form is not valid. Please correct the errors:'
@@ -8582,11 +8636,22 @@ def edit_risk_assessment(request, id):
                     'old_value': str(getattr(duplicate_obj, field)),
                     'new_value': None
                 }
-            form.save()
+            risk_assesssment = form.save(commit=False)
+            # Any edit re-runs the sign-off flow: a fee earner's edit stays
+            # signed off (by them); anyone else's edit sends it back for
+            # sign-off so a signed assessment can't change silently.
+            message = _apply_risk_assessment_completion(
+                risk_assesssment, request.user)
+            risk_assesssment.save()
 
             for field in changed_fields:
                 changes[field]['new_value'] = str(
                     getattr(risk_assesssment, field))
+            if duplicate_obj.signoff_status != risk_assesssment.signoff_status:
+                changes['signoff_status'] = {
+                    'old_value': duplicate_obj.get_signoff_status_display(),
+                    'new_value': risk_assesssment.get_signoff_status_display(),
+                }
 
             if changes:
                 create_modification(
@@ -8594,7 +8659,7 @@ def edit_risk_assessment(request, id):
                     modified_obj=risk_assesssment,
                     changes=changes
                 )
-            messages.success(request, 'Successfully updated Risk Assessment.')
+            messages.success(request, message)
             return redirect('home', risk_assesssment.matter.file_number)
         else:
             error_message = 'Form is not valid. Please correct the errors:'
@@ -8605,6 +8670,74 @@ def edit_risk_assessment(request, id):
         form = RiskAssessmentForm(instance=risk_assesssment)
 
     return render(request, 'risk_assessment.html', {'form': form, 'file_number': risk_assesssment.matter.file_number, 'title': 'Edit'})
+
+
+def _risk_assessment_signoff_redirect(risk_assessment):
+    if risk_assessment.matter:
+        return redirect('home', risk_assessment.matter.file_number)
+    return redirect('index')
+
+
+@login_required
+@require_POST
+def sign_off_risk_assessment(request, id):
+    """Fee earner signs off a completed risk assessment."""
+    risk_assessment = get_object_or_404(RiskAssessment, pk=id)
+    if not request.user.is_matter_fee_earner:
+        messages.error(
+            request, 'Only fee earners can sign off risk assessments.')
+        return _risk_assessment_signoff_redirect(risk_assessment)
+    if risk_assessment.is_signed_off:
+        messages.info(request, 'This risk assessment is already signed off.')
+        return _risk_assessment_signoff_redirect(risk_assessment)
+
+    old_status = risk_assessment.get_signoff_status_display()
+    _apply_risk_assessment_signoff(risk_assessment, request.user)
+    risk_assessment.save()
+    create_modification(
+        user=request.user,
+        modified_obj=risk_assessment,
+        changes={'signoff_status': {
+            'old_value': old_status,
+            'new_value': risk_assessment.get_signoff_status_display(),
+        }},
+    )
+    messages.success(request, 'Risk assessment signed off.')
+    return _risk_assessment_signoff_redirect(risk_assessment)
+
+
+@login_required
+@require_POST
+def return_risk_assessment(request, id):
+    """Fee earner sends a risk assessment back to the completer with comments."""
+    risk_assessment = get_object_or_404(RiskAssessment, pk=id)
+    if not request.user.is_matter_fee_earner:
+        messages.error(
+            request, 'Only fee earners can review risk assessments.')
+        return _risk_assessment_signoff_redirect(risk_assessment)
+
+    comments = request.POST.get('comments', '').strip()
+    if not comments:
+        messages.error(
+            request, 'Please say what needs changing before returning the assessment.')
+        return _risk_assessment_signoff_redirect(risk_assessment)
+
+    old_status = risk_assessment.get_signoff_status_display()
+    risk_assessment.signoff_status = RiskAssessment.SIGNOFF_RETURNED
+    risk_assessment.signed_off_by = None
+    risk_assessment.signed_off_at = None
+    risk_assessment.signoff_comments = comments
+    risk_assessment.save()
+    create_modification(
+        user=request.user,
+        modified_obj=risk_assessment,
+        changes={'signoff_status': {
+            'old_value': old_status,
+            'new_value': risk_assessment.get_signoff_status_display(),
+        }},
+    )
+    messages.success(request, 'Risk assessment returned for changes.')
+    return _risk_assessment_signoff_redirect(risk_assessment)
 
 
 @login_required

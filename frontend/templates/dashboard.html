@@ -334,6 +334,25 @@
           </label>
         </div>
       </div>
+      {% if risk_assessments_awaiting_signoff %}
+      <div class="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 shrink-0 max-h-96 overflow-y-auto">
+        <p class="text-sm font-semibold text-amber-900 mb-1">Awaiting sign-off ({{ risk_assessments_awaiting_signoff|length }})</p>
+        <ul class="space-y-1">
+          {% for ra in risk_assessments_awaiting_signoff %}
+          <li class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-amber-900">
+            <a class="link font-medium" href="{% url 'home' ra.matter.file_number %}">{{ ra.matter.file_number }}</a>
+            {% if ra.signoff_status == 'returned' %}
+            <span class="badge-red">Returned &mdash; with completer</span>
+            {% elif ra.matter.fee_earner_id == request.user.id %}
+            <span class="badge-yellow">Yours to sign off</span>
+            {% endif %}
+            <span>{% if ra.completed_by %}{{ ra.completed_by.first_name }} {{ ra.completed_by.last_name }}{% endif %} · {% if ra.completed_at %}{{ ra.completed_at|date:"d/m/Y" }}{% else %}{{ ra.timestamp|date:"d/m/Y" }}{% endif %}</span>
+            <span>{{ ra.flagged_answers|length }} flag{{ ra.flagged_answers|length|pluralize }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
       <p id="risk-loading-state" class="hidden text-xs text-gray-500 mb-2">Updating…</p>
       <ul id="risk-assessments-list" class="overflow-y-auto flex-1 min-h-0 -mx-1 px-1">
         {% for file in risk_assessments_due_files %}
