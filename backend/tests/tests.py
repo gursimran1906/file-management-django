@@ -534,6 +534,142 @@ class BundleTests(TestCase):
         document.refresh_from_db()
         self.assertEqual((document.page_start, document.page_end), (2, 3))
 
+    def test_wrap_court_heading_lines_does_not_truncate_long_words(self):
+        from reportlab.pdfgen import canvas as reportlab_canvas
+
+        from ..views import _wrap_court_heading_lines
+
+        wrap_canvas = reportlab_canvas.Canvas(BytesIO())
+        long_word = 'A' * 300
+
+        lines = _wrap_court_heading_lines(wrap_canvas, long_word, 200, font_size=16)
+
+        self.assertGreater(len(lines), 1)
+        self.assertEqual(''.join(lines), long_word)
+        self.assertNotIn('...', ''.join(lines))
+
+    def test_generate_bundle_pdf_renders_court_heading_with_long_values(self):
+        self.bundle.is_court_bundle = True
+        self.bundle.court_name = 'County Court at Southend'
+        self.bundle.case_number = '12338123223'
+        self.bundle.case_number_type = Bundle.CASE_NUMBER_CLAIM
+        self.bundle.index_title = (
+            'Index to the trial bundle prepared on behalf of the claimant for use '
+            'at the final hearing of this matter listed before the court'
+        )
+        self.bundle.hearing_line = (
+            'for the adjourned final hearing listed on 15 June 2026 at 10:00 am '
+            'with a time estimate of three days before the designated civil judge'
+        )
+        self.bundle.court_parties = [
+            {
+                'side': 'claimant',
+                'name': 'The Right Honourable Alexander Maximilian '
+                        'Fitzgerald-Wellington of Northumberland Holdings Limited',
+                'role': 'Claimant 1',
+            },
+            {'side': 'defendant', 'name': 'Party B', 'role': 'Defendant 1'},
+        ]
+        self.bundle.save()
+
+        section = BundleSection.objects.create(bundle=self.bundle, heading='Pleadings', order=1)
+        document = BundleDocument.objects.create(
+            section=section,
+            file=make_pdf('claim.pdf', 'Claim'),
+            description='Particulars of claim',
+            order=1,
+        )
+
+        pdf_content = bundle_pdf_bytes(_generate_bundle_pdf(self.bundle))
+        reader = PdfReader(BytesIO(pdf_content))
+        index_text = reader.pages[0].extract_text()
+
+        self.assertIn('COUNTY COURT AT SOUTHEND', index_text)
+        self.assertIn('FITZGERALD-WELLINGTON', index_text)
+        self.assertIn('DESIGNATED CIVIL JUDGE', index_text)
+        self.assertNotIn('...', index_text)
+        document.refresh_from_db()
+        self.assertEqual(document.page_end, len(reader.pages))
+
+    def test_bundle_download_plain_merges_without_index_or_page_numbers(self):
+        section = BundleSection.objects.create(bundle=self.bundle, heading='Section', order=1)
+        first = BundleDocument.objects.create(
+            section=section,
+            file=make_pdf('one.pdf', 'Plain doc one'),
+            description='Doc one',
+            order=1,
+        )
+        BundleDocument.objects.create(
+            section=section,
+            file=make_pdf_with_blank_page('two.pdf'),
+            description='Doc two',
+            order=2,
+            page_order=[3, 1],
+        )
+
+        response = self.client.get(
+            reverse('bundle_download_plain', args=[self.bundle.id]))
+
+        self.assertEqual(response.status_code, 200)
+        content = b''.join(response.streaming_content)
+        reader = PdfReader(BytesIO(content))
+        self.assertEqual(len(reader.pages), 3)
+        first_text = reader.pages[0].extract_text() or ''
+        self.assertIn('Plain doc one', first_text)
+        self.assertNotIn('Index', first_text)
+        self.assertNotIn('1', first_text)
+        self.assertIn('Third page', reader.pages[1].extract_text())
+        self.assertIn('First page', reader.pages[2].extract_text())
+        first.refresh_from_db()
+        self.assertIsNone(first.page_start)
+
+    def test_document_upload_combine_creates_single_merged_document(self):
+        section = BundleSection.objects.create(bundle=self.bundle, heading='Section', order=1)
+
+        response = self.client.post(
+            reverse('bundle_document_upload', args=[section.id]),
+            {
+                'files[]': [
+                    make_pdf('first-part.pdf', 'First part'),
+                    make_pdf_with_blank_page('second-part.pdf'),
+                ],
+                'descriptions[]': ['Combined exhibit'],
+                'dates[]': ['2024-06-01'],
+                'combine': '1',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data['documents']), 1)
+        documents = list(section.documents.all())
+        self.assertEqual(len(documents), 1)
+        document = documents[0]
+        self.assertEqual(document.description, 'Combined exhibit')
+        self.assertEqual(str(document.date), '2024-06-01')
+        with document.file.open('rb') as merged_file:
+            reader = PdfReader(merged_file)
+            self.assertEqual(len(reader.pages), 4)
+            self.assertIn('First part', reader.pages[0].extract_text())
+            self.assertIn('Third page', reader.pages[3].extract_text())
+
+    def test_document_upload_combine_with_single_file_uploads_normally(self):
+        section = BundleSection.objects.create(bundle=self.bundle, heading='Section', order=1)
+
+        response = self.client.post(
+            reverse('bundle_document_upload', args=[section.id]),
+            {
+                'files[]': [make_pdf('only.pdf', 'Only file')],
+                'descriptions[]': ['Only document'],
+                'dates[]': [''],
+                'combine': '1',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(section.documents.count(), 1)
+        self.assertEqual(section.documents.first().description, 'Only document')
+
 
 class FinanceActivityLedgerDeltaTests(TestCase):
     def test_invoice_affects_office_only(self):
