@@ -771,7 +771,92 @@ class RiskAssessment(models.Model):
     due_diligence_signed_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, null=True)
 
+    # Sign-off workflow: staff complete the assessment, a fee earner reviews
+    # the flagged answers and signs it off (or returns it with comments).
+    SIGNOFF_AWAITING = 'awaiting'
+    SIGNOFF_RETURNED = 'returned'
+    SIGNOFF_SIGNED = 'signed'
+    SIGNOFF_STATUS_CHOICES = [
+        (SIGNOFF_AWAITING, 'Awaiting sign-off'),
+        (SIGNOFF_RETURNED, 'Returned for changes'),
+        (SIGNOFF_SIGNED, 'Signed off'),
+    ]
+    signoff_status = models.CharField(
+        max_length=10, choices=SIGNOFF_STATUS_CHOICES, default=SIGNOFF_AWAITING)
+    completed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='risk_assessments_completed')
+    completed_at = models.DateTimeField(null=True, blank=True)
+    signed_off_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='risk_assessments_signed_off')
+    signed_off_at = models.DateTimeField(null=True, blank=True)
+    signoff_comments = models.TextField(blank=True, default='')
+
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    # (field, answer that raises a flag, label shown to the reviewing fee earner)
+    RISK_FLAG_RULES = [
+        ('unusual_client', 'Yes', 'Unusual client for this type of work'),
+        ('client_concerns', 'Yes', 'Concerns about the client'),
+        ('third_party_authority', 'No', 'No evidence of third-party authority to act'),
+        ('concerns_about_parties', 'Yes', 'Concerns about client, agent or third parties'),
+        ('designated_person_entity', 'Yes', 'Client is a designated person/entity'),
+        ('location_of_instruction_concerns', 'Yes', "Concerns about the client's location"),
+        ('make_sense_location_of_instructions', 'No', 'Instruction location does not make sense'),
+        ('overseas_elements', 'Yes', 'Overseas elements involved'),
+        ('meeting_in_person', 'No', 'Client will not be met in person'),
+        ('adverse_media', 'Yes', 'Adverse media about client or beneficial owners'),
+        ('reportable_discrepancies', 'Yes', 'Reportable discrepancies identified'),
+        ('usual_work', 'No', 'Not our usual type of work'),
+        ('complex_structure', 'Yes', 'Matter involves a complex structure'),
+        ('cash_intensive_industry', 'Yes', 'Cash-intensive industry'),
+        ('high_risk_industry', 'Yes', 'High-risk industry'),
+        ('proliferation_financing', 'Yes', 'Proliferation financing risk'),
+        ('other_risks', 'Yes', 'Other AML/CTF risks'),
+        ('receiving_funds_from_overseas', 'Yes', 'Receiving funds from overseas'),
+        ('receiving_funds_from_third_parties', 'Yes', 'Receiving funds from third parties'),
+        ('consistent_with_client_profile', 'No', "Transaction inconsistent with client's profile"),
+        ('makes_sense_for_client', 'No', 'Instruction does not make sense for this client'),
+        ('is_pep_questionnaire_completed', 'No', 'PEP questionnaire not completed'),
+        ('is_source_of_funds_questionnaire_completed', 'No',
+         'Source of funds questionnaire not completed'),
+        ('complex_structure_or_unusual', 'Yes', 'EDD: complex or unusual structure'),
+        ('higher_risk_sector', 'Yes', 'EDD: higher-risk sector'),
+        ('cash_intensive_business_activity', 'Yes', 'EDD: cash-intensive business activity'),
+        ('high_risk_third_country_or_jurisdiction', 'Yes', 'EDD: high-risk third country/jurisdiction'),
+        ('politically_exposed_person', 'Yes', 'EDD: PEP, family member or close associate'),
+        ('financial_sanctions', 'Yes', 'EDD: financial sanctions concerns'),
+        ('country_subject_to_sanctions', 'Yes', 'EDD: country subject to sanctions'),
+        ('unusual_complex_transaction', 'Yes', 'EDD: unusually complex or large transaction'),
+        ('unusual_pattern_of_transactions', 'Yes', 'EDD: unusual pattern of transactions'),
+        ('lack_of_economic_or_legal_purpose', 'Yes', 'EDD: no apparent economic or legal purpose'),
+        ('other_high_risk_factors', 'Yes', 'EDD: other high-risk factors'),
+    ]
+
+    def flagged_answers(self):
+        """Labels of every answer the reviewing fee earner should look at."""
+        return [
+            label
+            for field, risky_value, label in self.RISK_FLAG_RULES
+            if getattr(self, field) == risky_value
+        ]
+
+    @property
+    def has_high_risk_outcome(self):
+        """Outcomes that require EDD / senior-management attention under the MLRs."""
+        return (
+            self.client_risk_level == 'High'
+            or self.matter_risk_level == 'High'
+            or self.customer_due_diligence_level == 'Enhanced'
+            or self.politically_exposed_person == 'Yes'
+            or self.financial_sanctions == 'Yes'
+            or self.country_subject_to_sanctions == 'Yes'
+        )
+
+    @property
+    def is_signed_off(self):
+        return self.signoff_status == self.SIGNOFF_SIGNED
 
 
 class OngoingMonitoring(models.Model):
