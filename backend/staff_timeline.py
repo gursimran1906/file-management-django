@@ -587,6 +587,67 @@ def summarise(events):
     return _label_totals(totals)
 
 
+SPLIT_COLOURS = {
+    'chargeable': '#16a34a',      # green-600
+    'non_chargeable': '#f87171',  # red-400
+    'unaccounted': '#dc2626',     # red-600
+}
+DONUT_CIRCUMFERENCE = 100  # r = 15.9155 in a 36x36 viewBox, so dash lengths are percentages
+
+
+def _add_time_split(totals):
+    """How the target splits into chargeable / non-chargeable / unaccounted.
+
+    Shares are of the target (or of the recorded time when more than the
+    target was recorded, so nothing is ever "unaccounted" then). Also emits
+    the stroke-dasharray/offset values for the inline SVG donut.
+    """
+    recorded = totals['recorded_minutes']
+    target = totals['target_minutes']
+    unaccounted = max(0, target - recorded)
+    denominator = max(target, recorded)
+    totals['unaccounted_minutes'] = unaccounted
+    totals['unaccounted_label'] = format_minutes(unaccounted)
+
+    def share(minutes):
+        return round(minutes / denominator * 100, 1) if denominator else 0.0
+
+    chargeable_share = share(totals['chargeable_minutes'])
+    non_chargeable_share = share(totals['non_chargeable_minutes'])
+    unaccounted_share = share(unaccounted)
+    chargeable_display = round(chargeable_share)
+    non_chargeable_display = round(non_chargeable_share)
+    unaccounted_display = max(0, 100 - chargeable_display - non_chargeable_display) if denominator else 0
+    totals['chargeable_share_pct'] = chargeable_display
+    totals['non_chargeable_share_pct'] = non_chargeable_display
+    totals['unaccounted_share_pct'] = unaccounted_display
+
+    segments = [
+        ('chargeable', 'Chargeable', totals['chargeable_minutes'], chargeable_share, chargeable_display),
+        ('non_chargeable', 'Non-chargeable', totals['non_chargeable_minutes'], non_chargeable_share, non_chargeable_display),
+        ('unaccounted', 'Unaccounted', unaccounted, unaccounted_share, unaccounted_display),
+    ]
+    donut, start = [], 0.0
+    for key, label, minutes, pct, display in segments:
+        donut.append({
+            'key': key,
+            'label': label,
+            'minutes': minutes,
+            'minutes_label': format_minutes(minutes),
+            'pct': pct,
+            'pct_display': display,
+            'dash': pct,
+            'gap': round(DONUT_CIRCUMFERENCE - pct, 1),
+            # 25 puts the first segment's start at 12 o'clock; later segments
+            # start where the previous one ended (offset by a full turn so it
+            # never goes negative).
+            'offset': round(DONUT_CIRCUMFERENCE + 25 - start, 1),
+            'color': SPLIT_COLOURS[key],
+        })
+        start += pct
+    totals['donut'] = donut
+
+
 def range_totals(day_totals, working_days, hourly_rate=None):
     totals = _empty_totals()
     for day in day_totals:
@@ -607,8 +668,11 @@ def range_totals(day_totals, working_days, hourly_rate=None):
     if totals['recorded_minutes']:
         totals['chargeable_pct'] = round(
             totals['chargeable_minutes'] / totals['recorded_minutes'] * 100)
+        totals['non_chargeable_pct'] = 100 - totals['chargeable_pct']
     else:
         totals['chargeable_pct'] = 0
+        totals['non_chargeable_pct'] = 0
+    _add_time_split(totals)
     hourly_amount = getattr(hourly_rate, 'hourly_amount', None)
     if hourly_amount is not None:
         value = (Decimal(totals['units_chargeable']) * Decimal(hourly_amount) / Decimal(10))

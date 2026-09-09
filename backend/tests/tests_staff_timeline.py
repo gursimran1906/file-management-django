@@ -390,6 +390,40 @@ class AggregationTests(TestCase):
         _, data = events_of(self.user)
         self.assertIsNone(data['totals']['value'])
 
+    def test_time_split_against_target(self):
+        HolidayRecord.objects.create(employee=self.user, start_date=aware(MON, '00:00'),
+                                     end_date=aware(MON, '23:59'), approved=True)
+        make_note(self.user, self.matter, WED, '09:00', '09:30', unit=5)
+        make_note(self.user, self.matter, WED, '10:00', '10:30', unit=5, charged=False)
+        _, data = events_of(self.user)
+        totals = data['totals']
+        self.assertEqual(totals['target_minutes'], 1800)
+        self.assertEqual(totals['unaccounted_minutes'], 1740)
+        self.assertEqual(totals['non_chargeable_pct'], 50)
+        self.assertEqual((totals['chargeable_share_pct'], totals['non_chargeable_share_pct'],
+                          totals['unaccounted_share_pct']), (2, 2, 96))
+        donut = {seg['key']: seg for seg in totals['donut']}
+        self.assertEqual(donut['chargeable']['color'], '#16a34a')
+        self.assertEqual(donut['unaccounted']['minutes_label'], '29:00')
+        self.assertEqual(donut['chargeable']['offset'], 125.0)
+        self.assertAlmostEqual(donut['non_chargeable']['offset'], 125 - donut['chargeable']['pct'], places=1)
+
+    def test_time_split_when_over_target_has_nothing_unaccounted(self):
+        make_note(self.user, self.matter, WED, '08:00', '17:00', unit=80)
+        _, data = events_of(self.user, view='day')
+        totals = data['totals']
+        self.assertEqual(totals['target_minutes'], 450)
+        self.assertEqual(totals['unaccounted_minutes'], 0)
+        self.assertEqual((totals['chargeable_share_pct'], totals['unaccounted_share_pct']), (100, 0))
+        self.assertEqual(totals['progress_pct'], 100)
+
+    def test_time_split_on_a_non_working_day(self):
+        _, data = events_of(self.user, view='day', anchor=SAT)
+        totals = data['totals']
+        self.assertEqual(totals['target_minutes'], 0)
+        self.assertEqual(totals['unaccounted_share_pct'], 0)
+        self.assertTrue(all(seg['pct'] == 0 for seg in totals['donut']))
+
     def test_month_view_sums_only_days_in_month(self):
         make_note(self.user, self.matter, date(2026, 8, 31), '09:00', '09:30', unit=5)
         make_note(self.user, self.matter, WED, '09:00', '09:30', unit=5)
@@ -507,6 +541,10 @@ class HostPageTests(TestCase):
         self.assertContains(response, '7 – 11 Sep 2026')
         self.assertContains(response, '0:30')
         self.assertContains(response, 'tl-ev-note')
+        self.assertContains(response, 'data-tl-split')
+        self.assertContains(response, 'Unaccounted')
+        self.assertContains(response, '% non-chargeable')
+        self.assertContains(response, 'stroke="#16a34a"')
 
     def test_day_view_shows_detail_and_nc_badge(self):
         make_note(self.staff, self.matter, WED, '11:00', '11:30', charged=False, subject='Admin catch-up')
