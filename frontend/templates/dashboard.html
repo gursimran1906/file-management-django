@@ -1,4 +1,4 @@
-{% extends 'base.html' %} {% block title %}Dashboard{% endblock %}
+{% extends 'base.html' %} {% load static %} {% block title %}Dashboard{% endblock %}
 {% block container %} {% load utils humanize %} {% csrf_token %}
 
 <div class="space-y-5">
@@ -218,6 +218,17 @@
     </div>
   </div>
 </div>
+
+  <!-- My time (staff timeline) -->
+  <div class="div-container" data-tl-root data-tl-host="{% url 'user_dashboard' %}" data-tl-panel-url="{% url 'staff_timeline_panel' %}" data-tl-user="{{ tl_subject.id }}">
+    <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between mb-3 pb-3 border-b border-gray-100">
+      <div>
+        <h3 class="text-base font-semibold text-gray-900">My time</h3>
+        <p class="text-xs text-gray-500 mt-0.5">Time recorded on your files: attendance notes, emails, letters, meetings and completed tasks</p>
+      </div>
+    </div>
+    {% include 'partials/_staff_timeline_panel.html' %}
+  </div>
 
   <!-- Recent files & emails -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1561,5 +1572,6 @@
         }
     });
   </script>
+  <script src="{% static 'js/staff-timeline.js' %}"></script>
 </div>
 {% endblock %}
