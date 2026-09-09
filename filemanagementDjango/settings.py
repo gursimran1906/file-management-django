@@ -245,6 +245,12 @@ SHAREPOINT_DRIVE_IDS = os.getenv(
     '{"Undertakings":"","StaffDocuments":"","BundleSources":"","BundleFinal":""}',
 )
 BUNDLE_SHARE_LINK_EXPIRY_DAYS = int(os.getenv('BUNDLE_SHARE_LINK_EXPIRY_DAYS', '30'))
+
+# Pseudo fee earners used to group files (e.g. "DC" for Debt Collection) map
+# to the person responsible for those files for sign-off, dashboards and
+# reporting. JSON object of staff codes; a file's own fee_earner never changes.
+RESPONSIBLE_FEE_EARNER_ALIASES = os.getenv(
+    'RESPONSIBLE_FEE_EARNER_ALIASES', '{"DC": "ND"}')
 BUNDLE_SHARE_LINK_USE_PASSWORD = os.getenv(
     'BUNDLE_SHARE_LINK_USE_PASSWORD', 'true'
 ).lower() in ('true', '1', 'yes')

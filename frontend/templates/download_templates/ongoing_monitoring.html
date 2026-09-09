@@ -55,8 +55,16 @@
             <td>{{ obj.date_due_diligence_conducted|date:'d/m/Y' }}</td>
         </tr>
         <tr>
+            <td><strong>Completed by</strong></td>
+            <td>{% if obj.completed_by %}{{ obj.completed_by.first_name }} {{ obj.completed_by.last_name }}{% if obj.completed_at %} on {{ obj.completed_at|date:'d/m/Y' }}{% endif %}{% elif obj.created_by %}{{ obj.created_by.first_name }} {{ obj.created_by.last_name }}{% endif %}</td>
+        </tr>
+        <tr>
+            <td><strong>Sign-off status</strong></td>
+            <td>{{ obj.get_signoff_status_display }}</td>
+        </tr>
+        <tr>
             <td><strong>Signed by</strong></td>
-            <td>{{ obj.signed_by }}</td>
+            <td>{% if obj.signed_off_by %}{{ obj.signed_off_by.first_name }} {{ obj.signed_off_by.last_name }}{% if obj.signed_off_at %} on {{ obj.signed_off_at|date:'d/m/Y' }}{% endif %}{% else %}{{ obj.signed_by|default:'Not yet signed off' }}{% endif %}</td>
         </tr>
     </table>
             

@@ -354,11 +354,30 @@
             <a class="link font-medium" href="{% url 'home' ra.matter.file_number %}">{{ ra.matter.file_number }}</a>
             {% if ra.signoff_status == 'returned' %}
             <span class="badge-red">Returned &mdash; with completer</span>
-            {% elif ra.matter.fee_earner_id == request.user.id %}
+            {% elif ra.yours_to_sign_off %}
             <span class="badge-yellow">Yours to sign off</span>
             {% endif %}
             <span>{% if ra.completed_by %}{{ ra.completed_by.first_name }} {{ ra.completed_by.last_name }}{% endif %} · {% if ra.completed_at %}{{ ra.completed_at|date:"d/m/Y" }}{% else %}{{ ra.timestamp|date:"d/m/Y" }}{% endif %}</span>
             <span>{{ ra.flagged_answers|length }} flag{{ ra.flagged_answers|length|pluralize }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if ongoing_monitorings_awaiting_signoff %}
+      <div class="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 shrink-0 max-h-96 overflow-y-auto">
+        <p class="text-sm font-semibold text-amber-900 mb-1">Ongoing monitoring awaiting sign-off ({{ ongoing_monitorings_awaiting_signoff|length }})</p>
+        <ul class="space-y-1">
+          {% for om in ongoing_monitorings_awaiting_signoff %}
+          <li class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-amber-900">
+            <a class="link font-medium" href="{% url 'home' om.file_number.file_number %}">{{ om.file_number.file_number }}</a>
+            {% if om.signoff_status == 'returned' %}
+            <span class="badge-red">Returned &mdash; with completer</span>
+            {% elif om.yours_to_sign_off %}
+            <span class="badge-yellow">Yours to sign off</span>
+            {% endif %}
+            <span>{% if om.completed_by %}{{ om.completed_by.first_name }} {{ om.completed_by.last_name }}{% endif %} · {% if om.completed_at %}{{ om.completed_at|date:"d/m/Y" }}{% else %}{{ om.timestamp|date:"d/m/Y" }}{% endif %}</span>
+            <span>{% with n=om.flagged_answers|length %}{% if n %}{{ n }} to check{% else %}nothing flagged{% endif %}{% endwith %}</span>
           </li>
           {% endfor %}
         </ul>
