@@ -556,10 +556,23 @@ class RiskAssessmentForm(forms.ModelForm):
                 field.widget.attrs['rows'] = 4
 
 class OngoingMonitoringForm(forms.ModelForm):
-    
+
     class Meta:
         model = OngoingMonitoring
-        fields = '__all__'
+        # The matter and author are set by the view; the sign-off fields by
+        # the workflow (a fee earner signs off from the matter page), so none
+        # of them are picked on the form itself.
+        exclude = [
+            'file_number',
+            'created_by',
+            'signed_by',
+            'signoff_status',
+            'completed_by',
+            'completed_at',
+            'signed_off_by',
+            'signed_off_at',
+            'signoff_comments',
+        ]
         today_date = timezone.localdate()
         widgets = {
             'date_due_diligence_conducted': forms.DateInput(attrs={'type': 'date'})

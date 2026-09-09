@@ -92,7 +92,7 @@ def granola_assign_note(request, note_id):
     person_id = request.POST.get('person_attended')
     if person_id:
         person = CustomUser.objects.filter(id=person_id).first()
-    person = person or imported.matched_fee_earner or matter.fee_earner
+    person = person or imported.matched_fee_earner or matter.responsible_fee_earner
     is_charged = request.POST.get('is_charged') == 'on'
 
     note = create_attendance_note_from_imported(

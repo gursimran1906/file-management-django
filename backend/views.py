@@ -37,6 +37,7 @@ from .audit import (
 )
 from .finance_display import build_invoice_finance_detail, compute_invoice_balance_due
 from .audit_display import build_change_items, enrich_file_logs
+from .fee_earners import responsible_user_ids, responsible_user_ids_for_id, responsible_username
 from .staff_timeline import build_timeline, parse_timeline_params
 from django.utils import timezone
 from users.models import CPDTrainingLog, CustomUser, HolidayRecord, SicknessRecord
@@ -534,7 +535,7 @@ def get_user_dashboard_wip_ids(user):
         touch(row['file_number'], row['latest'])
 
     fee_earner_ids = WIP.objects.filter(
-        fee_earner=user,
+        fee_earner_id__in=responsible_user_ids(user),
         file_status__status__in=['Open', 'To Be Closed'],
     ).values_list('id', flat=True)
 
@@ -568,7 +569,7 @@ def build_dashboard_files(user, display_limit=40):
     all_wip_ids = {wip.id for wip in all_wips}
     fee_earner_wip_ids = set(
         WIP.objects.filter(
-            fee_earner=user,
+            fee_earner_id__in=responsible_user_ids(user),
             file_status__status__in=['Open', 'To Be Closed'],
         ).values_list('id', flat=True)
     )
@@ -915,7 +916,7 @@ def get_index_search_filter(search_by, val_to_search, show_archived):
             additional_clients__name__icontains=val_to_search
         )
     elif search_by == 'FeeEarner':
-        if val_to_search == "DC":
+        if val_to_search.strip().lower() in ('unassigned', 'none', 'no fee earner'):
             filter_factor &= Q(fee_earner=None)
         else:
             filter_factor &= Q(fee_earner__username__icontains=val_to_search)
@@ -1184,9 +1185,28 @@ def user_dashboard(request):
             ).select_related('matter', 'matter__fee_earner', 'completed_by')
             .order_by('-timestamp')
         )
-        # The matter's own fee earner sees theirs first; others can cover.
+        # The matter's responsible fee earner sees theirs first; others can cover.
+        for ra in risk_assessments_awaiting_signoff:
+            ra.yours_to_sign_off = _signoff_owner_id(ra.matter) == user.id
         risk_assessments_awaiting_signoff.sort(
-            key=lambda ra: 0 if ra.matter.fee_earner_id == user.id else 1)
+            key=lambda ra: 0 if ra.yours_to_sign_off else 1)
+
+    ongoing_monitorings_awaiting_signoff = []
+    if user.is_matter_fee_earner:
+        ongoing_monitorings_awaiting_signoff = list(
+            OngoingMonitoring.objects.filter(
+                signoff_status__in=[
+                    OngoingMonitoring.SIGNOFF_AWAITING,
+                    OngoingMonitoring.SIGNOFF_RETURNED,
+                ],
+                file_number__isnull=False,
+            ).select_related('file_number', 'file_number__fee_earner', 'completed_by')
+            .order_by('-timestamp')
+        )
+        for om in ongoing_monitorings_awaiting_signoff:
+            om.yours_to_sign_off = _signoff_owner_id(om.file_number) == user.id
+        ongoing_monitorings_awaiting_signoff.sort(
+            key=lambda om: 0 if om.yours_to_sign_off else 1)
 
     context = {
         'now': now,
@@ -1208,6 +1228,7 @@ def user_dashboard(request):
         'file_reviews_due_files': file_reviews_due,
         'pending_credit_notes': pending_credit_notes,
         'risk_assessments_awaiting_signoff': risk_assessments_awaiting_signoff,
+        'ongoing_monitorings_awaiting_signoff': ongoing_monitorings_awaiting_signoff,
     }
     # "My time" card: always the logged-in user, whatever tl_user says.
     context.update(_timeline_context(request, user, reverse('user_dashboard')))
@@ -1804,7 +1825,7 @@ def display_data_home_page(request, file_number):
         last_work_form = LastWorkFormWithoutFileNumber()
         ongoing_monitorings = OngoingMonitoring.objects.filter(
             file_number=matter.id).select_related(
-            'signed_by', 'created_by').order_by('-timestamp')
+            'signed_by', 'created_by', 'completed_by', 'signed_off_by').order_by('-timestamp')
         risk_assessment = RiskAssessment.objects.filter(
             matter=matter
         ).select_related('due_diligence_signed_by').order_by('-due_diligence_date')
@@ -2130,7 +2151,8 @@ def _build_central_key_dates_context(request):
     ).prefetch_related('additional_clients')
 
     if selected_fee_earner:
-        base_matters = base_matters.filter(fee_earner_id=selected_fee_earner)
+        base_matters = base_matters.filter(
+            fee_earner_id__in=responsible_user_ids_for_id(selected_fee_earner))
     if selected_matter_type:
         base_matters = base_matters.filter(matter_type_id=selected_matter_type)
     if selected_file_status and selected_file_status != 'all':
@@ -2498,7 +2520,7 @@ def _key_date_event_row(event):
         file_number = matter.file_number
         matter_description = matter.matter_description or ''
         client = ' / '.join(c.name for c in matter.all_clients)
-        fee_earner = str(matter.fee_earner or '')
+        fee_earner = str(matter.responsible_fee_earner or '')
 
     return [
         event['date'].isoformat(),
@@ -3226,7 +3248,7 @@ def update_checkbox_values(data, *fields):
 def get_aml_checks_due_from_wips(wips, threshold_date, user=None, sort_by='date'):
     base_filter = Q(file_status__status='Open')
     if user is not None:
-        base_filter &= Q(fee_earner=user)
+        base_filter &= Q(fee_earner_id__in=responsible_user_ids(user))
 
     relation_configs = [
         ('client1', 'Client', 'edit_client'),
@@ -3269,7 +3291,7 @@ def get_aml_checks_due_from_wips(wips, threshold_date, user=None, sort_by='date'
             file_number = result['file_number']
             if file_number and file_number not in entry['file_numbers']:
                 entry['file_numbers'].append(file_number)
-            fee_earner = result['fee_earner__username']
+            fee_earner = responsible_username(result['fee_earner__username'])
             if fee_earner and fee_earner not in entry['fee_earners']:
                 entry['fee_earners'].append(fee_earner)
 
@@ -3420,13 +3442,52 @@ def _apply_risk_assessment_completion(risk_assessment, user):
     risk_assessment.signoff_status = RiskAssessment.SIGNOFF_AWAITING
     risk_assessment.signed_off_by = None
     risk_assessment.signed_off_at = None
-    fee_earner = risk_assessment.matter.fee_earner if risk_assessment.matter else None
+    fee_earner = risk_assessment.matter.responsible_fee_earner if risk_assessment.matter else None
     if fee_earner:
         return (
             'Risk Assessment saved and sent to '
             f'{fee_earner.first_name} {fee_earner.last_name} for sign-off.'
         )
     return 'Risk Assessment saved and awaiting fee earner sign-off.'
+
+
+def _signoff_owner_id(matter):
+    """Id of the person expected to sign off work on `matter` (DC files -> ND)."""
+    return matter.responsible_fee_earner_id if matter else None
+
+
+def _apply_ongoing_monitoring_signoff(monitoring, user):
+    """Mark an ongoing monitoring record as signed off by `user` (a fee earner)."""
+    monitoring.signoff_status = OngoingMonitoring.SIGNOFF_SIGNED
+    monitoring.signed_off_by = user
+    monitoring.signed_off_at = timezone.now()
+    # Keep the legacy signer field in step so existing displays and the
+    # download template keep working for old and new records alike.
+    monitoring.signed_by = user
+    monitoring.signoff_comments = ''
+
+
+def _apply_ongoing_monitoring_completion(monitoring, user):
+    """Record who completed the form; auto-sign when a fee earner did.
+
+    Returns the flash message to show. Fee earners recording monitoring see a
+    one-step flow; anyone else sends it to the matter's fee earner for sign-off.
+    """
+    monitoring.completed_by = user
+    monitoring.completed_at = timezone.now()
+    if user.is_matter_fee_earner:
+        _apply_ongoing_monitoring_signoff(monitoring, user)
+        return 'Ongoing monitoring saved and signed off.'
+    monitoring.signoff_status = OngoingMonitoring.SIGNOFF_AWAITING
+    monitoring.signed_off_by = None
+    monitoring.signed_off_at = None
+    fee_earner = monitoring.file_number.responsible_fee_earner if monitoring.file_number else None
+    if fee_earner:
+        return (
+            'Ongoing monitoring saved and sent to '
+            f'{fee_earner.first_name} {fee_earner.last_name} for sign-off.'
+        )
+    return 'Ongoing monitoring saved and awaiting fee earner sign-off.'
 
 
 @login_required
@@ -4582,6 +4643,15 @@ def edit_letter(request, id):
     return render(request, 'edit_models.html', {'form': form, 'title': 'Letter', 'file_number': letter_instance.file_number.file_number})
 
 
+
+def _matter_rate_amount(matter):
+    """Hourly rate to charge work with no recorded person: the file's
+    responsible fee earner's rate (DC files -> ND), or 0 when none is set."""
+    fee_earner = matter.responsible_fee_earner if matter else None
+    rate = getattr(fee_earner, 'hourly_rate', None)
+    return rate.hourly_amount if rate is not None else Decimal('0')
+
+
 @login_required
 def download_sowc(request, file_number):
     file = WIP.objects.filter(file_number=file_number).first()
@@ -4605,7 +4675,7 @@ def download_sowc(request, file_number):
             '%I:%M %p')} to {note.finish_time.strftime('%I:%M %p')}"
         units = note.unit
         amount = ((note.person_attended.hourly_rate.hourly_amount/10) * units) if note.person_attended != None else (
-            (note.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
+            (_matter_rate_amount(note.file_number)/10) * units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
 
@@ -4621,7 +4691,7 @@ def download_sowc(request, file_number):
         desc = to_or_from + f" @ {time}"
         units = email.units
         amount = ((email.fee_earner.hourly_rate.hourly_amount/10) * units) if email.fee_earner != None else (
-            (email.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
+            (_matter_rate_amount(email.file_number)/10) * units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
 
@@ -4633,7 +4703,7 @@ def download_sowc(request, file_number):
         desc = f'{to_or_from} - {letter.subject_line}'
         units = 1
         amount = ((letter.person_attended.hourly_rate.hourly_amount/10) * units) if letter.person_attended != None else (
-            (letter.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
+            (_matter_rate_amount(letter.file_number)/10) * units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
 
@@ -4668,7 +4738,7 @@ def download_sowc(request, file_number):
         user = CustomUser.objects.filter(username=fee_earner).first()
         if user != None:
             writer.writerow(
-                ['', '', f'({user.first_name} {user.last_name}) {user.username} rate GBP{user.hourly_rate.hourly_amount} + VAT per hour, 6 minutes = 1 unit '])
+                ['', '', f'({user.first_name} {user.last_name}) {user.username} rate GBP{user.hourly_rate.hourly_amount if user.hourly_rate else "n/a"} + VAT per hour, 6 minutes = 1 unit '])
     writer.writerow([])
     writer.writerow(['Date', 'Fee Earner', 'Description', 'Unit(s)', 'Amount'])
     for row in sorted_rows:
@@ -7185,7 +7255,7 @@ def allocate_emails(request):
 
             email.file_number = file
             j += 1
-            email.fee_earner = file.fee_earner if file.fee_earner is not None else None
+            email.fee_earner = file.responsible_fee_earner
             email.save()
 
         i += 1
@@ -8356,21 +8426,22 @@ def add_ongoing_monitoring(request, file_number):
             request, 'Matter with the given file number does not exist.')
         return redirect('index')
     if request.method == 'POST':
-        post_data = request.POST.copy()
-        post_data['created_by'] = request.user
-        post_data['file_number'] = matter.id
-        form = OngoingMonitoringForm(post_data)
+        form = OngoingMonitoringForm(request.POST)
 
         if form.is_valid():
-            ongoing_monitoring = form.save()
+            ongoing_monitoring = form.save(commit=False)
+            ongoing_monitoring.file_number = matter
+            ongoing_monitoring.created_by = request.user
+            message = _apply_ongoing_monitoring_completion(
+                ongoing_monitoring, request.user)
+            ongoing_monitoring.save()
             log_created(
                 request.user,
                 ongoing_monitoring,
-                f'Ongoing monitoring for {ongoing_monitoring.file_number.file_number}',
+                f'Ongoing monitoring for {matter.file_number}',
             )
-            messages.success(
-                request, 'Ongoing Monitoring successfully recorded.')
-            return redirect('home', ongoing_monitoring.file_number.file_number)
+            messages.success(request, message)
+            return redirect('home', matter.file_number)
         else:
             error_message = 'Form is not valid. Please correct the errors:'
             for field, errors in form.errors.items():
@@ -8378,7 +8449,8 @@ def add_ongoing_monitoring(request, file_number):
             messages.error(request, error_message)
     else:
         form = OngoingMonitoringForm()
-        return render(request, 'ongoing_monitoring.html', {'form': form, 'file_number': file_number, 'title': 'Add'})
+
+    return render(request, 'ongoing_monitoring.html', {'form': form, 'file_number': file_number, 'title': 'Add'})
 
 
 @login_required
@@ -8787,10 +8859,7 @@ def edit_ongoing_monitoring(request, id):
         return redirect('index')
     if request.method == 'POST':
         duplicate_obj = copy.deepcopy(ongoing_monitoring)
-        post_copy = request.POST.copy()
-        post_copy['file_number'] = ongoing_monitoring.file_number.id
-        post_copy['created_by'] = ongoing_monitoring.created_by
-        form = OngoingMonitoringForm(post_copy, instance=ongoing_monitoring)
+        form = OngoingMonitoringForm(request.POST, instance=ongoing_monitoring)
         if form.is_valid():
             changed_fields = form.changed_data
             changes = {}
@@ -8799,11 +8868,22 @@ def edit_ongoing_monitoring(request, id):
                     'old_value': str(getattr(duplicate_obj, field)),
                     'new_value': None
                 }
-            form.save()
+            ongoing_monitoring = form.save(commit=False)
+            # Any edit re-runs the sign-off flow: a fee earner's edit stays
+            # signed off (by them); anyone else's edit sends it back for
+            # sign-off so a signed record can't change silently.
+            message = _apply_ongoing_monitoring_completion(
+                ongoing_monitoring, request.user)
+            ongoing_monitoring.save()
 
             for field in changed_fields:
                 changes[field]['new_value'] = str(
                     getattr(ongoing_monitoring, field))
+            if duplicate_obj.signoff_status != ongoing_monitoring.signoff_status:
+                changes['signoff_status'] = {
+                    'old_value': duplicate_obj.get_signoff_status_display(),
+                    'new_value': ongoing_monitoring.get_signoff_status_display(),
+                }
 
             if changes:
                 create_modification(
@@ -8811,8 +8891,7 @@ def edit_ongoing_monitoring(request, id):
                     modified_obj=ongoing_monitoring,
                     changes=changes
                 )
-            messages.success(
-                request, 'Successfully updated Ongoing Monitoring.')
+            messages.success(request, message)
             return redirect('home', ongoing_monitoring.file_number.file_number)
         else:
             error_message = 'Form is not valid. Please correct the errors:'
@@ -8823,6 +8902,74 @@ def edit_ongoing_monitoring(request, id):
         form = OngoingMonitoringForm(instance=ongoing_monitoring)
 
     return render(request, 'ongoing_monitoring.html', {'form': form, 'file_number': ongoing_monitoring.file_number.file_number, 'title': 'Edit'})
+
+
+def _ongoing_monitoring_signoff_redirect(monitoring):
+    if monitoring.file_number:
+        return redirect('home', monitoring.file_number.file_number)
+    return redirect('index')
+
+
+@login_required
+@require_POST
+def sign_off_ongoing_monitoring(request, id):
+    """Fee earner signs off a completed ongoing monitoring record."""
+    monitoring = get_object_or_404(OngoingMonitoring, pk=id)
+    if not request.user.is_matter_fee_earner:
+        messages.error(
+            request, 'Only fee earners can sign off ongoing monitoring.')
+        return _ongoing_monitoring_signoff_redirect(monitoring)
+    if monitoring.is_signed_off:
+        messages.info(request, 'This ongoing monitoring is already signed off.')
+        return _ongoing_monitoring_signoff_redirect(monitoring)
+
+    old_status = monitoring.get_signoff_status_display()
+    _apply_ongoing_monitoring_signoff(monitoring, request.user)
+    monitoring.save()
+    create_modification(
+        user=request.user,
+        modified_obj=monitoring,
+        changes={'signoff_status': {
+            'old_value': old_status,
+            'new_value': monitoring.get_signoff_status_display(),
+        }},
+    )
+    messages.success(request, 'Ongoing monitoring signed off.')
+    return _ongoing_monitoring_signoff_redirect(monitoring)
+
+
+@login_required
+@require_POST
+def return_ongoing_monitoring(request, id):
+    """Fee earner sends an ongoing monitoring record back with comments."""
+    monitoring = get_object_or_404(OngoingMonitoring, pk=id)
+    if not request.user.is_matter_fee_earner:
+        messages.error(
+            request, 'Only fee earners can review ongoing monitoring.')
+        return _ongoing_monitoring_signoff_redirect(monitoring)
+
+    comments = request.POST.get('comments', '').strip()
+    if not comments:
+        messages.error(
+            request, 'Please say what needs changing before returning the monitoring.')
+        return _ongoing_monitoring_signoff_redirect(monitoring)
+
+    old_status = monitoring.get_signoff_status_display()
+    monitoring.signoff_status = OngoingMonitoring.SIGNOFF_RETURNED
+    monitoring.signed_off_by = None
+    monitoring.signed_off_at = None
+    monitoring.signoff_comments = comments
+    monitoring.save()
+    create_modification(
+        user=request.user,
+        modified_obj=monitoring,
+        changes={'signoff_status': {
+            'old_value': old_status,
+            'new_value': monitoring.get_signoff_status_display(),
+        }},
+    )
+    messages.success(request, 'Ongoing monitoring returned for changes.')
+    return _ongoing_monitoring_signoff_redirect(monitoring)
 
 
 @login_required
@@ -9562,14 +9709,15 @@ def report_file_reviews_due(request):
     source = []
     fee_earner_options = {}
     for wip in review_wips:
-        fe_name = wip.fee_earner.get_full_name() if wip.fee_earner else ''
-        if wip.fee_earner_id:
-            fee_earner_options[str(wip.fee_earner_id)] = fe_name or wip.fee_earner.username
+        fee_earner = wip.responsible_fee_earner
+        fe_name = fee_earner.get_full_name() if fee_earner else ''
+        if fee_earner:
+            fee_earner_options[str(fee_earner.id)] = fe_name or fee_earner.username
         source.append({
             'file_number': wip.file_number,
             'matter': wip.matter_description or '',
             'client': wip.client1.name if wip.client1 else '',
-            'fee_earner_id': str(wip.fee_earner_id) if wip.fee_earner_id else '',
+            'fee_earner_id': str(fee_earner.id) if fee_earner else '',
             'fee_earner': fe_name,
             'last_review': wip.latest_review_date,
             'never_reviewed': wip.latest_review_date is None,

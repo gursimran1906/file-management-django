@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from users.models import CustomUser
+from .fee_earners import responsible_fee_earner
 from django_quill.fields import QuillField
 from math import ceil
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -309,6 +310,20 @@ class WIP(models.Model):
     def all_client_names(self):
         """All client names joined for headers, filenames and statements."""
         return ' & '.join(client.name for client in self.all_clients)
+
+    @property
+    def responsible_fee_earner(self):
+        """The person responsible for this file for sign-off, dashboards and
+        reports. Normally the fee earner; for pseudo fee earners such as DC
+        (Debt Collection) it is whoever RESPONSIBLE_FEE_EARNER_ALIASES names.
+        Never use this to decide *which* files are DC files - that is
+        ``fee_earner``."""
+        return responsible_fee_earner(self.fee_earner)
+
+    @property
+    def responsible_fee_earner_id(self):
+        fee_earner = self.responsible_fee_earner
+        return fee_earner.id if fee_earner else None
 
     @property
     def all_client_emails(self):
@@ -887,7 +902,88 @@ class OngoingMonitoring(models.Model):
         CustomUser, on_delete=models.SET_NULL, null=True)
     created_by = models.ForeignKey(
         CustomUser, related_name='created_by', on_delete=models.SET_NULL, null=True)
+
+    # Sign-off workflow (mirrors RiskAssessment): staff record the monitoring,
+    # a fee earner reviews the flagged answers and signs it off or returns it.
+    SIGNOFF_AWAITING = 'awaiting'
+    SIGNOFF_RETURNED = 'returned'
+    SIGNOFF_SIGNED = 'signed'
+    SIGNOFF_STATUS_CHOICES = [
+        (SIGNOFF_AWAITING, 'Awaiting sign-off'),
+        (SIGNOFF_RETURNED, 'Returned for changes'),
+        (SIGNOFF_SIGNED, 'Signed off'),
+    ]
+    signoff_status = models.CharField(
+        max_length=10, choices=SIGNOFF_STATUS_CHOICES, default=SIGNOFF_AWAITING)
+    completed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ongoing_monitorings_completed')
+    completed_at = models.DateTimeField(null=True, blank=True)
+    signed_off_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ongoing_monitorings_signed_off')
+    signed_off_at = models.DateTimeField(null=True, blank=True)
+    signoff_comments = models.TextField(blank=True, default='')
+
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    # (field, answer that raises a flag, label shown to the reviewing fee earner)
+    MONITORING_FLAG_RULES = [
+        ('any_changes_discovered', 'Yes', 'Changes discovered since the risk assessment'),
+        ('updated_risk_level_client', 'Medium', 'Client risk now Medium'),
+        ('updated_risk_level_client', 'High', 'Client risk now High'),
+        ('updated_risk_level_matter', 'Medium', 'Matter risk now Medium'),
+        ('updated_risk_level_matter', 'High', 'Matter risk now High'),
+    ]
+
+    def flagged_answers(self):
+        """Labels of every answer the reviewing fee earner should look at."""
+        return [
+            label
+            for field, risky_value, label in self.MONITORING_FLAG_RULES
+            if getattr(self, field) == risky_value
+        ]
+
+    def _is_risky(self, field):
+        return any(
+            rule_field == field and getattr(self, field) == risky_value
+            for rule_field, risky_value, _label in self.MONITORING_FLAG_RULES
+        )
+
+    def review_answers(self):
+        """Every answer, in form order, for the reviewing fee earner.
+
+        All answers are reviewed; the risky ones are marked so they stand out.
+        """
+        changes_risky = self._is_risky('any_changes_discovered')
+        return [
+            {'label': 'How risks have been monitored since the risk assessment',
+             'value': self.how_was_monitioring_of_risks_coducted, 'risky': False},
+            {'label': 'Changes discovered since the risk assessment',
+             'value': self.get_any_changes_discovered_display(), 'risky': changes_risky},
+            {'label': 'Details of changes discovered',
+             'value': self.details_of_changes or '', 'risky': changes_risky},
+            {'label': 'Updated client risk level',
+             'value': self.updated_risk_level_client,
+             'risky': self._is_risky('updated_risk_level_client')},
+            {'label': 'Updated matter risk level',
+             'value': self.updated_risk_level_matter,
+             'risky': self._is_risky('updated_risk_level_matter')},
+            {'label': 'How the client and matter will be monitored',
+             'value': self.how_it_will_be_monitored, 'risky': False},
+        ]
+
+    @property
+    def has_high_risk_outcome(self):
+        """Either updated risk level is High: EDD / senior attention applies."""
+        return (
+            self.updated_risk_level_client == 'High'
+            or self.updated_risk_level_matter == 'High'
+        )
+
+    @property
+    def is_signed_off(self):
+        return self.signoff_status == self.SIGNOFF_SIGNED
 
 
 class MatterFileReview(models.Model):

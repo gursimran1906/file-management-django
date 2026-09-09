@@ -114,7 +114,7 @@
                 <td class="td">{{invoice.date|date:'d/m/Y'}}</td>
                 <td class="td">{{invoice.file_number.file_number}}</td>
                 <td class="td">{% if invoice.total_due_left <= 0 %}Yes{% else %}No (Due= £{{invoice.total_due_left}}){% endif %}</td>
-                <td class="td">{{invoice.file_number.fee_earner}}</td>
+                <td class="td">{{invoice.file_number.responsible_fee_earner}}</td>
                 <td class="td">£{{invoice.our_costs}}</td>
                 <td class="td">£{{invoice.vat}}</td>
                 <td class="td">£{{invoice.total_cost_and_vat}}</td>
