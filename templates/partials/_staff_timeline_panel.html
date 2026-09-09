@@ -32,7 +32,29 @@ static/js/staff-timeline.js can swap it in place. Everything inside
   </div>
 
   {% with t=tl.totals %}
-  <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 {% if tl_show_value %}lg:grid-cols-5{% endif %}">
+  <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 {% if tl_show_value %}lg:grid-cols-7{% else %}lg:grid-cols-6{% endif %}">
+    <div class="col-span-2 flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3 sm:col-span-3 lg:col-span-2" data-tl-split>
+      <svg viewBox="0 0 36 36" class="h-20 w-20 shrink-0" role="img" aria-label="Time split: {% for seg in t.donut %}{{ seg.label }} {{ seg.pct_display }}%{% if not forloop.last %}, {% endif %}{% endfor %}">
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#e5e7eb" stroke-width="4"></circle>
+        {% for seg in t.donut %}{% if seg.pct %}
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="{{ seg.color }}" stroke-width="4" stroke-dasharray="{{ seg.dash|unlocalize }} {{ seg.gap|unlocalize }}" stroke-dashoffset="{{ seg.offset|unlocalize }}"><title>{{ seg.label }}: {{ seg.minutes_label }} ({{ seg.pct_display }}%)</title></circle>
+        {% endif %}{% endfor %}
+        <text x="18" y="19.6" text-anchor="middle" font-size="6.5" font-weight="600" fill="#111827">{{ t.progress_pct }}%</text>
+      </svg>
+      <div class="min-w-0 flex-1">
+        <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Time split</p>
+        <ul class="mt-1 space-y-0.5 text-xs">
+          {% for seg in t.donut %}
+          <li class="flex items-center gap-1.5 tabular-nums">
+            <span class="inline-block h-2 w-2 shrink-0 rounded-full" style="background: {{ seg.color }}"></span>
+            <span class="truncate text-gray-700">{{ seg.label }}</span>
+            <span class="ml-auto text-gray-900">{{ seg.minutes_label }}</span>
+            <span class="w-9 text-right text-gray-500">{{ seg.pct_display }}%</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
     <div class="rounded-lg border border-gray-100 bg-gray-50 p-3">
       <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Recorded</p>
       <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900">{{ t.recorded_label }}</p>
@@ -41,12 +63,12 @@ static/js/staff-timeline.js can swap it in place. Everything inside
     <div class="rounded-lg border border-gray-100 bg-gray-50 p-3">
       <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Chargeable</p>
       <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900">{{ t.chargeable_label }}</p>
-      <p class="text-xs text-gray-500">{{ t.units_chargeable_label }}{% if t.recorded_minutes %} · {{ t.chargeable_pct }}%{% endif %}</p>
+      <p class="text-xs text-gray-500">{{ t.units_chargeable_label }}{% if t.recorded_minutes %} · {{ t.chargeable_pct }}% of recorded{% endif %}</p>
     </div>
     <div class="rounded-lg border border-gray-100 bg-gray-50 p-3">
       <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Non-chargeable</p>
       <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900">{{ t.non_chargeable_label }}</p>
-      <p class="text-xs text-gray-500">{{ t.units_non_chargeable_label }}</p>
+      <p class="text-xs text-gray-500">{{ t.units_non_chargeable_label }}{% if t.recorded_minutes %} · {{ t.non_chargeable_pct }}% of recorded{% endif %}</p>
     </div>
     <div class="rounded-lg border border-gray-100 bg-gray-50 p-3">
       <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Target</p>
@@ -54,7 +76,8 @@ static/js/staff-timeline.js can swap it in place. Everything inside
       <div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-valuenow="{{ t.progress_pct }}" aria-valuemin="0" aria-valuemax="100">
         <div class="h-1.5 rounded-full bg-blue-600" style="width: {{ t.progress_pct }}%"></div>
       </div>
-      <p class="mt-1 text-xs text-gray-500">7.5h × {{ t.working_days }} working day{{ t.working_days|pluralize }} · {{ t.progress_pct }}%</p>
+      <p class="mt-1 text-xs text-gray-500">7.5h × {{ t.working_days }} working day{{ t.working_days|pluralize }}</p>
+      <p class="text-xs tabular-nums text-gray-500">{{ t.progress_pct }}% recorded · <span class="text-red-600">{{ t.non_chargeable_share_pct }}% non-chargeable</span> · {{ t.unaccounted_share_pct }}% unaccounted</p>
     </div>
     {% if tl_show_value %}
     <div class="rounded-lg border border-gray-100 bg-gray-50 p-3" data-tl-value>
