@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% load humanize %}
 {% load utils %}
+{% load static %}
 {% block title %}Management Reports{% endblock %}
 {% block container_class %}container {% endblock %}
 {% block container %}
@@ -10,41 +11,23 @@
         <p class="text-sm text-gray-600 mt-1">Monitor key metrics and statuses</p>
     </div>
 
-    <!-- Work Per User Report -->
-    <div class="div-container">
-        <!-- User and Week Controls -->
-        <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between ">
-            <!-- User Dropdown -->
+    <!-- Staff timeline -->
+    <div class="div-container" data-tl-root data-tl-host="{% url 'management_reports' %}" data-tl-panel-url="{% url 'staff_timeline_panel' %}" data-tl-user="{{ tl_subject.id }}">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-3 pb-3 border-b border-gray-100">
             <div>
-                <select id="user-select" class="form-input">
-                    
+                <h2 class="text-base font-semibold text-gray-900">Staff timeline</h2>
+                <p class="text-xs text-gray-500 mt-0.5">What each person has recorded: attendance notes, emails, letters, meetings and completed tasks</p>
+            </div>
+            <div class="w-full sm:w-72">
+                <label for="user-select" class="form-label">Employee</label>
+                <select id="user-select" class="form-input" data-tl-user-select>
                 {% for user in users %}
-                <option value="{{user.id}}">{{user.username}}</option>
-
+                <option value="{{ user.id }}" {% if user.id == tl_subject.id %}selected{% endif %}>{{ user.username }} — {{ user.first_name }} {{ user.last_name }}</option>
                 {% endfor %}
                 </select>
             </div>
-            <h2 class="text-base font-semibold text-gray-900 pb-2 text-center">Weekly work per user</h2>
-            
-            <!-- Week Navigation -->
-            <div class="flex items-center gap-2 ">
-                <button id="prev-week" class="btn-secondary text-xs">
-                    &laquo;
-                </button>
-                <p id="current-week" class="text-sm font-medium text-gray-700">Nov 20 - Nov 26, 2024</p>
-                <button id="next-week" class="btn-secondary text-xs">
-                    &raquo;
-                </button>
-            </div>
         </div>
-    
-        <!-- Report Data -->
-        <div id="report-container" class="mt-6">
-            <!-- Placeholder for Report Table -->
-            <div class="bg-gray-50 p-4 rounded-lg shadow">
-                <p class="text-center text-gray-500">Select a user or navigate to a week to load the data.</p>
-            </div>
-        </div>
+        {% include 'partials/_staff_timeline_panel.html' %}
         <hr class="my-4">
         <div class="h-2 bg-gray-200 rounded-full">
             <div id="policies-progress-bar" class="h-2 bg-green-500 rounded-full" style="width: 0%;"></div>
@@ -575,112 +558,7 @@
 <script>
     document.addEventListener("DOMContentLoaded", function () {
         const userSelect = document.getElementById("user-select");
-        const prevWeekBtn = document.getElementById("prev-week");
-        const nextWeekBtn = document.getElementById("next-week");
-        const currentWeekText = document.getElementById("current-week");
-        const reportContainer = document.getElementById("report-container");
-    
-        let currentUser = userSelect.value;
-        let currentWeekStart = new Date(); 
-        let day = currentWeekStart.getDay(); 
-        let diff = (day === 0 ? -6 : 1) - day; 
 
-        // Set the date to the start of the week (Monday)
-        currentWeekStart.setDate(currentWeekStart.getDate() + diff);
-
-        // Reset time to the beginning of the day (optional)
-        currentWeekStart.setHours(0, 0, 0, 0);
-
-        // Helper function to format dates
-        function formatDate(date) {
-            return date.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-            });
-        }
-    
-        // Function to fetch report data (AJAX simulation)
-        function fetchReportData(userId, weekStart) {
-            // Convert weekStart to a string format (YYYY-MM-DD) for backend
-            const formattedWeekStart = weekStart.toISOString().split("T")[0];
-        
-            // Simulate an AJAX request using fetch
-            fetch(`/user_weekly_report?user=${userId}&week_start=${formattedWeekStart}`, {
-                method: "GET",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-            })
-                .then((response) => {
-                    if (!response.ok) {
-                        throw new Error("Failed to fetch data");
-                    }
-                    return response.json(); // Parse the JSON response
-                })
-                .then((data) => {
-                    // Clear existing content in report container
-                    reportContainer.innerHTML = "";
-        
-                    // Check if data is empty
-                    if (!data || data.length === 0) {
-                        reportContainer.innerHTML = `
-                            <div class="text-center text-gray-500">
-                                No data available for the selected user and week.
-                            </div>
-                        `;
-                        return;
-                    }
-        
-                    // Build the report table dynamically
-                    let tableHtml = `
-                    <div class='overflow-auto mt-2 rounded border'>
-                        <table class="table">
-                            <thead class="bg-gray-100">
-                                <tr>
-                                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Date</th>
-                                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Billed Minutes</th>
-                                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Non-Billed Minutes</th>
-                                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">Missing Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                    `;
-        
-                    // Loop through the data to create table rows
-                    data.forEach((day) => {
-                        tableHtml += `
-                            <tr class="hover:bg-gray-50">
-                                <td class="px-4 py-2 text-sm text-gray-800 border-b">${day.date}</td>
-                                <td class="px-4 py-2 text-sm text-gray-800 border-b">${day.billed_minutes}</td>
-                                <td class="px-4 py-2 text-sm text-gray-800 border-b">${day.non_billed_minutes}</td>
-                                <td class="px-4 py-2 text-sm ${day.missing_time ? 'text-red-600 font-semibold' : 'text-gray-500'} border-b">
-                                    ${day.missing_minutes ? day.missing_minutes : 'None'}
-                                </td>
-                            </tr>
-                        `;
-                    });
-        
-                    tableHtml += "</tbody></table></div>";
-                    reportContainer.innerHTML = tableHtml;
-                })
-                .catch((error) => {
-                    // Handle errors (e.g., network issues)
-                    reportContainer.innerHTML = `
-                        <div class="text-center text-red-600">
-                            Failed to load data: ${error.message}
-                        </div>
-                    `;
-                });
-        }
-        
-        // Update the week display
-        function updateWeekDisplay() {
-            const endWeek = new Date(currentWeekStart);
-            endWeek.setDate(endWeek.getDate() + 4);
-            currentWeekText.textContent = `${formatDate(currentWeekStart)} - ${formatDate(endWeek)}`;
-        }
-        
-        
         function fetchPoliciesData(userId) {
             fetch(`/policies_read_per_user?user_id=${userId}`)
                 .then(response => response.json())
@@ -734,33 +612,12 @@
                 });
         }
 
-        
-       
-        // Event: Change User
+        // The staff timeline panel listens for the same change (static/js/staff-timeline.js).
         userSelect.addEventListener("change", function () {
-            currentUser = this.value;
-            fetchReportData(currentUser, currentWeekStart);
-            fetchPoliciesData(currentUser);
+            fetchPoliciesData(this.value);
         });
-    
-        // Event: Previous Week
-        prevWeekBtn.addEventListener("click", function () {
-            currentWeekStart.setDate(currentWeekStart.getDate() - 7);
-            updateWeekDisplay();
-            fetchReportData(currentUser, currentWeekStart);
-        });
-    
-        // Event: Next Week
-        nextWeekBtn.addEventListener("click", function () {
-            currentWeekStart.setDate(currentWeekStart.getDate() + 7);
-            updateWeekDisplay();
-            fetchReportData(currentUser, currentWeekStart);
-        });
-    
-        // Initialize
-        updateWeekDisplay();
-        fetchPoliciesData(userSelect.value)
-        fetchReportData(userSelect.value, currentWeekStart)
+
+        fetchPoliciesData(userSelect.value);
     });
 </script>
 
@@ -1173,6 +1030,7 @@ document.addEventListener('DOMContentLoaded', function() {
     kanbanUserFilter.addEventListener('change', loadKanbanTasks);
 });
 </script>
+<script src="{% static 'js/staff-timeline.js' %}"></script>
 
 </div>
 {% endblock %}

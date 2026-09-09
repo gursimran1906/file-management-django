@@ -37,6 +37,7 @@ from .audit import (
 )
 from .finance_display import build_invoice_finance_detail, compute_invoice_balance_due
 from .audit_display import build_change_items, enrich_file_logs
+from .staff_timeline import build_timeline, parse_timeline_params
 from django.utils import timezone
 from users.models import CPDTrainingLog, CustomUser, HolidayRecord, SicknessRecord
 from django.contrib import messages
@@ -100,6 +101,41 @@ def manager_required(view_func):
                 'This report is restricted to managers.')
         return view_func(request, *args, **kwargs)
     return _wrapped
+
+
+def _timeline_subject(request, default_user):
+    """Who a staff-timeline request is about.
+
+    Without ``tl_user`` it is the default (normally the requester). Managers
+    may name anyone; anyone else naming another user gets a 403, matching
+    the other per-user APIs.
+    """
+    raw = (request.GET.get('tl_user') or '').strip()
+    if not raw:
+        return default_user
+    try:
+        user_id = int(raw)
+    except ValueError:
+        raise Http404('Unknown user')
+    if user_id != request.user.id and not request.user.is_manager:
+        raise PermissionDenied('You can only view your own timeline.')
+    return get_object_or_404(CustomUser, pk=user_id)
+
+
+def _timeline_context(request, subject, host_url):
+    """Template context for the staff timeline panel embedded in ``host_url``."""
+    view, anchor, kinds = parse_timeline_params(request.GET)
+    timeline = build_timeline(
+        subject, view, anchor, kinds,
+        user_id_for_links=subject.id if request.user.is_manager else None,
+    )
+    return {
+        'tl': timeline,
+        'tl_subject': subject,
+        'tl_host_url': host_url,
+        'tl_show_value': bool(request.user.is_manager),
+        'tl_anchor_iso': anchor.isoformat(),
+    }
 
 
 def coerce_json_dict(value):
@@ -1173,6 +1209,8 @@ def user_dashboard(request):
         'pending_credit_notes': pending_credit_notes,
         'risk_assessments_awaiting_signoff': risk_assessments_awaiting_signoff,
     }
+    # "My time" card: always the logged-in user, whatever tl_user says.
+    context.update(_timeline_context(request, user, reverse('user_dashboard')))
 
     return render(request, 'dashboard.html', context)
 
@@ -9182,13 +9220,17 @@ def management_reports(request):
     cpds = CPDTrainingLog.objects.all()
     expired_client_ids = get_clients_with_expired_id()
 
-    return render(request, 'management_reports.html', {
+    timeline_subject = _timeline_subject(request, request.user)
+    context = {
         'users': users,
         'aml_checks_due': unique_aml_checks_due,
         'risk_assessments_due': risk_assessments_due,
         'cpds': cpds,
         'expired_client_ids': expired_client_ids,
-    })
+    }
+    context.update(_timeline_context(
+        request, timeline_subject, reverse('management_reports')))
+    return render(request, 'management_reports.html', context)
 
 
 @login_required
@@ -9264,11 +9306,6 @@ def reports_hub(request):
                     'name': 'Management reports',
                     'description': 'AML, risk, holidays, CPD logs and team tasks in one view.',
                     'url_name': 'management_reports',
-                },
-                {
-                    'name': 'Weekly work report',
-                    'description': 'Weekly work recorded per user.',
-                    'url_name': 'user_weekly_report',
                 },
             ],
         },
@@ -9787,6 +9824,23 @@ def weekly_report_view(request):
         return JsonResponse(data, safe=False)
     except CustomUser.DoesNotExist:
         return JsonResponse({"error": "User not found"}, status=404)
+
+
+@login_required
+def staff_timeline_panel(request):
+    """The staff timeline panel on its own, for in-place swaps.
+
+    The dashboard ("My time") and management reports embed the same partial;
+    their controls fetch this endpoint instead of reloading the whole page.
+    """
+    subject = _timeline_subject(request, request.user)
+    host_url = reverse('user_dashboard')
+    if request.user.is_manager and (
+            request.GET.get('tl_host') == reverse('management_reports')
+            or subject.pk != request.user.pk):
+        host_url = reverse('management_reports')
+    context = _timeline_context(request, subject, host_url)
+    return render(request, 'partials/_staff_timeline_panel.html', context)
 
 
 @login_required

@@ -1,0 +1,210 @@
+{% load l10n %}{% comment %}
+Staff timeline panel. Included by dashboard.html ("My time") and
+management_reports.html, and returned on its own by staff_timeline_panel so
+static/js/staff-timeline.js can swap it in place. Everything inside
+[data-tl-panel] is replaced on a swap; the detail sheet after it persists.
+{% endcomment %}
+<div data-tl-panel data-tl-query="{{ tl.query }}">
+  <div class="flex flex-wrap items-center gap-2">
+    <div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5" role="tablist" aria-label="Timeline view">
+      {% for v in tl.nav.views %}
+      <a href="{{ tl_host_url }}?{{ v.query }}" data-tl-nav role="tab" aria-selected="{% if v.active %}true{% else %}false{% endif %}"
+         class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors {% if v.active %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-900{% endif %}">{{ v.label }}</a>
+      {% endfor %}
+    </div>
+    <div class="flex items-center gap-1">
+      <a href="{{ tl_host_url }}?{{ tl.nav.prev }}" data-tl-nav data-tl-prev class="btn-secondary px-2 text-xs" aria-label="Previous {{ tl.view_label|lower }}" title="Previous (←)">&larr;</a>
+      <a href="{{ tl_host_url }}?{{ tl.nav.today }}" data-tl-nav data-tl-today class="btn-secondary text-xs" title="Today (t)">Today</a>
+      <a href="{{ tl_host_url }}?{{ tl.nav.next }}" data-tl-nav data-tl-next class="btn-secondary px-2 text-xs" aria-label="Next {{ tl.view_label|lower }}" title="Next (→)">&rarr;</a>
+    </div>
+    <input type="date" value="{{ tl_anchor_iso }}" data-tl-date class="form-input w-40" aria-label="Go to date">
+    <span class="ml-auto text-sm font-medium text-gray-700">{{ tl.range.label }}</span>
+  </div>
+
+  <div class="mt-2 flex flex-wrap items-center gap-1.5">
+    {% for k in tl.kinds %}
+    <a href="{{ tl_host_url }}?{{ k.query }}" data-tl-nav aria-pressed="{% if k.active %}true{% else %}false{% endif %}"
+       title="{% if k.locked %}At least one type must stay selected{% elif k.active %}Hide {{ k.plural }}{% else %}Show {{ k.plural }}{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors {% if k.active %}border-gray-200 bg-white text-gray-700 hover:border-gray-300{% else %}border-gray-100 bg-gray-50 text-gray-400 hover:text-gray-600{% endif %}">
+      <span class="tl-dot tl-dot-{{ k.kind }} {% if not k.active %}opacity-30{% endif %}"></span>{{ k.label }}{% if k.count %} <span class="tabular-nums {% if k.active %}text-gray-500{% endif %}">{{ k.count }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+
+  {% with t=tl.totals %}
+  <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 {% if tl_show_value %}lg:grid-cols-5{% endif %}">
+    <div class="rounded-lg border border-gray-100 bg-gray-50 p-3">
+      <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Recorded</p>
+      <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900">{{ t.recorded_label }}</p>
+      <p class="text-xs text-gray-500">{{ t.units_total_label }}</p>
+    </div>
+    <div class="rounded-lg border border-gray-100 bg-gray-50 p-3">
+      <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Chargeable</p>
+      <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900">{{ t.chargeable_label }}</p>
+      <p class="text-xs text-gray-500">{{ t.units_chargeable_label }}{% if t.recorded_minutes %} · {{ t.chargeable_pct }}%{% endif %}</p>
+    </div>
+    <div class="rounded-lg border border-gray-100 bg-gray-50 p-3">
+      <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Non-chargeable</p>
+      <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900">{{ t.non_chargeable_label }}</p>
+      <p class="text-xs text-gray-500">{{ t.units_non_chargeable_label }}</p>
+    </div>
+    <div class="rounded-lg border border-gray-100 bg-gray-50 p-3">
+      <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Target</p>
+      <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900">{{ t.target_label }}</p>
+      <div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-valuenow="{{ t.progress_pct }}" aria-valuemin="0" aria-valuemax="100">
+        <div class="h-1.5 rounded-full bg-blue-600" style="width: {{ t.progress_pct }}%"></div>
+      </div>
+      <p class="mt-1 text-xs text-gray-500">7.5h × {{ t.working_days }} working day{{ t.working_days|pluralize }} · {{ t.progress_pct }}%</p>
+    </div>
+    {% if tl_show_value %}
+    <div class="rounded-lg border border-gray-100 bg-gray-50 p-3" data-tl-value>
+      <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Chargeable value</p>
+      <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900">{% if t.value is not None %}{{ t.value_label }}{% else %}&mdash;{% endif %}</p>
+      <p class="text-xs text-gray-500">{% if t.value is not None %}{{ t.units_chargeable_label }} at £{{ tl_subject.hourly_rate.hourly_amount }}/h{% else %}No hourly rate set{% endif %}</p>
+    </div>
+    {% endif %}
+  </div>
+  <p class="mt-2 text-xs text-gray-500">
+    {% if t.counts_sentence %}{{ t.counts_sentence }}{% else %}Nothing recorded for this {{ tl.view_label|lower }}.
+    <span class="text-gray-400">Emails only appear once the mailbox sync has attributed them to a fee earner.</span>{% endif %}
+  </p>
+  {% endwith %}
+
+  {% if tl.view != 'month' %}
+  <div class="mt-3 max-h-[32rem] overflow-auto rounded-lg border border-gray-200">
+    <div class="min-w-[640px]" style="--tl-cols: {{ tl.days|length }}; --tl-hour: 3.5rem;">
+      <div class="tl-row sticky top-0 z-20 border-b border-gray-200 bg-white">
+        <div class="border-r border-gray-100"></div>
+        {% for day in tl.days %}
+        <div class="border-l border-gray-100 px-2 py-1.5 text-center {% if day.is_weekend %}bg-gray-50{% endif %}">
+          <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">{{ day.weekday_label }}</p>
+          <p class="text-sm font-semibold text-gray-900"><span class="{% if day.is_today %}rounded-full bg-blue-600 px-2 py-0.5 text-white{% endif %}">{{ day.day_label }}</span></p>
+          <p class="text-[11px] tabular-nums text-gray-500">{% if day.totals.has_time %}{{ day.totals.recorded_label }} · {{ day.totals.chargeable_label }} ch.{% else %}&nbsp;{% endif %}</p>
+          {% if day.ctx.on_holiday %}<span class="badge-yellow">{{ day.ctx.holiday_label }}</span>{% elif day.ctx.off_sick %}<span class="badge-red">Sick</span>{% elif day.ctx.bank_holiday %}<span class="badge-gray">Bank holiday</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="tl-row border-b border-gray-100 bg-gray-50/60">
+        <div class="px-1 py-1.5 text-right text-[10px] text-gray-400">All day</div>
+        {% for day in tl.days %}
+        <div class="flex min-h-8 flex-wrap content-start gap-1 border-l border-gray-100 p-1">
+          {% for ev in day.untimed %}
+          <button type="button" class="tl-chip {{ ev.css }}" data-tl-detail="{{ ev.dom_id }}" title="{{ ev.kind_label }}: {{ ev.title }}">
+            <span class="tl-dot tl-dot-{{ ev.kind }}"></span><span class="truncate">{{ ev.title }}{% if tl.view == 'day' and ev.file_number %} · {{ ev.file_number }}{% endif %}</span>
+          </button>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="tl-row">
+        <div class="relative border-r border-gray-100" style="height: calc(var(--tl-hour) * {{ tl.hour_slots }});">
+          {% for hour in tl.hours %}
+          <span class="absolute right-1 -translate-y-1/2 text-[10px] tabular-nums text-gray-400" style="top: calc(var(--tl-hour) * {{ forloop.counter0 }});">{{ hour }}</span>
+          {% endfor %}
+        </div>
+        {% for day in tl.days %}
+        <div class="tl-hours relative border-l border-gray-100 {% if day.is_weekend or day.ctx.bank_holiday %}bg-gray-50{% elif day.ctx.on_holiday or day.ctx.off_sick %}bg-amber-50/40{% endif %}" style="height: calc(var(--tl-hour) * {{ tl.hour_slots }});">
+          {% if day.shade %}
+          <div class="absolute inset-x-0 bg-blue-50/40" style="top: {{ day.shade.top_pct|unlocalize }}%; height: {{ day.shade.height_pct|unlocalize }}%;" title="Clocked in {{ day.shade.label }}"></div>
+          {% endif %}
+          {% if day.is_today and tl.now_pct is not None %}
+          <div class="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-red-400" style="top: {{ tl.now_pct|unlocalize }}%;"></div>
+          {% endif %}
+          {% for ev in day.timed %}
+          <button type="button" class="tl-ev {{ ev.css }}{% if tl.view == 'day' %} px-2 py-1{% endif %}"
+                  style="top: {{ ev.top_pct|unlocalize }}%; height: {{ ev.height_pct|unlocalize }}%; left: {{ ev.left_pct|unlocalize }}%; width: calc({{ ev.width_pct|unlocalize }}% - 3px);"
+                  data-tl-detail="{{ ev.dom_id }}" title="{{ ev.time_label }} {{ ev.title }}">
+            {% if tl.view == 'day' %}
+            <span class="block truncate text-sm font-medium">{{ ev.title }}</span>
+            <span class="block truncate text-xs opacity-80">{% if ev.file_number %}{{ ev.file_number }}{% if ev.client_names %} — {{ ev.client_names }}{% endif %}{% elif ev.kind == 'email' %}Unallocated email{% endif %}</span>
+            <span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] opacity-80">
+              <span>{{ ev.time_label }}{% if ev.duration_label %} · {{ ev.duration_label }}{% endif %}{% if ev.units_label %} · {{ ev.units_label }}{% endif %}</span>
+              {% if ev.is_charged is False %}<span class="badge-gray">N/C</span>{% endif %}
+              {% if ev.direction_label %}<span class="badge-zinc">{{ ev.direction_label }}</span>{% endif %}
+            </span>
+            {% else %}
+            <span class="block truncate font-medium">{{ ev.title }}</span>
+            <span class="block truncate text-[10px] opacity-75">{{ ev.time_label }}{% if ev.file_number %} · {{ ev.file_number }}{% endif %}{% if ev.is_charged is False %} · N/C{% endif %}</span>
+            {% endif %}
+          </button>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="mt-3 overflow-x-auto">
+    <div class="min-w-[640px]">
+      <div class="grid grid-cols-7 rounded-t border border-gray-200 bg-gray-50 text-center text-xs font-medium uppercase text-gray-500">
+        <div class="border-r py-2">Mon</div>
+        <div class="border-r py-2">Tue</div>
+        <div class="border-r py-2">Wed</div>
+        <div class="border-r py-2">Thu</div>
+        <div class="border-r py-2">Fri</div>
+        <div class="border-r py-2">Sat</div>
+        <div class="py-2">Sun</div>
+      </div>
+      <div class="grid grid-cols-7 border-l border-gray-200">
+        {% for week in tl.weeks %}{% for day in week %}
+        <a href="{{ tl_host_url }}?{{ day.day_query }}" data-tl-nav
+           class="block min-h-24 border-b border-r border-gray-200 p-2 transition-colors hover:bg-blue-50 {% if not day.in_month %}bg-gray-50 text-gray-400{% elif day.is_weekend %}bg-gray-50/60{% else %}bg-white{% endif %}"
+           title="Open {{ day.date|date:'l j F' }}">
+          <div class="flex items-center justify-between gap-1">
+            <span class="text-sm font-medium {% if day.is_today %}rounded-full bg-blue-600 px-2 py-0.5 text-white{% endif %}">{{ day.day_number }}</span>
+            {% if day.ctx.on_holiday %}<span class="badge-yellow">{{ day.ctx.holiday_label }}</span>{% elif day.ctx.off_sick %}<span class="badge-red">Sick</span>{% elif day.ctx.bank_holiday %}<span class="text-[10px] text-gray-400">Bank hol.</span>{% endif %}
+          </div>
+          {% if day.totals.has_time %}
+          <p class="mt-1 text-xs tabular-nums text-gray-700">{{ day.totals.chargeable_label }}{% if day.totals.non_chargeable_minutes %} <span class="text-gray-400">· {{ day.totals.non_chargeable_label }} N/C</span>{% endif %}</p>
+          <div class="mt-1 flex h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+            <div class="h-1.5 bg-blue-600" style="width: {{ day.totals.chargeable_bar_pct }}%"></div>
+            <div class="h-1.5 bg-gray-400" style="width: {{ day.totals.non_chargeable_bar_pct }}%"></div>
+          </div>
+          {% endif %}
+          {% if day.totals.count_items %}
+          <div class="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5">
+            {% for item in day.totals.count_items %}<span class="inline-flex items-center gap-1 text-[10px] text-gray-500" title="{{ item.count }} {{ item.label }}"><span class="tl-dot tl-dot-{{ item.kind }}"></span>{{ item.count }}</span>{% endfor %}
+          </div>
+          {% endif %}
+        </a>
+        {% endfor %}{% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% for day in tl.days %}{% for ev in day.events %}
+  <template id="{{ ev.dom_id }}">
+    <p class="text-sm font-medium text-gray-900">{{ ev.title }}</p>
+    <p class="mt-0.5 text-xs text-gray-500">{{ ev.kind_label }}{% if ev.direction_label %} · {{ ev.direction_label }}{% endif %} · {% if ev.kind == 'task' %}due {% endif %}{{ ev.date|date:'D j M Y' }}{% if ev.time_label %} · {{ ev.time_label }}{% endif %}</p>
+    <dl class="mt-3 space-y-1.5 text-xs">
+      <div class="flex gap-2">
+        <dt class="w-14 shrink-0 text-gray-500">Matter</dt>
+        <dd class="min-w-0">{% if ev.file_number %}<a class="link" href="{{ ev.matter_href }}">{{ ev.file_number }}</a>{% if ev.client_names %} <span class="text-gray-600">— {{ ev.client_names }}</span>{% endif %}{% elif ev.kind == 'meeting' %}<span class="text-gray-500">Pre-matter enquiry</span>{% else %}<span class="text-gray-500">Unallocated</span>{% endif %}</dd>
+      </div>
+      {% if ev.is_charged is not None %}
+      <div class="flex gap-2">
+        <dt class="w-14 shrink-0 text-gray-500">Time</dt>
+        <dd class="flex flex-wrap items-center gap-1.5">{{ ev.duration_label|default:"0:00" }}{% if ev.units_label %} · {{ ev.units_label }}{% endif %} {% if ev.is_charged %}<span class="badge-green">Chargeable</span>{% else %}<span class="badge-gray">N/C</span>{% endif %}</dd>
+      </div>
+      {% endif %}
+    </dl>
+    {% if ev.detail %}<p class="mt-3 line-clamp-4 text-xs text-gray-600">{{ ev.detail }}</p>{% endif %}
+    {% if ev.suspect %}<p class="mt-2 text-xs text-amber-700">Finish time is not after the start time — check this note.</p>{% endif %}
+    <div class="mt-3 flex gap-3 text-xs">
+      {% if ev.href %}<a class="link" href="{{ ev.href }}"{% if ev.kind == 'email' and ev.href != ev.edit_href %} target="_blank" rel="noopener noreferrer"{% endif %}>{% if ev.kind == 'email' and ev.href != ev.edit_href %}Open in Outlook{% else %}Open{% endif %}</a>{% endif %}
+      {% if ev.edit_href %}<a class="link" href="{{ ev.edit_href }}">{% if ev.kind == 'email' %}Correspondence{% else %}Edit{% endif %}</a>{% endif %}
+    </div>
+  </template>
+  {% endfor %}{% endfor %}
+</div>
+
+<aside data-tl-sheet hidden class="fixed right-4 top-24 z-40 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white shadow-lg" role="dialog" aria-label="Entry details">
+  <div class="flex items-start justify-between gap-2 border-b border-gray-100 px-4 py-3">
+    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Details</p>
+    <button type="button" data-tl-sheet-close class="-mr-1 -mt-1 rounded p-1 text-lg leading-none text-gray-400 hover:text-gray-900" aria-label="Close">&times;</button>
+  </div>
+  <div data-tl-sheet-body class="max-h-[60vh] overflow-y-auto px-4 py-3 text-sm text-gray-700"></div>
+</aside>
