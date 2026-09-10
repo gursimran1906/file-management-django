@@ -51,6 +51,7 @@ from .views import undertakings, edit_undertaking, undertaking_file_download, ad
 from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundle_court_update, bundle_section_add, bundle_section_delete, bundle_section_update, bundle_section_reorder, bundle_document_upload, bundle_document_file, bundle_document_update, bundle_document_delete, bundle_document_pages_update, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_download_plain, bundle_pdf_prepare, bundle_pdf_status, bundle_delete, bundle_share_link_status_view, bundle_share_link_create, bundle_share_link_revoke, bundle_versions_view, bundle_version_promote, bundle_version_pin, bundle_version_download
 from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, download_user_key_documents_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review, internal_pricing
 from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, add_matter_key_document, central_key_dates, download_central_key_dates
+from .compliance_stats_views import compliance_stats, compliance_stats_detail
 from .granola.views import (
     granola_inbox, granola_assign_note, granola_ignore_note,
     granola_settings, granola_sync_now, granola_create_free30,
@@ -303,6 +304,9 @@ urlpatterns = [
          name='report_expired_proof_of_address'),
     path('reports/file-reviews-due/', report_file_reviews_due,
          name='report_file_reviews_due'),
+    path('reports/compliance-stats/', compliance_stats, name='compliance_stats'),
+    path('reports/compliance-stats/<slug:metric_key>/', compliance_stats_detail,
+         name='compliance_stats_detail'),
     path('reports/staff-timeline/panel/', staff_timeline_panel,
          name='staff_timeline_panel'),
     path('management_reports/', management_reports, name='management_reports'),

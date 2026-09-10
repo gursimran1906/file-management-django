@@ -1,0 +1,12 @@
+{% load l10n %}{% comment %}
+Green/red compliance ring. Expects `metric` as built by
+backend.compliance_stats.build_compliance_stats: donut segments carry the
+stroke-dasharray/offset values (same maths as the staff timeline donut), pct is
+the floored done percentage, and na means there was nothing to count.
+{% endcomment %}<svg viewBox="0 0 36 36" class="h-20 w-20 shrink-0" role="img" aria-label="{{ metric.label }}: {% if metric.na %}nothing to count{% else %}{{ metric.pct }}% done, {{ metric.done }} of {{ metric.total }}{% endif %}">
+  <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#e5e7eb" stroke-width="4"></circle>
+  {% for seg in metric.donut %}{% if seg.pct %}
+  <circle cx="18" cy="18" r="15.9155" fill="none" stroke="{{ seg.color }}" stroke-width="4" stroke-dasharray="{{ seg.dash|unlocalize }} {{ seg.gap|unlocalize }}" stroke-dashoffset="{{ seg.offset|unlocalize }}"><title>{{ seg.label }}: {{ seg.count }} ({{ seg.pct_display }}%)</title></circle>
+  {% endif %}{% endfor %}
+  <text x="18" y="19.6" text-anchor="middle" font-size="6.5" font-weight="600" fill="{% if metric.na %}#9ca3af{% else %}#111827{% endif %}">{% if metric.na %}n/a{% else %}{{ metric.pct }}%{% endif %}</text>
+</svg>

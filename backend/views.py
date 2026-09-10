@@ -9442,6 +9442,11 @@ def reports_hub(request):
                     'description': 'Who has read each policy and which version.',
                     'url_name': 'policies_read_per_user',
                 },
+                {
+                    'name': 'Compliance stats',
+                    'description': 'Done vs not done for risk reviews, client due diligence, client care paperwork and file closure, firm-wide and by fee earner.',
+                    'url_name': 'compliance_stats',
+                },
             ],
         },
         {
@@ -9508,7 +9513,8 @@ def _report_querystring(request, exclude=()):
     return params.urlencode()
 
 
-def render_report(request, *, slug, title, description, filters, columns, rows):
+def render_report(request, *, slug, title, description, filters, columns, rows,
+                  back_url=None, back_label='Reports'):
     """Sort, optionally export to CSV, and render a report preview page.
 
     rows: list of {'cells': {col_key: {'value': str, 'href': url|None}},
@@ -9516,6 +9522,8 @@ def render_report(request, *, slug, title, description, filters, columns, rows):
     columns: list of {'key', 'label', 'sortable'(bool), 'align'('left'|'right')}
     filters: list of {'name', 'label', 'type'('text'|'select'|'number'),
                       'value', 'options'(select only), 'placeholder'}
+    back_url/back_label: where the "back" link at the top points (the reports
+                         hub unless the report was opened from another page).
     """
     sort_param = request.GET.get('sort', '')
     sort_key = sort_param.lstrip('-')
@@ -9583,6 +9591,8 @@ def render_report(request, *, slug, title, description, filters, columns, rows):
         'export_url': export_url,
         'filters_active': any(request.GET.get(f['name']) for f in filters),
         'reset_url': request.path,
+        'back_url': back_url or reverse('reports_hub'),
+        'back_label': back_label,
     })
 
 
