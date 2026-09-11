@@ -14,15 +14,13 @@ Rules reused from elsewhere in the app rather than re-stated:
 - three-monthly file review: ``get_file_reviews_due_queryset``
 - missing / expired proof of ID and address: ``get_live_matter_client_document_issues``
 - responsible fee earner aliases (DC -> ND): ``backend.fee_earners``
-- client account balance: the ledger sign rules of ``_finance_activity_ledger_deltas``
 """
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
-from django.db.models import F, Max, Sum
+from django.db.models import Max
 from django.urls import reverse
 from django.utils import timezone
 
@@ -35,7 +33,6 @@ from .models import (
     ClientContactDetails,
     Invoices,
     LastWork,
-    LedgerAccountTransfers,
     MatterAttendanceNotes,
     MatterEmails,
     MatterLetters,
@@ -169,7 +166,7 @@ GROUPS = [
     {
         'key': 'closure',
         'title': 'File closure',
-        'description': 'Archived files that still hold client money or carry an undischarged undertaking.',
+        'description': 'Archived files that still carry an undischarged undertaking.',
         'scope': 'archived',
     },
 ]
@@ -392,41 +389,6 @@ class Snapshot:
                         last[row['file_number_id']] = (when, label)
             return last
         return self.cached('last_activity', load)
-
-    def client_balances(self):
-        """Client account balance per archived matter, using the ledger sign rules."""
-        def load():
-            balances = defaultdict(lambda: Decimal('0'))
-            slips = PmtsSlips.objects.filter(
-                ledger_account='C', file_number_id__in=self.archived_ids,
-            ).values('file_number_id', 'is_money_out').annotate(total=Sum('amount'))
-            for row in slips:
-                sign = -1 if row['is_money_out'] else 1
-                balances[row['file_number_id']] += sign * (row['total'] or Decimal('0'))
-            archived = set(self.archived_ids)
-            transfers = LedgerAccountTransfers.objects.filter(
-                from_ledger_account='C',
-            ).values('file_number_from_id', 'file_number_to_id').annotate(total=Sum('amount'))
-            for row in transfers:
-                amount = row['total'] or Decimal('0')
-                src, dst = row['file_number_from_id'], row['file_number_to_id']
-                if src == dst:
-                    # Same-matter client -> office transfer.
-                    if src in archived:
-                        balances[src] -= amount
-                    continue
-                if src in archived:
-                    balances[src] -= amount
-                if dst in archived:
-                    balances[dst] += amount
-            office_to_client = LedgerAccountTransfers.objects.filter(
-                from_ledger_account='O', file_number_from_id=F('file_number_to_id'),
-                file_number_from_id__in=self.archived_ids,
-            ).values('file_number_from_id').annotate(total=Sum('amount'))
-            for row in office_to_client:
-                balances[row['file_number_from_id']] += row['total'] or Decimal('0')
-            return {mid: round(bal, 2) for mid, bal in balances.items()}
-        return self.cached('client_balances', load)
 
 
 # ---------------------------------------------------------------------------
@@ -896,20 +858,6 @@ def collect_undertakings_discharged(snap):
 # Collectors: file closure (archived matters)
 # ---------------------------------------------------------------------------
 
-def collect_closed_no_client_money(snap):
-    balances = snap.client_balances()
-    items = []
-    for m in snap.archived:
-        balance = balances.get(m['id'], Decimal('0'))
-        done = balance == 0
-        items.append(_matter_item(
-            snap, m, done, 'holding',
-            cells={'balance': {'value': f'£{balance:,.2f}', 'href': None}},
-            sort={'balance': balance},
-        ))
-    return items
-
-
 def collect_closed_no_open_undertakings(snap):
     rows = Undertaking.objects.filter(
         file_number_id__in=snap.archived_ids, date_discharged__isnull=True,
@@ -1084,12 +1032,6 @@ METRICS = {m.key: m for m in [
                           _col('discharged', 'Discharged'), _col('action', '', sortable=False)],
     ),
     # -- File closure -----------------------------------------------------
-    _metric(
-        'closed_no_client_money', 'Archived files with no client money held', 'No client money', 'closure',
-        'Archived files whose client account balance is nil. Client money must be returned promptly once a matter ends (SRA Accounts Rules 2.5). Balance follows the ledger on the finances page.',
-        collect_closed_no_client_money,
-        MATTER_COLUMNS + [_col('balance', 'Client balance')],
-    ),
     _metric(
         'closed_no_open_undertakings', 'Archived files with no open undertakings', 'No open undertakings', 'closure',
         'Archived files with every undertaking discharged.',

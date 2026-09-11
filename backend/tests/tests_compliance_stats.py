@@ -24,7 +24,6 @@ from ..models import (
     AuthorisedParties,
     ClientKeyDocument,
     FileStatus,
-    LedgerAccountTransfers,
     MatterFileReview,
     OngoingMonitoring,
     PmtsSlips,
@@ -62,14 +61,6 @@ def make_slip(matter, amount, *, money_out=False, ledger='C', when=None):
         amount=Decimal(amount), is_money_out=money_out, pmt_person='Someone',
         description='Slip', date=when or timezone.localdate(),
         balance_left=Decimal('0.00'),
-    )
-
-
-def make_transfer(src, dst, amount, *, from_ledger='C', to_ledger='O'):
-    return LedgerAccountTransfers.objects.create(
-        file_number_from=src, file_number_to=dst, from_ledger_account=from_ledger,
-        to_ledger_account=to_ledger, amount=Decimal(amount), date=timezone.localdate(),
-        description='Transfer', balance_left_from=Decimal('0'), balance_left_to=Decimal('0'),
     )
 
 
@@ -148,7 +139,7 @@ class ComplianceSnapshotTests(TestCase):
         self.assertEqual(stats['live_matter_count'], 2)
         self.assertEqual(stats['archived_matter_count'], 1)
         self.assertEqual(metric_ctx(stats, 'client_care_sent')['total'], 2)
-        self.assertEqual(metric_ctx(stats, 'closed_no_client_money')['total'], 1)
+        self.assertEqual(metric_ctx(stats, 'closed_no_open_undertakings')['total'], 1)
 
     def test_risk_assessment_signed_awaiting_none(self):
         signed = make_live_matter('R0001', make_client('S'), self.fe)
@@ -380,39 +371,6 @@ class FileClosureTests(TestCase):
     def setUp(self):
         self.fe = make_user('AAA')
         self.archived = make_live_matter('Z0001', make_client('Closed'), self.fe, status='Archived')
-
-    def balance_metric(self):
-        return metric_ctx(build_compliance_stats(), 'closed_no_client_money')
-
-    def test_client_money_in_is_held(self):
-        make_slip(self.archived, '500.00')
-        m = self.balance_metric()
-        self.assertEqual((m['total'], m['done']), (1, 0))
-        rows = not_done_rows('closed_no_client_money')
-        self.assertEqual(rows[0]['cells']['balance']['value'], '£500.00')
-
-    def test_client_to_office_transfer_clears_it(self):
-        make_slip(self.archived, '500.00')
-        make_transfer(self.archived, self.archived, '500.00', from_ledger='C', to_ledger='O')
-        self.assertEqual(self.balance_metric()['done'], 1)
-
-    def test_office_to_client_transfer_adds_to_it(self):
-        make_transfer(self.archived, self.archived, '20.00', from_ledger='O', to_ledger='C')
-        self.assertEqual(self.balance_metric()['done'], 0)
-
-    def test_cross_matter_transfer_moves_the_balance(self):
-        other = make_live_matter('Z0002', make_client('Other'), self.fe, status='Archived')
-        make_slip(self.archived, '300.00')
-        make_transfer(self.archived, other, '300.00', from_ledger='C', to_ledger='C')
-        rows = not_done_rows('closed_no_client_money')
-        self.assertEqual([r['cells']['file_number']['value'] for r in rows], ['Z0002'])
-        self.assertEqual(rows[0]['cells']['balance']['value'], '£300.00')
-
-    def test_office_ledger_does_not_count(self):
-        make_slip(self.archived, '100.00', ledger='O')
-        make_slip(self.archived, '40.00', money_out=True)
-        make_slip(self.archived, '40.00')
-        self.assertEqual(self.balance_metric()['done'], 1)
 
     def test_open_undertakings_on_archived_files(self):
         make_undertaking(self.archived)
