@@ -24,6 +24,7 @@ from ..models import (
     AuthorisedParties,
     ClientKeyDocument,
     FileStatus,
+    LedgerAccountTransfers,
     MatterFileReview,
     OngoingMonitoring,
     PmtsSlips,
@@ -61,6 +62,14 @@ def make_slip(matter, amount, *, money_out=False, ledger='C', when=None):
         amount=Decimal(amount), is_money_out=money_out, pmt_person='Someone',
         description='Slip', date=when or timezone.localdate(),
         balance_left=Decimal('0.00'),
+    )
+
+
+def make_transfer(src, dst, amount, *, from_ledger='C', to_ledger='O'):
+    return LedgerAccountTransfers.objects.create(
+        file_number_from=src, file_number_to=dst, from_ledger_account=from_ledger,
+        to_ledger_account=to_ledger, amount=Decimal(amount), date=timezone.localdate(),
+        description='Transfer', balance_left_from=Decimal('0'), balance_left_to=Decimal('0'),
     )
 
 
@@ -140,6 +149,7 @@ class ComplianceSnapshotTests(TestCase):
         self.assertEqual(stats['archived_matter_count'], 1)
         self.assertEqual(metric_ctx(stats, 'client_care_sent')['total'], 2)
         self.assertEqual(metric_ctx(stats, 'closed_no_open_undertakings')['total'], 1)
+        self.assertEqual(metric_ctx(stats, 'closed_no_client_money')['total'], 1)
 
     def test_risk_assessment_signed_awaiting_none(self):
         signed = make_live_matter('R0001', make_client('S'), self.fe)
@@ -371,6 +381,67 @@ class FileClosureTests(TestCase):
     def setUp(self):
         self.fe = make_user('AAA')
         self.archived = make_live_matter('Z0001', make_client('Closed'), self.fe, status='Archived')
+
+    def balance_metric(self):
+        return metric_ctx(build_compliance_stats(), 'closed_no_client_money')
+
+    def test_client_money_in_is_held(self):
+        make_slip(self.archived, '500.00')
+        m = self.balance_metric()
+        self.assertEqual((m['total'], m['done']), (1, 0))
+        rows = not_done_rows('closed_no_client_money')
+        self.assertEqual(rows[0]['cells']['balance']['value'], '£500.00')
+        self.assertEqual(rows[0]['cells']['opened']['value'], timezone.localdate().strftime('%d/%m/%Y'))
+
+    def test_client_to_office_transfer_clears_it(self):
+        make_slip(self.archived, '500.00')
+        make_transfer(self.archived, self.archived, '500.00', from_ledger='C', to_ledger='O')
+        self.assertEqual(self.balance_metric()['done'], 1)
+
+    def test_office_to_client_transfer_adds_to_it(self):
+        make_transfer(self.archived, self.archived, '20.00', from_ledger='O', to_ledger='C')
+        self.assertEqual(self.balance_metric()['done'], 0)
+
+    def test_cross_matter_transfer_moves_the_balance(self):
+        other = make_live_matter('Z0002', make_client('Other'), self.fe, status='Archived')
+        make_slip(self.archived, '300.00')
+        make_transfer(self.archived, other, '300.00', from_ledger='C', to_ledger='C')
+        rows = not_done_rows('closed_no_client_money')
+        self.assertEqual([r['cells']['file_number']['value'] for r in rows], ['Z0002'])
+        self.assertEqual(rows[0]['cells']['balance']['value'], '£300.00')
+
+    def test_office_ledger_does_not_count(self):
+        make_slip(self.archived, '100.00', ledger='O')
+        make_slip(self.archived, '40.00', money_out=True)
+        make_slip(self.archived, '40.00')
+        self.assertEqual(self.balance_metric()['done'], 1)
+
+    def test_files_opened_before_the_window_are_left_out(self):
+        old = make_live_matter('Z0009', make_client('Historic'), self.fe, status='Archived')
+        WIP.objects.filter(pk=old.pk).update(timestamp=timezone.now() - relativedelta(months=13))
+        make_slip(old, '999.00')
+        m = self.balance_metric()
+        self.assertEqual((m['total'], m['done']), (1, 1))   # only the recent file, which holds nothing
+        # The undertakings check still covers every archived file.
+        self.assertEqual(metric_ctx(build_compliance_stats(), 'closed_no_open_undertakings')['total'], 2)
+
+    @override_settings(COMPLIANCE_CLIENT_MONEY_FROM='2026-03-01')
+    def test_setting_pins_the_cutoff(self):
+        before = make_live_matter('Z0010', make_client('Before'), self.fe, status='Archived')
+        after = make_live_matter('Z0011', make_client('After'), self.fe, status='Archived')
+        WIP.objects.filter(pk=before.pk).update(timestamp=timezone.make_aware(timezone.datetime(2026, 2, 28, 12)))
+        WIP.objects.filter(pk=after.pk).update(timestamp=timezone.make_aware(timezone.datetime(2026, 3, 1, 9)))
+        make_slip(before, '10.00')
+        make_slip(after, '10.00')
+        rows = not_done_rows('closed_no_client_money')
+        self.assertEqual([r['cells']['file_number']['value'] for r in rows], ['Z0011'])
+        stats = build_compliance_stats()
+        self.assertIn('opened on or after 01/03/2026', metric_ctx(stats, 'closed_no_client_money')['help'])
+        self.assertIn('opened since 01/03/2026', group_ctx(stats, 'closure')['scope_line'])
+
+    @override_settings(COMPLIANCE_CLIENT_MONEY_FROM='not a date')
+    def test_bad_setting_falls_back_to_recent_months(self):
+        self.assertEqual(self.balance_metric()['total'], 1)
 
     def test_open_undertakings_on_archived_files(self):
         make_undertaking(self.archived)

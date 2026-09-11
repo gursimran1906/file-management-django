@@ -14,13 +14,17 @@ Rules reused from elsewhere in the app rather than re-stated:
 - three-monthly file review: ``get_file_reviews_due_queryset``
 - missing / expired proof of ID and address: ``get_live_matter_client_document_issues``
 - responsible fee earner aliases (DC -> ND): ``backend.fee_earners``
+- client account balance: the ledger sign rules of ``_finance_activity_ledger_deltas``
 """
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import date
+from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
-from django.db.models import Max
+from django.conf import settings
+from django.db.models import F, Max, Sum
 from django.urls import reverse
 from django.utils import timezone
 
@@ -33,6 +37,7 @@ from .models import (
     ClientContactDetails,
     Invoices,
     LastWork,
+    LedgerAccountTransfers,
     MatterAttendanceNotes,
     MatterEmails,
     MatterLetters,
@@ -46,6 +51,25 @@ LIVE_STATUSES = ['Open', 'To Be Closed']
 ARCHIVED_STATUS = 'Archived'
 AML_MONTHS = 11       # matches the dashboard / management reports "AML checks due" threshold
 DORMANT_MONTHS = 3    # matches the file review question "matter progressing without dormancy"
+CLIENT_MONEY_RECENT_MONTHS = 12  # fallback window for the archived client-money check
+
+def client_money_cutoff(today):
+    """Archived files opened on or after this date are checked for client money.
+
+    Older matters were not run through this system's ledgers (client-to-office
+    transfers and payments in/out were recorded elsewhere), so a balance
+    computed for them would be wrong. ``COMPLIANCE_CLIENT_MONEY_FROM`` (an ISO
+    date in the environment) pins the start of reliable ledgers; without it
+    the check covers files opened in the last ``CLIENT_MONEY_RECENT_MONTHS``.
+    """
+    raw = str(getattr(settings, 'COMPLIANCE_CLIENT_MONEY_FROM', '') or '').strip()
+    if raw:
+        try:
+            return date.fromisoformat(raw)
+        except ValueError:
+            pass
+    return today - relativedelta(months=CLIENT_MONEY_RECENT_MONTHS)
+
 
 GREEN = '#16a34a'     # green-600, as the staff timeline donut
 RED = '#dc2626'       # red-600
@@ -138,6 +162,10 @@ class Metric:
     columns: list                         # [{'key', 'label', 'sortable', 'truncate'}]
     reasons: dict = field(default_factory=dict)   # reason key -> legend label (not-done split)
 
+    def help_for(self, snapshot):
+        """Help text; a callable help receives the snapshot (for dates in the text)."""
+        return self.help(snapshot) if callable(self.help) else self.help
+
     @property
     def detail_url(self):
         return reverse('compliance_stats_detail', args=[self.key])
@@ -166,7 +194,7 @@ GROUPS = [
     {
         'key': 'closure',
         'title': 'File closure',
-        'description': 'Archived files that still carry an undischarged undertaking.',
+        'description': 'Archived files that still carry an undischarged undertaking, and recently opened archived files that still hold client money.',
         'scope': 'archived',
     },
 ]
@@ -253,6 +281,12 @@ class Snapshot:
             self.matter_fee_earner[row['id']] = self._responsible_id(row, users_by_code)
         self.live_ids = [m['id'] for m in self.live]
         self.archived_ids = [m['id'] for m in self.archived]
+        self.client_money_cutoff = client_money_cutoff(self.today)
+        self.recent_archived = [
+            m for m in self.archived
+            if _as_date(m['timestamp']) and _as_date(m['timestamp']) >= self.client_money_cutoff
+        ]
+        self.recent_archived_ids = [m['id'] for m in self.recent_archived]
 
         # Clients: client1 plus the additional_clients M2M, without WIP.all_clients
         # (which is a query per matter).
@@ -389,6 +423,47 @@ class Snapshot:
                         last[row['file_number_id']] = (when, label)
             return last
         return self.cached('last_activity', load)
+
+
+    def client_balances(self):
+        """Client account balance per recently opened archived matter.
+
+        Uses the ledger sign rules of the finances page
+        (``_finance_activity_ledger_deltas``): only client-ledger slips and
+        client-ledger transfers move it; invoices and credit notes never do.
+        """
+        def load():
+            balances = defaultdict(lambda: Decimal('0'))
+            slips = PmtsSlips.objects.filter(
+                ledger_account='C', file_number_id__in=self.recent_archived_ids,
+            ).values('file_number_id', 'is_money_out').annotate(total=Sum('amount'))
+            for row in slips:
+                sign = -1 if row['is_money_out'] else 1
+                balances[row['file_number_id']] += sign * (row['total'] or Decimal('0'))
+            archived = set(self.recent_archived_ids)
+            transfers = LedgerAccountTransfers.objects.filter(
+                from_ledger_account='C',
+            ).values('file_number_from_id', 'file_number_to_id').annotate(total=Sum('amount'))
+            for row in transfers:
+                amount = row['total'] or Decimal('0')
+                src, dst = row['file_number_from_id'], row['file_number_to_id']
+                if src == dst:
+                    # Same-matter client -> office transfer.
+                    if src in archived:
+                        balances[src] -= amount
+                    continue
+                if src in archived:
+                    balances[src] -= amount
+                if dst in archived:
+                    balances[dst] += amount
+            office_to_client = LedgerAccountTransfers.objects.filter(
+                from_ledger_account='O', file_number_from_id=F('file_number_to_id'),
+                file_number_from_id__in=self.archived_ids,
+            ).values('file_number_from_id').annotate(total=Sum('amount'))
+            for row in office_to_client:
+                balances[row['file_number_from_id']] += row['total'] or Decimal('0')
+            return {mid: round(bal, 2) for mid, bal in balances.items()}
+        return self.cached('client_balances', load)
 
 
 # ---------------------------------------------------------------------------
@@ -858,6 +933,21 @@ def collect_undertakings_discharged(snap):
 # Collectors: file closure (archived matters)
 # ---------------------------------------------------------------------------
 
+def collect_closed_no_client_money(snap):
+    balances = snap.client_balances()
+    items = []
+    for m in snap.recent_archived:
+        balance = balances.get(m['id'], Decimal('0'))
+        done = balance == 0
+        items.append(_matter_item(
+            snap, m, done, 'holding',
+            cells={'opened': _date_cell(_as_date(m['timestamp'])),
+                   'balance': {'value': f'£{balance:,.2f}', 'href': None}},
+            sort={'opened': _as_date(m['timestamp']) or _far_past(), 'balance': balance},
+        ))
+    return items
+
+
 def collect_closed_no_open_undertakings(snap):
     rows = Undertaking.objects.filter(
         file_number_id__in=snap.archived_ids, date_discharged__isnull=True,
@@ -1033,6 +1123,17 @@ METRICS = {m.key: m for m in [
     ),
     # -- File closure -----------------------------------------------------
     _metric(
+        'closed_no_client_money', 'Recent archived files with no client money held', 'No client money', 'closure',
+        lambda snap: (
+            f'Archived files opened on or after {_fmt_date(snap.client_money_cutoff)} whose client account '
+            'balance is nil. Client money must be returned promptly once a matter ends (SRA Accounts Rules 2.5). '
+            'Older files were not run through this system\'s ledgers, so they are left out; the balance follows '
+            'the ledger on the finances page.'
+        ),
+        collect_closed_no_client_money,
+        MATTER_COLUMNS + [_col('opened', 'Opened'), _col('balance', 'Client balance')],
+    ),
+    _metric(
         'closed_no_open_undertakings', 'Archived files with no open undertakings', 'No open undertakings', 'closure',
         'Archived files with every undertaking discharged.',
         collect_closed_no_open_undertakings,
@@ -1056,7 +1157,7 @@ def _counter():
     return {'done': 0, 'total': 0}
 
 
-def _metric_context(metric, items):
+def _metric_context(snap, metric, items):
     done = sum(1 for i in items if i.done)
     total = len(items)
     not_done = total - done
@@ -1077,7 +1178,7 @@ def _metric_context(metric, items):
         'key': metric.key,
         'label': metric.label,
         'short_label': metric.short_label,
-        'help': metric.help,
+        'help': metric.help_for(snap),
         'done': done,
         'total': total,
         'not_done': not_done,
@@ -1135,7 +1236,8 @@ def build_compliance_stats(snapshot=None):
         'matter': f'{len(snap.live)} live matter{"s" if len(snap.live) != 1 else ""}',
         'client': (f'{len(snap.clients)} client{"s" if len(snap.clients) != 1 else ""}'
                    f' and {len(snap.parties)} authorised part{"ies" if len(snap.parties) != 1 else "y"} on live matters'),
-        'archived': f'{len(snap.archived)} archived file{"s" if len(snap.archived) != 1 else ""}',
+        'archived': (f'{len(snap.archived)} archived file{"s" if len(snap.archived) != 1 else ""}'
+                     f' ({len(snap.recent_archived)} opened since {_fmt_date(snap.client_money_cutoff)})'),
     }
     groups = []
     for group in GROUPS:
@@ -1146,7 +1248,7 @@ def build_compliance_stats(snapshot=None):
             'description': group['description'],
             'scope_line': scope_counts[group['scope']],
             'footnote': group.get('footnote', ''),
-            'metrics': [_metric_context(m, items_by_metric[m.key]) for m in group_metrics],
+            'metrics': [_metric_context(snap, m, items_by_metric[m.key]) for m in group_metrics],
             'fee_earner_rows': _fee_earner_rows(snap, group_metrics, items_by_metric),
         })
     return {
