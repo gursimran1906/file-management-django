@@ -9,7 +9,7 @@ from django.http import Http404
 from django.shortcuts import render
 from django.urls import reverse
 
-from .compliance_stats import METRICS, UNASSIGNED, build_compliance_stats, build_metric_detail
+from .compliance_stats import METRICS, Snapshot, build_compliance_stats, build_metric_detail
 from .views import render_report
 
 
@@ -30,8 +30,9 @@ def compliance_stats_detail(request, metric_key):
     if reason and reason not in metric.reasons:
         reason = ''
 
+    snapshot = Snapshot()
     columns, rows, fee_earner_options = build_metric_detail(
-        metric, fee_earner=fee_earner, reason=reason, q=q)
+        metric, fee_earner=fee_earner, reason=reason, q=q, snapshot=snapshot)
 
     filters = [
         {'name': 'q', 'label': 'Search', 'type': 'text', 'value': q,
@@ -51,7 +52,7 @@ def compliance_stats_detail(request, metric_key):
         request,
         slug=f'compliance_{metric.key}',
         title=metric.label,
-        description=metric.help,
+        description=metric.help_for(snapshot),
         filters=filters, columns=columns, rows=rows,
         back_url=reverse('compliance_stats'), back_label='Compliance stats',
     )

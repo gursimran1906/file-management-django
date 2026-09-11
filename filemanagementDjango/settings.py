@@ -251,6 +251,11 @@ BUNDLE_SHARE_LINK_EXPIRY_DAYS = int(os.getenv('BUNDLE_SHARE_LINK_EXPIRY_DAYS', '
 # reporting. JSON object of staff codes; a file's own fee_earner never changes.
 RESPONSIBLE_FEE_EARNER_ALIASES = os.getenv(
     'RESPONSIBLE_FEE_EARNER_ALIASES', '{"DC": "ND"}')
+
+# Compliance stats: archived files opened on/after this ISO date are checked for
+# client money still held. Older matters were not run through this system's
+# ledgers. Leave blank to check files opened in the last 12 months.
+COMPLIANCE_CLIENT_MONEY_FROM = os.getenv('COMPLIANCE_CLIENT_MONEY_FROM', '')
 BUNDLE_SHARE_LINK_USE_PASSWORD = os.getenv(
     'BUNDLE_SHARE_LINK_USE_PASSWORD', 'true'
 ).lower() in ('true', '1', 'yes')
