@@ -973,7 +973,9 @@ document.addEventListener('DOMContentLoaded', function() {
             <p class="text-sm text-gray-700 mb-2 line-clamp-2">${task.task}</p>
             <div class="flex items-center justify-between text-xs text-gray-500">
                 <span>${task.assigned_to}</span>
-                ${task.date ? `<span class="${getDateStatusColor(task.date)}">${formatDate(task.date)}</span>` : '<span>No date</span>'}
+                ${status === 'completed'
+                    ? (task.date ? `<span>Completed ${formatDate(task.date)}</span>` : '<span></span>')
+                    : (task.date ? `<span class="${getDateStatusColor(task.date)}">${formatDate(task.date)}</span>` : '<span>No date</span>')}
             </div>
         `;
         

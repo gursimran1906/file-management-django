@@ -1348,7 +1348,7 @@
                     <p class="text-xs text-gray-600 mb-1 leading-snug">${taskText}</p>
                     ${metaLine}
                     <div class="flex justify-between items-center pt-1.5 border-t border-gray-100 gap-2">
-                        <span class="text-[11px] text-gray-500">${getDateStatus(task.date)}</span>
+                        <span class="text-[11px] text-gray-500">${status === 'completed' ? (task.date ? 'Completed ' + formatDate(task.date) : '') : getDateStatus(task.date)}</span>
                         <div class="flex items-center gap-2 shrink-0">
                             ${editHtml}
                             ${status === 'admin_pool' ? getClaimButton() : getStatusButtons(status)}

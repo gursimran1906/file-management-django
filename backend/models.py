@@ -413,23 +413,30 @@ class NextWork(models.Model):
         else:
             self.completed = False
 
+        was_completed = bool(self.pk) and NextWork.objects.filter(
+            pk=self.pk, status='completed').exists()
+
         super().save(*args, **kwargs)
 
-        # Create LastWork entry when task is completed
-        if self.completed and self.status == 'completed':
-            # Check if LastWork entry already exists to avoid duplicates
+        # Record the completion as a LastWork entry the first time the task
+        # moves into "completed". It is dated the day it was completed - not
+        # the task's own date, which is when it was raised / due - so it lands
+        # on the right day in "My time" and in the matter's activity.
+        if self.completed and not was_completed:
+            completed_on = timezone.localdate()
+            # Guard against a double submit creating the same entry twice.
             if not LastWork.objects.filter(
                 file_number=self.file_number,
                 person=self.person,
                 task=self.task,
-                date=self.date
+                date=completed_on,
             ).exists():
                 LastWork.objects.create(
                     file_number=self.file_number,
                     person=self.person,
                     task=self.task,
-                    date=self.date,
-                    created_by=self.created_by
+                    date=completed_on,
+                    created_by=self.created_by,
                 )
 
 

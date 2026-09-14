@@ -1279,7 +1279,6 @@ def update_task_status(request):
                 file_number=task.file_number,
                 person=task.person,
                 task=task.task,
-                date=task.date,
             ).order_by('-timestamp').first()
             serialized = serialize_kanban_task(
                 completed_entry or task, request.user, is_completed=True)
