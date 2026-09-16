@@ -1,3 +1,4 @@
+import os
 from django import forms
 from .models import *
 from django.forms import formset_factory, inlineformset_factory
@@ -6,6 +7,7 @@ from math import ceil
 from django.utils import timezone
 from django.core.validators import RegexValidator
 from django.utils.safestring import mark_safe
+from django.utils.html import format_html, format_html_join
 from django_quill.forms import QuillFormField
 
 class OpenFileForm(forms.ModelForm):
@@ -392,10 +394,12 @@ class CreditNoteHalfForm(forms.ModelForm):
 class ClientForm(forms.ModelForm):
     class Meta:
         model = ClientContactDetails
-        fields = ['name', 'is_business', 'dob', 'occupation','address_line1', 'address_line2',
+        # Per-client identity only. Terms / NCBA / source of funds / PEP are now
+        # recorded per matter-client (see MatterClient) and edited on each matter,
+        # so they are no longer editable on the client record.
+        fields = ['name', 'is_business', 'dob', 'occupation', 'address_line1', 'address_line2',
                   'county', 'postcode', 'email', 'contact_number', 'date_of_last_aml',
-                  'id_verified', 'terms_of_engagement_signed', 'ncba_signed',
-                  'pep_signed', 'source_of_funds_signed']
+                  'id_verified']
         
         widgets = {
             'dob': forms.DateInput(attrs={'type': 'date'}),
@@ -431,11 +435,14 @@ class ClientKeyDocumentForm(forms.ModelForm):
             field.widget.attrs['class'] = 'form-input'
 
 
+# extra=0: existing documents render for editing; new ones are added on demand via
+# the "Add document" / "Renew" buttons (keeping expired documents on file as
+# history rather than overwriting them).
 ClientKeyDocumentFormSet = inlineformset_factory(
     ClientContactDetails,
     ClientKeyDocument,
     form=ClientKeyDocumentForm,
-    extra=2,
+    extra=0,
     can_delete=True
 )
 
@@ -502,18 +509,25 @@ class AuthorisedPartyForm(forms.ModelForm):
                 field.widget.attrs['class'] = 'form-input'
 
 class OtherSideForm(forms.ModelForm):
-    
+
     class Meta:
         model = OthersideDetails
         fields = '__all__'
         widgets = {
-            
+            'dob': forms.DateInput(attrs={'type': 'date'}),
+            'date_of_incorporation': forms.DateInput(attrs={'type': 'date'}),
         }
 
     def __init__(self, *args, **kwargs):
         super(OtherSideForm, self).__init__(*args, **kwargs)
+        self.fields['is_business'].label = 'Business / company'
+        self.fields['dob'].label = 'Date of Birth'
+        self.fields['date_of_incorporation'].label = 'Date of Incorporation'
         for field_name, field in self.fields.items():
-            field.widget.attrs['class'] = 'form-input'
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs['class'] = 'h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
+            else:
+                field.widget.attrs['class'] = 'form-input'
 
 class RiskAssessmentForm(forms.ModelForm):
     
@@ -644,12 +658,15 @@ class DatalistWidget(forms.TextInput):
         # Render the text input field first
         text_html = super(DatalistWidget, self).render(name, value, attrs, renderer)
         
-        # Create the datalist options, showing file number but using ID as the value
-        datalist_html = f'<datalist id="{self.datalist_id}">'
-        for option in self.choices:
-            datalist_html += f'<option >{option[0]}</option>'  # option[0] is ID, option[1] is file number
-        datalist_html += '</datalist>'
-        
+        # Create the datalist options, showing file number but using ID as the value.
+        # Use format_html so option values (DB-derived) are HTML-escaped.
+        options_html = format_html_join(
+            '', '<option>{}</option>',
+            ((option[0],) for option in self.choices),  # option[0] is ID, option[1] is file number
+        )
+        datalist_html = format_html(
+            '<datalist id="{}">{}</datalist>', self.datalist_id, options_html)
+
         # Return the input field along with the datalist
         return mark_safe(f'{text_html}{datalist_html}')
 
@@ -657,8 +674,32 @@ class DatalistWidget(forms.TextInput):
         """Update the choices for the datalist (ID, File Number)"""
         self.choices = choices
 
+# Upload limits for undertaking proof files. Generous size cap (primary DoS
+# control) plus an extension allowlist of document/image types.
+MAX_UNDERTAKING_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
+ALLOWED_UNDERTAKING_EXTENSIONS = frozenset({
+    '.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.tif', '.tiff',
+})
+
+
+def validate_undertaking_file(uploaded_file):
+    """Validate a single undertaking upload; raise ValidationError if bad."""
+    if uploaded_file is None:
+        return uploaded_file
+    # Only newly uploaded files have a size/name to check; existing stored
+    # files come through as a FieldFile and are left untouched.
+    if hasattr(uploaded_file, 'size') and hasattr(uploaded_file, 'name'):
+        if uploaded_file.size and uploaded_file.size > MAX_UNDERTAKING_FILE_SIZE:
+            raise forms.ValidationError(
+                f'File too large (max {MAX_UNDERTAKING_FILE_SIZE // (1024 * 1024)} MB).')
+        ext = os.path.splitext(uploaded_file.name)[1].lower()
+        if ext not in ALLOWED_UNDERTAKING_EXTENSIONS:
+            raise forms.ValidationError('File type not allowed.')
+    return uploaded_file
+
+
 class UndertakingForm(forms.ModelForm):
-    
+
 
     class Meta:
         model = Undertaking
@@ -667,6 +708,12 @@ class UndertakingForm(forms.ModelForm):
             'date_given': forms.DateInput(attrs={'type': 'date'}),
             'date_discharged': forms.DateInput(attrs={'type': 'date'}),
         }
+
+    def clean_document_given_on(self):
+        return validate_undertaking_file(self.cleaned_data.get('document_given_on'))
+
+    def clean_discharged_proof(self):
+        return validate_undertaking_file(self.cleaned_data.get('discharged_proof'))
 
     def __init__(self, *args, **kwargs):
         super(UndertakingForm, self).__init__(*args, **kwargs)

@@ -15,7 +15,7 @@
     <div class="div-container py-3">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div class="min-w-0">
-                <div class="flex flex-wrap items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2" id="cs-header-badges">
                     <h1 class="text-2xl font-semibold text-gray-900">{{ file_number }}</h1>
                     {% if statement_data.metadata.status == 'finalised' %}
                     <span class="badge-green">Finalised</span>
@@ -27,7 +27,7 @@
                 </div>
                 <p class="text-sm text-gray-600 mt-1">{{ statement_data.metadata.client_names|default:"Completion statement" }}</p>
             </div>
-            <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <div class="flex flex-wrap items-center gap-2 shrink-0" id="cs-header-actions">
                 <span id="cs-save-status" class="text-xs text-gray-500"></span>
                 <a href="{% url 'home' file_number %}" class="btn-secondary text-xs">Back to file</a>
                 <a href="{% url 'download_completion_statement' file_number %}" class="btn-primary text-xs">Download PDF</a>

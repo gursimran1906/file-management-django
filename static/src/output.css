@@ -2248,10 +2248,6 @@ textarea.form-input {
   grid-column: span 2 / span 2;
 }
 
-.col-span-3 {
-  grid-column: span 3 / span 3;
-}
-
 .col-span-4 {
   grid-column: span 4 / span 4;
 }
@@ -2283,6 +2279,11 @@ textarea.form-input {
 .-mx-1 {
   margin-left: -0.25rem;
   margin-right: -0.25rem;
+}
+
+.-mx-2 {
+  margin-left: -0.5rem;
+  margin-right: -0.5rem;
 }
 
 .mx-0\.5 {
@@ -2329,6 +2330,10 @@ textarea.form-input {
 
 .mb-0 {
   margin-bottom: 0px;
+}
+
+.mb-0\.5 {
+  margin-bottom: 0.125rem;
 }
 
 .mb-1 {
@@ -2632,10 +2637,6 @@ textarea.form-input {
 
 .max-h-56 {
   max-height: 14rem;
-}
-
-.max-h-60 {
-  max-height: 15rem;
 }
 
 .max-h-64 {
@@ -3026,8 +3027,22 @@ textarea.form-input {
   animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
 .cursor-default {
   cursor: default;
+}
+
+.cursor-help {
+  cursor: help;
 }
 
 .cursor-move {
@@ -3560,6 +3575,11 @@ textarea.form-input {
   border-color: rgb(209 250 229 / var(--tw-border-opacity, 1));
 }
 
+.border-emerald-200 {
+  --tw-border-opacity: 1;
+  border-color: rgb(167 243 208 / var(--tw-border-opacity, 1));
+}
+
 .border-gray-100 {
   --tw-border-opacity: 1;
   border-color: rgb(243 244 246 / var(--tw-border-opacity, 1));
@@ -3778,6 +3798,10 @@ textarea.form-input {
 
 .bg-gray-50\/60 {
   background-color: rgb(249 250 251 / 0.6);
+}
+
+.bg-gray-50\/70 {
+  background-color: rgb(249 250 251 / 0.7);
 }
 
 .bg-gray-600 {
@@ -4362,6 +4386,10 @@ textarea.form-input {
   padding-right: 0.75rem;
 }
 
+.pr-4 {
+  padding-right: 1rem;
+}
+
 .ps-10 {
   padding-inline-start: 2.5rem;
 }
@@ -4432,6 +4460,10 @@ textarea.form-input {
 
 .align-top {
   vertical-align: top;
+}
+
+.align-middle {
+  vertical-align: middle;
 }
 
 .font-mono {
@@ -4578,6 +4610,11 @@ textarea.form-input {
   letter-spacing: 0.05em;
 }
 
+.text-amber-500 {
+  --tw-text-opacity: 1;
+  color: rgb(245 158 11 / var(--tw-text-opacity, 1));
+}
+
 .text-amber-600 {
   --tw-text-opacity: 1;
   color: rgb(217 119 6 / var(--tw-text-opacity, 1));
@@ -4650,6 +4687,16 @@ textarea.form-input {
 .text-cyan-900 {
   --tw-text-opacity: 1;
   color: rgb(22 78 99 / var(--tw-text-opacity, 1));
+}
+
+.text-emerald-500 {
+  --tw-text-opacity: 1;
+  color: rgb(16 185 129 / var(--tw-text-opacity, 1));
+}
+
+.text-emerald-600 {
+  --tw-text-opacity: 1;
+  color: rgb(5 150 105 / var(--tw-text-opacity, 1));
 }
 
 .text-emerald-800 {
@@ -4952,6 +4999,10 @@ textarea.form-input {
   opacity: 1;
 }
 
+.opacity-25 {
+  opacity: 0.25;
+}
+
 .opacity-60 {
   opacity: 0.6;
 }
@@ -5099,6 +5150,16 @@ details.gr-disclose > summary::-webkit-details-marker {
 
 .\[\&\:\:-webkit-details-marker\]\:hidden#bundle-upload-overlay::-webkit-details-marker {
   display: none;
+}
+
+.marker\:content-\[\'\'\] *::marker {
+  --tw-content: '';
+  content: var(--tw-content);
+}
+
+.marker\:content-\[\'\'\]::marker {
+  --tw-content: '';
+  content: var(--tw-content);
 }
 
 .placeholder\:font-light::-moz-placeholder {
@@ -5508,6 +5569,11 @@ details.gr-disclose > summary::-webkit-details-marker {
   transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
 }
 
+.group[open] .group-open\:rotate-45 {
+  --tw-rotate: 45deg;
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+}
+
 .group[open] .group-open\:rotate-90 {
   --tw-rotate: 90deg;
   transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
@@ -5618,6 +5684,10 @@ details.gr-disclose > summary::-webkit-details-marker {
     max-width: 28rem;
   }
 
+  .sm\:max-w-xs {
+    max-width: 20rem;
+  }
+
   .sm\:translate-x-0 {
     --tw-translate-x: 0px;
     transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
@@ -5633,6 +5703,10 @@ details.gr-disclose > summary::-webkit-details-marker {
 
   .sm\:grid-cols-3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .sm\:grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .sm\:flex-row {
@@ -5701,12 +5775,12 @@ details.gr-disclose > summary::-webkit-details-marker {
     grid-column: span 6 / span 6;
   }
 
-  .md\:me-24 {
-    margin-inline-end: 6rem;
+  .md\:col-span-8 {
+    grid-column: span 8 / span 8;
   }
 
-  .md\:max-h-\[14\.5rem\] {
-    max-height: 14.5rem;
+  .md\:me-24 {
+    margin-inline-end: 6rem;
   }
 
   .md\:max-h-\[32rem\] {
@@ -5805,6 +5879,10 @@ details.gr-disclose > summary::-webkit-details-marker {
     grid-column: span 2 / span 2;
   }
 
+  .lg\:col-span-3 {
+    grid-column: span 3 / span 3;
+  }
+
   .lg\:w-fit {
     width: -moz-fit-content;
     width: fit-content;
@@ -5824,6 +5902,10 @@ details.gr-disclose > summary::-webkit-details-marker {
 
   .lg\:grid-cols-4 {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .lg\:grid-cols-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .lg\:flex-row {

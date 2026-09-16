@@ -86,6 +86,28 @@
             margin: 0.2cm 0;
         }
 
+        .export-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0.3cm 0;
+        }
+
+        .export-table th,
+        .export-table td {
+            text-align: center;
+            vertical-align: top;
+            padding: 0.12cm 0.2cm;
+        }
+
+        .export-table tbody tr:nth-child(even) {
+            background-color: #f3f4f6;
+        }
+
+        .export-table .export-desc {
+            white-space: normal;
+            word-break: break-word;
+        }
+
         .notes {
             margin-top: 0.6cm;
             white-space: pre-line;
@@ -126,16 +148,28 @@
             <p><strong><u>Estate Account</u></strong></p>
         </div>
         <div class="section-title">Assets</div>
-        {% for line in data.assets %}
-        {% if not line.is_excluded %}
-        <div class="line-item">
-            {% if line.date %}{{ line.date }} - {% endif %}{{ line.description }}
-            <span class="line-amount">{{ line.amount_display }}</span>
-        </div>
-        {% endif %}
-        {% empty %}
-        <div class="line-item">No assets recorded.</div>
-        {% endfor %}
+        <table class="export-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th class="export-desc">Description</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for line in data.assets %}
+                {% if not line.is_excluded %}
+                <tr>
+                    <td>{{ line.date }}</td>
+                    <td class="export-desc">{{ line.description }}</td>
+                    <td>{{ line.amount_display }}</td>
+                </tr>
+                {% endif %}
+                {% empty %}
+                <tr><td colspan="3">No assets recorded.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
         <div class="total-line clearfix">
             Gross Value of Estate Carried Forward
             <span class="line-amount">{{ data.totals.gross_estate_display }}</span>
@@ -150,16 +184,28 @@
         <div class="section-title">Assets (Cont.)</div>
         <div class="line-item">Balance Brought forward <span class="line-amount">{{ data.totals.gross_estate_display }}</span></div>
         <div class="section-title">Debts due at Death</div>
-        {% for line in data.debts %}
-        {% if not line.is_excluded %}
-        <div class="line-item">
-            {% if line.date %}{{ line.date }} - {% endif %}{{ line.description }}
-            <span class="line-amount">{{ line.amount_display }}</span>
-        </div>
-        {% endif %}
-        {% empty %}
-        <div class="line-item">No debts recorded.</div>
-        {% endfor %}
+        <table class="export-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th class="export-desc">Description</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for line in data.debts %}
+                {% if not line.is_excluded %}
+                <tr>
+                    <td>{{ line.date }}</td>
+                    <td class="export-desc">{{ line.description }}</td>
+                    <td>{{ line.amount_display }}</td>
+                </tr>
+                {% endif %}
+                {% empty %}
+                <tr><td colspan="3">No debts recorded.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
         <div class="total-line clearfix">
             Total sums paid
             <span class="line-amount">{{ data.totals.total_debts_paid_display }}</span>
@@ -192,29 +238,50 @@
         {% if data.metadata.will_clause_text %}
         <p>{{ data.metadata.will_clause_text }}</p>
         {% endif %}
-        {% for row in data.distributions %}
-        <div class="distribution-line">
-            {{ row.beneficiary_name }}
-            {% if row.share_fraction %}{{ row.share_fraction }}{% endif %}
-            i.e. {{ row.gross_amount_display }}
-            {% if row.adjustment_amount and row.adjustment_amount != "0.00" %}
-            less {{ row.adjustment_amount_display }} for {{ row.adjustment_description }}
-            {% endif %}
-            {% if row.adjustment_amount and row.adjustment_amount != "0.00" %}
-            (net {{ row.net_amount_display }})
-            {% endif %}
-        </div>
-        {% endfor %}
+        <table class="export-table">
+            <thead>
+                <tr>
+                    <th class="export-desc">Beneficiary</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in data.distributions %}
+                <tr>
+                    <td class="export-desc">
+                        {{ row.beneficiary_name }}
+                        {% if row.share_fraction %}{{ row.share_fraction }}{% endif %}
+                        {% if row.adjustment_amount and row.adjustment_amount != "0.00" %}
+                        (less {{ row.adjustment_amount_display }} for {{ row.adjustment_description }}, net {{ row.net_amount_display }})
+                        {% endif %}
+                    </td>
+                    <td>{{ row.gross_amount_display }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
         {% if data.distribution_payments %}
         <div class="section-title">Payments made</div>
-        {% for line in data.distribution_payments %}
-        {% if not line.is_excluded %}
-        <div class="line-item">
-            {% if line.date %}{{ line.date }} - {% endif %}{{ line.description }}
-            <span class="line-amount">{{ line.amount_display }}</span>
-        </div>
-        {% endif %}
-        {% endfor %}
+        <table class="export-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th class="export-desc">Description</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for line in data.distribution_payments %}
+                {% if not line.is_excluded %}
+                <tr>
+                    <td>{{ line.date }}</td>
+                    <td class="export-desc">{{ line.description }}</td>
+                    <td>{{ line.amount_display }}</td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
         <div class="total-line clearfix">
             Total payments made
             <span class="line-amount">{{ data.totals.distribution_payments_total_display }}</span>

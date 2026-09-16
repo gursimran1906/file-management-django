@@ -49,5 +49,11 @@ COPY . /app
 # Ensure the entrypoint script is executable
 RUN chmod +x /app/entrypoint.sh
 
+# SECURITY NOTE: this container currently runs as root because entrypoint.sh
+# starts the system cron daemon and manages the root crontab (django_crontab).
+# Running as a non-root USER would require splitting cron into its own
+# container/process (recommended hardening, deferred — it changes the runtime
+# topology and must be validated against the cron jobs before adopting).
+
 # Define entrypoint
 ENTRYPOINT ["/app/entrypoint.sh"]

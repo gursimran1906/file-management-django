@@ -12,14 +12,30 @@ all-staff guide page and the manager-only settings page.{% endcomment %}
     <li><span class="font-mono">File number: ABC0010001 (NC)</span> — links to ABC0010001, <em>not</em> charged.</li>
     <li>No file number, or an unknown one → lands in the review inbox for manual assignment.</li>
   </ul>
+  <p class="mt-3 text-xs text-gray-500">
+    Add the start and finish times on their own lines so the time recorded (units)
+    matches how long the call actually took:
+  </p>
+  <pre class="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs text-gray-700 border border-gray-200">File number: ABC0010001
+Start Time: 10:30
+Finish Time: 11:15</pre>
+  <p class="mt-1 text-xs text-gray-500">
+    If you leave the times out we use the meeting's calendar event when there is one,
+    otherwise a single unit is recorded. Times like <span class="font-mono">9.30am</span>
+    also work; a blank <span class="font-mono">Finish Time:</span> is simply ignored.
+  </p>
 
   <p class="mt-4 font-medium text-gray-800">Free 30 minutes — parties template</p>
   <p class="mt-1 text-xs text-gray-500">
     Notes saved in the “{{ config.free30_folder|default:'Free 30 min' }}” folder. Add an
-    “Info of Parties” section (best set up as a Granola note template) so attendee
-    details are captured automatically:
+    “Info of Parties” section plus the start and finish times on their own lines (best
+    set up as a Granola note template) so attendee details and the meeting length are
+    captured automatically:
   </p>
-  <pre class="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs text-gray-700 border border-gray-200">## Info of Parties
+  <pre class="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs text-gray-700 border border-gray-200">Start Time: 14:00
+Finish Time: 14:30
+
+## Info of Parties
 Party 1
 - Name: John Smith
 - Email: john@example.com

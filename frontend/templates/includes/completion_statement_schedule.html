@@ -1,4 +1,4 @@
-<p class="text-xs text-gray-500 mb-3">Pending payments with payee and account (client or office). Convert to pink or blue slip when ready.</p>
+<p class="text-xs text-gray-500 mb-3">Pending payments pulled from the main statement and the tabs. Add the payee bank details, then convert to a pink or blue slip when ready.</p>
 <div class="estate-lines-table-wrap overflow-x-auto">
     <table class="estate-lines-table w-full text-sm">
         <thead>
@@ -9,6 +9,7 @@
                 <th>Direction</th>
                 <th>Projected</th>
                 <th>Actual</th>
+                <th>Bank</th>
                 <th>Status</th>
                 <th></th>
             </tr>
@@ -16,8 +17,16 @@
         <tbody id="cs-schedule-list">
             {% for row in statement_data.schedule %}
             <tr class="estate-line-row {% if row.ledger_variance or row.amount_variance %}bg-amber-50{% endif %}" data-schedule-id="{{ row.id }}">
-                <td>{{ row.payee_name }}</td>
-                <td class="text-xs">{{ row.description }}</td>
+                <td>
+                    {% if row.payee_editable %}
+                    <input type="text" class="bundle-linear-field text-xs w-full" data-sched-field="payee_name" value="{{ row.payee_name }}" placeholder="Payee">
+                    {% else %}{{ row.payee_name }}{% endif %}
+                </td>
+                <td class="text-xs">
+                    {% if row.payee_editable %}
+                    <input type="text" class="bundle-linear-field text-xs w-full" data-sched-field="description" value="{{ row.description }}" placeholder="Description">
+                    {% else %}{{ row.description }}{% endif %}
+                </td>
                 <td>
                     {% if statement_data.metadata.is_editable and row.status == 'pending' %}
                     <select class="bundle-linear-field text-xs" data-sched-field="ledger_account">
@@ -29,18 +38,72 @@
                     {% if row.ledger_variance %}<span class="text-amber-700 text-xs block">Slip: {{ row.slip_ledger_account_display }}</span>{% endif %}
                     {% endif %}
                 </td>
-                <td class="text-xs">{% if row.direction == 'add' %}Money in{% else %}Money out{% endif %}</td>
-                <td class="tabular-nums">{{ row.projected_amount_display }}</td>
+                <td class="text-xs">
+                    {% if row.amount_editable %}
+                    <select class="bundle-linear-field text-xs" data-sched-field="direction">
+                        <option value="less" {% if row.direction == 'less' %}selected{% endif %}>Money out</option>
+                        <option value="add" {% if row.direction == 'add' %}selected{% endif %}>Money in</option>
+                    </select>
+                    {% else %}{% if row.direction == 'add' %}Money in{% else %}Money out{% endif %}{% endif %}
+                </td>
+                <td class="tabular-nums">
+                    {% if row.amount_editable %}
+                    <input type="number" step="0.01" class="bundle-linear-field text-xs w-24 text-right tabular-nums" data-sched-field="projected_amount" value="{{ row.projected_amount }}">
+                    {% else %}{{ row.projected_amount_display }}{% endif %}
+                </td>
                 <td class="tabular-nums">{% if row.actual_amount_display %}{{ row.actual_amount_display }}{% else %}—{% endif %}</td>
+                <td class="text-xs">
+                    <button type="button" class="bundle-linear-btn text-xs" data-sched-bank-toggle="{{ row.id }}">
+                        {% if row.has_bank_details %}<span class="text-green-700">✓ Bank</span>{% else %}Add bank{% endif %}
+                    </button>
+                </td>
                 <td class="text-xs">{{ row.status_display }}</td>
                 <td>
                     {% if statement_data.metadata.is_editable and row.status == 'pending' %}
-                    <button type="button" class="bundle-linear-btn text-xs" data-sched-create-slip="{{ row.id }}">Create slip</button>
+                    <button type="button" class="bundle-linear-btn text-xs" data-sched-create-slip="{{ row.id }}"
+                            {% if not row.has_bank_details %}title="Add bank details first (recommended)"{% endif %}>Create slip</button>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr class="cs-sched-bank-row hidden" data-bank-row="{{ row.id }}">
+                <td colspan="9" class="bg-gray-50">
+                    {% if statement_data.metadata.is_editable and row.status == 'pending' %}
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 py-2 px-1">
+                        <label class="form-label text-xs">Bank name
+                            <input type="text" class="bundle-linear-field w-full mt-0.5 text-xs" data-sched-field="bank_name"
+                                   value="{{ row.bank_name }}" placeholder="e.g. Barclays">
+                        </label>
+                        <label class="form-label text-xs">Sort code
+                            <input type="text" class="bundle-linear-field w-full mt-0.5 text-xs" data-sched-field="bank_sort_code"
+                                   value="{{ row.bank_sort_code }}" placeholder="00-00-00">
+                        </label>
+                        <label class="form-label text-xs">Account number
+                            <input type="text" class="bundle-linear-field w-full mt-0.5 text-xs" data-sched-field="bank_account_number"
+                                   value="{{ row.bank_account_number }}" placeholder="12345678">
+                        </label>
+                        <label class="form-label text-xs">Account name
+                            <input type="text" class="bundle-linear-field w-full mt-0.5 text-xs" data-sched-field="bank_account_name"
+                                   value="{{ row.bank_account_name }}" placeholder="Account holder">
+                        </label>
+                        <label class="form-label text-xs">Payment reference
+                            <input type="text" class="bundle-linear-field w-full mt-0.5 text-xs" data-sched-field="bank_reference"
+                                   value="{{ row.bank_reference }}" placeholder="Reference">
+                        </label>
+                    </div>
+                    {% else %}
+                    <div class="text-xs text-gray-600 py-2 px-1 space-y-0.5">
+                        {% if row.has_bank_details or row.bank_name or row.bank_account_name %}
+                        <div><span class="text-gray-400">Bank:</span> {{ row.bank_name|default:"—" }} · <span class="text-gray-400">Sort:</span> {{ row.bank_sort_code|default:"—" }} · <span class="text-gray-400">A/C:</span> {{ row.bank_account_number|default:"—" }}</div>
+                        <div><span class="text-gray-400">Name:</span> {{ row.bank_account_name|default:"—" }} · <span class="text-gray-400">Ref:</span> {{ row.bank_reference|default:"—" }}</div>
+                        {% else %}
+                        <span class="text-gray-400">No bank details recorded.</span>
+                        {% endif %}
+                    </div>
                     {% endif %}
                 </td>
             </tr>
             {% empty %}
-            <tr><td colspan="8" class="text-gray-500 text-xs py-2">No scheduled payments yet.</td></tr>
+            <tr><td colspan="9" class="text-gray-500 text-xs py-2">No scheduled payments yet. Flag a main-statement line as “pending” or add one below.</td></tr>
             {% endfor %}
         </tbody>
     </table>

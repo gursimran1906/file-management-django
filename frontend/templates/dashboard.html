@@ -446,6 +446,9 @@
         <li class="py-3 border-b border-gray-100 last:border-0">
           <a class="link text-sm font-medium" href="{{ check.edit_url }}">{{ check.entity_name }}</a>
           <p class="mt-1.5 text-xs text-gray-500">{{ check.entity_type }} · last AML {{ check.date_of_last_aml|date:"d/m/Y" }}</p>
+          {% if check.file_numbers %}
+          <p class="mt-0.5 text-xs text-gray-400">{{ check.file_numbers|join:", " }}{% if check.fee_earners %} · {{ check.fee_earners|join:", " }}{% endif %}</p>
+          {% endif %}
         </li>
         {% empty %}
         <li class="py-6 text-center text-sm text-gray-400">No AML checks due.</li>

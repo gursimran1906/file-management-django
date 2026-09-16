@@ -26,6 +26,7 @@ defusedxml==0.7.1
 Deprecated==1.2.15
 Django==5.1.4
 django-appconf==1.0.6
+django-axes==7.1.0
 django-compressor==4.5.1
 django-crontab==0.7.1
 django-quill-editor==0.1.42

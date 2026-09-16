@@ -25,7 +25,7 @@ from backend.models import Memo
 from .models import AttendanceRecord, CPDTrainingLog, CustomUser, HolidayRecord, SicknessRecord
 from django.utils import timezone
 from .forms import CPDTrainingLogForm, CustomUserCreationForm, HolidayRecordForm, OfficeClosureRecordForm
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, login_not_required
 from django.contrib import messages
 from django.template.loader import render_to_string
 import holidays
@@ -45,6 +45,19 @@ import zipfile
 logger = logging.getLogger('users')
 
 
+def _get_client_ip(request):
+    """Return the real client IP.
+
+    The app sits behind a single trusted TLS-terminating proxy, so the client
+    IP is the first entry of X-Forwarded-For when present; otherwise fall back
+    to REMOTE_ADDR. Only trust this because the proxy is the sole ingress.
+    """
+    forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if forwarded_for:
+        return forwarded_for.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR', 'unknown')
+
+
 def _get_login_redirect_url(request):
     next_param = request.POST.get('next') or request.GET.get('next', '')
     if next_param and url_has_allowed_host_and_scheme(
@@ -56,6 +69,7 @@ def _get_login_redirect_url(request):
     return reverse('user_dashboard')
 
 
+@login_not_required
 def login_view(request):
     if request.user.is_authenticated:
         return redirect(_get_login_redirect_url(request))
@@ -68,7 +82,7 @@ def login_view(request):
         if user is not None:
             login(request, user)
             logger.info(
-                f'User {username} successfully logged in from IP {request.META.get("REMOTE_ADDR", "unknown")}')
+                f'User {username} successfully logged in from IP {_get_client_ip(request)}')
             today = timezone.now().date()
             attendance_record = AttendanceRecord.objects.filter(
                 employee=user, date=today).first()
@@ -83,7 +97,7 @@ def login_view(request):
             return redirect(_get_login_redirect_url(request))
         else:
             logger.warning(
-                f'Failed login attempt for username: {username} from IP {request.META.get("REMOTE_ADDR", "unknown")}')
+                f'Failed login attempt for username: {username} from IP {_get_client_ip(request)}')
             return render(request, 'login.html', {
                 'error_message': 'Invalid login credentials, Please check username or password',
                 'next': request.POST.get('next', ''),
@@ -92,17 +106,23 @@ def login_view(request):
         return render(request, 'login.html', {'next': next_param})
 
 
+@require_POST
 def logout_view(request):
     user = request.user.username
     logout(request)
     logger.info(
-        f'User {user} successfully logged out from IP {request.META.get("REMOTE_ADDR", "unknown")}')
+        f'User {user} successfully logged out from IP {_get_client_ip(request)}')
     log_out_msg = 'Successfully Logged ' + str(user) + ' out!!'
     return render(request, 'login.html', {'message': log_out_msg})
 
 
 @login_required
 def register_view(request):
+    # Only managers/superusers may create accounts.
+    if not (request.user.is_manager or request.user.is_superuser):
+        messages.error(
+            request, 'You do not have permission to create user accounts.')
+        return redirect('user_dashboard')
     if request.method == 'POST':
         form = CustomUserCreationForm(request.POST)
         if form.is_valid():
@@ -2011,6 +2031,7 @@ def access_document(request, uuid):
     return redirect('staff_document_download', uuid=uuid)
 
 
+@login_required
 def add_cpd_training_log(request):
     if request.method == 'POST':
         form = CPDTrainingLogForm(request.POST)
@@ -2022,6 +2043,7 @@ def add_cpd_training_log(request):
     return render(request, 'add_cpd_training_log.html', {'form': form})
 
 
+@login_required
 def edit_cpd_training_log(request, pk):
     cpd_training_log = get_object_or_404(CPDTrainingLog, pk=pk)
     if request.method == 'POST':

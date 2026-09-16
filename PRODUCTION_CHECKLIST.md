@@ -41,11 +41,38 @@ DB_PORT=5432
 ```
 
 ### Security Improvements Made
-1. ✅ `SECRET_KEY` now uses environment variable (with insecure fallback for development)
-2. ✅ `DEBUG` setting fixed (was a tuple, now a proper boolean)
-3. ✅ `ALLOWED_HOSTS` now configurable via environment variable
-4. ✅ Log file permissions set to 644 (readable by owner/group, writable by owner)
-5. ✅ Log directory permissions set to 755
+1. ✅ `SECRET_KEY` is required from the environment — **no fallback**. The app
+   fails to start if `SECRET_KEY` is unset (was previously a committed insecure
+   fallback). The same applies to `DB_USER_PASS`.
+2. ✅ `DEBUG` now defaults to **False** (fails safe if the env var is missing).
+3. ✅ `ALLOWED_HOSTS` configurable via environment variable.
+4. ✅ HTTPS/cookie hardening: `SECURE_PROXY_SSL_HEADER`, `SESSION/CSRF_COOKIE_SECURE`,
+   `SECURE_SSL_REDIRECT`, HSTS, `SECURE_CONTENT_TYPE_NOSNIFF`, `X_FRAME_OPTIONS`
+   (all active when `DEBUG=False`).
+5. ✅ Brute-force protection via **django-axes** (username-keyed lockout — safe
+   for the shared office IP). Run `python manage.py migrate` on deploy.
+6. ✅ All views require login by default (`LoginRequiredMiddleware`).
+7. ✅ Per-file upload size/type validation on bundle and undertaking uploads.
+8. ✅ Removed `printenv > /etc/environment` secret leak from `entrypoint.sh`.
+9. ✅ Log file/dir permissions (644 / 755).
+
+> ⚠️ **BREAKING ON DEPLOY:** because `SECRET_KEY` and `DB_USER_PASS` no longer
+> have fallbacks, the app/containers **will not boot** unless both are present
+> in the environment (or the baked-in/ mounted `.env`). Confirm before deploying.
+
+### Secret Rotation (do this as part of this hardening pass)
+The old `SECRET_KEY` and DB password were committed to git history, so rotate both:
+
+1. **SECRET_KEY** — generate a fresh one and set it in the prod environment/.env:
+   ```bash
+   python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+   ```
+   (Rotating invalidates existing sessions — users simply re-login.)
+2. **Database password** — rotate the DigitalOcean Postgres password and update
+   `DB_USER_PASS` in the prod environment/.env.
+3. Rotate the Postgres password hardcoded in `scripts/add_prev_data_to_psql_db.py`
+   (gitignored/local, but live-looking).
+4. *(Optional follow-up)* scrub the old secrets from git history (e.g. `git filter-repo`).
 
 ## Docker Configuration ✅
 

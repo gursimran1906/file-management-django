@@ -15,6 +15,12 @@
 
   <form method="post" action="{% url 'new_file' %}" class="space-y-5">
     {% csrf_token %}
+    {% if onboarding_group_id %}
+    <input type="hidden" name="onboarding_group_id" value="{{ onboarding_group_id }}">
+    <div class="div-container border-blue-200 bg-blue-50 py-3">
+      <p class="text-sm text-blue-900">Opening a matter from onboarding — the onboarded client{{ prefill_additional_client_ids|length|add:1|pluralize }} {{ prefill_additional_client_ids|length|add:1 }} are pre-selected below. Complete the remaining matter details and open the file as normal.</p>
+    </div>
+    {% endif %}
 
     <!-- Section 1: Matter details -->
     <section class="div-container">
@@ -264,7 +270,7 @@
       <div id="inputNewOS" style="display: none">
         <div class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 mt-3">
           <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">New other side details</p>
-          <div class="grid md:grid-cols-12 gap-2">
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
             {% include 'forms/add_otherside_details_form.html' %}
           </div>
         </div>
@@ -324,4 +330,19 @@
     </div>
   </form>
 </div>
+
+{% if prefill_additional_client_ids %}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var ids = [{{ prefill_additional_client_ids|join:"," }}];
+    if (typeof addAdditionalClient !== 'function') return;
+    ids.forEach(function (cid) {
+      addAdditionalClient();
+      var selects = document.querySelectorAll('#additionalClientsContainer .additional-client-row select');
+      var sel = selects[selects.length - 1];
+      if (sel) sel.value = String(cid);
+    });
+  });
+</script>
+{% endif %}
 {% endblock %}

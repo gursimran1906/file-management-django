@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.db import transaction
 from django.db.models import Q, F, OuterRef, Subquery, Max, CharField, TextField, BooleanField, Exists, Count, Sum, Case, When, Value, DateField
 from django.db.models.functions import Cast, Coalesce, Greatest, Concat
-from .models import WIP, Memo, NextWork, LastWork, MatterKeyDate, FileStatus, FileLocation, MatterType, PricingItem, ClientContactDetails, ClientKeyDocument, AuthorisedParties
+from .models import WIP, Memo, NextWork, LastWork, MatterKeyDate, FileStatus, FileLocation, MatterType, PricingItem, ClientContactDetails, ClientKeyDocument, AuthorisedParties, MatterClient, MatterClientDocument, ConveyancingDetails
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
 from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, MatterFileReview
@@ -37,6 +37,8 @@ from .audit import (
 )
 from .finance_display import build_invoice_finance_detail, compute_invoice_balance_due
 from .audit_display import build_change_items, enrich_file_logs
+from .onboarding_views import link_group_to_matter, matter_client_care_documents
+from .matter_compliance import matter_compliance, ensure_matter_clients
 from django.utils import timezone
 from users.models import CPDTrainingLog, CustomUser, HolidayRecord, SicknessRecord
 from django.contrib import messages
@@ -646,6 +648,18 @@ def get_key_document_expiry_alerts(wips, warning_days=30):
             client_file_numbers.setdefault(
                 row['additional_clients'], set()).add(row['file_number'])
 
+    # Client+category combinations that still have a valid document (no
+    # expiry, or expiry today or later). An expired document for one of these
+    # has been superseded by a newer one (e.g. the client renewed their ID),
+    # so it should not raise an alert.
+    covered = set(
+        ClientKeyDocument.objects.filter(
+            client_id__in=client_file_numbers.keys(),
+        ).filter(
+            Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+        ).values_list('client_id', 'category')
+    )
+
     documents = ClientKeyDocument.objects.filter(
         client_id__in=client_file_numbers.keys(),
         expiry_date__isnull=False,
@@ -654,6 +668,8 @@ def get_key_document_expiry_alerts(wips, warning_days=30):
 
     alerts = []
     for document in documents:
+        if document.expiry_date < today and (document.client_id, document.category) in covered:
+            continue
         alerts.append({
             'client_id': document.client_id,
             'client_name': document.client.name,
@@ -727,15 +743,32 @@ def get_matter_key_documents(matter):
         'client__name', 'category', 'expiry_date', 'document_type')
 
     today = timezone.localdate()
+
+    # A client+category is "covered" when at least one document of that
+    # category is still valid (no expiry, or expiry today or later). An
+    # expired document in a covered category has been superseded by a newer
+    # one (e.g. the client renewed their ID), so it should not be flagged as
+    # an expiry alert - it is shown as "superseded" history instead.
+    covered = set()
+    for document in documents:
+        if document.expiry_date is None or document.expiry_date >= today:
+            covered.add((document.client_id, document.category))
+
     key_documents = []
     for document in documents:
+        if document.expiry_date and document.expiry_date < today:
+            status = (
+                'superseded'
+                if (document.client_id, document.category) in covered
+                else 'expired'
+            )
+        elif document.expiry_date and document.expiry_date <= today + timedelta(days=30):
+            status = 'due_soon'
+        else:
+            status = 'current'
         key_documents.append({
             'document': document,
-            'status': (
-                'expired' if document.expiry_date and document.expiry_date < today
-                else 'due_soon' if document.expiry_date and document.expiry_date <= today + timedelta(days=30)
-                else 'current'
-            )
+            'status': status,
         })
 
     return key_documents
@@ -1776,6 +1809,7 @@ def display_data_home_page(request, file_number):
         ).order_by('-created_at')
         activity_logs, log_meta = enrich_file_logs(
             get_file_logs(file_number, limit=300))
+        matter_compliance_rows = matter_compliance(matter)
         return render(request, 'home.html', {'matter': matter,
                                              'bundles': bundles,
                                              'undertakings': undertakings,
@@ -1794,6 +1828,12 @@ def display_data_home_page(request, file_number):
                                              'logs': activity_logs,
                                              'log_meta': log_meta,
                                              'log_limit': 300,
+                                             'client_care_documents': matter_client_care_documents(matter),
+                                             'matter_compliance': matter_compliance_rows,
+                                             'compliance_by_client': {r['client_id']: r for r in matter_compliance_rows},
+                                             'conveyancing': getattr(matter, 'conveyancing', None),
+                                             'is_conveyancing': bool(matter.matter_type and 'conveyanc' in (matter.matter_type.type or '').lower()),
+                                             'matter_doc_categories': MatterClientDocument.CATEGORY_CHOICES,
                                              'bundle_share_link_scope': settings.BUNDLE_SHARE_LINK_SCOPE})
     except WIP.DoesNotExist:
         logger.warning(
@@ -3122,6 +3162,9 @@ def add_new_authorised_party(request_post_copy, ap_prefix, user):
 def add_new_otherside_details(request_post_copy, user):
 
     name = request_post_copy['OSName']
+    is_business = request_post_copy.get('OSIsBusiness') in ('on', 'true', 'True', '1')
+    dob = request_post_copy.get('OSDob') or None
+    date_of_incorporation = request_post_copy.get('OSDateOfIncorporation') or None
     address_line1 = request_post_copy['OSAddressLine1']
     address_line2 = request_post_copy['OSAddressLine2']
     county = request_post_copy['OSCounty']
@@ -3133,6 +3176,9 @@ def add_new_otherside_details(request_post_copy, user):
 
     otherside_details = OthersideDetails(
         name=name,
+        is_business=is_business,
+        dob=dob,
+        date_of_incorporation=date_of_incorporation,
         address_line1=address_line1,
         address_line2=address_line2,
         county=county,
@@ -3188,17 +3234,34 @@ def get_aml_checks_due_from_wips(wips, threshold_date, user=None, sort_by='date'
             entity_id=F(f'{relation}__id'),
             entity_name=F(f'{relation}__name'),
             date_of_last_aml=F(f'{relation}__date_of_last_aml'),
-        ).values('entity_id', 'entity_name', 'date_of_last_aml')
+        ).values(
+            'entity_id', 'entity_name', 'date_of_last_aml',
+            'file_number', 'fee_earner__username',
+        ).order_by('file_number')
 
         for result in relation_results:
             key = (entity_type, result['entity_id'])
-            results[key] = {
-                'entity_id': result['entity_id'],
-                'entity_name': result['entity_name'],
-                'entity_type': entity_type,
-                'date_of_last_aml': result['date_of_last_aml'],
-                'edit_url': reverse(edit_url_name, args=[result['entity_id']]),
-            }
+            entry = results.get(key)
+            if entry is None:
+                entry = {
+                    'entity_id': result['entity_id'],
+                    'entity_name': result['entity_name'],
+                    'entity_type': entity_type,
+                    'date_of_last_aml': result['date_of_last_aml'],
+                    'edit_url': reverse(edit_url_name, args=[result['entity_id']]),
+                    # An entity can sit on several open matters, so collect every
+                    # matter code / fee earner the overdue AML check relates to.
+                    'file_numbers': [],
+                    'fee_earners': [],
+                }
+                results[key] = entry
+
+            file_number = result['file_number']
+            if file_number and file_number not in entry['file_numbers']:
+                entry['file_numbers'].append(file_number)
+            fee_earner = result['fee_earner__username']
+            if fee_earner and fee_earner not in entry['fee_earners']:
+                entry['fee_earners'].append(fee_earner)
 
     if sort_by == 'name':
         return sorted(results.values(), key=lambda x: (x['entity_name'] or '', x['entity_type']))
@@ -3264,6 +3327,8 @@ def open_new_file_page(request):
             if form.is_valid():
                 instance = form.save()
                 instance.additional_clients.set(additional_client_ids)
+                # Link back to an onboarding group when opened from a conversion.
+                link_group_to_matter(request, instance)
                 messages.success(request, 'File opened successfully.')
                 return redirect('index')
             else:
@@ -3272,13 +3337,31 @@ def open_new_file_page(request):
                     for error in errors:
                         messages.error(
                             request, f"{form[field].label}: {error}")
-                return render(request, 'open_file.html', {'form_data': form_data, 'form': form})
+                return render(request, 'open_file.html', {
+                    'form_data': form_data, 'form': form,
+                    'onboarding_group_id': request.POST.get('onboarding_group_id', '')})
 
         except Exception as e:
             messages.error(request, f"Error during file opening: {str(e)}")
-            return render(request, 'open_file.html', {'form_data': form_data})
+            return render(request, 'open_file.html', {
+                'form_data': form_data,
+                'onboarding_group_id': request.POST.get('onboarding_group_id', '')})
     else:
-        return render(request, 'open_file.html', {'form_data': form_data})
+        # The open-file form is now only the final step of onboarding. If we
+        # didn't arrive here from a conversion (no prefill in session), send the
+        # user to onboarding — every new file is opened through it.
+        prefill = request.session.pop('onboarding_prefill', None)
+        if not prefill:
+            messages.info(
+                request, 'Open a new file by starting client onboarding first.')
+            return redirect('onboarding_list')
+        context = {
+            'form_data': form_data,
+            'client1': str(prefill.get('client1') or '0'),
+            'prefill_additional_client_ids': prefill.get('additional') or [],
+            'onboarding_group_id': prefill.get('group_id'),
+        }
+        return render(request, 'open_file.html', context)
 
 
 @login_required
@@ -3604,9 +3687,25 @@ def edit_client(request, id):
         form = ClientForm(instance=client)
         key_document_formset = ClientKeyDocumentFormSet(
             instance=client, prefix='key_documents')
+    today = timezone.localdate()
+    # Per-matter compliance is read-only here — it belongs to each matter-client.
+    client_matter_compliance = [
+        {
+            'matter': mc.matter,
+            'terms': mc.terms_of_engagement_signed,
+            'ncba_required': mc.ncba_required,
+            'ncba': mc.ncba_signed,
+            'sof': mc.source_of_funds_signed,
+            'pep': mc.pep_signed,
+        }
+        for mc in client.matter_links.select_related('matter').order_by('-matter__timestamp')
+    ]
     return render(request, 'edit_models.html', {
         'form': form,
         'key_document_formset': key_document_formset,
+        'today': today,
+        'soon_cutoff': today + timedelta(days=30),
+        'client_matter_compliance': client_matter_compliance,
         'title': 'Client Information'
     })
 
@@ -8276,11 +8375,18 @@ def download_frontsheet(request, file_number):
     client_last_check_cells = client_cells(
         lambda c: format_date(c.date_of_last_aml))
     client_id_verified_cells = client_cells(lambda c: yes_no(c.id_verified))
-    client_terms_cells = client_cells(
-        lambda c: yes_no(c.terms_of_engagement_signed))
-    client_ncba_cells = client_cells(lambda c: yes_no(c.ncba_signed))
-    client_pep_cells = client_cells(lambda c: yes_no(c.pep_signed))
-    client_sof_cells = client_cells(lambda c: yes_no(c.source_of_funds_signed))
+    # Terms / NCBA / SOF / PEP are recorded per matter-client (identity stays on
+    # the client above). Read them from this matter's MatterClient rows.
+    _mc_by_client = ensure_matter_clients(file)
+
+    def _mc_flag(field):
+        return lambda c: yes_no(
+            getattr(_mc_by_client.get(c.id), field) if _mc_by_client.get(c.id) else False)
+
+    client_terms_cells = client_cells(_mc_flag('terms_of_engagement_signed'))
+    client_ncba_cells = client_cells(_mc_flag('ncba_signed'))
+    client_pep_cells = client_cells(_mc_flag('pep_signed'))
+    client_sof_cells = client_cells(_mc_flag('source_of_funds_signed'))
 
     if file.authorised_party1:
         ap1_name = file.authorised_party1.name
@@ -8991,6 +9097,7 @@ def download_document(request):
         raise Http404("File does not exist")
 
 
+@login_required
 def free30mins(request):
     free30_mins_form = Free30MinsForm()
     free30_mins_attendees_form = Free30MinsAttendeesForm()
@@ -9098,6 +9205,7 @@ def free30mins(request):
     })
 
 
+@login_required
 def download_free30mins(request, id):
     obj = Free30Mins.objects.filter(id=id).first()
 
@@ -9132,6 +9240,7 @@ def download_free30mins(request, id):
     return HttpResponse(pdf_file, content_type='application/pdf')
 
 
+@login_required
 def edit_free30mins(request, id):
     instance = get_object_or_404(Free30Mins, pk=id)
     if request.method == 'POST':
@@ -9236,6 +9345,41 @@ def undertakings(request):
 
 UNDERTAKING_FILE_FIELDS = frozenset({'document_given_on', 'discharged_proof'})
 
+# --- Upload validation ------------------------------------------------------
+# Generous per-file size cap (legal PDF bundles can be large). This is the
+# primary defense against large-upload DoS: a hard size limit must be enforced
+# here in the view, because Django's FILE_UPLOAD_MAX_MEMORY_SIZE only controls
+# the in-memory threshold and does not reject oversized files.
+MAX_UPLOAD_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
+
+# Document/image types an undertaking proof may reasonably be.
+ALLOWED_UNDERTAKING_EXTENSIONS = frozenset({
+    '.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.tif', '.tiff',
+})
+
+
+def _validate_pdf_upload(uploaded_file, max_size=MAX_UPLOAD_FILE_SIZE):
+    """Return an error message if not an acceptable PDF, else None."""
+    if uploaded_file.size > max_size:
+        return f'File too large (max {max_size // (1024 * 1024)} MB): {uploaded_file.name}'
+    if not uploaded_file.name.lower().endswith('.pdf'):
+        return f'Only PDF files are allowed: {uploaded_file.name}'
+    head = uploaded_file.read(5)
+    uploaded_file.seek(0)
+    if not head.startswith(b'%PDF'):
+        return f'File is not a valid PDF: {uploaded_file.name}'
+    return None
+
+
+def _validate_undertaking_upload(uploaded_file, max_size=MAX_UPLOAD_FILE_SIZE):
+    """Return an error message if not an acceptable undertaking file, else None."""
+    if uploaded_file.size > max_size:
+        return f'File too large (max {max_size // (1024 * 1024)} MB): {uploaded_file.name}'
+    ext = os.path.splitext(uploaded_file.name)[1].lower()
+    if ext not in ALLOWED_UNDERTAKING_EXTENSIONS:
+        return f'File type not allowed: {uploaded_file.name}'
+    return None
+
 
 @login_required
 def undertaking_file_download(request, pk, field):
@@ -9288,6 +9432,11 @@ def edit_undertaking(request, id):
 
             # Handle file upload for document_given_on
             if request.FILES.get('document_given_on'):
+                upload_error = _validate_undertaking_upload(
+                    request.FILES['document_given_on'])
+                if upload_error:
+                    messages.error(request, upload_error)
+                    return redirect('edit_undertaking', id=id)
                 if undertaking.document_given_on:
                     undertaking.document_given_on.delete(save=False)
                 undertaking.document_given_on = request.FILES['document_given_on']
@@ -9297,6 +9446,11 @@ def edit_undertaking(request, id):
 
             # Handle file upload for discharged_proof
             if request.FILES.get('discharged_proof'):
+                upload_error = _validate_undertaking_upload(
+                    request.FILES['discharged_proof'])
+                if upload_error:
+                    messages.error(request, upload_error)
+                    return redirect('edit_undertaking', id=id)
                 if undertaking.discharged_proof:
                     undertaking.discharged_proof.delete(save=False)
                 undertaking.discharged_proof = request.FILES['discharged_proof']
@@ -10004,11 +10158,17 @@ def download_aml_checks_due(request):
     writer = csv.writer(response)
 
     writer.writerow(['AML Checks Due'])
-    writer.writerow(['Name', 'Type', 'Date of Last AML Check'])
+    writer.writerow(['Name', 'Type', 'Matter Code(s)', 'Fee Earner(s)',
+                     'Date of Last AML Check'])
 
     for check in unique_aml_checks_due:
-        writer.writerow([check['entity_name'], check['entity_type'],
-                         check['date_of_last_aml']])
+        writer.writerow([
+            check['entity_name'],
+            check['entity_type'],
+            ', '.join(check['file_numbers']),
+            ', '.join(check['fee_earners']),
+            check['date_of_last_aml'],
+        ])
 
     return response
 
@@ -11194,11 +11354,9 @@ def bundle_document_upload(request, section_id):
         uploaded_docs = []
 
         for i, file in enumerate(files):
-            if not file.name.lower().endswith('.pdf'):
-                return JsonResponse(
-                    {'error': f'Only PDF files are allowed: {file.name}'},
-                    status=400,
-                )
+            upload_error = _validate_pdf_upload(file)
+            if upload_error:
+                return JsonResponse({'error': upload_error}, status=400)
 
             description = descriptions[i] if i < len(descriptions) else ''
             date_str = dates[i] if i < len(dates) and dates[i] else None

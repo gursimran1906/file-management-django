@@ -182,68 +182,34 @@
             {% endfor %}
         </div>
 
-        {% if key_document_formset %}
+        {% if client_matter_compliance %}
         <div class="mt-6 pt-6 border-t border-gray-100">
-            <h2 class="text-base font-semibold text-gray-900 mb-3">Key documents</h2>
-            {{ key_document_formset.management_form }}
-            <div class="overflow-x-auto rounded-lg border">
-                <table class="w-full text-sm text-gray-700">
+            <h2 class="text-base font-semibold text-gray-900">Per-matter compliance</h2>
+            <p class="text-xs text-gray-500 mb-3">Terms, NCBA, source of funds and PEP are recorded <strong>per matter</strong> and edited on each matter's page — this is a read-only summary. Proof of ID/address and the AML date above are per client and shared across matters.</p>
+            <div class="overflow-x-auto rounded-lg border border-gray-200">
+                <table class="w-full text-sm">
                     <thead>
-                        <tr class="bg-gray-50 border-b">
-                            <th class="text-left p-2">Category</th>
-                            <th class="text-left p-2">Document Type</th>
-                            <th class="text-left p-2">Document No./Reference</th>
-                            <th class="text-left p-2">Issue Date</th>
-                            <th class="text-left p-2">Expiry Date</th>
-                            <th class="text-left p-2">Verified On</th>
-                            <th class="text-left p-2">Notes</th>
-                            <th class="text-left p-2">Delete</th>
+                        <tr class="bg-gray-50 border-b border-gray-200 text-left text-xs uppercase text-gray-500">
+                            <th class="p-2">Matter</th>
+                            <th class="p-2 text-center">Terms</th>
+                            <th class="p-2 text-center">NCBA</th>
+                            <th class="p-2 text-center">SOF</th>
+                            <th class="p-2 text-center">PEP</th>
+                            <th class="p-2"></th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for document_form in key_document_formset %}
-                        <tr class="border-b align-top">
-                            <td class="p-2">
-                                {{ document_form.id }}
-                                {{ document_form.category }}
-                                {{ document_form.category.errors }}
-                            </td>
-                            <td class="p-2">
-                                {{ document_form.document_type }}
-                                {{ document_form.document_type.errors }}
-                            </td>
-                            <td class="p-2">
-                                {{ document_form.document_reference }}
-                                {{ document_form.document_reference.errors }}
-                            </td>
-                            <td class="p-2">
-                                {{ document_form.issue_date }}
-                                {{ document_form.issue_date.errors }}
-                            </td>
-                            <td class="p-2">
-                                {{ document_form.expiry_date }}
-                                {{ document_form.expiry_date.errors }}
-                            </td>
-                            <td class="p-2">
-                                {{ document_form.verified_on }}
-                                {{ document_form.verified_on.errors }}
-                            </td>
-                            <td class="p-2">
-                                {{ document_form.notes }}
-                                {{ document_form.notes.errors }}
-                            </td>
-                            <td class="p-2">
-                                {% if document_form.instance.pk %}
-                                <label class="inline-flex items-center gap-2">
-                                    {{ document_form.DELETE }}
-                                    <span>Delete</span>
-                                </label>
-                                {{ document_form.DELETE.errors }}
-                                {% else %}
-                                <span class="text-gray-400">New row</span>
-                                {% endif %}
-                            </td>
+                        {% for row in client_matter_compliance %}
+                        <tr class="border-b border-gray-100">
+                            <td class="p-2 font-medium text-gray-900 whitespace-nowrap">{{ row.matter.file_number }}</td>
+                            <td class="p-2 text-center">{% if row.terms %}<span class="badge-green">✓</span>{% else %}<span class="badge-red">✕</span>{% endif %}</td>
+                            <td class="p-2 text-center">{% if not row.ncba_required %}<span class="text-gray-400 text-xs">n/a</span>{% elif row.ncba %}<span class="badge-green">✓</span>{% else %}<span class="badge-red">✕</span>{% endif %}</td>
+                            <td class="p-2 text-center">{% if row.sof %}<span class="badge-green">✓</span>{% else %}<span class="badge-red">✕</span>{% endif %}</td>
+                            <td class="p-2 text-center">{% if row.pep %}<span class="badge-green">✓</span>{% else %}<span class="badge-red">✕</span>{% endif %}</td>
+                            <td class="p-2 text-right"><a href="{% url 'home' row.matter.file_number %}" class="link text-xs">Open matter</a></td>
                         </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="p-3 text-center text-gray-400">Not on any matter yet.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -251,7 +217,143 @@
         </div>
         {% endif %}
 
+        {% if key_document_formset %}
+        <div class="mt-6 pt-6 border-t border-gray-100">
+            <div class="flex items-center justify-between mb-1">
+                <h2 class="text-base font-semibold text-gray-900">Key documents</h2>
+                <button type="button" id="add-key-document" class="btn-secondary text-xs">+ Add document</button>
+            </div>
+            <p class="text-xs text-gray-500 mb-3">Expired documents stay on file as history. To renew one, use <strong>Renew</strong> to add a replacement rather than editing the old card. Record an expiry date so validity can be tracked.</p>
+            {{ key_document_formset.management_form }}
+            {{ key_document_formset.non_form_errors }}
+
+            <div id="key-document-rows" class="space-y-3">
+                {% for document_form in key_document_formset %}
+                <div class="rounded-lg border border-gray-200 p-4">
+                    {{ document_form.id }}
+                    <div class="flex flex-wrap items-end justify-between gap-3 mb-3">
+                        <div class="flex items-end gap-2 min-w-0">
+                            <div class="min-w-0">
+                                <label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Category</label>
+                                {{ document_form.category }}
+                            </div>
+                            {% if not document_form.instance.pk %}
+                            <span class="mb-2 text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">New</span>
+                            {% elif document_form.instance.expiry_date and document_form.instance.expiry_date < today %}
+                            <span class="mb-2 text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-800">Expired</span>
+                            {% elif document_form.instance.expiry_date and document_form.instance.expiry_date <= soon_cutoff %}
+                            <span class="mb-2 text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Due soon</span>
+                            {% elif document_form.instance.expiry_date %}
+                            <span class="mb-2 text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Valid</span>
+                            {% else %}
+                            <span class="mb-2 text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">No expiry date</span>
+                            {% endif %}
+                        </div>
+                        <div class="flex items-center gap-3 shrink-0">
+                            {% if document_form.instance.pk %}
+                            <button type="button" class="kd-renew link text-xs" data-category="{{ document_form.category.value|default_if_none:'' }}">Renew</button>
+                            <label class="inline-flex items-center gap-1 text-xs text-gray-500">
+                                {{ document_form.DELETE }}
+                                <span>Delete</span>
+                            </label>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Document type</label>
+                            {{ document_form.document_type }}
+                        </div>
+                        <div>
+                            <label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Document no./reference</label>
+                            {{ document_form.document_reference }}
+                        </div>
+                        <div>
+                            <label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Issue date</label>
+                            {{ document_form.issue_date }}
+                        </div>
+                        <div>
+                            <label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Expiry date</label>
+                            {{ document_form.expiry_date }}
+                        </div>
+                        <div>
+                            <label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Verified on</label>
+                            {{ document_form.verified_on }}
+                        </div>
+                        <div class="sm:col-span-2 lg:col-span-3">
+                            <label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Notes</label>
+                            {{ document_form.notes }}
+                        </div>
+                    </div>
+                    {% if document_form.errors %}<div class="mt-2 text-xs text-red-600">{{ document_form.errors }}</div>{% endif %}
+                </div>
+                {% empty %}
+                <p id="kd-empty-note" class="text-sm text-gray-400 rounded-lg border border-dashed border-gray-200 p-4 text-center">No key documents yet — use “Add document”.</p>
+                {% endfor %}
+            </div>
+
+            {# Inert template card cloned by JS when adding / renewing a document. #}
+            <template id="key-document-empty-form">
+                <div class="rounded-lg border border-gray-200 p-4">
+                    <div class="flex flex-wrap items-end justify-between gap-3 mb-3">
+                        <div class="flex items-end gap-2 min-w-0">
+                            <div class="min-w-0">
+                                <label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Category</label>
+                                {{ key_document_formset.empty_form.category }}
+                            </div>
+                            <span class="mb-2 text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">New</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div><label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Document type</label>{{ key_document_formset.empty_form.document_type }}</div>
+                        <div><label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Document no./reference</label>{{ key_document_formset.empty_form.document_reference }}</div>
+                        <div><label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Issue date</label>{{ key_document_formset.empty_form.issue_date }}</div>
+                        <div><label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Expiry date</label>{{ key_document_formset.empty_form.expiry_date }}</div>
+                        <div><label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Verified on</label>{{ key_document_formset.empty_form.verified_on }}</div>
+                        <div class="sm:col-span-2 lg:col-span-3"><label class="block text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Notes</label>{{ key_document_formset.empty_form.notes }}</div>
+                    </div>
+                </div>
+            </template>
+        </div>
+        {% endif %}
+
         <button class="mt-4 btn-primary text-xs" type="submit">Save changes</button>
     </form>
 </div>
+
+<script>
+  // Add / renew key documents: clone the inert template card, giving it the next
+  // form index so a new ClientKeyDocument is created without touching existing
+  // (including expired) cards.
+  (function () {
+    const addBtn = document.getElementById('add-key-document');
+    const container = document.getElementById('key-document-rows');
+    const tmpl = document.getElementById('key-document-empty-form');
+    const total = document.getElementById('id_key_documents-TOTAL_FORMS');
+    if (!addBtn || !container || !tmpl || !total) return;
+
+    function addRow(category) {
+      const emptyNote = document.getElementById('kd-empty-note');
+      if (emptyNote) emptyNote.remove();
+      const index = parseInt(total.value, 10);
+      const holder = document.createElement('div');
+      holder.innerHTML = tmpl.innerHTML.replace(/__prefix__/g, index).trim();
+      const card = holder.firstElementChild;
+      container.appendChild(card);
+      total.value = index + 1;
+      if (category) {
+        const sel = card.querySelector('select[name$="-category"]');
+        if (sel) sel.value = category;
+      }
+      const focusEl = card.querySelector('select, input:not([type=hidden])');
+      if (focusEl) focusEl.focus();
+    }
+
+    addBtn.addEventListener('click', function () { addRow(''); });
+    container.addEventListener('click', function (e) {
+      const btn = e.target.closest('.kd-renew');
+      if (btn) addRow(btn.getAttribute('data-category') || '');
+    });
+  })();
+</script>
 {% endblock %}

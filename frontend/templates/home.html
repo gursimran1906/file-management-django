@@ -12,9 +12,27 @@
   .activity-log-filter.is-active { background-color: white; color: rgb(17 24 39); box-shadow: 0 1px 2px rgb(0 0 0 / 0.06); }
   details > summary { list-style: none; }
   details > summary::-webkit-details-marker { display: none; }
+
+  /* Light polish for the matter home (scoped so no other page is affected). Keep the
+     container radius as-is — only refine shadow depth and heading tracking. */
+  .home-page .div-container { box-shadow: 0 1px 2px rgba(16,24,40,.05), 0 6px 18px rgba(16,24,40,.04); }
+  .home-page h3 { letter-spacing: -0.01em; }
+  .home-page h1 { letter-spacing: -0.02em; }
+  .home-page details.div-container[open] { box-shadow: 0 1px 2px rgba(16,24,40,.05), 0 10px 28px rgba(16,24,40,.06); }
+
+  /* Section nav — sticky headings bar with scroll-spy. The window scrolls, so the
+     bar must stick BELOW the fixed top navbar, and anchor jumps clear both bars. */
+  html { scroll-behavior: smooth; }
+  /* Only the section nav sticks (just below the fixed navbar). The heading and all
+     content scroll through beneath it. Anchor jumps clear the navbar + the nav bar. */
+  .home-page [id^="sec-"] { scroll-margin-top: calc(var(--navbar-height, 64px) + var(--home-nav-h, 3.25rem)); }
+  .home-sec-link { padding: .3rem .75rem; border-radius: 9999px; font-size: .82rem; color: #6b7280; white-space: nowrap; transition: background-color .12s ease, color .12s ease; }
+  .home-sec-link:hover { background: #f3f4f6; color: #111827; }
+  .home-sec-link.is-active { background: #111827; color: #fff; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 </style>
 
-<div class='mt-4 space-y-5'>
+<div class='mt-4 space-y-6 home-page'>
     <div class='div-container py-3'>
         <div class='flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3'>
             <div class="min-w-0 flex-1">
@@ -62,6 +80,18 @@
         </div>
         {% endif %}
     </div>
+    <nav class="home-section-nav sticky z-30 bg-white border border-gray-200 rounded-lg shadow-sm px-1" style="top: var(--navbar-height, 64px);">
+        <div class="flex gap-1 overflow-x-auto py-2">
+            <a href="#sec-summary" class="home-sec-link" data-target="sec-summary">Summary</a>
+            <a href="#sec-dates" class="home-sec-link" data-target="sec-dates">Key dates</a>
+            <a href="#sec-risk" class="home-sec-link" data-target="sec-risk">Risk</a>
+            <a href="#sec-compliance" class="home-sec-link" data-target="sec-compliance">Compliance</a>
+            <a href="#sec-bundles" class="home-sec-link" data-target="sec-bundles">Bundles</a>
+            {% if is_conveyancing %}<a href="#sec-conveyancing" class="home-sec-link" data-target="sec-conveyancing">Conveyancing</a>{% endif %}
+            <a href="#sec-reviews" class="home-sec-link" data-target="sec-reviews">Reviews</a>
+            <a href="#sec-activity" class="home-sec-link" data-target="sec-activity">Activity</a>
+        </div>
+    </nav>
     <div class="div-container">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-3 mb-1">
             <div>
@@ -121,7 +151,7 @@
     <div class='div-container max-h-[32rem] overflow-y-auto'>
             <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between mb-4 pb-3 border-b border-gray-100">
                 <div>
-                    <h3 class='text-base font-semibold text-gray-900'>File Summary</h3>
+                    <h3 id="sec-summary" class='text-base font-semibold text-gray-900'>File Summary</h3>
                     <p class="text-xs text-gray-500 mt-0.5">{{ matter.matter_type }}</p>
                 </div>
             </div>
@@ -165,13 +195,16 @@
                         <div><dt class="text-gray-500">Contact</dt><dd>{{matter.client1.contact_number|default:"-"}}</dd></div>
                         <div class="sm:col-span-2"><dt class="text-gray-500">Address</dt><dd>{{matter.client1.address_line1}}, {{matter.client1.address_line2}}, {{matter.client1.county}}, {{matter.client1.postcode}}</dd></div>
                     </dl>
-                    <div class="mt-3 flex flex-wrap gap-2">
+                    {% with c=compliance_by_client|get_item:matter.client1.id %}
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
                         <span class="{% if matter.client1.id_verified %}badge-green{% else %}badge-red{% endif %}">ID</span>
-                        <span class="{% if matter.client1.terms_of_engagement_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
-                        <span class="{% if matter.client1.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>
-                        <span class="{% if matter.client1.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
-                        <span class="{% if matter.client1.source_of_funds_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
+                        <span class="{% if c.terms_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
+                        {% if not c.ncba_required %}<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">NCBA n/a</span>{% else %}<span class="{% if c.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>{% endif %}
+                        <span class="{% if c.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
+                        <span class="{% if c.sof_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
+                        <span class="text-[11px] text-gray-400">· this matter</span>
                     </div>
+                    {% endwith %}
                 </div>
 
                 {% for extra_client in matter.additional_clients.all %}
@@ -190,13 +223,16 @@
                         <div><dt class="text-gray-500">Contact</dt><dd>{{extra_client.contact_number|default:"-"}}</dd></div>
                         <div class="sm:col-span-2"><dt class="text-gray-500">Address</dt><dd>{{extra_client.address_line1}}, {{extra_client.address_line2}}, {{extra_client.county}}, {{extra_client.postcode}}</dd></div>
                     </dl>
-                    <div class="mt-3 flex flex-wrap gap-2">
+                    {% with c=compliance_by_client|get_item:extra_client.id %}
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
                         <span class="{% if extra_client.id_verified %}badge-green{% else %}badge-red{% endif %}">ID</span>
-                        <span class="{% if extra_client.terms_of_engagement_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
-                        <span class="{% if extra_client.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>
-                        <span class="{% if extra_client.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
-                        <span class="{% if extra_client.source_of_funds_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
+                        <span class="{% if c.terms_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
+                        {% if not c.ncba_required %}<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">NCBA n/a</span>{% else %}<span class="{% if c.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>{% endif %}
+                        <span class="{% if c.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
+                        <span class="{% if c.sof_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
+                        <span class="text-[11px] text-gray-400">· this matter</span>
                     </div>
+                    {% endwith %}
                 </div>
                 {% endfor %}
 
@@ -291,7 +327,7 @@
             </div>
         </div>
         <div class="flex flex-col gap-4 md:max-h-[32rem]">
-        <div class='div-container max-h-60 overflow-y-auto md:max-h-[14.5rem]'>
+        <div id="sec-dates" class='div-container max-h-[32rem] overflow-y-auto'>
             <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
                 <h3 class='text-base font-semibold text-gray-900'>Key Dates</h3>
                 <button class='btn-primary text-xs' type="button" data-open-modal="matterKeyDateModal">Add</button>
@@ -325,43 +361,11 @@
                 {% endfor %}
             </div>
         </div>
-        <div class='div-container max-h-60 overflow-y-auto md:max-h-[14.5rem]'>
-            <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
-                <h3 class='text-base font-semibold text-gray-900'>Key Documents</h3>
-                <button class='btn-primary text-xs' type="button" data-open-modal="matterKeyDocumentModal">Add</button>
-            </div>
-            <div class='divide-y divide-gray-100'>
-                {% for item in matter_key_documents %}
-                {% with document=item.document %}
-                <div class='py-3 text-sm first:pt-0'>
-                    <div class='flex justify-between gap-2'>
-                        <div class="min-w-0">
-                            <p class='font-medium text-gray-900'>{{ document.client.name }}</p>
-                            <p class='text-xs text-gray-600 mt-0.5'>{{ document.get_category_display }}{% if document.document_type %}: {{ document.document_type }}{% endif %}</p>
-                        </div>
-                        {% if item.status == 'expired' %}
-                        <span class='h-fit text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-800 shrink-0'>Expired</span>
-                        {% elif item.status == 'due_soon' %}
-                        <span class='h-fit text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 shrink-0'>Due soon</span>
-                        {% endif %}
-                    </div>
-                    <div class='mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500'>
-                        {% if document.expiry_date %}<span>Expires {{ document.expiry_date|date:"d/m/Y" }}</span>{% endif %}
-                        {% if document.verified_on %}<span>Verified {{ document.verified_on|date:"d/m/Y" }}</span>{% endif %}
-                    </div>
-                    <a class='link text-xs mt-2 inline-block' href="{% url 'edit_client' document.client.id %}">Edit documents</a>
-                </div>
-                {% endwith %}
-                {% empty %}
-                <p class='py-4 text-center text-sm text-gray-400'>No key documents for this matter's clients.</p>
-                {% endfor %}
-            </div>
-        </div>
         </div>
     </div>
     <div class='div-container max-h-96 overflow-y-auto space-y-4'>
         <div class='flex justify-between items-center pb-3 border-b border-gray-100'>
-            <h3 class='text-base font-semibold text-gray-900'>Risk Assessment</h3>
+            <h3 id="sec-risk" class='text-base font-semibold text-gray-900'>Risk Assessment</h3>
             <div class='flex gap-2'>
                 {% if risk_assessment %}
                 <a class="btn-secondary text-xs" href="{% url 'edit_risk_assessment' risk_assessment.id %}">Edit</a>
@@ -428,107 +432,213 @@
         <p class='px-2 py-2 bg-red-50 rounded-lg border border-red-200 text-red-900'>No Risk Assessment Done</p>
         {% endif %}
     </div>
-    <div class='div-container max-h-96 overflow-y-auto'>
-        <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
-            <div>
-                <h3 class='text-base font-semibold text-gray-900'>Document Bundles</h3>
-                <p class="text-xs text-gray-500 mt-0.5">PDF bundles for this matter</p>
-            </div>
-            <a class='btn-primary text-xs' href="{% url 'matter_bundle_create' file_number %}">New bundle</a>
-        </div>
-        {% if bundles %}
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {% for bundle in bundles %}
-            <div class="rounded-lg border border-gray-200 p-3 text-sm hover:border-gray-300 transition-colors">
-                <div class="flex items-start justify-between gap-2">
-                    <span class="font-medium text-gray-900 leading-snug">{{ bundle.name }}</span>
+    <div class='grid grid-cols-1 gap-6'>
+        {# Client care & compliance — matter facts + per-client engagement checks + documents #}
+        <div class='div-container'>
+            <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
+                <div>
+                    <p class="text-xs uppercase text-gray-500">This matter</p>
+                    <h3 id="sec-compliance" class='text-base font-semibold text-gray-900'>Client care &amp; compliance</h3>
                 </div>
-                <p class="text-xs text-gray-400 mt-2">{{ bundle.created_at|date:"d/m/Y H:i" }}</p>
-                <div class="mt-2 flex flex-wrap gap-3 text-xs">
-                    <a href="{% url 'bundle_edit' bundle.id %}" class="link">Edit</a>
-                    <a href="{% url 'bundle_download' bundle.id %}" class="link" onclick="return downloadBundlePdfLink(event, '{{ bundle.name|escapejs }}.pdf', {{ bundle.id }})">Download</a>
-                    <a href="#" class="link" onclick="return openBundleShareModal(event, {{ bundle.id }}, '{{ bundle.name|escapejs }}')">Share</a>
-                    <button type="button" class="link text-red-700" onclick="deleteHomeBundle({{ bundle.id }}, '{{ bundle.name|escapejs }}')">Delete</button>
-                </div>
+                <span class="text-xs text-gray-400 hidden sm:block">Terms · NCBA · Source of funds · PEP — recorded per file</span>
             </div>
+
+            {# Matter-level care facts #}
+            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-4">
+                <div class="rounded border border-gray-200 bg-gray-50 p-3">
+                    <dt class="text-xs uppercase text-gray-500">Client Care Letter</dt>
+                    <dd class="font-medium text-gray-900">{{matter.date_of_client_care_sent|date:"d/m/Y"|default:"Not sent"}}</dd>
+                </div>
+                <div class="rounded border border-gray-200 bg-gray-50 p-3">
+                    <dt class="text-xs uppercase text-gray-500">Funding</dt>
+                    <dd class="font-medium text-gray-900">{% if matter.funding == 'PF'%}Private Funding{% else %}Conditional Fee Agreement{% endif %}</dd>
+                </div>
+            </dl>
+
+            {# Per-client compliance + per-matter documents #}
+            <div class="space-y-3">
+            {% for row in matter_compliance %}
+              <details class="rounded border border-gray-200">
+                <summary class="cursor-pointer px-3 py-2 flex flex-wrap items-center gap-2 text-sm">
+                  <span class="font-medium text-gray-900">{{ row.client.name }}</span>
+                  <span class="flex items-center gap-1.5 ml-auto">
+                    <span class="{% if row.terms_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
+                    {% if not row.ncba_required %}<span class="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">NCBA n/a</span>{% else %}<span class="{% if row.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>{% endif %}
+                    <span class="{% if row.sof_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
+                    <span class="{% if row.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
+                  </span>
+                </summary>
+                <div class="px-3 pb-3 border-t border-gray-100 pt-3">
+                  {% if row.source != 'captured' %}<p class="text-[11px] text-amber-600 mb-2">Seeded at migration ({{ row.source }}) — review and save to confirm for this matter.</p>{% endif %}
+                  <form method="post" action="{% url 'matter_save_client_compliance' matter.file_number row.mc_id %}" class="space-y-2">
+                    {% csrf_token %}
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                      <label class="flex items-center gap-2"><input type="checkbox" name="terms_signed" value="1" {% if row.terms_signed %}checked{% endif %} class="h-4 w-4 rounded border-gray-300 text-blue-600"> Terms of engagement signed</label>
+                      <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 min-w-0">Sent <input type="date" name="terms_sent_on" value="{{ row.terms_sent_on|date:'Y-m-d' }}" class="form-input text-xs min-w-0"> Rcvd <input type="date" name="terms_received_on" value="{{ row.terms_received_on|date:'Y-m-d' }}" class="form-input text-xs min-w-0"></div>
+                      <label class="flex items-center gap-2"><input type="checkbox" name="ncba_required" value="1" {% if row.ncba_required %}checked{% endif %} class="h-4 w-4 rounded border-gray-300"> This matter needs an NCBA</label>
+                      <label class="flex items-center gap-2"><input type="checkbox" name="ncba_signed" value="1" {% if row.ncba_signed %}checked{% endif %} class="h-4 w-4 rounded border-gray-300 text-blue-600"> NCBA signed</label>
+                      <label class="flex items-center gap-2"><input type="checkbox" name="sof_signed" value="1" {% if row.sof_signed %}checked{% endif %} class="h-4 w-4 rounded border-gray-300 text-blue-600"> Source of funds signed</label>
+                      <label class="flex items-center gap-2"><input type="checkbox" name="pep_signed" value="1" {% if row.pep_signed %}checked{% endif %} class="h-4 w-4 rounded border-gray-300 text-blue-600"> PEP declaration signed</label>
+                      <label class="sm:col-span-2 text-xs text-gray-500">Source of funds detail<input type="text" name="sof_details" value="{{ row.sof_details }}" class="form-input text-sm mt-0.5" placeholder="e.g. sale proceeds, savings"></label>
+                    </div>
+                    <div><button type="submit" class="btn-secondary text-xs">Save compliance</button></div>
+                  </form>
+                  <div class="mt-3 pt-3 border-t border-gray-100">
+                    <p class="text-xs font-medium text-gray-600 mb-1">Identity documents <span class="font-normal text-gray-400">· per client, shared across matters</span></p>
+                    {% if row.key_documents %}
+                    <ul class="divide-y divide-gray-100 mb-2">
+                      {% for kd in row.key_documents %}
+                      <li class="py-1.5 text-sm">
+                        <div class="flex items-center justify-between gap-3">
+                          <span class="text-gray-800 min-w-0">{{ kd.label }}{% if kd.document_type %} <span class="text-gray-400">({{ kd.document_type }})</span>{% endif %}
+                            {% if kd.expired %}<span class="text-[11px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-800">Expired</span>{% elif kd.expiry %}<span class="text-[11px] text-gray-400">· expires {{ kd.expiry|date:'d/m/Y' }}</span>{% else %}<span class="text-[11px] text-gray-400">· no expiry</span>{% endif %}</span>
+                          {% if kd.has_file %}<a href="{% url 'client_key_document_preview' kd.id %}" target="_blank" rel="noopener" class="text-blue-600 hover:underline text-xs shrink-0">View</a>{% endif %}
+                        </div>
+                        <details class="mt-0.5 text-xs">
+                          <summary class="cursor-pointer text-blue-600 hover:underline">{% if kd.has_file %}Replace file{% else %}Upload file{% endif %}</summary>
+                          <form method="post" enctype="multipart/form-data" action="{% url 'client_key_document_upload' matter.file_number kd.id %}" class="pt-1 flex flex-wrap items-center gap-2">
+                            {% csrf_token %}
+                            <input type="file" name="document" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic" required class="text-xs">
+                            <button type="submit" class="btn-secondary text-xs">Save</button>
+                          </form>
+                        </details>
+                      </li>
+                      {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-xs text-gray-400 mb-2">No identity documents recorded.</p>
+                    {% endif %}
+                    <a href="{% url 'edit_client' row.client_id %}" class="text-[11px] text-gray-400 hover:text-gray-600">Manage identity documents on the client record →</a>
+                  </div>
+
+                  <div class="mt-3 pt-3 border-t border-gray-100">
+                    <p class="text-xs font-medium text-gray-600 mb-1">Matter documents</p>
+                    {% if row.documents %}
+                    <ul class="divide-y divide-gray-100 mb-2">
+                      {% for d in row.documents %}
+                      <li class="flex items-center justify-between gap-3 py-1.5 text-sm">
+                        <span class="text-gray-800">{{ d.get_category_display }}{% if d.expiry_date %} <span class="text-[11px] text-gray-400">· expires {{ d.expiry_date|date:'d/m/Y' }}</span>{% endif %}</span>
+                        <a href="{% url 'matter_preview_client_doc' d.id %}" target="_blank" rel="noopener" class="text-blue-600 hover:underline text-xs">View</a>
+                      </li>
+                      {% endfor %}
+                    </ul>
+                    {% endif %}
+                    <form method="post" enctype="multipart/form-data" action="{% url 'matter_upload_client_doc' matter.file_number row.mc_id %}" class="flex flex-wrap items-center gap-2 text-xs">
+                      {% csrf_token %}
+                      <select name="category" class="form-input text-xs">
+                        {% for key, label in matter_doc_categories %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+                      </select>
+                      <input type="date" name="expiry_date" class="form-input text-xs" title="Expiry (optional)">
+                      <input type="file" name="document" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic" required class="text-xs">
+                      <button type="submit" class="btn-secondary text-xs">Upload</button>
+                    </form>
+                    <p class="text-[11px] text-gray-400 mt-1">Choose “AML / ID check” to record an identity check on this matter — it also refreshes the client's AML date.</p>
+                  </div>
+                </div>
+              </details>
+            {% empty %}
+              <p class="text-sm text-gray-400">No clients on this matter.</p>
             {% endfor %}
-        </div>
-        {% else %}
-        <p class="py-4 text-center text-sm text-gray-400">No document bundles yet.</p>
-        {% endif %}
-    </div>
-    <div class='grid grid-cols-1 md:grid-cols-2 gap-4'>
-        <div class='div-container max-h-[28rem] overflow-y-auto'>
-            <h3 class='text-base font-semibold text-gray-900 mb-3 pb-3 border-b border-gray-100'>Compliance</h3>
-            <div class="space-y-4" id="Compliance">
-                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                    <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">Client Care Letter</dt>
-                        <dd class="font-medium text-gray-900">{{matter.date_of_client_care_sent|date:"d/m/Y"|default:"Not sent"}}</dd>
-                    </div>
-                    <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">Funding</dt>
-                        <dd class="font-medium text-gray-900">{% if matter.funding == 'PF'%}Private Funding{% else %}Conditional Fee Agreement{% endif %}</dd>
-                    </div>
-                    <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">Terms Sent</dt>
-                        <dd class="font-medium text-gray-900">{{matter.date_of_toe_sent|date:"d/m/Y"|default:"-"}}</dd>
-                    </div>
-                    <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">Terms Received</dt>
-                        <dd class="font-medium text-gray-900">{{matter.date_of_toe_rcvd|date:"d/m/Y"|default:"-"}}</dd>
-                    </div>
-                    <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">NCBA Sent</dt>
-                        <dd class="font-medium text-gray-900">{{matter.date_of_ncba_sent|date:"d/m/Y"|default:"-"}}</dd>
-                    </div>
-                    <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">NCBA Received</dt>
-                        <dd class="font-medium text-gray-900">{{matter.date_of_ncba_rcvd|date:"d/m/Y"|default:"-"}}</dd>
-                    </div>
-                </dl>
+            </div>
 
-                <div class="rounded border border-gray-200 p-4">
-                    <div class="flex items-start justify-between gap-3">
-                        <div>
-                            <p class="text-xs uppercase text-gray-500">Client 1 Compliance</p>
-                            <h4 class="font-semibold text-gray-900">{{matter.client1.name}}</h4>
-                        </div>
-                        <a class='btn-secondary text-xs' href="{% url 'edit_client' matter.client1.id %}">Edit</a>
-                    </div>
-                    <div class="mt-3 flex flex-wrap gap-2">
-                        <span class="{% if matter.client1.terms_of_engagement_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
-                        <span class="{% if matter.client1.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>
-                        <span class="{% if matter.client1.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
-                        <span class="{% if matter.client1.source_of_funds_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
-                        <span class="{% if matter.client1.id_verified %}badge-green{% else %}badge-red{% endif %}">ID Verified</span>
-                    </div>
+            {# Onboarding-collected documents (read-only), one folder per client #}
+            {% if client_care_documents %}
+            <div class="mt-4 pt-4 border-t border-gray-100">
+                <p class="text-xs font-medium text-gray-600 mb-2">Onboarding documents <span class="font-normal text-gray-400">· collected during onboarding</span></p>
+                <div class="space-y-2">
+                    {% for folder in client_care_documents %}
+                    <details class="rounded border border-gray-100 bg-gray-50/60">
+                        <summary class="cursor-pointer px-3 py-2 text-sm font-medium text-gray-800 flex items-center gap-2">
+                            <svg class="h-4 w-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                            <span class="truncate">{{ folder.client_name }}</span>
+                            <span class="text-xs font-normal text-gray-400">· {% if folder.documents %}{{ folder.documents|length }} document{{ folder.documents|length|pluralize }}{% else %}no documents yet{% endif %}</span>
+                        </summary>
+                        <ul class="px-3 pb-2 divide-y divide-gray-100">
+                            {% for doc in folder.documents %}
+                            <li class="flex items-center justify-between gap-3 py-2 text-sm">
+                                <span class="truncate text-gray-800 min-w-0">{{ doc.label }}{% if doc.on_file %} <span class="text-[11px] font-medium text-emerald-600">· on file</span>{% endif %}</span>
+                                <span class="flex items-center gap-3 shrink-0 text-xs">
+                                    {% if doc.has_client_copy %}<a href="{% url 'onboarding_preview_portal_doc' doc.member_id doc.item_type %}" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Client copy</a>{% endif %}
+                                    {% if doc.has_office_copy %}<a href="{% url 'onboarding_preview_doc' doc.member_id doc.item_type %}" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Office copy</a>{% endif %}
+                                    {% if doc.on_file %}{% if doc.expiry %}<span class="text-gray-400">expires {{ doc.expiry|date:"d/m/Y" }}</span>{% endif %}<a href="{% url 'edit_client' doc.record_client_id %}" class="text-blue-600 hover:underline">View record</a>{% endif %}
+                                </span>
+                            </li>
+                            {% empty %}
+                            <li class="py-2 text-sm text-gray-400">No documents held yet.</li>
+                            {% endfor %}
+                        </ul>
+                    </details>
+                    {% endfor %}
                 </div>
+            </div>
+            {% endif %}
+        </div>
 
-                {% for extra_client in matter.additional_clients.all %}
-                <div class="rounded border border-gray-200 p-4">
-                    <div class="flex items-start justify-between gap-3">
-                        <div>
-                            <p class="text-xs uppercase text-gray-500">Client {{ forloop.counter|add:1 }} Compliance</p>
-                            <h4 class="font-semibold text-gray-900">{{extra_client.name}}</h4>
-                        </div>
-                        <a class='btn-secondary text-xs' href="{% url 'edit_client' extra_client.id %}">Edit</a>
+        <div class='div-container max-h-96 overflow-y-auto'>
+            <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
+                <div>
+                    <h3 id="sec-bundles" class='text-base font-semibold text-gray-900'>Document Bundles</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">PDF bundles for this matter</p>
+                </div>
+                <a class='btn-primary text-xs' href="{% url 'matter_bundle_create' file_number %}">New bundle</a>
+            </div>
+            {% if bundles %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {% for bundle in bundles %}
+                <div class="rounded-lg border border-gray-200 p-3 text-sm hover:border-gray-300 transition-colors">
+                    <div class="flex items-start justify-between gap-2">
+                        <span class="font-medium text-gray-900 leading-snug">{{ bundle.name }}</span>
                     </div>
-                    <div class="mt-3 flex flex-wrap gap-2">
-                        <span class="{% if extra_client.terms_of_engagement_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
-                        <span class="{% if extra_client.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>
-                        <span class="{% if extra_client.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
-                        <span class="{% if extra_client.source_of_funds_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
-                        <span class="{% if extra_client.id_verified %}badge-green{% else %}badge-red{% endif %}">ID Verified</span>
+                    <p class="text-xs text-gray-400 mt-2">{{ bundle.created_at|date:"d/m/Y H:i" }}</p>
+                    <div class="mt-2 flex flex-wrap gap-3 text-xs">
+                        <a href="{% url 'bundle_edit' bundle.id %}" class="link">Edit</a>
+                        <a href="{% url 'bundle_download' bundle.id %}" class="link" onclick="return downloadBundlePdfLink(event, '{{ bundle.name|escapejs }}.pdf', {{ bundle.id }})">Download</a>
+                        <a href="#" class="link" onclick="return openBundleShareModal(event, {{ bundle.id }}, '{{ bundle.name|escapejs }}')">Share</a>
+                        <button type="button" class="link text-red-700" onclick="deleteHomeBundle({{ bundle.id }}, '{{ bundle.name|escapejs }}')">Delete</button>
                     </div>
                 </div>
                 {% endfor %}
             </div>
+            {% else %}
+            <p class="py-4 text-center text-sm text-gray-400">No document bundles yet.</p>
+            {% endif %}
         </div>
+
+        {% if is_conveyancing %}
+        <div class='div-container'>
+            <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
+                <h3 id="sec-conveyancing" class='text-base font-semibold text-gray-900'>Conveyancing</h3>
+                <span class="text-xs text-gray-400">Property &amp; transaction value</span>
+            </div>
+            <form method="post" action="{% url 'matter_save_conveyancing' matter.file_number %}" class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                {% csrf_token %}
+                <label class="text-xs text-gray-500">Transaction
+                  <select name="transaction_type" class="form-input text-sm mt-0.5">
+                    <option value="">—</option>
+                    <option value="purchase" {% if conveyancing.transaction_type == 'purchase' %}selected{% endif %}>Purchase</option>
+                    <option value="sale" {% if conveyancing.transaction_type == 'sale' %}selected{% endif %}>Sale</option>
+                    <option value="purchase_sale" {% if conveyancing.transaction_type == 'purchase_sale' %}selected{% endif %}>Purchase &amp; sale</option>
+                    <option value="remortgage" {% if conveyancing.transaction_type == 'remortgage' %}selected{% endif %}>Remortgage</option>
+                    <option value="transfer" {% if conveyancing.transaction_type == 'transfer' %}selected{% endif %}>Transfer of equity</option>
+                  </select>
+                </label>
+                <label class="text-xs text-gray-500">Property price (£)
+                  <input type="text" name="property_price" value="{{ conveyancing.property_price|default_if_none:'' }}" class="form-input text-sm mt-0.5" placeholder="450000">
+                </label>
+                <label class="sm:col-span-2 text-xs text-gray-500">Property address
+                  <input type="text" name="property_address" value="{{ conveyancing.property_address|default:'' }}" class="form-input text-sm mt-0.5">
+                </label>
+                <label class="text-xs text-gray-500">Completion date
+                  <input type="date" name="completion_date" value="{{ conveyancing.completion_date|date:'Y-m-d' }}" class="form-input text-sm mt-0.5">
+                </label>
+                <div class="sm:col-span-2"><button type="submit" class="btn-primary text-xs">Save conveyancing</button></div>
+            </form>
+        </div>
+        {% endif %}
 
         <div class='div-container max-h-[28rem] overflow-y-auto'>
             <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
-                <h3 class='text-base font-semibold text-gray-900'>File Reviews</h3>
+                <h3 id="sec-reviews" class='text-base font-semibold text-gray-900'>File Reviews</h3>
                 <a class='btn-primary text-xs' href="{% url 'add_matter_file_review' matter.file_number %}">Add</a>
             </div>
 
@@ -618,7 +728,7 @@
     <details class='div-container group' open>
         <summary class='flex cursor-pointer list-none items-center justify-between gap-3 pb-3 border-b border-gray-100'>
             <div>
-                <h3 class='text-base font-semibold text-gray-900 inline'>Activity Log</h3>
+                <h3 id="sec-activity" class='text-base font-semibold text-gray-900 inline'>Activity Log</h3>
                 <p class="text-xs text-gray-500 mt-0.5">{{ log_meta.total }} entries · showing latest {{ log_limit }}</p>
             </div>
             <div class="flex items-center gap-2 shrink-0">
@@ -1068,5 +1178,33 @@ async function revokeHomeBundleShareLink(linkId) {
         alert(error.message || 'Could not revoke share link.');
     }
 }
+
+// Section nav — scroll-spy: highlight whichever section is currently in view.
+// The window is the scroll container, so we observe against the viewport and push
+// the active zone below the fixed navbar + the sticky headings bar.
+(function () {
+    const links = Array.from(document.querySelectorAll('.home-sec-link'));
+    if (!links.length) return;
+    const targets = links.map(l => document.getElementById(l.dataset.target)).filter(Boolean);
+    const navEl = document.querySelector('.home-section-nav');
+    const navbarH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--navbar-height')) || 64;
+    function measure() {
+        const h = navEl ? navEl.offsetHeight : 44;
+        document.documentElement.style.setProperty('--home-nav-h', h + 'px');
+        return h;
+    }
+    const topOffset = navbarH + measure();
+    window.addEventListener('resize', measure);
+    function setActive(id) {
+        links.forEach(l => l.classList.toggle('is-active', l.dataset.target === id));
+    }
+    const obs = new IntersectionObserver(function (entries) {
+        const vis = entries.filter(e => e.isIntersecting)
+            .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (vis.length) setActive(vis[0].target.id);
+    }, { rootMargin: '-' + topOffset + 'px 0px -70% 0px', threshold: 0 });
+    targets.forEach(t => obs.observe(t));
+    if (targets[0]) setActive(targets[0].id);
+})();
 </script>
 {% endblock %}

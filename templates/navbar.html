@@ -62,7 +62,12 @@
             </div>
             <ul class="py-1 divide-y" role="none">
               <li><a href="{% url 'profile_page' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-white" role="menuitem">Profile</a></li>
-              <li><a href="{% url 'logout' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-white" role="menuitem">Sign out</a></li>
+              <li>
+                <form method="post" action="{% url 'logout' %}" class="block">
+                  {% csrf_token %}
+                  <button type="submit" class="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-white" role="menuitem">Sign out</button>
+                </form>
+              </li>
               <li><a href="{% url 'lunch_start' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-white" role="menuitem">Lunch - Start</a></li>
               <li><a href="{% url 'lunch_end' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-white" role="menuitem">Lunch - End</a></li>
               <li><a href="{% url 'clock_out' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-white" role="menuitem">Clock Out</a></li>
@@ -161,8 +166,8 @@
       {% endif %}
       {% endif %}
       <li>
-        {% url 'new_file' as url %}
-        <a href="{% url 'new_file' %}" class="nav-link {% if request.path == url %}nav-link-active{% endif %}">
+        {# Onboarding is the single front door for opening a new file. #}
+        <a href="{% url 'onboarding_list' %}" class="nav-link {% if '/onboarding/' in request.path or request.path == '/new_file/' %}nav-link-active{% endif %}">
           <svg class="nav-link-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9V4a1 1 0 0 0-1-1H8.914a1 1 0 0 0-.707.293L4.293 7.207A1 1 0 0 0 4 7.914V20a1 1 0 0 0 1 1h4M9 3v4a1 1 0 0 1-1 1H4m11 6v4m-2-2h4m3 0a5 5 0 1 1-10 0 5 5 0 0 1 10 0Z"/></svg>
           <span>Open new file</span>
         </a>

@@ -1,5 +1,5 @@
 from django.shortcuts import redirect, render
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, login_not_required
 from django.urls import reverse
 
 
@@ -9,6 +9,7 @@ def home_view(request, file_number):
     return render(request, 'home.html')
 
 
+@login_not_required
 def root_view(request):
     """Site root: dashboard for signed-in users, login otherwise."""
     if request.user.is_authenticated:

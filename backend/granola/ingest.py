@@ -9,7 +9,7 @@ Flow per sync run:
    (matter resolved) or leave it pending in the central review inbox.
 """
 import logging
-from datetime import timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
 from math import ceil
 
 from django.conf import settings
@@ -22,7 +22,8 @@ from users.models import CustomUser
 
 from .client import GranolaClient, GranolaError
 from .markdown_to_quill import markdown_to_html, markdown_to_quill_json
-from .parse import extract_file_ref, parse_parties, parse_title
+from .parse import (extract_file_ref, parse_meeting_times, parse_parties,
+                    parse_title)
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,47 @@ def _parse_dt(value):
     if timezone.is_naive(dt):
         dt = timezone.make_aware(dt, dt_timezone.utc)
     return dt
+
+
+def _combine_local(date, clock):
+    """Anchor a body-parsed clock time to a date in the active timezone."""
+    return timezone.make_aware(
+        datetime.combine(date, clock), timezone.get_current_timezone())
+
+
+def _resolve_meeting_window(note, summary_md):
+    """Best-effort (meeting_start, meeting_end) for a Granola note.
+
+    Granola only returns meeting times via the note's ``calendar_event`` (present
+    only when the meeting was on a calendar). When the calendar event is missing
+    a start and/or end, we fall back to ``Start Time:`` / ``Finish Time:`` lines
+    in the note body, anchored to the meeting date. The flat top-level keys are
+    kept as defensive fallbacks. ``meeting_start`` finally falls back to the
+    note's creation time so the attendance note still gets a date.
+    """
+    cal = note.get('calendar_event')
+    cal = cal if isinstance(cal, dict) else {}
+    start = _parse_dt(_first(cal, 'scheduled_start_time', 'start_time', 'start')
+                      or _first(note, 'start_time', 'meeting_start', 'started_at'))
+    end = _parse_dt(_first(cal, 'scheduled_end_time', 'end_time', 'end')
+                    or _first(note, 'end_time', 'meeting_end', 'ended_at'))
+    created = _parse_dt(_first(note, 'created_at', 'created'))
+
+    if start is None or end is None:
+        times = parse_meeting_times(summary_md)
+        anchor = timezone.localtime(start or created or timezone.now()).date()
+        if start is None and times.start:
+            start = _combine_local(anchor, times.start)
+        if end is None and times.finish:
+            end = _combine_local(anchor, times.finish)
+
+    if start is None:
+        start = created
+    # Discard a finish that isn't after the start (e.g. a stray body time) so the
+    # unit count and displayed window stay sane.
+    if start and end and end <= start:
+        end = None
+    return start, end
 
 
 def _extract_owner_email(note):
@@ -237,6 +279,8 @@ def _ingest_note(client, summary_note,
     if not ref.file_number:
         ref = extract_file_ref(title)
 
+    meeting_start, meeting_end = _resolve_meeting_window(note, summary_md)
+
     imported = GranolaImportedNote(
         note_type=note_type,
         granola_note_id=str(note_id),
@@ -245,10 +289,8 @@ def _ingest_note(client, summary_note,
         summary_html=markdown_to_html(summary_md),
         transcript=transcript_text,
         transcript_json=transcript_json,
-        meeting_start=_parse_dt(_first(note, 'start_time', 'meeting_start',
-                                       'started_at', 'created_at')),
-        meeting_end=_parse_dt(_first(note, 'end_time', 'meeting_end',
-                                     'ended_at')),
+        meeting_start=meeting_start,
+        meeting_end=meeting_end,
         note_created_at=_parse_dt(_first(note, 'created_at', 'created')),
         owner_email=_extract_owner_email(note),
         parsed_file_number=ref.file_number or '',

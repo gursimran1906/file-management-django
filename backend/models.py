@@ -7,8 +7,11 @@ from math import ceil
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from decimal import Decimal
+import os
 import secrets
 import uuid
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 
 from backend.sharepoint.paths import (
     bundle_document_upload_path,
@@ -67,6 +70,17 @@ class ClientContactDetails(models.Model):
         return f'{self.name}'
 
 
+def client_key_doc_storage():
+    """Private, auth-served storage for client key-document scans (proof of ID /
+    address). Served only through the login-protected preview view."""
+    return FileSystemStorage(location=os.path.join(settings.MEDIA_ROOT, 'client_key_docs'))
+
+
+def client_key_document_upload_path(instance, filename):
+    from backend.sharepoint.paths import sanitize_filename
+    return f'{instance.client_id}/{instance.category}-{uuid.uuid4()}_{sanitize_filename(filename)}'
+
+
 class ClientKeyDocument(models.Model):
     DOCUMENT_CATEGORY_CHOICES = [
         ('proof_of_id', 'Proof of ID'),
@@ -84,11 +98,64 @@ class ClientKeyDocument(models.Model):
     verified_on = models.DateField(null=True, blank=True)
     verified_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, related_name='verified_client_key_documents', null=True, blank=True)
+    # The actual scan of the document. Older records hold only the metadata above
+    # (no file); staff can upload the file to those too.
+    file = models.FileField(
+        upload_to=client_key_document_upload_path,
+        storage=client_key_doc_storage, null=True, blank=True)
     notes = models.TextField(blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f'{self.client} - {self.get_category_display()} - {self.document_type}'
+
+
+class ConflictCheck(models.Model):
+    """Audit record of a conflict-of-interest check run before onboarding a
+    client. Every check (whether clear or not) is logged for SRA compliance:
+    who ran it, when, the name searched, what matches were found across
+    clients/opposing parties/authorised parties, and whether the user
+    acknowledged proceeding despite a potential conflict."""
+
+    RESULT_CLEAR = 'clear'
+    RESULT_POTENTIAL = 'potential_conflict'
+    RESULT_CHOICES = [
+        (RESULT_CLEAR, 'No conflict found'),
+        (RESULT_POTENTIAL, 'Potential conflict found'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    searched_name = models.CharField(max_length=255)
+    searched_dob = models.DateField(null=True, blank=True)
+    result = models.CharField(
+        max_length=20, choices=RESULT_CHOICES, default=RESULT_CLEAR)
+    # Snapshot of the matches found at the time of the check, so the audit
+    # record stands alone even if the underlying records later change.
+    matches = models.JSONField(default=list, blank=True)
+    acknowledged = models.BooleanField(default=False)
+    acknowledgement_note = models.TextField(blank=True)
+    # The onboarding case the check was run for (the usual entry point).
+    onboarding = models.ForeignKey(
+        'Onboarding', on_delete=models.CASCADE,
+        related_name='conflict_checks', null=True, blank=True)
+    # Set once the checked person is actually onboarded as a client / linked
+    # to the matter the check was run for.
+    client = models.ForeignKey(
+        ClientContactDetails, on_delete=models.SET_NULL,
+        related_name='conflict_checks', null=True, blank=True)
+    wip = models.ForeignKey(
+        'WIP', on_delete=models.SET_NULL,
+        related_name='conflict_checks', null=True, blank=True)
+    performed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL,
+        related_name='conflict_checks_performed', null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f'Conflict check: {self.searched_name} ({self.get_result_display()})'
 
 
 class AuthorisedParties(models.Model):
@@ -115,6 +182,11 @@ class AuthorisedParties(models.Model):
 class OthersideDetails(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=255, null=True, blank=True)
+    is_business = models.BooleanField(default=False)
+    # Date of birth applies to an individual other side; date of incorporation
+    # applies when the other side is a business/company.
+    dob = models.DateField(null=True, blank=True)
+    date_of_incorporation = models.DateField(null=True, blank=True)
     address_line1 = models.CharField(max_length=255, null=True, blank=True)
     address_line2 = models.CharField(max_length=255, null=True, blank=True)
     county = models.CharField(max_length=255, null=True, blank=True)
@@ -1737,6 +1809,13 @@ class CompletionStatementScheduledPayment(models.Model):
     payee_name = models.CharField(max_length=255)
     description = models.CharField(max_length=500, blank=True)
     reference = models.CharField(max_length=255, blank=True)
+    # Payee bank details — captured before a slip is created so the payment can
+    # be made directly. Optional; carried onto the slip when one is created.
+    bank_name = models.CharField(max_length=255, blank=True)
+    bank_sort_code = models.CharField(max_length=20, blank=True)
+    bank_account_number = models.CharField(max_length=30, blank=True)
+    bank_account_name = models.CharField(max_length=255, blank=True)
+    bank_reference = models.CharField(max_length=255, blank=True)
     direction = models.CharField(max_length=8, choices=DIRECTION_CHOICES)
     ledger_account = models.CharField(
         max_length=1, choices=LEDGER_ACCOUNT_CHOICES, default=LEDGER_CLIENT)
@@ -1892,3 +1971,328 @@ class GranolaImportedNote(models.Model):
 
     def __str__(self):
         return f'{self.title or self.granola_note_id} ({self.status})'
+
+
+class OnboardingGroup(models.Model):
+    """A pre-matter onboarding case for a future matter. A matter can have more
+    than one client, so several people (the members below) are onboarded
+    together under one group — each with their own upload link — and the whole
+    group is converted into a single matter (WIP) with one lead client and the
+    rest as additional clients."""
+
+    STATUS_COLLECTING = 'collecting'
+    STATUS_READY = 'ready_for_review'
+    STATUS_CONVERTED = 'converted'
+    STATUS_CHOICES = [
+        (STATUS_COLLECTING, 'Collecting'),
+        (STATUS_READY, 'Ready for review'),
+        (STATUS_CONVERTED, 'Converted'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    label = models.CharField(max_length=255, blank=True, default='')
+    matter_description = models.CharField(max_length=500, blank=True, default='')
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_COLLECTING)
+    matter = models.ForeignKey(
+        'WIP', on_delete=models.SET_NULL, related_name='onboarding_groups', null=True, blank=True)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, related_name='onboarding_groups_created', null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return self.label or f'Onboarding group {self.id}'
+
+
+class Onboarding(models.Model):
+    """One person within an onboarding group. The office is the system of record;
+    it owns the client_ref that the external client portal keys every upload on.
+    Once the person's documents are collected and KYC-accepted, the group they
+    belong to is converted into a matter (WIP)."""
+
+    STATUS_INVITED = 'invited'
+    STATUS_COLLECTING = 'collecting'
+    STATUS_READY = 'ready_for_review'
+    STATUS_CONVERTED = 'converted'
+    STATUS_CHOICES = [
+        (STATUS_INVITED, 'Invited'),
+        (STATUS_COLLECTING, 'Collecting'),
+        (STATUS_READY, 'Ready for review'),
+        (STATUS_CONVERTED, 'Converted'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    client_ref = models.CharField(max_length=20, unique=True, editable=False)
+    client_name = models.CharField(max_length=255)
+    email = models.CharField(max_length=255)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_INVITED)
+    portal_submission_id = models.CharField(max_length=64, blank=True, default='')
+    portal_invite_id = models.CharField(max_length=64, blank=True, default='')
+    portal_invite_link = models.CharField(max_length=512, blank=True, default='')
+    invite_sent_at = models.DateTimeField(null=True, blank=True)
+    invite_expired_at = models.DateTimeField(null=True, blank=True)
+
+    # The documents/declarations this member is asked to provide for this matter
+    # (a subset of OnboardingItem.ITEM_CHOICES keys). Chosen when the invite is
+    # sent — e.g. an existing client who only needs fresh source-of-funds/PEP/
+    # terms can have proof-of-id/address dropped. Empty == ask for everything.
+    required_documents = models.JSONField(default=list, blank=True)
+
+    # Each onboarding row is one person. People who will share a matter are
+    # grouped under one OnboardingGroup; is_lead marks the one who becomes the
+    # matter's primary client (client1).
+    group = models.ForeignKey(
+        'OnboardingGroup', on_delete=models.CASCADE, related_name='members',
+        null=True, blank=True)
+    is_lead = models.BooleanField(default=False)
+
+    # Structured contact details for this person. Captured at convert time (and,
+    # once the portal is live, pre-filled by it) and copied onto the resulting
+    # ClientContactDetails — proof-of-address is only an image, so the typed
+    # address lives here.
+    dob = models.DateField(null=True, blank=True)
+    occupation = models.CharField(max_length=255, blank=True, default='')
+    address_line1 = models.CharField(max_length=255, blank=True, default='')
+    address_line2 = models.CharField(max_length=255, blank=True, default='')
+    county = models.CharField(max_length=255, blank=True, default='')
+    postcode = models.CharField(max_length=10, blank=True, default='')
+    contact_number = models.CharField(max_length=50, blank=True, default='')
+
+    # The ClientContactDetails created from this member at convert time. Set once
+    # so converting is idempotent (a retry reuses the same client record) and so
+    # the new-matter form can pre-select it.
+    client = models.ForeignKey(
+        'ClientContactDetails', on_delete=models.SET_NULL,
+        related_name='onboarding_member', null=True, blank=True)
+
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, related_name='onboarding_created_by', null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def required_item_types(self):
+        """The item_type keys this member must provide. Falls back to every
+        document type when nothing has been chosen yet, so existing rows (and
+        members invited before a selection is made) behave as 'ask for all'."""
+        if self.required_documents:
+            return [k for k in self.required_documents
+                    if k in dict(OnboardingItem.ITEM_CHOICES)]
+        return [key for key, _ in OnboardingItem.ITEM_CHOICES]
+
+    @staticmethod
+    def generate_client_ref():
+        return f'ONB-{secrets.token_hex(4).upper()}'
+
+    def save(self, *args, **kwargs):
+        if not self.client_ref:
+            ref = self.generate_client_ref()
+            while Onboarding.objects.filter(client_ref=ref).exists():
+                ref = self.generate_client_ref()
+            self.client_ref = ref
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.client_name} ({self.client_ref})'
+
+
+def onboarding_doc_storage():
+    """Private, auth-served storage for onboarding documents (passports, selfies,
+    declarations). Kept off the public media URL — files are only ever served
+    through the login-protected preview view. Local disk for now; route to a
+    SharePoint client-documents library when the portal goes live."""
+    return FileSystemStorage(location=os.path.join(settings.MEDIA_ROOT, 'onboarding_docs'))
+
+
+def onboarding_document_upload_path(instance, filename):
+    from backend.sharepoint.paths import sanitize_filename
+    ref = instance.onboarding.client_ref if instance.onboarding_id else 'unassigned'
+    return f'{ref}/{instance.item_type}-{uuid.uuid4()}_{sanitize_filename(filename)}'
+
+
+class OnboardingItem(models.Model):
+    """Per-document state for an onboarding case: the durable SharePoint item id of
+    the client's portal upload and, when staff upload a document on the client's
+    behalf, the office-copy file. A document counts as collected once it is
+    provided (a portal upload or an office copy) — there is no separate acceptance
+    step. The portal owns the client-uploaded copies (fetched live / by id)."""
+
+    ITEM_CHOICES = [
+        ('proof_id', 'Proof of ID'),
+        ('proof_address', 'Proof of address'),
+        ('selfie_id', 'Selfie with ID'),
+        ('source_of_funds', 'Source of funds declaration'),
+        ('pep', 'PEP declaration'),
+        ('terms_of_engagement', 'Terms of engagement'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    onboarding = models.ForeignKey(
+        Onboarding, on_delete=models.CASCADE, related_name='items')
+    item_type = models.CharField(max_length=20, choices=ITEM_CHOICES)
+    sharepoint_item_id = models.CharField(max_length=128, blank=True, default='')
+    # Set when a staff member uploads the document on the client's behalf.
+    file = models.FileField(
+        upload_to=onboarding_document_upload_path,
+        storage=onboarding_doc_storage, null=True, blank=True)
+    # Document metadata captured during onboarding for identity documents (proof of
+    # ID/address), copied onto the client's ClientKeyDocument at convert time so the
+    # record is complete (with an expiry to track) rather than skeletal.
+    document_type = models.CharField(max_length=100, blank=True, default='')
+    document_reference = models.CharField(max_length=100, blank=True, default='')
+    issue_date = models.DateField(null=True, blank=True)
+    expiry_date = models.DateField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ('onboarding', 'item_type')
+
+    def __str__(self):
+        return f'{self.onboarding.client_ref} - {self.get_item_type_display()}'
+
+
+# ---------------------------------------------------------------------------
+# Per-matter-per-client compliance. Engagement-level checks (terms of
+# engagement, NCBA, source of funds, PEP) belong to each matter x client pairing
+# and are collected fresh for every file. Identity (proof of ID/address, AML
+# date) stays on ClientContactDetails and is reused across matters.
+# ---------------------------------------------------------------------------
+
+
+def matter_client_doc_storage():
+    """Private, auth-served storage for per-matter client-care documents (signed
+    terms, source-of-funds evidence, PEP forms, AML/ID checks). Served only
+    through the login-protected preview view, never a public URL."""
+    return FileSystemStorage(location=os.path.join(settings.MEDIA_ROOT, 'matter_client_docs'))
+
+
+def matter_client_document_upload_path(instance, filename):
+    from backend.sharepoint.paths import sanitize_filename
+    mc = instance.matter_client
+    ref = mc.matter.file_number if mc.matter_id else 'unassigned'
+    return f'{ref}/{mc.client_id}/{instance.category}-{uuid.uuid4()}_{sanitize_filename(filename)}'
+
+
+class MatterClient(models.Model):
+    """One client's engagement-level compliance on one matter. Created for every
+    client on a matter (lead + additional). Holds the checks redone for each new
+    file — terms of engagement, NCBA (when the matter needs one), source of funds
+    and PEP — with the sent/received dates that used to live matter-wide on WIP."""
+
+    SOURCE_CAPTURED = 'captured'
+    SOURCE_RECONSTRUCTED = 'reconstructed'
+    SOURCE_CARRIED_OVER = 'carried_over'
+    SOURCE_CHOICES = [
+        (SOURCE_CAPTURED, 'Captured for this matter'),
+        (SOURCE_RECONSTRUCTED, 'Reconstructed from matter evidence'),
+        (SOURCE_CARRIED_OVER, 'Carried over from the client record'),
+    ]
+
+    matter = models.ForeignKey(
+        WIP, on_delete=models.CASCADE, related_name='matter_clients')
+    client = models.ForeignKey(
+        ClientContactDetails, on_delete=models.CASCADE, related_name='matter_links')
+    is_lead = models.BooleanField(default=False)
+
+    # Terms of engagement
+    terms_of_engagement_signed = models.BooleanField(default=False)
+    terms_of_engagement_on = models.DateField(null=True, blank=True)
+    terms_of_engagement_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    terms_sent_on = models.DateField(null=True, blank=True)
+    terms_received_on = models.DateField(null=True, blank=True)
+
+    # NCBA — only tracked when the matter needs one
+    ncba_required = models.BooleanField(default=True)
+    ncba_signed = models.BooleanField(default=False)
+    ncba_on = models.DateField(null=True, blank=True)
+    ncba_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    ncba_sent_on = models.DateField(null=True, blank=True)
+    ncba_received_on = models.DateField(null=True, blank=True)
+
+    # Source of funds
+    source_of_funds_signed = models.BooleanField(default=False)
+    source_of_funds_on = models.DateField(null=True, blank=True)
+    source_of_funds_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    source_of_funds_details = models.CharField(max_length=255, blank=True, default='')
+
+    # PEP declaration
+    pep_signed = models.BooleanField(default=False)
+    pep_on = models.DateField(null=True, blank=True)
+    pep_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    source = models.CharField(
+        max_length=20, choices=SOURCE_CHOICES, default=SOURCE_CAPTURED)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('matter', 'client')
+
+    def __str__(self):
+        return f'{self.matter.file_number} - {self.client.name}'
+
+
+class MatterClientDocument(models.Model):
+    """A client-care document uploaded against a matter x client — signed terms,
+    source-of-funds evidence, a PEP form, or an AML/ID check captured after the
+    file is open. Files are private, served only through a login-protected view."""
+
+    CATEGORY_CHOICES = [
+        ('terms', 'Terms of engagement'),
+        ('ncba', 'NCBA'),
+        ('source_of_funds', 'Source of funds'),
+        ('pep', 'PEP declaration'),
+        ('aml_id_check', 'AML / ID check'),
+        ('other', 'Other'),
+    ]
+
+    matter_client = models.ForeignKey(
+        MatterClient, on_delete=models.CASCADE, related_name='documents')
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    file = models.FileField(
+        upload_to=matter_client_document_upload_path,
+        storage=matter_client_doc_storage)
+    document_type = models.CharField(max_length=100, blank=True, default='')
+    document_reference = models.CharField(max_length=100, blank=True, default='')
+    issue_date = models.DateField(null=True, blank=True)
+    expiry_date = models.DateField(null=True, blank=True)
+    uploaded_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'{self.matter_client} - {self.get_category_display()}'
+
+
+class ConveyancingDetails(models.Model):
+    """Transaction detail for a conveyancing matter — the property and its
+    purchase/sale price. Kept off WIP so type-specific fields don't bloat every
+    matter; shown only when the matter type is conveyancing."""
+
+    TRANSACTION_CHOICES = [
+        ('purchase', 'Purchase'),
+        ('sale', 'Sale'),
+        ('purchase_sale', 'Purchase & sale'),
+        ('remortgage', 'Remortgage'),
+        ('transfer', 'Transfer of equity'),
+    ]
+
+    matter = models.OneToOneField(
+        WIP, on_delete=models.CASCADE, related_name='conveyancing')
+    transaction_type = models.CharField(
+        max_length=20, choices=TRANSACTION_CHOICES, blank=True, default='')
+    property_price = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    property_address = models.CharField(max_length=500, blank=True, default='')
+    completion_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'{self.matter.file_number} conveyancing'

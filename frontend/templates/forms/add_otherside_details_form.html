@@ -1,42 +1,67 @@
-<div class="col">
-    <div class="col-span-4">
-      <label class="form-label">Name</label>
-      <input type="text" class="form-input" name="OSName">
-    </div>
-    <div class="col-span-4">
-      <label class="form-label">Address Line 1</label>
-      <input type="text" class="form-input" name="OSAddressLine1">
-    </div>
-    <div class="col-span-4">
-      <label class="form-label">Address Line 2</label>
-      <input type="text" class="form-input" name="OSAddressLine2">
-    </div>
-    <div class="col-span-4">
-      <label class="form-label">County</label>
-      <input type="text" class="form-input" name="OSCounty">
-    </div>
-    <div class="col-span-2">
-      <label class="form-label">Postcode</label>
-      <input type="text" class="form-input" name="OSPostcode">
-    </div>
-  </div>
-  <div class="col">
-    <div class="col-span-3">
-      <label class="form-label">Email</label>
-      <input type="email" class="form-input" name="OSEmail">
-    </div>
-    <div class="col-span-3">
-      <label class="form-label">Contact Number</label>
-      <input type="tel" class="form-input" name="OSContactNumber">
-    </div>
+<div class="md:col-span-12">
+  <label class="inline-flex items-center gap-2">
+    <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+           name="OSIsBusiness" onchange="toggleOSEntityType(this)">
+    <span class="text-xs font-medium text-gray-600">Business / company</span>
+  </label>
+</div>
 
-    <div class="col-span-4">
-      <label class="form-label">Solicitors</label>
-      <input type="text" class="form-input" name="OSSolicitors">
-    </div>
+<div class="md:col-span-6">
+  <label class="form-label">Name</label>
+  <input type="text" class="form-input" name="OSName">
+</div>
+<div class="md:col-span-6" data-os-individual>
+  <label class="form-label">Date of Birth</label>
+  <input type="date" class="form-input" name="OSDob">
+</div>
+<div class="md:col-span-6" data-os-business style="display: none">
+  <label class="form-label">Date of Incorporation</label>
+  <input type="date" class="form-input" name="OSDateOfIncorporation">
+</div>
 
-    <div class="col-span-4">
-      <label class="form-label">Solicitors Email</label>
-      <input type="email" class="form-input" name="OSSolicitorsEmail">
-    </div>
-  </div>
+<div class="md:col-span-6">
+  <label class="form-label">Address Line 1</label>
+  <input type="text" class="form-input" name="OSAddressLine1">
+</div>
+<div class="md:col-span-6">
+  <label class="form-label">Address Line 2</label>
+  <input type="text" class="form-input" name="OSAddressLine2">
+</div>
+<div class="md:col-span-8">
+  <label class="form-label">County</label>
+  <input type="text" class="form-input" name="OSCounty">
+</div>
+<div class="md:col-span-4">
+  <label class="form-label">Postcode</label>
+  <input type="text" class="form-input" name="OSPostcode">
+</div>
+
+<div class="md:col-span-6">
+  <label class="form-label">Email</label>
+  <input type="email" class="form-input" name="OSEmail">
+</div>
+<div class="md:col-span-6">
+  <label class="form-label">Contact Number</label>
+  <input type="tel" class="form-input" name="OSContactNumber">
+</div>
+<div class="md:col-span-6">
+  <label class="form-label">Solicitors</label>
+  <input type="text" class="form-input" name="OSSolicitors">
+</div>
+<div class="md:col-span-6">
+  <label class="form-label">Solicitors Email</label>
+  <input type="email" class="form-input" name="OSSolicitorsEmail">
+</div>
+
+<script>
+  function toggleOSEntityType(checkbox) {
+    var scope = checkbox.closest('.grid') || document;
+    var business = checkbox.checked;
+    scope.querySelectorAll('[data-os-individual]').forEach(function (el) {
+      el.style.display = business ? 'none' : '';
+    });
+    scope.querySelectorAll('[data-os-business]').forEach(function (el) {
+      el.style.display = business ? '' : 'none';
+    });
+  }
+</script>
