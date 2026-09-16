@@ -492,6 +492,8 @@ class Sorting:
         self.name = ''
 
     def extract_key_and_feeearner(self, subject):
+        # Graph returns null for subject-less messages.
+        subject = subject or ''
         key_match = re.search(r'[A-Z]{3}\d{7}', subject)
         feeearner_match = re.search(r'\b(\w{10})/(\d{2})\b', subject)
 
@@ -518,14 +520,17 @@ class Sorting:
 
     def process_email(self, email):
         try:
-            subject = email['subject']
+            # subject/body can come back null from Graph (subject-less or empty
+            # messages); toRecipients can be empty (e.g. bcc-only mail).
+            subject = email.get('subject') or ''
             file_num, fee_earner = self.extract_key_and_feeearner(subject)
 
             from_address = email['from']
             to_recipients = email['toRecipients']
-            to_1_email_address = to_recipients[0]['emailAddress']['address']
+            to_1_email_address = (to_recipients[0]['emailAddress']['address']
+                                  if to_recipients else '')
 
-            body = email['body']['content']
+            body = (email.get('body') or {}).get('content') or ''
 
             desc = ''
 
@@ -565,8 +570,11 @@ class Sorting:
                         web_link, isSent, local_rcvd_time_str, calc_units_email(body), fee_earner)
             return True
 
-        except KeyError as e:
-            print(f"Error processing email in process method: {str(e)}")
+        except (KeyError, IndexError, TypeError) as e:
+            # A malformed message must never abort the whole sync run; anything
+            # else (e.g. a DB error) stays fatal so the watermark doesn't advance.
+            print(f"Error processing email in process method: {e!r} "
+                  f"(webLink={email.get('webLink')})")
             return False
 
     async def get_emails(self):

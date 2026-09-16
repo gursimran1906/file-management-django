@@ -51,6 +51,41 @@ class ProcessEmailDedupTests(TestCase):
         self.assertEqual(MatterEmails.objects.filter(link='https://outlook/msg-idem').count(), 1)
 
 
+class MalformedEmailTests(TestCase):
+    """Messages Graph can legitimately return with null/missing pieces must be
+    stored (or skipped), never crash the run — a crash aborts the whole sync,
+    freezes the watermark, and re-alerts every cron tick on the same message."""
+
+    def setUp(self):
+        self.sorting = Sorting()
+
+    def test_null_subject_is_stored_not_crashed(self):
+        email = _email('https://outlook/msg-nosubj', subject=None)
+        self.assertTrue(self.sorting.process_email(email))
+        row = MatterEmails.objects.get(link='https://outlook/msg-nosubj')
+        self.assertEqual(row.subject, '')
+
+    def test_extract_key_handles_none_subject(self):
+        self.assertEqual(self.sorting.extract_key_and_feeearner(None), ('', '0'))
+
+    def test_empty_to_recipients_is_stored_not_crashed(self):
+        email = _email('https://outlook/msg-norcpt')
+        email['toRecipients'] = []
+        self.assertTrue(self.sorting.process_email(email))
+
+    def test_null_body_is_stored_not_crashed(self):
+        email = _email('https://outlook/msg-nobody')
+        email['body'] = None
+        self.assertTrue(self.sorting.process_email(email))
+
+    def test_missing_from_is_skipped_not_crashed(self):
+        email = _email('https://outlook/msg-nofrom')
+        del email['from']
+        self.assertFalse(self.sorting.process_email(email))
+        self.assertFalse(
+            MatterEmails.objects.filter(link='https://outlook/msg-nofrom').exists())
+
+
 class WatermarkWindowTests(TestCase):
     def setUp(self):
         self.sorting = Sorting()
