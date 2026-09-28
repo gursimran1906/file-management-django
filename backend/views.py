@@ -4651,6 +4651,13 @@ def _matter_rate_amount(matter):
     return rate.hourly_amount if rate is not None else Decimal('0')
 
 
+def _first_recipient(receiver):
+    """(name, address) of an email's first To recipient, blank when it has
+    none: the sync stores bcc-only mail with an empty toRecipients list."""
+    address = (receiver[0].get('emailAddress') or {}) if receiver else {}
+    return address.get('name') or '', address.get('address') or ''
+
+
 @login_required
 def download_sowc(request, file_number):
     file = WIP.objects.filter(file_number=file_number).first()
@@ -4686,7 +4693,9 @@ def download_sowc(request, file_number):
         fee_earner = email.fee_earner.username if email.fee_earner != None else ''
         receiver = json.loads(email.receiver)
         sender = json.loads(email.sender)
-        to_or_from = f"Email to {receiver[0]['emailAddress']['name']}" if email.is_sent else f"Perusal of email from {sender['emailAddress']['name']}"
+        to_name = _first_recipient(receiver)[0]
+        sent_desc = f"Email to {to_name}" if to_name else "Email sent"
+        to_or_from = sent_desc if email.is_sent else f"Perusal of email from {sender['emailAddress']['name']}"
         desc = to_or_from + f" @ {time}"
         units = email.units
         amount = ((email.fee_earner.hourly_rate.hourly_amount/10) * units) if email.fee_earner != None else (
@@ -7201,15 +7210,23 @@ def unallocated_emails(request):
         receiver = json.loads(email.receiver)
         sender = json.loads(email.sender)
 
-        row = f"""<tr class="email-row even:bg-white odd:bg-gray-50 border-b text-gray-900 px-2" data-email="{receiver[0]['emailAddress']['address']} {sender['emailAddress']['address']}">
+        # Names, addresses and the subject come from the email itself, so
+        # escape them before they go into the mark_safe row.
+        sender_name = html_escape(sender['emailAddress'].get('name') or '')
+        sender_address = html_escape(
+            sender['emailAddress'].get('address') or '')
+        to_name, to_address = map(html_escape, _first_recipient(receiver))
+        to = f"{to_name} ({to_address})" if to_address else "(no recipients)"
+
+        row = f"""<tr class="email-row even:bg-white odd:bg-gray-50 border-b text-gray-900 px-2" data-email="{to_address} {sender_address}">
                         <td class='td'>{i}</td>
                         <td class='td'>{email.time.strftime('%d-%m-%Y <br> %H:%M %p')}</td>
                         <td>
-                            <b>From:</b> {sender['emailAddress']['name']} ({sender['emailAddress']['address']})<br>
-                            <b>To:</b> {receiver[0]['emailAddress']['name']} ({receiver[0]['emailAddress']['address']})
+                            <b>From:</b> {sender_name} ({sender_address})<br>
+                            <b>To:</b> {to}
                         </td>
-                        <td class='td'>{email.subject}</td>
-                        <td class='td'><a class="link" target="_blank" href="{email.link}">See Email</a></td>
+                        <td class='td'>{html_escape(email.subject or '')}</td>
+                        <td class='td'><a class="link" target="_blank" href="{html_escape(email.link or '')}">See Email</a></td>
                         <td>
                             <input class="hidden" name="email_ids[]" value={email.id}></input>
                             {files_options}
