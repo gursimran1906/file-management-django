@@ -58,7 +58,10 @@
       <div class="min-w-0">
         <h2 class="text-base font-semibold text-gray-900">{{ entry.member.client_name }}</h2>
         <p class="text-xs text-gray-400 mt-0.5">{{ entry.member.email }} · <span class="font-mono">{{ entry.member.client_ref }}</span>
-          {% if entry.member.invite_sent_at %}· invited {{ entry.member.invite_sent_at|date:"d M" }}{% else %}· not invited{% endif %}</p>
+          {% if entry.member.invite_sent_at %}· invited {{ entry.member.invite_sent_at|date:"d M" }}{% else %}· not invited{% endif %}{% if entry.flags.portal_status == 'submitted' %} · <span class="font-medium text-emerald-600">submitted by client</span>{% endif %}</p>
+        {% if entry.flags.portal_capacity.acting_for == 'company' %}
+        <p class="text-xs text-gray-600 mt-1">Completing on behalf of <span class="font-medium text-gray-800">{{ entry.flags.portal_capacity.company_name }}</span>{% if entry.flags.portal_capacity.company_number %} (company no. {{ entry.flags.portal_capacity.company_number }}){% endif %}{% if entry.flags.portal_capacity.signatory_role %} · {{ entry.flags.portal_capacity.signatory_role }}{% endif %} — the company is the client; check Companies House and the beneficial owners before converting.</p>
+        {% endif %}
       </div>
       <div class="flex items-center gap-4 shrink-0">
         <div class="text-right">
@@ -83,6 +86,8 @@
         {% if entry.member.portal_invite_link %}
         <a href="{{ entry.member.portal_invite_link }}" target="_blank" rel="noopener" class="font-mono text-gray-400 truncate max-w-xs hover:text-blue-600">{{ entry.member.portal_invite_link }}</a>
         <button type="button" class="oi-link js-copy" data-copy="{{ entry.member.portal_invite_link }}">Copy</button>
+        {% else %}
+        <span class="text-gray-400">emailed to the client · link not kept here</span>
         {% endif %}
         <form method="post" action="{% url 'onboarding_expire_invite' entry.member.id %}" onsubmit="return confirm('Expire this invite link? The client will no longer be able to use it.');">
           {% csrf_token %}<button type="submit" class="oi-link" style="color:#dc2626">Expire link</button>

@@ -3,12 +3,16 @@ library (where the portal wrote them).
 
 The portal stores files at::
 
-    [testing/]{root}/Onboarding/{client_ref}/{submission_id}/{type}-{id}.{ext}
+    [testing/]{root}/Onboarding/{client_ref}/{submission_id}/
+        {type}-{id}.{ext}                      uploaded documents
+        declaration-{type}-{id}.pdf            rendered declarations
+        terms-acceptance-{id}.pdf              terms acceptance certificate
+        terms-signed-{id}.{ext}, terms-signature-{id}.png, terms-of-engagement-…
 
-The office reads them with its own (broader) Graph credential — the portal only
-ever hands back ids/paths, never bytes. See the Phase 0 SharePoint setup guide.
-The exact filename carries a portal-side id we don't know, so we list the
-submission folder and match on the ``{item_type}-`` prefix.
+The office reads them with the same Graph app registration the portal uses —
+the portal only ever hands back ids/paths, never bytes. Reads go by the exact
+item id the portal reported wherever possible; the folder listing below is a
+last resort that matches on the filename prefix the portal uses for each type.
 """
 import logging
 import mimetypes
@@ -26,6 +30,18 @@ _TIMEOUT = 60
 
 class OnboardingStorageError(Exception):
     pass
+
+
+# Filename prefixes the portal uses per item type (see module docstring).
+_FILE_PREFIXES = {
+    'source_of_funds': ('declaration-source_of_funds-',),
+    'pep': ('declaration-pep-',),
+    'terms_of_engagement': ('terms-acceptance-', 'terms-signed-'),
+}
+
+
+def _prefixes_for(item_type):
+    return _FILE_PREFIXES.get(item_type, (f'{item_type}-',))
 
 
 def _drive_id():
@@ -106,14 +122,12 @@ def read_document(member, item_type):
         listing.raise_for_status()
 
         children = listing.json().get('value', [])
-        # The portal names files with a "{item_type}-" prefix (Phase 0 spec). Match
-        # on that; if nothing matches, log the actual filenames so we can confirm
-        # the convention against the running portal.
+        prefixes = _prefixes_for(item_type)
         target = next((c for c in children
-                       if c.get('name', '').startswith(f'{item_type}-')), None)
+                       if c.get('name', '').startswith(prefixes)), None)
         if not target:
-            logger.info('No "%s-" file in %s; files present: %s',
-                        item_type, folder, [c.get('name') for c in children])
+            logger.info('No %s file in %s; files present: %s',
+                        '/'.join(prefixes), folder, [c.get('name') for c in children])
             raise OnboardingStorageError('That document has not been uploaded yet.')
 
         download = requests.get(

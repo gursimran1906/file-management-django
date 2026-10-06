@@ -48,18 +48,29 @@ def _parse_date(value):
 
 
 def _send_invite(request, member):
-    """Request a magic link from the portal for one member and record it."""
+    """Request a magic link from the portal for one member, deliver it by
+    email, and record the portal ids.
+
+    Only one link per client is ever live: a previous still-active link is
+    expired first. The link itself is a credential, so it is kept on the row
+    only while we still need to deliver it by hand (email not configured or
+    failed) and cleared once the email has gone."""
+    if (member.portal_invite_id and member.invite_sent_at
+            and not member.invite_expired_at):
+        try:
+            portal.expire_invite(member)
+        except portal.PortalError as exc:
+            logger.warning('Could not expire the previous invite for %s: %s',
+                           member.client_ref, exc)
     try:
         result = portal.create_invite(member)
     except portal.PortalError as exc:
         messages.error(request, f'Could not send the invite to {member.client_name}: {exc}')
         return False
-    # The portal may name the magic link differently across versions.
-    link = (result.get('link') or result.get('magic_link') or result.get('url')
-            or result.get('invite_url') or result.get('redeem_url')
-            or result.get('redeem_link') or '')
+    # ``redeem_url`` is the portal's field; ``link`` is the built-in mock's.
+    link = result.get('redeem_url') or result.get('link') or ''
     if not link and not portal.is_mock():
-        logger.warning('Portal /invites returned no recognised link field; '
+        logger.warning('Portal /invites returned no redeem_url; '
                        'response keys: %s', list(result.keys()))
 
     member.portal_submission_id = result.get('submission_id', '')
@@ -79,10 +90,16 @@ def _send_invite(request, member):
             f'{member.email} could not be sent.')
         return True
     if sent:
+        # Delivered — don't retain the live link. Staff can expire it, or
+        # resend to issue a fresh one.
+        member.portal_invite_link = ''
+        member.save(update_fields=['portal_invite_link'])
         messages.success(request, f'Invite emailed to {member.email}.')
     else:
         messages.success(
-            request, f'Invite recorded for {member.email} (email sending not configured).')
+            request, f'Invite recorded for {member.client_name}. The email was not '
+            'sent from here (invite emails are switched off or not configured), so '
+            'copy the link from the case page to send it.')
     return True
 
 
@@ -152,10 +169,14 @@ def _member_progress(member):
     member. Returns (items, flags)."""
     records = {i.item_type: i for i in member.items.all()}
     portal_address = {}
+    portal_status = ''
+    portal_capacity = {}
     try:
         submission = portal.get_submission(member)
         portal_items = submission.get('items', {})
         portal_address = submission.get('address') or {}
+        portal_status = submission.get('status') or ''
+        portal_capacity = submission.get('capacity') or {}
         portal_error = None
         _persist_submission_item_ids(member, submission)
     except portal.PortalError as exc:
@@ -190,7 +211,11 @@ def _member_progress(member):
         label = ITEM_LABELS.get(key, key)
         record = records.get(key)
         has_file = bool(record and record.file)
-        portal_provided = portal_items.get(key, 'awaited') == 'provided'
+        # A SharePoint id persisted from an earlier submission (e.g. before an
+        # invite was reissued) is still the client's upload — the preview view
+        # resolves it by id — so it counts as provided too.
+        portal_provided = (portal_items.get(key, 'awaited') == 'provided'
+                           or bool(record and record.sharepoint_item_id))
         # Reused from the client's record only when there's no fresh copy.
         key_doc = on_file_docs.get(key) if not (portal_provided or has_file) else None
         provided = portal_provided or has_file or bool(key_doc)
@@ -221,57 +246,15 @@ def _member_progress(member):
         'all_provided': all_provided,
         'any_provided': any_provided,
         'portal_error': portal_error,
+        'portal_status': portal_status,
+        # Set when the client told the portal they act for a company that is
+        # the real client (a director completing on the company's behalf).
+        'portal_capacity': portal_capacity,
         'address_display': _format_address(member),
         'total_count': total,
         'provided_count': provided_count,
         'provided_pct': round(provided_count * 100 / total) if total else 0,
     }
-
-
-def matter_client_care_documents(wip):
-    """The onboarding documents for a matter, as one folder per client for the
-    Client Care section of the matter home page.
-
-    Each folder lists the documents held for that client — a client copy uploaded
-    through the portal, an office copy uploaded by staff, or, for an existing
-    client, an identity document already valid on file (linked to that record, no
-    re-upload). Every client on the matter gets a folder (shown empty when nothing
-    is held yet). Link-through only: files stay where they are; nothing is copied."""
-    labels = dict(OnboardingItem.ITEM_CHOICES)
-    canonical = [k for k, _ in OnboardingItem.ITEM_CHOICES]
-    today = timezone.localdate()
-    folders = []
-    for group in wip.onboarding_groups.all():
-        for member in group.members.all():
-            rows = {it.item_type: it for it in member.items.all()}
-            on_file_docs = (_valid_on_file_key_docs(member.client, today)
-                            if member.client_id else {})
-            docs = []
-            for item_type in canonical:
-                it = rows.get(item_type)
-                has_office = bool(it and it.file)
-                has_client = bool(it and it.sharepoint_item_id)
-                # Fall back to the on-file record only when there's no fresh copy.
-                key_doc = (on_file_docs.get(item_type)
-                           if not (has_office or has_client) else None)
-                if not (has_office or has_client or key_doc):
-                    continue  # only documents we actually hold
-                docs.append({
-                    'label': labels.get(item_type, item_type),
-                    'item_type': item_type,
-                    'member_id': member.id,
-                    'has_office_copy': has_office,
-                    'has_client_copy': has_client,
-                    'on_file': bool(key_doc),
-                    'record_client_id': member.client_id if key_doc else None,
-                    'verified_on': key_doc.verified_on if key_doc else None,
-                    'expiry': key_doc.expiry_date if key_doc else None,
-                })
-            folders.append({
-                'client_name': member.client.name if member.client_id else member.client_name,
-                'documents': docs,
-            })
-    return folders
 
 
 # Onboarding item type -> the client key-document category that satisfies it.

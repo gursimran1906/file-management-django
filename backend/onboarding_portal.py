@@ -37,6 +37,33 @@ class PortalError(Exception):
     """Raised when the portal cannot be reached or returns an error."""
 
 
+def _portal_error(exc):
+    """Build a PortalError whose message carries the portal's own ``detail``
+    (a string, or for 422s a list of ``{loc, msg}``) so staff see *why* a call
+    was refused — e.g. "422 email: value is not a valid email address" — rather
+    than a bare status line."""
+    resp = getattr(exc, 'response', None)
+    if resp is None:
+        return PortalError(str(exc))
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+    detail = body.get('detail') if isinstance(body, dict) else body
+    if isinstance(detail, list):
+        parts = []
+        for err in detail:
+            if not isinstance(err, dict):
+                continue
+            loc = [str(x) for x in err.get('loc', []) if x != 'body']
+            msg = str(err.get('msg', '')).replace('Value error, ', '', 1)
+            parts.append(f'{loc[-1]}: {msg}' if loc else msg)
+        detail = '; '.join(p for p in parts if p)
+    if not isinstance(detail, str) or not detail.strip():
+        detail = (resp.text or '').strip()[:200] or (resp.reason or '')
+    return PortalError(f'{resp.status_code} {detail}'.strip())
+
+
 def _base_url():
     return (getattr(settings, 'ONBOARDING_PORTAL_BASE_URL', '') or '').rstrip('/')
 
@@ -54,8 +81,9 @@ def _headers():
 
 
 def create_invite(onboarding):
-    """Ask the portal to mint a single-use magic link and email it to the client.
-    Returns a dict containing at least ``submission_id``."""
+    """Ask the portal to mint a single-use magic link. Returns the portal's
+    response: ``invite_id``, ``submission_id``, ``expires_at`` and ``redeem_url``
+    (the link; the office delivers it — the portal does not email it)."""
     if is_mock():
         logger.info('Onboarding portal (mock): create_invite for %s', onboarding.client_ref)
         public = (getattr(settings, 'ONBOARDING_PORTAL_PUBLIC_URL', '') or '').rstrip('/')
@@ -81,15 +109,18 @@ def create_invite(onboarding):
         return resp.json()
     except requests.RequestException as exc:
         logger.warning('Onboarding portal create_invite failed: %s', exc)
-        raise PortalError(str(exc))
+        raise _portal_error(exc)
 
 
 def get_submission(onboarding):
-    """Return ``{'items': {item_type: portal_status}}`` for this onboarding.
+    """Return the normalised submission for this onboarding (see
+    :func:`_normalise_submission`): per-item status, file ids, the client's
+    typed current address, and the portal-side status.
 
-    The real portal also returns ``address`` — the address the client typed in
-    (verified by their proof-of-address upload) — which the conflict check and
-    convert step use. In mock mode there is none.
+    ``address`` is what the client typed before uploading proof of address
+    (the portal refuses that upload until an address is recorded), so the
+    conflict check and convert step can pre-fill from it. In mock mode there is
+    none.
 
     In mock mode, once an invite has been sent every item is reported as
     ``provided`` so the console is exercisable end to end; before that they are
@@ -101,10 +132,12 @@ def get_submission(onboarding):
             'items': {key: portal_status for key, _ in ONBOARDING_ITEMS},
             'address': {},
             'files': {},
+            'status': 'submitted' if onboarding.invite_sent_at else 'invited',
+            'capacity': {},
         }
     # No submission yet (invite not minted) — nothing to fetch.
     if not onboarding.portal_submission_id:
-        return {'items': {}, 'address': {}, 'files': {}}
+        return {'items': {}, 'address': {}, 'files': {}, 'status': '', 'capacity': {}}
     try:
         resp = requests.get(
             f'{_base_url()}/submissions/{onboarding.portal_submission_id}',
@@ -115,7 +148,7 @@ def get_submission(onboarding):
         return _normalise_submission(resp.json())
     except requests.RequestException as exc:
         logger.warning('Onboarding portal get_submission failed: %s', exc)
-        raise PortalError(str(exc))
+        raise _portal_error(exc)
 
 
 def _normalise_submission(data):
@@ -124,7 +157,13 @@ def _normalise_submission(data):
     The office exposes, per type:
       - items:   {type: 'provided'|'awaited'}
       - files:   {type: {'item_id': ..., 'path': ...}}  for direct SharePoint reads
-      - address: the client's details, if the portal returns them.
+      - address: {address_line1, address_line2, county, postcode} the client
+                 typed (same field names as ClientContactDetails), or {}.
+      - status:  the portal's submission status — 'invited', 'in_progress',
+                 'submitted' (the client pressed Submit) or 'accepted'.
+      - capacity: {acting_for: 'self'|'company', company_name, company_number,
+                 signatory_role} — who completed it; {} until told. A director
+                 completing for a company that is the client shows up here.
 
     Documents and declarations differ:
       - documents:    provided when scan_state == 'clean'; id = sharepoint_item_id
@@ -156,24 +195,25 @@ def _normalise_submission(data):
             files[dtype] = {'item_id': pdf_item_id, 'path': ''}
 
     # Terms of engagement: a single block (agreement + live selfie + signature).
-    # Provided once accepted; the acceptance certificate PDF is the evidence we
-    # surface as the "Client copy".
+    # Provided once accepted. The portal renders an acceptance certificate PDF
+    # for both signing methods (``acceptance_item_id``) — that is the evidence we
+    # surface as the "Client copy"; the wet-ink signed scan
+    # (``signed_doc_item_id``) is the fallback if the certificate id is missing.
     terms = data.get('terms')
     if terms:
-        cert_id = (terms.get('acceptance_certificate_item_id')
-                   or terms.get('acceptance_certificate_id')
-                   or terms.get('certificate_item_id')
-                   or terms.get('signed_doc_item_id')
-                   or terms.get('signed_document_item_id') or '')
-        accepted = bool(terms.get('agreed_at') or terms.get('accepted') or cert_id)
+        cert_id = terms.get('acceptance_item_id') or terms.get('signed_doc_item_id') or ''
+        accepted = bool(terms.get('agreed_at') or cert_id)
         items['terms_of_engagement'] = 'provided' if accepted else 'awaited'
         if cert_id:
             files['terms_of_engagement'] = {'item_id': cert_id, 'path': ''}
-        elif accepted:
-            logger.info('Terms block present but no recognised certificate id; '
-                        'keys: %s', list(terms.keys()))
 
-    return {'items': items, 'address': data.get('address') or {}, 'files': files}
+    return {
+        'items': items,
+        'address': data.get('address') or {},
+        'files': files,
+        'status': data.get('status') or '',
+        'capacity': data.get('capacity') or {},
+    }
 
 
 def expire_invite(onboarding):
@@ -193,7 +233,7 @@ def expire_invite(onboarding):
         resp.raise_for_status()
     except requests.RequestException as exc:
         logger.warning('Onboarding portal expire_invite failed: %s', exc)
-        raise PortalError(str(exc))
+        raise _portal_error(exc)
 
 
 def attach_matter(onboarding, matter_ref):
@@ -212,4 +252,4 @@ def attach_matter(onboarding, matter_ref):
         resp.raise_for_status()
     except requests.RequestException as exc:
         logger.warning('Onboarding portal attach_matter failed: %s', exc)
-        raise PortalError(str(exc))
+        raise _portal_error(exc)
