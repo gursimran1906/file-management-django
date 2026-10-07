@@ -14,7 +14,7 @@ from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessm
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
 from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
-from .forms import PmtsForm, PmtsHalfForm, PmtsSlipEditForm, GreenSlipEditForm, apply_pmts_slip_edit_locks, apply_green_slip_edit_locks, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, MatterClientKeyDocumentForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
+from .forms import PmtsForm, PmtsHalfForm, PmtsSlipEditForm, GreenSlipEditForm, apply_pmts_slip_edit_locks, apply_green_slip_edit_locks, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm
 from .utils import (
     create_modification,
@@ -37,7 +37,7 @@ from .audit import (
 )
 from .finance_display import build_invoice_finance_detail, compute_invoice_balance_due
 from .audit_display import build_change_items, enrich_file_logs
-from .onboarding_views import link_group_to_matter, matter_client_care_documents
+from .onboarding_views import link_group_to_matter
 from .matter_compliance import matter_compliance, ensure_matter_clients
 from django.utils import timezone
 from users.models import CPDTrainingLog, CustomUser, HolidayRecord, SicknessRecord
@@ -1760,7 +1760,6 @@ def display_data_home_page(request, file_number):
         ).order_by('-date_review_completed', '-date_reviewed', '-timestamp')
         matter_key_dates = MatterKeyDate.objects.filter(matter=matter)
         matter_key_date_form = MatterKeyDateForm()
-        matter_key_document_form = MatterClientKeyDocumentForm(matter=matter)
         matter_key_documents = get_matter_key_documents(matter)
         today = timezone.localdate()
         matter_key_date_alerts = matter_key_dates.filter(
@@ -1821,14 +1820,12 @@ def display_data_home_page(request, file_number):
                                              'matter_file_reviews': build_matter_file_review_display_data(matter_file_reviews),
                                              'matter_key_dates': matter_key_dates,
                                              'matter_key_date_form': matter_key_date_form,
-                                             'matter_key_document_form': matter_key_document_form,
                                              'matter_key_documents': matter_key_documents,
                                              'matter_key_date_alerts': matter_key_date_alerts,
                                              'matter_key_document_alerts': matter_key_document_alerts,
                                              'logs': activity_logs,
                                              'log_meta': log_meta,
                                              'log_limit': 300,
-                                             'client_care_documents': matter_client_care_documents(matter),
                                              'matter_compliance': matter_compliance_rows,
                                              'compliance_by_client': {r['client_id']: r for r in matter_compliance_rows},
                                              'conveyancing': getattr(matter, 'conveyancing', None),
@@ -1869,28 +1866,6 @@ def add_matter_key_date(request, file_number):
 
     if request.POST.get('return_to') == 'central':
         return redirect('central_key_dates')
-    return redirect('home', file_number=file_number)
-
-
-@login_required
-@require_POST
-def add_matter_key_document(request, file_number):
-    matter = get_object_or_404(WIP, file_number=file_number)
-    form = MatterClientKeyDocumentForm(matter=matter, data=request.POST)
-    if form.is_valid():
-        document = form.save(commit=False)
-        if document.verified_on:
-            document.verified_by = request.user
-        document.save()
-        log_created(
-            request.user,
-            document,
-            snapshot_key_document(document),
-        )
-        messages.success(request, 'Key document added.')
-    else:
-        messages.error(request, 'Please correct the key document form.')
-
     return redirect('home', file_number=file_number)
 
 
@@ -3693,7 +3668,7 @@ def edit_client(request, id):
         {
             'matter': mc.matter,
             'terms': mc.terms_of_engagement_signed,
-            'ncba_required': mc.ncba_required,
+            'ncba_required': mc.matter.ncba_required,
             'ncba': mc.ncba_signed,
             'sof': mc.source_of_funds_signed,
             'pep': mc.pep_signed,

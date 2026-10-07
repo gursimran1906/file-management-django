@@ -300,7 +300,13 @@
           <label class="form-label">Date ToE Received</label>
           <input type="date" class="form-input" name="date_of_toe_rcvd" />
         </div>
-        <div class="md:col-span-3"></div>
+        <div class="md:col-span-3">
+          <label class="form-label">NCBA</label>
+          <label class="flex h-9 items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" name="ncba_required" value="1" class="h-4 w-4 rounded border-gray-300 text-blue-600">
+            This matter is under an NCBA
+          </label>
+        </div>
         <div class="md:col-span-3">
           <label class="form-label">Date NCBA Sent</label>
           <input type="date" class="form-input" name="date_of_ncba_sent" />

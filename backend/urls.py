@@ -50,7 +50,7 @@ from .views import edit_ongoing_monitoring, download_document, onboarding_docume
 from .views import undertakings, edit_undertaking, undertaking_file_download, add_policy, edit_policy, download_policy_pdf, download_all_policies_word, management_reports, reports_hub, report_expired_ids, report_expired_proof_of_address, report_file_reviews_due, weekly_report_view, policies_read_per_user
 from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundle_court_update, bundle_section_add, bundle_section_delete, bundle_section_update, bundle_section_reorder, bundle_document_upload, bundle_document_file, bundle_document_update, bundle_document_delete, bundle_document_pages_update, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_pdf_prepare, bundle_pdf_status, bundle_delete, bundle_share_link_status_view, bundle_share_link_create, bundle_share_link_revoke
 from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, download_user_key_documents_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review, internal_pricing
-from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, add_matter_key_document, central_key_dates, download_central_key_dates
+from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, central_key_dates, download_central_key_dates
 from .granola.views import (
     granola_inbox, granola_assign_note, granola_ignore_note,
     granola_settings, granola_sync_now, granola_create_free30,
@@ -68,6 +68,7 @@ from .onboarding_views import (
 )
 from .matter_compliance_views import (
     matter_save_client_compliance, matter_upload_client_doc,
+    matter_upload_identity_doc, matter_save_ncba,
     matter_preview_client_doc, matter_save_conveyancing,
     client_key_document_upload, client_key_document_preview,
 )
@@ -138,8 +139,6 @@ urlpatterns = [
 
     path('<str:file_number>/key_dates/add/',
          add_matter_key_date, name='add_matter_key_date'),
-    path('<str:file_number>/key_documents/add/',
-         add_matter_key_document, name='add_matter_key_document'),
     path('key_dates/<int:id>/edit/',
          edit_matter_key_date, name='edit_matter_key_date'),
     path('key_dates/<int:id>/delete/',
@@ -158,6 +157,10 @@ urlpatterns = [
          matter_save_client_compliance, name='matter_save_client_compliance'),
     path('home/<str:file_number>/compliance/<int:mc_id>/upload/',
          matter_upload_client_doc, name='matter_upload_client_doc'),
+    path('home/<str:file_number>/compliance/<int:mc_id>/identity/',
+         matter_upload_identity_doc, name='matter_upload_identity_doc'),
+    path('home/<str:file_number>/compliance/ncba/',
+         matter_save_ncba, name='matter_save_ncba'),
     path('compliance/document/<int:doc_id>/',
          matter_preview_client_doc, name='matter_preview_client_doc'),
     path('home/<str:file_number>/key_document/<int:doc_id>/upload/',

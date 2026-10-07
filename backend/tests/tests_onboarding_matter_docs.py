@@ -2,7 +2,8 @@
 - onboarding is the only front door for opening a file,
 - onboarding members can reuse an existing client (no duplicate record),
 - the per-invite 'required documents' selection,
-- and the Client Care documents surfaced on the matter home page.
+- and the per-client documents list on the matter home page (onboarding
+  copies merged with the client record and staff uploads).
 """
 from datetime import timedelta
 from unittest import mock
@@ -15,8 +16,8 @@ from users.models import CustomUser
 
 from ..models import (ClientContactDetails, ClientKeyDocument, ConflictCheck,
                       Onboarding, OnboardingGroup, OnboardingItem, WIP)
-from ..onboarding_views import (matter_client_care_documents,
-                                _valid_on_file_item_types)
+from ..matter_compliance import matter_compliance
+from ..onboarding_views import _valid_on_file_item_types
 
 
 def make_user(username='abc'):
@@ -203,7 +204,15 @@ class ExistingClientConvertTests(TestCase):
 
 
 class ClientCareDocumentsTests(TestCase):
-    def test_matter_documents_grouped_by_client(self):
+    """The matter home shows one documents list per client (identity rows first,
+    then this file's engagement documents). Copies collected through onboarding
+    are merged in by client; only copies we actually hold produce links."""
+
+    def _docs(self, matter):
+        return {row['client'].name: {d['key']: d for d in row['documents']}
+                for row in matter_compliance(matter)}
+
+    def test_onboarding_copies_are_merged_by_client(self):
         user = make_user()
         client = make_client('Jane Doe')
         matter = WIP.objects.create(
@@ -218,52 +227,59 @@ class ClientCareDocumentsTests(TestCase):
             onboarding=member, item_type='proof_id', sharepoint_item_id='sp-1')
         OnboardingItem.objects.create(onboarding=member, item_type='pep')
 
-        folders = matter_client_care_documents(matter)
+        docs = self._docs(matter)['Jane Doe']
 
-        self.assertEqual(len(folders), 1)
-        self.assertEqual(folders[0]['client_name'], 'Jane Doe')
-        by_type = {d['item_type']: d for d in folders[0]['documents']}
-        # Only documents we actually hold are listed.
-        self.assertIn('proof_id', by_type)
-        self.assertTrue(by_type['proof_id']['has_client_copy'])
-        self.assertNotIn('pep', by_type)
+        self.assertTrue(docs['proof_of_id']['held'])
+        self.assertEqual([l['label'] for l in docs['proof_of_id']['links']], ['Client copy'])
+        self.assertFalse(docs['pep']['held'])
+        self.assertEqual(docs['pep']['links'], [])
+        # Every row offers an upload, so the folder works for any client.
+        self.assertTrue(all(d['upload']['url'] for d in docs.values()))
 
-    def test_no_onboarding_returns_empty(self):
+    def test_client_without_onboarding_gets_the_same_folder(self):
         client = make_client('No Onboarding')
         matter = WIP.objects.create(
             file_number='ABC7654321', client1=client, funding='PRI')
-        self.assertEqual(matter_client_care_documents(matter), [])
 
-    def test_every_client_is_shown_even_without_held_documents(self):
-        # Two clients on the matter: the lead holds a document, the second holds
-        # nothing. Both must appear — the lead lists the held document, the second
-        # gets an empty folder.
+        docs = self._docs(matter)['No Onboarding']
+
+        self.assertEqual(set(docs), {'proof_of_id', 'proof_of_address', 'selfie_id',
+                                     'terms', 'source_of_funds', 'pep',
+                                     'aml_id_check', 'other'})
+        self.assertFalse(any(d['held'] for d in docs.values()))
+        self.assertEqual(docs['proof_of_id']['upload']['mode'], 'new')
+        self.assertEqual(docs['terms']['upload']['category'], 'terms')
+
+    def test_every_client_is_shown_in_matter_order(self):
+        # Two clients on the matter: the first holds a document, the second holds
+        # nothing. Both appear, in the matter's client order (not onboarding order).
         user = make_user()
-        lead = make_client('Lead Client', email='lead@example.com')
+        first = make_client('First Client', email='lead@example.com')
         second = make_client('Second Client', email='second@example.com')
         matter = WIP.objects.create(
-            file_number='ABC1112223', client1=lead, funding='PRI')
+            file_number='ABC1112223', client1=first, funding='PRI')
+        matter.additional_clients.add(second)
         group = OnboardingGroup.objects.create(
             label='Case', matter=matter, created_by=user)
-        lead_member = Onboarding.objects.create(
-            group=group, client=lead, is_lead=True, client_name='Lead Client',
+        # Onboarding members are ordered newest-first; create the first client's
+        # member first so onboarding order is the reverse of matter order.
+        first_member = Onboarding.objects.create(
+            group=group, client=first, client_name='First Client',
             email='lead@example.com', created_by=user)
-        second_member = Onboarding.objects.create(
+        Onboarding.objects.create(
             group=group, client=second, client_name='Second Client',
             email='second@example.com', created_by=user)
         OnboardingItem.objects.create(
-            onboarding=lead_member, item_type='proof_id',
+            onboarding=first_member, item_type='proof_id',
             sharepoint_item_id='sp-lead-id')
 
-        folders = matter_client_care_documents(matter)
+        rows = matter_compliance(matter)
 
-        names = {f['client_name'] for f in folders}
-        self.assertEqual(names, {'Lead Client', 'Second Client'})
-        by_name = {f['client_name']: f for f in folders}
-        # Only the held document is listed; the second client's folder is empty.
-        lead_types = {d['item_type'] for d in by_name['Lead Client']['documents']}
-        self.assertEqual(lead_types, {'proof_id'})
-        self.assertEqual(by_name['Second Client']['documents'], [])
+        self.assertEqual([r['client'].name for r in rows],
+                         ['First Client', 'Second Client'])
+        docs = self._docs(matter)
+        self.assertTrue(docs['First Client']['proof_of_id']['held'])
+        self.assertFalse(any(d['held'] for d in docs['Second Client'].values()))
 
     def test_convert_snapshots_provided_doc_without_prior_row(self):
         # A document provided through the portal must become a durable row with its
@@ -292,15 +308,15 @@ class ClientCareDocumentsTests(TestCase):
         row = OnboardingItem.objects.get(onboarding=member, item_type='proof_id')
         self.assertEqual(row.sharepoint_item_id, 'sp-id-99')
 
-    def test_existing_client_valid_id_links_to_record(self):
-        # No fresh upload, but a valid proof-of-ID is on file — Client Care lists
-        # it, flagged on_file and linked to that client record.
+    def test_identity_record_on_file_is_listed_with_its_details(self):
+        # No fresh upload, but a valid proof-of-ID is on the client record — the
+        # row shows it (with expiry) and offers to attach the scan to that record.
         user = make_user()
         today = timezone.localdate()
         client = make_client('On File Client')
-        ClientKeyDocument.objects.create(
+        kd = ClientKeyDocument.objects.create(
             client=client, category='proof_of_id', verified_on=today,
-            expiry_date=today + timedelta(days=200))
+            document_type='Passport', expiry_date=today + timedelta(days=200))
         matter = WIP.objects.create(
             file_number='ABC5556667', client1=client, funding='PRI')
         group = OnboardingGroup.objects.create(
@@ -309,13 +325,15 @@ class ClientCareDocumentsTests(TestCase):
             group=group, client=client, is_lead=True, client_name='On File Client',
             email='o@example.com', created_by=user)
 
-        folders = matter_client_care_documents(matter)
+        doc = self._docs(matter)['On File Client']['proof_of_id']
 
-        by_type = {d['item_type']: d for d in folders[0]['documents']}
-        self.assertIn('proof_id', by_type)
-        self.assertTrue(by_type['proof_id']['on_file'])
-        self.assertEqual(by_type['proof_id']['record_client_id'], client.id)
-        self.assertFalse(by_type['proof_id']['has_client_copy'])
+        self.assertTrue(doc['held'])
+        self.assertFalse(doc['expired'])
+        self.assertIn('Passport', doc['meta'])
+        self.assertIn('expires', doc['meta'])
+        self.assertEqual(doc['links'], [])
+        self.assertEqual(doc['upload']['mode'], 'attach')
+        self.assertIn(f'/key_document/{kd.id}/upload/', doc['upload']['url'])
 
 
 class ValidOnFileDocsTests(TestCase):

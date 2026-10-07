@@ -47,7 +47,7 @@ gunicorn filemanagementDjango.wsgi:application --bind 0.0.0.0:8000 --workers 3 -
 - Secrets load from a gitignored `.env` (checked at both `filemanagementDjango/.env` and project root). `settings.require_env('NAME')` raises if a required secret (`SECRET_KEY`, `DB_USER_PASS`) is missing — there are no hardcoded fallbacks.
 - **Database auto-detection** (`settings.py`): defaults to PostgreSQL, but if Postgres isn't reachable on the configured `DB_HOST:DB_PORT` (or `psycopg2` import fails), it transparently falls back to the local `db.sqlite3`. So local dev "just works" without Postgres, but be aware which backend you're actually on.
 - `USE_SHAREPOINT` env toggles file storage: when true, `STORAGES['default']` is `backend.storage.sharepoint.SharePointStorage` (Microsoft Graph against four document libraries); otherwise local `FileSystemStorage` in `media/`.
-- Key env vars: `DEBUG`, `ALLOWED_HOSTS`, `DB_*`, `SHAREPOINT_*`, `GRANOLA_API_KEY`, `ONBOARDING_PORTAL_*`.
+- Key env vars: `DEBUG`, `ALLOWED_HOSTS`, `DB_*`, `SHAREPOINT_*`, `GRANOLA_API_KEY`, `ONBOARDING_PORTAL_*`, `ONBOARDING_SEND_INVITE_EMAILS` (invite emails are off unless true; always off under `manage.py test`).
 
 ## Architecture
 

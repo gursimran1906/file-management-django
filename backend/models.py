@@ -85,6 +85,7 @@ class ClientKeyDocument(models.Model):
     DOCUMENT_CATEGORY_CHOICES = [
         ('proof_of_id', 'Proof of ID'),
         ('proof_of_address', 'Proof of Address'),
+        ('selfie_id', 'Selfie with ID'),
     ]
 
     id = models.AutoField(primary_key=True)
@@ -347,6 +348,10 @@ class WIP(models.Model):
     date_of_toe_rcvd = models.DateField(null=True, blank=True)
     date_of_ncba_sent = models.DateField(null=True, blank=True)
     date_of_ncba_rcvd = models.DateField(null=True, blank=True)
+    # Non-contentious business agreement is a matter-level fact: when the matter
+    # is under one, every client on it signs the NCBA for this file (tracked on
+    # MatterClient). Off by default — most files have none.
+    ncba_required = models.BooleanField(default=False)
     zdrive_location = models.CharField(max_length=500, null=True, blank=True)
 
     funding = models.CharField(max_length=3)
@@ -2180,8 +2185,9 @@ def matter_client_document_upload_path(instance, filename):
 class MatterClient(models.Model):
     """One client's engagement-level compliance on one matter. Created for every
     client on a matter (lead + additional). Holds the checks redone for each new
-    file — terms of engagement, NCBA (when the matter needs one), source of funds
-    and PEP — with the sent/received dates that used to live matter-wide on WIP."""
+    file — terms of engagement, NCBA (when the matter is under one), source of
+    funds and PEP — with the sent/received dates that used to live matter-wide on
+    WIP."""
 
     SOURCE_CAPTURED = 'captured'
     SOURCE_RECONSTRUCTED = 'reconstructed'
@@ -2206,8 +2212,7 @@ class MatterClient(models.Model):
     terms_sent_on = models.DateField(null=True, blank=True)
     terms_received_on = models.DateField(null=True, blank=True)
 
-    # NCBA — only tracked when the matter needs one
-    ncba_required = models.BooleanField(default=True)
+    # NCBA — only shown/required when the matter is under one (WIP.ncba_required)
     ncba_signed = models.BooleanField(default=False)
     ncba_on = models.DateField(null=True, blank=True)
     ncba_by = models.ForeignKey(

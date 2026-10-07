@@ -82,7 +82,10 @@ def _send_invite(request, member):
         member.status = Onboarding.STATUS_COLLECTING
     member.save()
     try:
-        sent = email.send_invite_email(member.client_name, member.email, link)
+        sent = email.send_invite_email(
+            member.client_name, member.email, link,
+            required_items=member.required_item_types(),
+            expires_at=result.get('expires_at'))
     except Exception as exc:  # noqa: BLE001 - email must not break the invite
         logger.warning('Invite email failed for %s: %s', member.email, exc)
         messages.warning(

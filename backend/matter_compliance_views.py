@@ -1,7 +1,9 @@
-"""Matter-home actions for per-matter-per-client compliance: record the
-engagement checks (terms / NCBA / source of funds / PEP) for one client on one
-matter, upload the supporting documents (including an AML/ID check after the file
-is open), and capture conveyancing transaction detail."""
+"""Matter-home actions for per-matter-per-client compliance: mark the matter as
+under an NCBA, record the engagement checks (terms / NCBA / source of funds /
+PEP) for one client on one matter, upload the supporting documents — identity
+documents onto the client record, engagement documents (including an AML/ID
+check after the file is open) against the matter-client — and capture
+conveyancing transaction detail."""
 import mimetypes
 import os
 from datetime import datetime
@@ -13,12 +15,15 @@ from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from .audit import log_created, log_field_change, snapshot_key_document
+from .matter_compliance import IDENTITY_CATEGORIES
 from .models import (ClientKeyDocument, ConveyancingDetails, MatterClient,
                      MatterClientDocument, WIP)
 
 ALLOWED_DOC_EXTENSIONS = ('.pdf', '.jpg', '.jpeg', '.png', '.heic', '.doc', '.docx')
 MAX_DOC_BYTES = 25 * 1024 * 1024
 DOC_CATEGORIES = dict(MatterClientDocument.CATEGORY_CHOICES)
+IDENTITY_LABELS = dict(ClientKeyDocument.DOCUMENT_CATEGORY_CHOICES)
 
 
 def _parse_date(value):
@@ -33,6 +38,34 @@ def _parse_date(value):
 
 def _checked(request, name):
     return request.POST.get(name) in ('1', 'on', 'true', 'True')
+
+
+def _upload_problem(upload):
+    """Why this upload can't be accepted, or None."""
+    if not upload:
+        return 'Choose a file to upload.'
+    if os.path.splitext(upload.name)[1].lower() not in ALLOWED_DOC_EXTENSIONS:
+        return 'Allowed file types: PDF, Word, JPG, PNG, HEIC.'
+    if upload.size > MAX_DOC_BYTES:
+        return 'File is too large (max 25MB).'
+    return None
+
+
+@login_required
+@require_POST
+def matter_save_ncba(request, file_number):
+    """Record whether this matter is under an NCBA. When it is, every client on
+    the file signs it (tracked per matter-client)."""
+    matter = get_object_or_404(WIP, file_number=file_number)
+    new_value = _checked(request, 'ncba_required')
+    if new_value != matter.ncba_required:
+        old_value = matter.ncba_required
+        matter.ncba_required = new_value
+        matter.save(update_fields=['ncba_required'])
+        log_field_change(request.user, matter, 'ncba_required', old_value, new_value)
+    messages.success(request, 'This matter is under an NCBA — each client signs it for this file.'
+                     if new_value else 'This matter is not under an NCBA.')
+    return redirect('home', file_number)
 
 
 @login_required
@@ -58,8 +91,6 @@ def matter_save_client_compliance(request, file_number, mc_id):
     mc.terms_received_on = _parse_date(request.POST.get('terms_received_on'))
     fields += ['terms_sent_on', 'terms_received_on']
 
-    mc.ncba_required = _checked(request, 'ncba_required')
-    fields.append('ncba_required')
     flip('ncba_signed', 'ncba_on', 'ncba_by', _checked(request, 'ncba_signed'))
     mc.ncba_sent_on = _parse_date(request.POST.get('ncba_sent_on'))
     mc.ncba_received_on = _parse_date(request.POST.get('ncba_received_on'))
@@ -90,14 +121,9 @@ def matter_upload_client_doc(request, file_number, mc_id):
         messages.error(request, 'Choose a document type.')
         return redirect('home', file_number)
     upload = request.FILES.get('document')
-    if not upload:
-        messages.error(request, 'Choose a file to upload.')
-        return redirect('home', file_number)
-    if os.path.splitext(upload.name)[1].lower() not in ALLOWED_DOC_EXTENSIONS:
-        messages.error(request, 'Allowed file types: PDF, Word, JPG, PNG, HEIC.')
-        return redirect('home', file_number)
-    if upload.size > MAX_DOC_BYTES:
-        messages.error(request, 'File is too large (max 25MB).')
+    problem = _upload_problem(upload)
+    if problem:
+        messages.error(request, problem)
         return redirect('home', file_number)
 
     issue = _parse_date(request.POST.get('issue_date'))
@@ -133,19 +159,49 @@ def matter_preview_client_doc(request, doc_id):
 
 @login_required
 @require_POST
+def matter_upload_identity_doc(request, file_number, mc_id):
+    """Record an identity document (proof of ID / proof of address / selfie with
+    ID) for a client on this matter, with its scan. Identity lives on the client
+    record and is reused across matters, so this is how a client who was not
+    onboarded through the portal gets the same documents on file. Uploading a
+    proof of ID marks the client as ID-verified."""
+    mc = get_object_or_404(MatterClient, id=mc_id, matter__file_number=file_number)
+    category = request.POST.get('category', '')
+    if category not in IDENTITY_CATEGORIES:
+        messages.error(request, 'Choose a document type.')
+        return redirect('home', file_number)
+    upload = request.FILES.get('document')
+    problem = _upload_problem(upload)
+    if problem:
+        messages.error(request, problem)
+        return redirect('home', file_number)
+    today = timezone.localdate()
+    doc = ClientKeyDocument.objects.create(
+        client=mc.client, category=category, file=upload,
+        document_type=request.POST.get('document_type', '').strip()[:100],
+        document_reference=request.POST.get('document_reference', '').strip()[:100],
+        issue_date=_parse_date(request.POST.get('issue_date')),
+        expiry_date=_parse_date(request.POST.get('expiry_date')),
+        verified_on=today, verified_by=request.user)
+    log_created(request.user, doc, snapshot_key_document(doc))
+    if category == 'proof_of_id' and not mc.client.id_verified:
+        mc.client.id_verified = True
+        mc.client.save(update_fields=['id_verified'])
+    messages.success(
+        request, f'{IDENTITY_LABELS[category]} recorded for {mc.client.name}.')
+    return redirect('home', file_number)
+
+
+@login_required
+@require_POST
 def client_key_document_upload(request, file_number, doc_id):
     """Attach the actual scan to an existing client key document (proof of ID /
     address) — older records hold only metadata."""
     doc = get_object_or_404(ClientKeyDocument, id=doc_id)
     upload = request.FILES.get('document')
-    if not upload:
-        messages.error(request, 'Choose a file to upload.')
-        return redirect('home', file_number)
-    if os.path.splitext(upload.name)[1].lower() not in ALLOWED_DOC_EXTENSIONS:
-        messages.error(request, 'Allowed file types: PDF, Word, JPG, PNG, HEIC.')
-        return redirect('home', file_number)
-    if upload.size > MAX_DOC_BYTES:
-        messages.error(request, 'File is too large (max 25MB).')
+    problem = _upload_problem(upload)
+    if problem:
+        messages.error(request, problem)
         return redirect('home', file_number)
     doc.file = upload
     doc.save(update_fields=['file'])

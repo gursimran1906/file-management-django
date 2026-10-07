@@ -184,7 +184,12 @@ class InviteFlowTests(TestCase):
 
     def test_ids_recorded_and_link_dropped_once_emailed(self):
         send, expire = self._send(email_sent=True)
-        send.assert_called_once_with('Jane', 'jane@example.com', INVITE['redeem_url'])
+        # The email lists what this invite asks for and how long the link lasts.
+        send.assert_called_once_with(
+            'Jane', 'jane@example.com', INVITE['redeem_url'],
+            required_items=['proof_id', 'proof_address', 'selfie_id',
+                            'source_of_funds', 'pep', 'terms_of_engagement'],
+            expires_at=INVITE['expires_at'])
         self.assertEqual(self.member.portal_submission_id, '12')
         self.assertEqual(self.member.portal_invite_id, '11')
         self.assertEqual(self.member.portal_invite_link, '')
@@ -324,3 +329,41 @@ class InviteEmailGuardTests(SimpleTestCase):
     def test_test_runner_forces_the_flag_off(self):
         from django.conf import settings
         self.assertFalse(settings.ONBOARDING_SEND_INVITE_EMAILS)
+
+
+class InviteEmailContentTests(SimpleTestCase):
+    """The invite email tells the client what the portal will ask for — only the
+    items this invite requires, in the portal's own words — and how long the
+    link lasts."""
+
+    def test_lists_only_the_items_this_invite_requires(self):
+        html = invite_email._html_body(
+            'Jane', 'https://x', ['source_of_funds', 'pep', 'terms_of_engagement'],
+            '2026-10-21T10:00:00Z')
+        self.assertIn('What we will ask you for', html)
+        self.assertIn('Source of funds declaration', html)
+        self.assertIn('Politically exposed persons declaration', html)
+        self.assertIn('Terms of engagement', html)
+        self.assertNotIn('Photo ID', html)
+        self.assertNotIn('proof of address', html)
+        self.assertIn('until 21 October 2026', html)
+        self.assertIn('camera', html)  # terms are signed with a photo of you holding your ID
+        self.assertIn('for a company', html)
+        self.assertIn('https://x', html)
+
+    def test_everything_when_no_subset_and_selfie_folds_into_terms(self):
+        titles = [t for t, _ in invite_email.required_item_lines(None)]
+        self.assertEqual(titles, ['Photo ID', 'Current address and proof of address',
+                                  'Source of funds declaration',
+                                  'Politically exposed persons declaration',
+                                  'Terms of engagement'])
+        # Selfie on its own (terms not requested) gets its own line.
+        titles = [t for t, _ in invite_email.required_item_lines(['selfie_id', 'proof_id'])]
+        self.assertEqual(titles, ['Photo ID', 'A photo of you holding your ID'])
+        self.assertEqual(invite_email.required_item_lines(['bogus']), [])
+
+    def test_escapes_the_client_name_and_tolerates_a_bad_expiry(self):
+        html = invite_email._html_body('Jane <Doe>', 'https://x', ['proof_id'], 'not-a-date')
+        self.assertIn('Dear Jane &lt;Doe&gt;,', html)
+        self.assertNotIn('until', html)
+        self.assertNotIn('camera', html)

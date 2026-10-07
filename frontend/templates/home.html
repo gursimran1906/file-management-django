@@ -95,7 +95,7 @@
     <div class="div-container">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-3 mb-1">
             <div>
-                <h3 class="text-base font-semibold text-gray-900">Daily Tasks</h3>
+                <h3 class="text-base font-semibold text-gray-900">Daily tasks</h3>
                 <p class="text-xs text-gray-500 mt-0.5">What needs doing and what was done recently</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
@@ -147,34 +147,34 @@
             {% endfor %}
         </div>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:items-start">
-    <div class='div-container max-h-[32rem] overflow-y-auto'>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class='div-container'>
             <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between mb-4 pb-3 border-b border-gray-100">
                 <div>
-                    <h3 id="sec-summary" class='text-base font-semibold text-gray-900'>File Summary</h3>
+                    <h3 id="sec-summary" class='text-base font-semibold text-gray-900'>File summary</h3>
                     <p class="text-xs text-gray-500 mt-0.5">{{ matter.matter_type }}</p>
                 </div>
             </div>
 
             <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-5">
                 <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                    <dt class="text-xs uppercase text-gray-500">Fee Earner</dt>
+                    <dt class="text-xs text-gray-500">Fee earner</dt>
                     <dd class="font-medium text-gray-900">{{matter.fee_earner}}</dd>
                 </div>
                 <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                    <dt class="text-xs uppercase text-gray-500">File Location</dt>
+                    <dt class="text-xs text-gray-500">File location</dt>
                     <dd class="font-medium text-gray-900">{{matter.file_location}}</dd>
                 </div>
                 <div class="rounded border border-gray-200 bg-gray-50 p-3 sm:col-span-2">
-                    <dt class="text-xs uppercase text-gray-500">Z Drive Location</dt>
+                    <dt class="text-xs text-gray-500">Z drive location</dt>
                     <dd class="font-medium text-gray-900 break-words">{{matter.zdrive_location|default:"Not recorded"}}</dd>
                 </div>
                 <div class="rounded border border-gray-200 bg-gray-50 p-3 sm:col-span-2">
-                    <dt class="text-xs uppercase text-gray-500">Matter Description</dt>
+                    <dt class="text-xs text-gray-500">Matter description</dt>
                     <dd class="font-medium text-gray-900">{{matter.matter_description|default:"No description"}}</dd>
                 </div>
                 <div class="rounded border border-gray-200 bg-gray-50 p-3 sm:col-span-2">
-                    <dt class="text-xs uppercase text-gray-500">Key information</dt>
+                    <dt class="text-xs text-gray-500">Key information</dt>
                     <dd class="font-medium text-gray-900 whitespace-pre-line">{{ matter.key_information|default:"-" }}</dd>
                 </div>
             </dl>
@@ -183,7 +183,7 @@
                 <div class="rounded border border-gray-200 p-4">
                     <div class="flex items-start justify-between gap-3">
                         <div>
-                            <p class="text-xs uppercase text-gray-500">Client 1</p>
+                            <p class="text-xs text-gray-500">Client</p>
                             <h4 class="font-semibold text-gray-900">{{matter.client1.name}}</h4>
                         </div>
                         <a class='btn-secondary text-xs' href="{% url 'edit_client' matter.client1.id %}">Edit</a>
@@ -199,7 +199,7 @@
                     <div class="mt-3 flex flex-wrap items-center gap-2">
                         <span class="{% if matter.client1.id_verified %}badge-green{% else %}badge-red{% endif %}">ID</span>
                         <span class="{% if c.terms_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
-                        {% if not c.ncba_required %}<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">NCBA n/a</span>{% else %}<span class="{% if c.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>{% endif %}
+                        {% if matter.ncba_required %}<span class="{% if c.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>{% endif %}
                         <span class="{% if c.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
                         <span class="{% if c.sof_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
                         <span class="text-[11px] text-gray-400">· this matter</span>
@@ -211,7 +211,7 @@
                 <div class="rounded border border-gray-200 p-4">
                     <div class="flex items-start justify-between gap-3">
                         <div>
-                            <p class="text-xs uppercase text-gray-500">Client {{ forloop.counter|add:1 }}</p>
+                            <p class="text-xs text-gray-500">Client</p>
                             <h4 class="font-semibold text-gray-900">{{extra_client.name}}</h4>
                         </div>
                         <a class='btn-secondary text-xs' href="{% url 'edit_client' extra_client.id %}">Edit</a>
@@ -227,7 +227,7 @@
                     <div class="mt-3 flex flex-wrap items-center gap-2">
                         <span class="{% if extra_client.id_verified %}badge-green{% else %}badge-red{% endif %}">ID</span>
                         <span class="{% if c.terms_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
-                        {% if not c.ncba_required %}<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">NCBA n/a</span>{% else %}<span class="{% if c.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>{% endif %}
+                        {% if matter.ncba_required %}<span class="{% if c.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>{% endif %}
                         <span class="{% if c.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
                         <span class="{% if c.sof_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
                         <span class="text-[11px] text-gray-400">· this matter</span>
@@ -241,7 +241,7 @@
                     <div class="rounded border border-gray-200 p-4">
                         <div class="flex items-start justify-between gap-3">
                             <div>
-                                <p class="text-xs uppercase text-gray-500">Authorised Party 1</p>
+                                <p class="text-xs text-gray-500">Authorised party</p>
                                 <h4 class="font-semibold text-gray-900">{{matter.authorised_party1.name}}</h4>
                             </div>
                             <a class='btn-secondary text-xs' href="{% url 'edit_authorised_party' matter.authorised_party1.id %}">Edit</a>
@@ -257,7 +257,7 @@
                     <div class="rounded border border-gray-200 p-4">
                         <div class="flex items-start justify-between gap-3">
                             <div>
-                                <p class="text-xs uppercase text-gray-500">Authorised Party 2</p>
+                                <p class="text-xs text-gray-500">Authorised party</p>
                                 <h4 class="font-semibold text-gray-900">{{matter.authorised_party2.name}}</h4>
                             </div>
                             <a class='btn-secondary text-xs' href="{% url 'edit_authorised_party' matter.authorised_party2.id %}">Edit</a>
@@ -275,7 +275,7 @@
                 <div class="rounded border border-gray-200 p-4">
                     <div class="flex items-start justify-between gap-3">
                         <div>
-                            <p class="text-xs uppercase text-gray-500">Other Side</p>
+                            <p class="text-xs text-gray-500">Other side</p>
                             <h4 class="font-semibold text-gray-900">{{matter.other_side.name}}</h4>
                         </div>
                         <a class='btn-secondary text-xs' href="{% url 'edit_otherside' matter.other_side.id %}">Edit</a>
@@ -305,31 +305,32 @@
                                 </span>
                             </div>
                         {% empty %}
-                            <p class="text-sm text-green-700">No undertakings available.</p>
+                            <p class="py-2 text-center text-sm text-gray-400">No undertakings on this file.</p>
                         {% endfor %}
                     </div>
                 </div>
 
                 <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                     <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">Funding</dt>
+                        <dt class="text-xs text-gray-500">Funding</dt>
                         <dd class="font-medium text-gray-900">{% if matter.funding == 'PF'%}Private Funding{% else %}Conditional Fee Agreement{% endif %}</dd>
                     </div>
                     <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">Matter Type</dt>
+                        <dt class="text-xs text-gray-500">Matter type</dt>
                         <dd class="font-medium text-gray-900">{{matter.matter_type}}</dd>
                     </div>
                     <div class="rounded border border-gray-200 bg-gray-50 p-3 sm:col-span-2">
-                        <dt class="text-xs uppercase text-gray-500">Comments</dt>
+                        <dt class="text-xs text-gray-500">Comments</dt>
                         <dd class="font-medium text-gray-900 whitespace-pre-line">{{matter.comments|default:"-"}}</dd>
                     </div>
                 </dl>
             </div>
         </div>
-        <div class="flex flex-col gap-4 md:max-h-[32rem]">
-        <div id="sec-dates" class='div-container max-h-[32rem] overflow-y-auto'>
+        {# Key dates stays in view while the (longer) file summary scrolls past #}
+        <div class="flex flex-col gap-4 md:sticky" style="top: calc(var(--navbar-height, 64px) + var(--home-nav-h, 3.25rem) + 1rem);">
+        <div class='div-container max-h-[32rem] overflow-y-auto'>
             <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
-                <h3 class='text-base font-semibold text-gray-900'>Key Dates</h3>
+                <h3 id="sec-dates" class='text-base font-semibold text-gray-900'>Key dates</h3>
                 <button class='btn-primary text-xs' type="button" data-open-modal="matterKeyDateModal">Add</button>
             </div>
             <div class='divide-y divide-gray-100'>
@@ -357,7 +358,7 @@
                     </div>
                 </div>
                 {% empty %}
-                <p class='py-4 text-center text-sm text-gray-400'>No key dates recorded.</p>
+                <p class='py-4 text-center text-sm text-gray-400'>No key dates yet.</p>
                 {% endfor %}
             </div>
         </div>
@@ -365,7 +366,7 @@
     </div>
     <div class='div-container max-h-96 overflow-y-auto space-y-4'>
         <div class='flex justify-between items-center pb-3 border-b border-gray-100'>
-            <h3 id="sec-risk" class='text-base font-semibold text-gray-900'>Risk Assessment</h3>
+            <h3 id="sec-risk" class='text-base font-semibold text-gray-900'>Risk assessment</h3>
             <div class='flex gap-2'>
                 {% if risk_assessment %}
                 <a class="btn-secondary text-xs" href="{% url 'edit_risk_assessment' risk_assessment.id %}">Edit</a>
@@ -378,12 +379,12 @@
         {% if risk_assessment %}
 
         {% if eleven_months_since_last_risk_assessment  %}
-            <p class='px-2 py-2 bg-red-50 rounded-lg border border-red-200 text-red-900'>Ongoing Monitoring required as last risk assessment or last ongoing monitoring was done 11 months ago.</p>
+            <p class='px-3 py-2 bg-red-50 rounded-lg border border-red-200 text-sm text-red-900'>Ongoing monitoring is due: the last risk assessment or monitoring was over 11 months ago.</p>
         {% endif %}
 
         <div class="pt-3 border-t border-gray-100">
             <div class="flex items-center justify-between gap-3 mb-3">
-                <h4 class="text-sm font-semibold text-gray-900">Ongoing Monitoring</h4>
+                <h4 class="text-sm font-semibold text-gray-900">Ongoing monitoring</h4>
                 <a class="btn-secondary text-xs" href="{% url "add_ongoing_monitoring" file_number %}">Add</a>
             </div>
             <div class="divide-y divide-gray-100">
@@ -409,14 +410,14 @@
                     </div>
                 </div>
                 {% empty %}
-                <p class="py-2 text-sm {% if eleven_months_since_last_risk_assessment %}text-red-700{% else %}text-gray-400{% endif %}">No ongoing monitoring recorded.</p>
+                <p class="py-2 text-sm {% if eleven_months_since_last_risk_assessment %}text-red-700{% else %}text-gray-400{% endif %}">No ongoing monitoring yet.</p>
                 {% endfor %}
             </div>
         </div>
         <div class="rounded-lg border border-gray-200 p-4">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h4 class="text-sm font-semibold text-gray-900">Initial Risk Assessment</h4>
+                    <h4 class="text-sm font-semibold text-gray-900">Initial risk assessment</h4>
                     <p class="text-xs text-gray-500 mt-0.5">{{ risk_assessment.due_diligence_date|date:"d/m/Y" }}{% if risk_assessment.due_diligence_signed_by %} · {{ risk_assessment.due_diligence_signed_by }}{% endif %}</p>
                 </div>
                 <button type="button" class="btn-secondary text-xs shrink-0" data-open-modal="initialRiskAssessmentModal">View full assessment</button>
@@ -429,155 +430,16 @@
         </div>
 
         {% else %}
-        <p class='px-2 py-2 bg-red-50 rounded-lg border border-red-200 text-red-900'>No Risk Assessment Done</p>
+        <p class='px-3 py-2 bg-red-50 rounded-lg border border-red-200 text-sm text-red-900'>No risk assessment on this file yet.</p>
         {% endif %}
     </div>
     <div class='grid grid-cols-1 gap-6'>
-        {# Client care & compliance — matter facts + per-client engagement checks + documents #}
-        <div class='div-container'>
-            <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
-                <div>
-                    <p class="text-xs uppercase text-gray-500">This matter</p>
-                    <h3 id="sec-compliance" class='text-base font-semibold text-gray-900'>Client care &amp; compliance</h3>
-                </div>
-                <span class="text-xs text-gray-400 hidden sm:block">Terms · NCBA · Source of funds · PEP — recorded per file</span>
-            </div>
-
-            {# Matter-level care facts #}
-            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-4">
-                <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                    <dt class="text-xs uppercase text-gray-500">Client Care Letter</dt>
-                    <dd class="font-medium text-gray-900">{{matter.date_of_client_care_sent|date:"d/m/Y"|default:"Not sent"}}</dd>
-                </div>
-                <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                    <dt class="text-xs uppercase text-gray-500">Funding</dt>
-                    <dd class="font-medium text-gray-900">{% if matter.funding == 'PF'%}Private Funding{% else %}Conditional Fee Agreement{% endif %}</dd>
-                </div>
-            </dl>
-
-            {# Per-client compliance + per-matter documents #}
-            <div class="space-y-3">
-            {% for row in matter_compliance %}
-              <details class="rounded border border-gray-200">
-                <summary class="cursor-pointer px-3 py-2 flex flex-wrap items-center gap-2 text-sm">
-                  <span class="font-medium text-gray-900">{{ row.client.name }}</span>
-                  <span class="flex items-center gap-1.5 ml-auto">
-                    <span class="{% if row.terms_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
-                    {% if not row.ncba_required %}<span class="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">NCBA n/a</span>{% else %}<span class="{% if row.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>{% endif %}
-                    <span class="{% if row.sof_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
-                    <span class="{% if row.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
-                  </span>
-                </summary>
-                <div class="px-3 pb-3 border-t border-gray-100 pt-3">
-                  {% if row.source != 'captured' %}<p class="text-[11px] text-amber-600 mb-2">Seeded at migration ({{ row.source }}) — review and save to confirm for this matter.</p>{% endif %}
-                  <form method="post" action="{% url 'matter_save_client_compliance' matter.file_number row.mc_id %}" class="space-y-2">
-                    {% csrf_token %}
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                      <label class="flex items-center gap-2"><input type="checkbox" name="terms_signed" value="1" {% if row.terms_signed %}checked{% endif %} class="h-4 w-4 rounded border-gray-300 text-blue-600"> Terms of engagement signed</label>
-                      <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 min-w-0">Sent <input type="date" name="terms_sent_on" value="{{ row.terms_sent_on|date:'Y-m-d' }}" class="form-input text-xs min-w-0"> Rcvd <input type="date" name="terms_received_on" value="{{ row.terms_received_on|date:'Y-m-d' }}" class="form-input text-xs min-w-0"></div>
-                      <label class="flex items-center gap-2"><input type="checkbox" name="ncba_required" value="1" {% if row.ncba_required %}checked{% endif %} class="h-4 w-4 rounded border-gray-300"> This matter needs an NCBA</label>
-                      <label class="flex items-center gap-2"><input type="checkbox" name="ncba_signed" value="1" {% if row.ncba_signed %}checked{% endif %} class="h-4 w-4 rounded border-gray-300 text-blue-600"> NCBA signed</label>
-                      <label class="flex items-center gap-2"><input type="checkbox" name="sof_signed" value="1" {% if row.sof_signed %}checked{% endif %} class="h-4 w-4 rounded border-gray-300 text-blue-600"> Source of funds signed</label>
-                      <label class="flex items-center gap-2"><input type="checkbox" name="pep_signed" value="1" {% if row.pep_signed %}checked{% endif %} class="h-4 w-4 rounded border-gray-300 text-blue-600"> PEP declaration signed</label>
-                      <label class="sm:col-span-2 text-xs text-gray-500">Source of funds detail<input type="text" name="sof_details" value="{{ row.sof_details }}" class="form-input text-sm mt-0.5" placeholder="e.g. sale proceeds, savings"></label>
-                    </div>
-                    <div><button type="submit" class="btn-secondary text-xs">Save compliance</button></div>
-                  </form>
-                  <div class="mt-3 pt-3 border-t border-gray-100">
-                    <p class="text-xs font-medium text-gray-600 mb-1">Identity documents <span class="font-normal text-gray-400">· per client, shared across matters</span></p>
-                    {% if row.key_documents %}
-                    <ul class="divide-y divide-gray-100 mb-2">
-                      {% for kd in row.key_documents %}
-                      <li class="py-1.5 text-sm">
-                        <div class="flex items-center justify-between gap-3">
-                          <span class="text-gray-800 min-w-0">{{ kd.label }}{% if kd.document_type %} <span class="text-gray-400">({{ kd.document_type }})</span>{% endif %}
-                            {% if kd.expired %}<span class="text-[11px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-800">Expired</span>{% elif kd.expiry %}<span class="text-[11px] text-gray-400">· expires {{ kd.expiry|date:'d/m/Y' }}</span>{% else %}<span class="text-[11px] text-gray-400">· no expiry</span>{% endif %}</span>
-                          {% if kd.has_file %}<a href="{% url 'client_key_document_preview' kd.id %}" target="_blank" rel="noopener" class="text-blue-600 hover:underline text-xs shrink-0">View</a>{% endif %}
-                        </div>
-                        <details class="mt-0.5 text-xs">
-                          <summary class="cursor-pointer text-blue-600 hover:underline">{% if kd.has_file %}Replace file{% else %}Upload file{% endif %}</summary>
-                          <form method="post" enctype="multipart/form-data" action="{% url 'client_key_document_upload' matter.file_number kd.id %}" class="pt-1 flex flex-wrap items-center gap-2">
-                            {% csrf_token %}
-                            <input type="file" name="document" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic" required class="text-xs">
-                            <button type="submit" class="btn-secondary text-xs">Save</button>
-                          </form>
-                        </details>
-                      </li>
-                      {% endfor %}
-                    </ul>
-                    {% else %}
-                    <p class="text-xs text-gray-400 mb-2">No identity documents recorded.</p>
-                    {% endif %}
-                    <a href="{% url 'edit_client' row.client_id %}" class="text-[11px] text-gray-400 hover:text-gray-600">Manage identity documents on the client record →</a>
-                  </div>
-
-                  <div class="mt-3 pt-3 border-t border-gray-100">
-                    <p class="text-xs font-medium text-gray-600 mb-1">Matter documents</p>
-                    {% if row.documents %}
-                    <ul class="divide-y divide-gray-100 mb-2">
-                      {% for d in row.documents %}
-                      <li class="flex items-center justify-between gap-3 py-1.5 text-sm">
-                        <span class="text-gray-800">{{ d.get_category_display }}{% if d.expiry_date %} <span class="text-[11px] text-gray-400">· expires {{ d.expiry_date|date:'d/m/Y' }}</span>{% endif %}</span>
-                        <a href="{% url 'matter_preview_client_doc' d.id %}" target="_blank" rel="noopener" class="text-blue-600 hover:underline text-xs">View</a>
-                      </li>
-                      {% endfor %}
-                    </ul>
-                    {% endif %}
-                    <form method="post" enctype="multipart/form-data" action="{% url 'matter_upload_client_doc' matter.file_number row.mc_id %}" class="flex flex-wrap items-center gap-2 text-xs">
-                      {% csrf_token %}
-                      <select name="category" class="form-input text-xs">
-                        {% for key, label in matter_doc_categories %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
-                      </select>
-                      <input type="date" name="expiry_date" class="form-input text-xs" title="Expiry (optional)">
-                      <input type="file" name="document" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic" required class="text-xs">
-                      <button type="submit" class="btn-secondary text-xs">Upload</button>
-                    </form>
-                    <p class="text-[11px] text-gray-400 mt-1">Choose “AML / ID check” to record an identity check on this matter — it also refreshes the client's AML date.</p>
-                  </div>
-                </div>
-              </details>
-            {% empty %}
-              <p class="text-sm text-gray-400">No clients on this matter.</p>
-            {% endfor %}
-            </div>
-
-            {# Onboarding-collected documents (read-only), one folder per client #}
-            {% if client_care_documents %}
-            <div class="mt-4 pt-4 border-t border-gray-100">
-                <p class="text-xs font-medium text-gray-600 mb-2">Onboarding documents <span class="font-normal text-gray-400">· collected during onboarding</span></p>
-                <div class="space-y-2">
-                    {% for folder in client_care_documents %}
-                    <details class="rounded border border-gray-100 bg-gray-50/60">
-                        <summary class="cursor-pointer px-3 py-2 text-sm font-medium text-gray-800 flex items-center gap-2">
-                            <svg class="h-4 w-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
-                            <span class="truncate">{{ folder.client_name }}</span>
-                            <span class="text-xs font-normal text-gray-400">· {% if folder.documents %}{{ folder.documents|length }} document{{ folder.documents|length|pluralize }}{% else %}no documents yet{% endif %}</span>
-                        </summary>
-                        <ul class="px-3 pb-2 divide-y divide-gray-100">
-                            {% for doc in folder.documents %}
-                            <li class="flex items-center justify-between gap-3 py-2 text-sm">
-                                <span class="truncate text-gray-800 min-w-0">{{ doc.label }}{% if doc.on_file %} <span class="text-[11px] font-medium text-emerald-600">· on file</span>{% endif %}</span>
-                                <span class="flex items-center gap-3 shrink-0 text-xs">
-                                    {% if doc.has_client_copy %}<a href="{% url 'onboarding_preview_portal_doc' doc.member_id doc.item_type %}" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Client copy</a>{% endif %}
-                                    {% if doc.has_office_copy %}<a href="{% url 'onboarding_preview_doc' doc.member_id doc.item_type %}" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Office copy</a>{% endif %}
-                                    {% if doc.on_file %}{% if doc.expiry %}<span class="text-gray-400">expires {{ doc.expiry|date:"d/m/Y" }}</span>{% endif %}<a href="{% url 'edit_client' doc.record_client_id %}" class="text-blue-600 hover:underline">View record</a>{% endif %}
-                                </span>
-                            </li>
-                            {% empty %}
-                            <li class="py-2 text-sm text-gray-400">No documents held yet.</li>
-                            {% endfor %}
-                        </ul>
-                    </details>
-                    {% endfor %}
-                </div>
-            </div>
-            {% endif %}
-        </div>
+        {% include 'partials/matter_client_care.html' %}
 
         <div class='div-container max-h-96 overflow-y-auto'>
             <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
                 <div>
-                    <h3 id="sec-bundles" class='text-base font-semibold text-gray-900'>Document Bundles</h3>
+                    <h3 id="sec-bundles" class='text-base font-semibold text-gray-900'>Document bundles</h3>
                     <p class="text-xs text-gray-500 mt-0.5">PDF bundles for this matter</p>
                 </div>
                 <a class='btn-primary text-xs' href="{% url 'matter_bundle_create' file_number %}">New bundle</a>
@@ -638,7 +500,7 @@
 
         <div class='div-container max-h-[28rem] overflow-y-auto'>
             <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
-                <h3 id="sec-reviews" class='text-base font-semibold text-gray-900'>File Reviews</h3>
+                <h3 id="sec-reviews" class='text-base font-semibold text-gray-900'>File reviews</h3>
                 <a class='btn-primary text-xs' href="{% url 'add_matter_file_review' matter.file_number %}">Add</a>
             </div>
 
@@ -665,7 +527,7 @@
                             </div>
                         </div>
                         <div class='mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-sm'>
-                            <p class='text-xs uppercase text-gray-500 mb-1'>Recommendations</p>
+                            <p class='text-xs text-gray-500 mb-1'>Recommendations</p>
                             {% if item.review.recommendations_and_further_actions %}
                                 {% if item.review.recommendations_and_further_actions|length > 120 %}
                                 <span class='review-rec-short'>{{ item.review.recommendations_and_further_actions|truncatechars:120 }}
@@ -682,8 +544,10 @@
                             {% endif %}
                         </div>
 
-                        <details class='mt-2'>
-                            <summary class='text-sm link cursor-pointer'>View Full Review</summary>
+                        <details class='mt-2 group/review'>
+                            <summary class='text-sm link cursor-pointer inline-flex items-center gap-1'>View full review
+                                <svg class="h-3.5 w-3.5 transition-transform group-open/review:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </summary>
                             <div class='space-y-3 mt-2'>
                                 {% for section in item.sections %}
                                 <div class='overflow-x-auto rounded border'>
@@ -720,7 +584,7 @@
                         </details>
                     </div>
                     {% empty %}
-                    <p class='rounded border border-gray-200 bg-gray-50 p-3 text-sm text-green-700'>No file reviews added yet.</p>
+                    <p class='py-4 text-center text-sm text-gray-400'>No file reviews yet.</p>
                     {% endfor %}
                 </div>
         </div>
@@ -728,7 +592,7 @@
     <details class='div-container group' open>
         <summary class='flex cursor-pointer list-none items-center justify-between gap-3 pb-3 border-b border-gray-100'>
             <div>
-                <h3 id="sec-activity" class='text-base font-semibold text-gray-900 inline'>Activity Log</h3>
+                <h3 id="sec-activity" class='text-base font-semibold text-gray-900 inline'>Activity log</h3>
                 <p class="text-xs text-gray-500 mt-0.5">{{ log_meta.total }} entries · showing latest {{ log_limit }}</p>
             </div>
             <div class="flex items-center gap-2 shrink-0">
@@ -814,9 +678,7 @@
                 </table>
             </div>
             {% else %}
-            <div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-500">
-                No activity recorded for this matter yet.
-            </div>
+            <p class="py-6 text-center text-sm text-gray-400">No activity on this file yet.</p>
             {% endif %}
 
             <p id="activityLogEmptyState" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -831,7 +693,7 @@
     <div class="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-lg bg-white shadow-xl">
         <div class="flex items-center justify-between border-b px-4 py-3 shrink-0">
             <div>
-                <h3 class="text-lg font-semibold text-gray-900">Initial Risk Assessment</h3>
+                <h3 class="text-lg font-semibold text-gray-900">Initial risk assessment</h3>
                 <p class="text-xs text-gray-500 mt-0.5">{{ risk_assessment.due_diligence_date|date:"d/m/Y" }}{% if risk_assessment.due_diligence_signed_by %} · Signed by {{ risk_assessment.due_diligence_signed_by }}{% endif %}</p>
             </div>
             <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal aria-label="Close">&times;</button>
@@ -850,7 +712,7 @@
 <div id="nextWorkModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
     <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
         <div class="flex items-center justify-between border-b px-4 py-3">
-            <h3 class="text-lg font-semibold text-gray-900">Add Next Work</h3>
+            <h3 class="text-lg font-semibold text-gray-900">Add next work</h3>
             <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal>&times;</button>
         </div>
         <form class="p-4 space-y-3" method="post" action="{% url 'add_next_work_file' matter.file_number %}">
@@ -867,7 +729,7 @@
 <div id="lastWorkModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
     <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
         <div class="flex items-center justify-between border-b px-4 py-3">
-            <h3 class="text-lg font-semibold text-gray-900">Add Last Work</h3>
+            <h3 class="text-lg font-semibold text-gray-900">Add last work</h3>
             <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal>&times;</button>
         </div>
         <form class="p-4 space-y-3" method="post" action="{% url 'add_last_work_file' matter.file_number %}">
@@ -884,29 +746,12 @@
 <div id="matterKeyDateModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
     <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
         <div class="flex items-center justify-between border-b px-4 py-3">
-            <h3 class="text-lg font-semibold text-gray-900">Add Key Date</h3>
+            <h3 class="text-lg font-semibold text-gray-900">Add key date</h3>
             <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal>&times;</button>
         </div>
         <form class="p-4 space-y-3" method="post" action="{% url 'add_matter_key_date' matter.file_number %}">
             {% csrf_token %}
             {{ matter_key_date_form.as_p }}
-            <div class="flex justify-end gap-2">
-                <button class="btn-secondary" type="button" data-close-modal>Cancel</button>
-                <button class="btn-primary" type="submit">Add</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div id="matterKeyDocumentModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
-    <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
-        <div class="flex items-center justify-between border-b px-4 py-3">
-            <h3 class="text-lg font-semibold text-gray-900">Add Key Document</h3>
-            <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal>&times;</button>
-        </div>
-        <form class="p-4 space-y-3" method="post" action="{% url 'add_matter_key_document' matter.file_number %}">
-            {% csrf_token %}
-            {{ matter_key_document_form.as_p }}
             <div class="flex justify-end gap-2">
                 <button class="btn-secondary" type="button" data-close-modal>Cancel</button>
                 <button class="btn-primary" type="submit">Add</button>

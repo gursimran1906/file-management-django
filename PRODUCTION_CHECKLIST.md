@@ -36,6 +36,9 @@ ALLOWED_HOSTS=wip.anp.softwarised.com,localhost  # Comma-separated list
 DB_NAME=your_db_name
 DB_USER=your_db_user
 DB_USER_PASS=your_db_password
+
+# Client onboarding invite emails are OFF unless this is set (tests always suppress them)
+ONBOARDING_SEND_INVITE_EMAILS=true
 DB_HOST=your_db_host
 DB_PORT=5432
 ```

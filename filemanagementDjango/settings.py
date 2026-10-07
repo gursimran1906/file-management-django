@@ -14,6 +14,7 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 import socket
+import sys
 import logging.config
 from django.core.exceptions import ImproperlyConfigured
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -267,6 +268,14 @@ ONBOARDING_MAIL_CLIENT_SECRET = os.getenv(
     'ONBOARDING_MAIL_CLIENT_SECRET', os.getenv('AZURE_CLIENT_SECRET', ''))
 ONBOARDING_MAIL_TENANT_ID = os.getenv(
     'ONBOARDING_MAIL_TENANT_ID', os.getenv('AZURE_TENANT_ID', ''))
+# Outbound invite emails are opt-in so test and development environments never
+# email real people. Set ONBOARDING_SEND_INVITE_EMAILS=true in production. Invites
+# still work without it: the link is kept on the case page for manual delivery.
+ONBOARDING_SEND_INVITE_EMAILS = os.getenv(
+    'ONBOARDING_SEND_INVITE_EMAILS', 'false').lower() in ('true', '1', 'yes')
+if sys.argv[1:2] == ['test']:
+    # Never email anyone from the test suite, whatever the environment says.
+    ONBOARDING_SEND_INVITE_EMAILS = False
 
 # Where the portal stores client uploads in SharePoint, so the office app can
 # read them back ("Client copy" preview + convert-time copy). These MUST mirror
