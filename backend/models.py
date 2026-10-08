@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from users.models import CustomUser
+from .fee_earners import responsible_fee_earner
 from django_quill.fields import QuillField
 from math import ceil
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -16,6 +17,7 @@ from django.core.files.storage import FileSystemStorage
 from backend.sharepoint.paths import (
     bundle_document_upload_path,
     bundle_final_pdf_upload_path,
+    bundle_version_pdf_upload_path,
     undertaking_file_upload_path,
 )
 
@@ -191,9 +193,12 @@ class OthersideDetails(models.Model):
     address_line1 = models.CharField(max_length=255, null=True, blank=True)
     address_line2 = models.CharField(max_length=255, null=True, blank=True)
     county = models.CharField(max_length=255, null=True, blank=True)
-    postcode = models.CharField(max_length=10, null=True, blank=True)
+    postcode = models.CharField(max_length=20, null=True, blank=True)
     email = models.CharField(max_length=255, null=True, blank=True)
-    contact_number = models.CharField(max_length=20, null=True, blank=True)
+    # Staff routinely qualify a number with a contact name or a second line
+    # ("07877 260701 (Daniel Edwards)"), so keep this in step with the 50 used
+    # by ClientContactDetails and AuthorisedParties.
+    contact_number = models.CharField(max_length=50, null=True, blank=True)
     solicitors = models.CharField(max_length=255, null=True, blank=True)
     solicitors_email = models.CharField(max_length=255, null=True, blank=True)
     created_by = models.ForeignKey(
@@ -384,6 +389,20 @@ class WIP(models.Model):
         return ' & '.join(client.name for client in self.all_clients)
 
     @property
+    def responsible_fee_earner(self):
+        """The person responsible for this file for sign-off, dashboards and
+        reports. Normally the fee earner; for pseudo fee earners such as DC
+        (Debt Collection) it is whoever RESPONSIBLE_FEE_EARNER_ALIASES names.
+        Never use this to decide *which* files are DC files - that is
+        ``fee_earner``."""
+        return responsible_fee_earner(self.fee_earner)
+
+    @property
+    def responsible_fee_earner_id(self):
+        fee_earner = self.responsible_fee_earner
+        return fee_earner.id if fee_earner else None
+
+    @property
     def all_client_emails(self):
         """Distinct, non-empty client emails for correspondence, in order."""
         emails = []
@@ -471,23 +490,30 @@ class NextWork(models.Model):
         else:
             self.completed = False
 
+        was_completed = bool(self.pk) and NextWork.objects.filter(
+            pk=self.pk, status='completed').exists()
+
         super().save(*args, **kwargs)
 
-        # Create LastWork entry when task is completed
-        if self.completed and self.status == 'completed':
-            # Check if LastWork entry already exists to avoid duplicates
+        # Record the completion as a LastWork entry the first time the task
+        # moves into "completed". It is dated the day it was completed - not
+        # the task's own date, which is when it was raised / due - so it lands
+        # on the right day in "My time" and in the matter's activity.
+        if self.completed and not was_completed:
+            completed_on = timezone.localdate()
+            # Guard against a double submit creating the same entry twice.
             if not LastWork.objects.filter(
                 file_number=self.file_number,
                 person=self.person,
                 task=self.task,
-                date=self.date
+                date=completed_on,
             ).exists():
                 LastWork.objects.create(
                     file_number=self.file_number,
                     person=self.person,
                     task=self.task,
-                    date=self.date,
-                    created_by=self.created_by
+                    date=completed_on,
+                    created_by=self.created_by,
                 )
 
 
@@ -844,7 +870,92 @@ class RiskAssessment(models.Model):
     due_diligence_signed_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, null=True)
 
+    # Sign-off workflow: staff complete the assessment, a fee earner reviews
+    # the flagged answers and signs it off (or returns it with comments).
+    SIGNOFF_AWAITING = 'awaiting'
+    SIGNOFF_RETURNED = 'returned'
+    SIGNOFF_SIGNED = 'signed'
+    SIGNOFF_STATUS_CHOICES = [
+        (SIGNOFF_AWAITING, 'Awaiting sign-off'),
+        (SIGNOFF_RETURNED, 'Returned for changes'),
+        (SIGNOFF_SIGNED, 'Signed off'),
+    ]
+    signoff_status = models.CharField(
+        max_length=10, choices=SIGNOFF_STATUS_CHOICES, default=SIGNOFF_AWAITING)
+    completed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='risk_assessments_completed')
+    completed_at = models.DateTimeField(null=True, blank=True)
+    signed_off_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='risk_assessments_signed_off')
+    signed_off_at = models.DateTimeField(null=True, blank=True)
+    signoff_comments = models.TextField(blank=True, default='')
+
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    # (field, answer that raises a flag, label shown to the reviewing fee earner)
+    RISK_FLAG_RULES = [
+        ('unusual_client', 'Yes', 'Unusual client for this type of work'),
+        ('client_concerns', 'Yes', 'Concerns about the client'),
+        ('third_party_authority', 'No', 'No evidence of third-party authority to act'),
+        ('concerns_about_parties', 'Yes', 'Concerns about client, agent or third parties'),
+        ('designated_person_entity', 'Yes', 'Client is a designated person/entity'),
+        ('location_of_instruction_concerns', 'Yes', "Concerns about the client's location"),
+        ('make_sense_location_of_instructions', 'No', 'Instruction location does not make sense'),
+        ('overseas_elements', 'Yes', 'Overseas elements involved'),
+        ('meeting_in_person', 'No', 'Client will not be met in person'),
+        ('adverse_media', 'Yes', 'Adverse media about client or beneficial owners'),
+        ('reportable_discrepancies', 'Yes', 'Reportable discrepancies identified'),
+        ('usual_work', 'No', 'Not our usual type of work'),
+        ('complex_structure', 'Yes', 'Matter involves a complex structure'),
+        ('cash_intensive_industry', 'Yes', 'Cash-intensive industry'),
+        ('high_risk_industry', 'Yes', 'High-risk industry'),
+        ('proliferation_financing', 'Yes', 'Proliferation financing risk'),
+        ('other_risks', 'Yes', 'Other AML/CTF risks'),
+        ('receiving_funds_from_overseas', 'Yes', 'Receiving funds from overseas'),
+        ('receiving_funds_from_third_parties', 'Yes', 'Receiving funds from third parties'),
+        ('consistent_with_client_profile', 'No', "Transaction inconsistent with client's profile"),
+        ('makes_sense_for_client', 'No', 'Instruction does not make sense for this client'),
+        ('is_pep_questionnaire_completed', 'No', 'PEP questionnaire not completed'),
+        ('is_source_of_funds_questionnaire_completed', 'No',
+         'Source of funds questionnaire not completed'),
+        ('complex_structure_or_unusual', 'Yes', 'EDD: complex or unusual structure'),
+        ('higher_risk_sector', 'Yes', 'EDD: higher-risk sector'),
+        ('cash_intensive_business_activity', 'Yes', 'EDD: cash-intensive business activity'),
+        ('high_risk_third_country_or_jurisdiction', 'Yes', 'EDD: high-risk third country/jurisdiction'),
+        ('politically_exposed_person', 'Yes', 'EDD: PEP, family member or close associate'),
+        ('financial_sanctions', 'Yes', 'EDD: financial sanctions concerns'),
+        ('country_subject_to_sanctions', 'Yes', 'EDD: country subject to sanctions'),
+        ('unusual_complex_transaction', 'Yes', 'EDD: unusually complex or large transaction'),
+        ('unusual_pattern_of_transactions', 'Yes', 'EDD: unusual pattern of transactions'),
+        ('lack_of_economic_or_legal_purpose', 'Yes', 'EDD: no apparent economic or legal purpose'),
+        ('other_high_risk_factors', 'Yes', 'EDD: other high-risk factors'),
+    ]
+
+    def flagged_answers(self):
+        """Labels of every answer the reviewing fee earner should look at."""
+        return [
+            label
+            for field, risky_value, label in self.RISK_FLAG_RULES
+            if getattr(self, field) == risky_value
+        ]
+
+    @property
+    def has_high_risk_outcome(self):
+        """Outcomes that require EDD / senior-management attention under the MLRs."""
+        return (
+            self.client_risk_level == 'High'
+            or self.matter_risk_level == 'High'
+            or self.customer_due_diligence_level == 'Enhanced'
+            or self.politically_exposed_person == 'Yes'
+            or self.financial_sanctions == 'Yes'
+            or self.country_subject_to_sanctions == 'Yes'
+        )
+
+    @property
+    def is_signed_off(self):
+        return self.signoff_status == self.SIGNOFF_SIGNED
 
 
 class OngoingMonitoring(models.Model):
@@ -875,7 +986,88 @@ class OngoingMonitoring(models.Model):
         CustomUser, on_delete=models.SET_NULL, null=True)
     created_by = models.ForeignKey(
         CustomUser, related_name='created_by', on_delete=models.SET_NULL, null=True)
+
+    # Sign-off workflow (mirrors RiskAssessment): staff record the monitoring,
+    # a fee earner reviews the flagged answers and signs it off or returns it.
+    SIGNOFF_AWAITING = 'awaiting'
+    SIGNOFF_RETURNED = 'returned'
+    SIGNOFF_SIGNED = 'signed'
+    SIGNOFF_STATUS_CHOICES = [
+        (SIGNOFF_AWAITING, 'Awaiting sign-off'),
+        (SIGNOFF_RETURNED, 'Returned for changes'),
+        (SIGNOFF_SIGNED, 'Signed off'),
+    ]
+    signoff_status = models.CharField(
+        max_length=10, choices=SIGNOFF_STATUS_CHOICES, default=SIGNOFF_AWAITING)
+    completed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ongoing_monitorings_completed')
+    completed_at = models.DateTimeField(null=True, blank=True)
+    signed_off_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ongoing_monitorings_signed_off')
+    signed_off_at = models.DateTimeField(null=True, blank=True)
+    signoff_comments = models.TextField(blank=True, default='')
+
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    # (field, answer that raises a flag, label shown to the reviewing fee earner)
+    MONITORING_FLAG_RULES = [
+        ('any_changes_discovered', 'Yes', 'Changes discovered since the risk assessment'),
+        ('updated_risk_level_client', 'Medium', 'Client risk now Medium'),
+        ('updated_risk_level_client', 'High', 'Client risk now High'),
+        ('updated_risk_level_matter', 'Medium', 'Matter risk now Medium'),
+        ('updated_risk_level_matter', 'High', 'Matter risk now High'),
+    ]
+
+    def flagged_answers(self):
+        """Labels of every answer the reviewing fee earner should look at."""
+        return [
+            label
+            for field, risky_value, label in self.MONITORING_FLAG_RULES
+            if getattr(self, field) == risky_value
+        ]
+
+    def _is_risky(self, field):
+        return any(
+            rule_field == field and getattr(self, field) == risky_value
+            for rule_field, risky_value, _label in self.MONITORING_FLAG_RULES
+        )
+
+    def review_answers(self):
+        """Every answer, in form order, for the reviewing fee earner.
+
+        All answers are reviewed; the risky ones are marked so they stand out.
+        """
+        changes_risky = self._is_risky('any_changes_discovered')
+        return [
+            {'label': 'How risks have been monitored since the risk assessment',
+             'value': self.how_was_monitioring_of_risks_coducted, 'risky': False},
+            {'label': 'Changes discovered since the risk assessment',
+             'value': self.get_any_changes_discovered_display(), 'risky': changes_risky},
+            {'label': 'Details of changes discovered',
+             'value': self.details_of_changes or '', 'risky': changes_risky},
+            {'label': 'Updated client risk level',
+             'value': self.updated_risk_level_client,
+             'risky': self._is_risky('updated_risk_level_client')},
+            {'label': 'Updated matter risk level',
+             'value': self.updated_risk_level_matter,
+             'risky': self._is_risky('updated_risk_level_matter')},
+            {'label': 'How the client and matter will be monitored',
+             'value': self.how_it_will_be_monitored, 'risky': False},
+        ]
+
+    @property
+    def has_high_risk_outcome(self):
+        """Either updated risk level is High: EDD / senior attention applies."""
+        return (
+            self.updated_risk_level_client == 'High'
+            or self.updated_risk_level_matter == 'High'
+        )
+
+    @property
+    def is_signed_off(self):
+        return self.signoff_status == self.SIGNOFF_SIGNED
 
 
 class MatterFileReview(models.Model):
@@ -1036,7 +1228,8 @@ class MatterEmails(models.Model):
         CustomUser, on_delete=models.SET_NULL, null=True)
     units = models.IntegerField(null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
-    link = models.URLField(max_length=4096, null=True, blank=True)
+    # Indexed: the email sync de-dups by webLink (MatterEmails.link) on every insert.
+    link = models.URLField(max_length=4096, null=True, blank=True, db_index=True)
 
     def __str__(self):
         return (f'ID: {str(self.id)}, File Number: {self.file_number}')
@@ -1238,6 +1431,12 @@ class Bundle(models.Model):
     share_link_password = models.CharField(max_length=128, blank=True, default='')
     share_link_expires_at = models.DateTimeField(null=True, blank=True)
     share_link_created_at = models.DateTimeField(null=True, blank=True)
+    # The version currently promoted as "the" bundle PDF (Vercel-style
+    # production alias). ``final_pdf``/``pdf_generated_at`` above are kept as a
+    # denormalised mirror of this version so existing download/share paths work.
+    current_version = models.ForeignKey(
+        'BundleVersion', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+')
 
     def __str__(self):
         return f"{self.name} - {self.file_number}"
@@ -1266,10 +1465,55 @@ class Bundle(models.Model):
         ordering = ['-created_at']
 
 
+class BundleVersion(models.Model):
+    """An immutable rendered snapshot of a bundle's final PDF.
+
+    A new version is created each time the bundle is (re)generated with a
+    different output. Older versions are kept so share links created against
+    them keep working; a retention policy prunes stale, unshared versions.
+    """
+    bundle = models.ForeignKey(
+        Bundle, on_delete=models.CASCADE, related_name='versions')
+    version = models.PositiveIntegerField()
+    final_pdf = models.FileField(
+        upload_to=bundle_version_pdf_upload_path, max_length=255)
+    pdf_generated_at = models.DateTimeField(null=True, blank=True)
+    page_count = models.PositiveIntegerField(null=True, blank=True)
+    size_bytes = models.BigIntegerField(null=True, blank=True)
+    content_hash = models.CharField(max_length=64, blank=True, default='')
+    document_count = models.PositiveIntegerField(null=True, blank=True)
+    # A non-empty label or pinned=True protects a version from auto-pruning.
+    label = models.CharField(max_length=120, blank=True, default='')
+    pinned = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-version']
+        unique_together = ('bundle', 'version')
+
+    def __str__(self):
+        return f"{self.bundle.name} v{self.version}"
+
+    def is_current(self):
+        return self.bundle.current_version_id == self.id
+
+    def has_active_share_link(self):
+        return self.share_links.filter(revoked_at__isnull=True).exists()
+
+    def is_protected(self):
+        """True if retention must keep this version regardless of age."""
+        return bool(self.pinned or self.label or self.has_active_share_link())
+
+
 class BundleShareLink(models.Model):
     """Microsoft sharing link created for a bundle final PDF."""
     bundle = models.ForeignKey(
         Bundle, on_delete=models.CASCADE, related_name='share_links')
+    version = models.ForeignKey(
+        'BundleVersion', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='share_links')
     url = models.URLField(max_length=512)
     permission_id = models.CharField(max_length=255)
     password = models.CharField(max_length=128, blank=True, default='')

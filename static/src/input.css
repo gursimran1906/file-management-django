@@ -133,6 +133,49 @@
     @apply my-2 border-t border-gray-100;
   }
 
+  /* Staff timeline panel (dashboard "My time" / management reports) */
+  .tl-row {
+    display: grid;
+    grid-template-columns: 3.5rem repeat(var(--tl-cols, 5), minmax(0, 1fr));
+  }
+  .tl-hours {
+    background-image: repeating-linear-gradient(to bottom, #f3f4f6 0 1px, transparent 1px var(--tl-hour, 3.5rem));
+  }
+  .tl-ev {
+    @apply absolute overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-xs leading-tight shadow-sm transition-shadow
+           hover:shadow focus:outline-none focus:ring-2 focus:ring-blue-500/30;
+  }
+  .tl-ev-note {
+    @apply border-blue-200 bg-blue-50 text-blue-900;
+  }
+  .tl-ev-note-nc {
+    @apply border-dashed border-blue-300 bg-white text-blue-900;
+  }
+  .tl-ev-email {
+    @apply border-purple-200 bg-purple-50 text-purple-900;
+  }
+  .tl-ev-meeting {
+    @apply border-green-200 bg-green-50 text-green-900;
+  }
+  .tl-chip {
+    @apply inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-left text-[11px] leading-tight
+           hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30;
+  }
+  .tl-chip-letter {
+    @apply border-yellow-200 bg-yellow-50 text-yellow-900;
+  }
+  .tl-chip-task {
+    @apply border-zinc-200 bg-zinc-50 text-zinc-700;
+  }
+  .tl-dot {
+    @apply inline-block h-2 w-2 shrink-0 rounded-full;
+  }
+  .tl-dot-note { @apply bg-blue-500; }
+  .tl-dot-email { @apply bg-purple-500; }
+  .tl-dot-letter { @apply bg-yellow-500; }
+  .tl-dot-meeting { @apply bg-green-500; }
+  .tl-dot-task { @apply bg-zinc-400; }
+
   /* Bundle / estate / completion statement editor (migrated from bundle-tree.css) */
   .bundle-edit-page {
     @apply text-[#1b1b1b];

@@ -85,29 +85,61 @@
 
     {% if note.note_type == 'free30' %}
     <form method="post" action="{% url 'granola_create_free30' note.id %}"
-      class="flex flex-wrap items-end gap-5 border-t border-gray-100 bg-gray-50/50 px-5 py-4">
+      class="space-y-4 border-t border-gray-100 bg-gray-50/50 px-5 py-4">
       {% csrf_token %}
-      <p class="w-full text-xs text-amber-600">{{ note.error_message|default:"Review the attendees, then create the meeting." }}</p>
-      <div class="w-56">
-        <label class="form-label">Fee earner</label>
-        <select name="fee_earner" class="form-input">
-          <option value="">Auto (note owner)</option>
-          {% for fe in fee_earners %}
-          <option value="{{ fe.id }}" {% if note.matched_fee_earner_id == fe.id %}selected{% endif %}>
-            {{ fe.first_name }} {{ fe.last_name }} ({{ fe.username }})
-          </option>
-          {% endfor %}
-        </select>
+      {% if note.error_message %}<p class="text-xs text-amber-600">{{ note.error_message }}</p>{% endif %}
+      {# Row 0 uses bare field names; JS-added rows use an ``i_`` prefix. #}
+      <input type="hidden" name="number_of_attendees" value="1">
+      <div>
+        <p class="form-label mb-1.5">Attendees</p>
+        <div data-attendee-rows class="space-y-2">
+          <div class="gr-attendee-row grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <input data-field="name" name="name" class="form-input" placeholder="Name" autocomplete="off">
+            <input data-field="email" name="email" class="form-input" placeholder="Email" autocomplete="off">
+            <input data-field="contact_number" name="contact_number" class="form-input" placeholder="Phone" autocomplete="off">
+            <input data-field="address_line1" name="address_line1" class="form-input" placeholder="Address" autocomplete="off">
+            <input data-field="address_line2" name="address_line2" class="form-input" placeholder="Address line 2" autocomplete="off">
+            <input data-field="county" name="county" class="form-input" placeholder="County / town" autocomplete="off">
+            <input data-field="postcode" name="postcode" class="form-input" placeholder="Postcode" autocomplete="off">
+          </div>
+        </div>
+        <button type="button" data-add-attendee class="btn-secondary mt-2 text-xs">+ Add attendee</button>
       </div>
-      <button type="submit" class="btn-primary ml-auto">
-        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-        Create Free 30 meeting
-      </button>
+      <div class="flex flex-wrap items-end gap-5">
+        <div class="w-40">
+          <label class="form-label">Date</label>
+          <input type="date" name="date" value="{{ note.meeting_start|date:'Y-m-d' }}" class="form-input">
+        </div>
+        <div class="w-32">
+          <label class="form-label">Start time</label>
+          <input type="time" name="start_time" value="{{ note.meeting_start|time:'H:i' }}" class="form-input">
+        </div>
+        <div class="w-32">
+          <label class="form-label">Finish time</label>
+          <input type="time" name="finish_time" value="{{ note.meeting_end|time:'H:i' }}" class="form-input">
+        </div>
+        <div class="w-56">
+          <label class="form-label">Fee earner</label>
+          <select name="fee_earner" class="form-input">
+            <option value="">Unassigned</option>
+            {% for fe in fee_earners %}
+            <option value="{{ fe.id }}" {% if note.matched_fee_earner_id == fe.id %}selected{% endif %}>
+              {{ fe.first_name }} {{ fe.last_name }} ({{ fe.username }})
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn-primary ml-auto">
+          <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Create Free 30 meeting
+        </button>
+      </div>
     </form>
     {% else %}
     <form method="post" action="{% url 'granola_assign_note' note.id %}"
       class="flex flex-wrap items-end gap-5 border-t border-gray-100 bg-gray-50/50 px-5 py-4">
       {% csrf_token %}
+      {% if note.error_message %}<p class="w-full text-xs text-amber-600">{{ note.error_message }}</p>{% endif %}
       <div class="w-32">
         <label class="form-label">File number</label>
         <input type="text" name="file_number" value="{{ note.parsed_file_number }}"
@@ -116,13 +148,25 @@
       <div class="w-52">
         <label class="form-label">Fee earner</label>
         <select name="person_attended" class="form-input">
-          <option value="">Auto (matter / note owner)</option>
+          <option value="">Auto (matter default)</option>
           {% for fe in fee_earners %}
           <option value="{{ fe.id }}" {% if note.matched_fee_earner_id == fe.id %}selected{% endif %}>
             {{ fe.first_name }} {{ fe.last_name }} ({{ fe.username }})
           </option>
           {% endfor %}
         </select>
+      </div>
+      <div class="w-36">
+        <label class="form-label">Date</label>
+        <input type="date" name="date" value="{{ note.meeting_start|date:'Y-m-d' }}" class="form-input">
+      </div>
+      <div class="w-32">
+        <label class="form-label">Start</label>
+        <input type="time" name="start_time" value="{{ note.meeting_start|time:'H:i' }}" class="form-input">
+      </div>
+      <div class="w-32">
+        <label class="form-label">Finish</label>
+        <input type="time" name="finish_time" value="{{ note.meeting_end|time:'H:i' }}" class="form-input">
       </div>
       <div>
         <label class="form-label">Chargeable</label>
@@ -136,6 +180,7 @@
         <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
         Create attendance note
       </button>
+      <p class="w-full text-[11px] text-gray-400">Units are calculated from the start and finish times.</p>
     </form>
     {% endif %}
   </div>

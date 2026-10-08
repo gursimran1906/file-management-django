@@ -53,9 +53,19 @@ def _run_qpdf(args):
         capture_output=True,
         text=True,
     )
-    if result.returncode != 0:
+    # qpdf exit code 3 means "operation succeeded with warnings": the output file
+    # is still produced and valid (e.g. a source PDF with a minor structural quirk
+    # like "object has offset 0"). Treating it as a failure needlessly drops the
+    # build to the slow, fully-in-memory PyPDF2 fallback path, which is what OOMs
+    # the worker on large bundles. Only codes other than 0/3 are real failures.
+    if result.returncode not in (0, 3):
         raise RuntimeError(
             f'qpdf failed ({result.returncode}): {result.stderr or result.stdout}'
+        )
+    if result.returncode == 3:
+        logger.warning(
+            'qpdf completed with warnings: %s',
+            (result.stderr or result.stdout or '').strip(),
         )
 
 
@@ -102,18 +112,67 @@ def _build_page_number_overlay(page_width, page_height, page_number):
     return buffer
 
 
+def _page_rotation(page):
+    """Return a page's effective /Rotate (0/90/180/270), following inheritance.
+
+    /Rotate can live on the page or be inherited from a /Pages ancestor. Walk up
+    the parent chain (bounded) so scanned pages that carry rotation are handled.
+    """
+    obj = page.obj
+    for _ in range(32):
+        if obj is None:
+            break
+        try:
+            rotate = obj.get('/Rotate')
+        except Exception:
+            break
+        if rotate is not None:
+            try:
+                return int(rotate) % 360
+            except (TypeError, ValueError):
+                return 0
+        try:
+            obj = obj.get('/Parent')
+        except Exception:
+            break
+    return 0
+
+
 def _stamp_page_numbers(input_path, output_path):
     import pikepdf
-    from pikepdf import Page
+    from pikepdf import Page, Rectangle
 
     pdf = pikepdf.Pdf.open(input_path)
     for page_number, page in enumerate(pdf.pages, start=1):
-        width = float(page.mediabox[2])
-        height = float(page.mediabox[3])
+        # Use the visible area (cropbox), honouring a non-zero origin, and place
+        # the overlay with an explicit rect so scanned pages whose box does not
+        # start at (0, 0) still get the number in the bottom-right corner.
+        box = page.cropbox
+        x0 = float(box[0])
+        y0 = float(box[1])
+        x1 = float(box[2])
+        y1 = float(box[3])
+        box_width = x1 - x0
+        box_height = y1 - y0
+
+        # Scanned pages are often stored upright with a /Rotate flag. add_overlay
+        # is rotation-aware, so the overlay must be sized to the *visual*
+        # (post-rotation) dimensions or the number lands rotated and off-corner.
+        rotation = _page_rotation(page)
+        if rotation in (90, 270):
+            visible_width, visible_height = box_height, box_width
+        else:
+            visible_width, visible_height = box_width, box_height
+
         overlay_pdf = pikepdf.open(
-            _build_page_number_overlay(width, height, page_number),
+            _build_page_number_overlay(
+                visible_width, visible_height, page_number
+            ),
         )
-        Page(page).add_overlay(Page(overlay_pdf.pages[0]))
+        Page(page).add_overlay(
+            Page(overlay_pdf.pages[0]),
+            rect=Rectangle(x0, y0, x1, y1),
+        )
         overlay_pdf.close()
 
     pdf.save(output_path)
@@ -201,6 +260,50 @@ def _add_bookmarks(pdf_path, documents_info):
 
     pdf.save()
     pdf.close()
+
+
+def merge_pdf_files(paths, output_path):
+    """Concatenate whole PDF files (in order) into output_path using qpdf."""
+    _concat_with_qpdf(output_path, [(path, '1-z') for path in paths])
+
+
+def build_plain_combined_pdf(documents_info, cache, progress_callback=None):
+    """
+    Concatenate the bundle's documents into one PDF with no index page, no
+    page-number stamps and no bookmarks. Returns (output_path, work_dir);
+    the caller must delete work_dir.
+    """
+    if not qpdf_available():
+        raise RuntimeError('Plain combined PDF requires qpdf')
+
+    work_dir = tempfile.mkdtemp(prefix='bundle_combine_')
+    try:
+        page_inputs = []
+        doc_total = len(documents_info)
+        for doc_index, doc_info in enumerate(documents_info):
+            if progress_callback and doc_total:
+                percent = 10 + int(60 * (doc_index + 1) / doc_total)
+                label = (doc_info['description'] or 'document')[:48]
+                progress_callback(
+                    percent,
+                    f'Preparing document {doc_index + 1} of {doc_total}: {label}...',
+                )
+            source_path = cache.local_path(doc_info['document'])
+            page_spec = _page_range_spec(doc_info['page_indices'])
+            if page_spec:
+                page_inputs.append((source_path, page_spec))
+
+        if not page_inputs:
+            raise RuntimeError('No document pages to combine')
+
+        if progress_callback:
+            progress_callback(80, 'Concatenating PDFs...')
+        output_path = os.path.join(work_dir, 'combined.pdf')
+        _concat_with_qpdf(output_path, page_inputs)
+        return output_path, work_dir
+    except Exception:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise
 
 
 def build_bundle_pdf_fast(

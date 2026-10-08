@@ -43,6 +43,19 @@ def bundle_final_pdf_upload_path(instance, filename):
     return f'BundleFinal/{file_number}/{bundle_uuid}.pdf'
 
 
+def bundle_version_pdf_upload_path(instance, filename):
+    """Immutable per-version path: BundleFinal/{file_number}/{uuid}/v{n}.pdf.
+
+    Each generation is stored as its own file so previously created share
+    links (bound to a specific version) keep resolving after a regeneration.
+    """
+    bundle = instance.bundle
+    file_number = 'unassigned'
+    if bundle.file_number_id and bundle.file_number:
+        file_number = bundle.file_number.file_number
+    return f'BundleFinal/{file_number}/{bundle.uuid}/v{instance.version}.pdf'
+
+
 LEGACY_PATH_PREFIXES = {
     'undertakings/': 'Undertakings/',
     'bundle_documents/': 'BundleSources/',

@@ -340,8 +340,16 @@
         </tr>
     
         <tr>
+            <td>Completed By</td>
+            <td>{% if obj.completed_by %}{{ obj.completed_by.first_name }} {{ obj.completed_by.last_name }}{% if obj.completed_at %} on {{ obj.completed_at|date:'d/m/Y' }}{% endif %}{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Sign-off Status</td>
+            <td>{{ obj.get_signoff_status_display }}</td>
+        </tr>
+        <tr>
             <td>Due Diligence Signed By</td>
-            <td>{{ obj.due_diligence_signed_by }}</td>
+            <td>{% if obj.signed_off_by %}{{ obj.signed_off_by.first_name }} {{ obj.signed_off_by.last_name }}{% if obj.signed_off_at %} on {{ obj.signed_off_at|date:'d/m/Y' }}{% endif %}{% else %}{{ obj.due_diligence_signed_by|default:'Not yet signed off' }}{% endif %}</td>
         </tr>
         
     </table>

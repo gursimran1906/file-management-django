@@ -55,8 +55,15 @@
             </div>
             
             <div class="md:col-span-4">
-                {{ form.signed_by.label }}
-                {{ form.signed_by }}
+                <label>Sign-off</label>
+                <p class="text-sm text-gray-600 mt-1">
+                    {% if request.user.is_matter_fee_earner %}
+                    Saving as a fee earner signs this monitoring off in your name.
+                    {% else %}
+                    On save this goes to the matter's fee earner to review the
+                    answers and sign off.
+                    {% endif %}
+                </p>
             </div>
            
         </div>

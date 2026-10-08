@@ -3,7 +3,7 @@ from django.urls import path
 from .views import add_memo, delete_memo, display_data_index_page, display_data_home_page, download_aml_checks_due, download_risk_assessments_due, download_expired_client_ids, edit_memo, open_new_file_page, add_new_work_file, edit_next_work, add_last_work_file, edit_last_work, read_memo, update_task_status, load_initial_tasks, load_more_tasks, get_files, get_users, create_task, claim_task, release_task
 from .views import attendance_note_view, add_attendance_note, bulk_upload_attendance_notes, download_attendance_notes_bulk_template, download_attendance_notes_bulk, download_attendance_note, edit_attendance_note, correspondence_view, add_letter, edit_letter, download_sowc
 from .views import finance_view, add_blue_slip, add_pink_slip, add_green_slip, edit_pmts_slip, download_pmts_slip, edit_green_slip, download_green_slip, add_invoice, add_credit_note, approve_credit_note, reject_credit_note, edit_credit_note
-from .views import allocate_monies, download_statement_account, download_invoice, download_credited_invoice, download_credit_note, edit_invoice, reopen_invoice, unallocated_emails, allocate_emails
+from .views import allocate_monies, download_statement_account, download_invoice, download_credit_note, edit_invoice, reopen_invoice, unallocated_emails, allocate_emails
 from .estate_account_views import (
     estate_account_view,
     estate_account_update,
@@ -45,12 +45,13 @@ from .completion_statement_views import (
     completion_statement_schedule_create_slip,
 )
 from .views import download_cashier_data, edit_file, edit_client, edit_authorised_party, download_file_logs, download_frontsheet, generate_ledgers_report, user_dashboard, download_risk_assessment
-from .views import add_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring
+from .views import add_risk_assessment, sign_off_risk_assessment, return_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring, sign_off_ongoing_monitoring, return_ongoing_monitoring
 from .views import edit_ongoing_monitoring, download_document, onboarding_documents_display, edit_otherside, free30mins, download_free30mins, edit_free30mins
-from .views import undertakings, edit_undertaking, undertaking_file_download, add_policy, edit_policy, download_policy_pdf, download_all_policies_word, management_reports, reports_hub, report_expired_ids, report_expired_proof_of_address, report_file_reviews_due, weekly_report_view, policies_read_per_user
-from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundle_court_update, bundle_section_add, bundle_section_delete, bundle_section_update, bundle_section_reorder, bundle_document_upload, bundle_document_file, bundle_document_update, bundle_document_delete, bundle_document_pages_update, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_pdf_prepare, bundle_pdf_status, bundle_delete, bundle_share_link_status_view, bundle_share_link_create, bundle_share_link_revoke
+from .views import undertakings, edit_undertaking, undertaking_file_download, add_policy, edit_policy, download_policy_pdf, download_all_policies_word, management_reports, reports_hub, report_expired_ids, report_expired_proof_of_address, report_file_reviews_due, weekly_report_view, policies_read_per_user, staff_timeline_panel
+from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundle_court_update, bundle_section_add, bundle_section_delete, bundle_section_update, bundle_section_reorder, bundle_document_upload, bundle_document_file, bundle_document_update, bundle_document_delete, bundle_document_pages_update, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_download_plain, bundle_pdf_prepare, bundle_pdf_status, bundle_delete, bundle_share_link_status_view, bundle_share_link_create, bundle_share_link_revoke, bundle_versions_view, bundle_version_promote, bundle_version_pin, bundle_version_download
 from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, download_user_key_documents_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review, internal_pricing
 from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, central_key_dates, download_central_key_dates
+from .compliance_stats_views import compliance_stats, compliance_stats_detail
 from .granola.views import (
     granola_inbox, granola_assign_note, granola_ignore_note,
     granola_settings, granola_sync_now, granola_create_free30,
@@ -119,6 +120,10 @@ urlpatterns = [
          add_risk_assessment, name='add_risk_assessment'),
     path('risk_assessment/edit/<int:id>/',
          edit_risk_assessment, name='edit_risk_assessment'),
+    path('risk_assessment/<int:id>/sign-off/',
+         sign_off_risk_assessment, name='sign_off_risk_assessment'),
+    path('risk_assessment/<int:id>/return/',
+         return_risk_assessment, name='return_risk_assessment'),
     path('risk_assessment/download/<int:id>/',
          download_risk_assessment, name='download_risk_assessment'),
 
@@ -129,6 +134,10 @@ urlpatterns = [
          add_ongoing_monitoring, name='add_ongoing_monitoring'),
     path('ongoing_monitoring/edit/<int:id>/',
          edit_ongoing_monitoring, name='edit_ongoing_monitoring'),
+    path('ongoing_monitoring/<int:id>/sign-off/',
+         sign_off_ongoing_monitoring, name='sign_off_ongoing_monitoring'),
+    path('ongoing_monitoring/<int:id>/return/',
+         return_ongoing_monitoring, name='return_ongoing_monitoring'),
 
     path('<str:file_number>/matter_file_review/add/',
          add_matter_file_review, name='add_matter_file_review'),
@@ -312,8 +321,6 @@ urlpatterns = [
     path('credit_note/download/<int:id>/',
          download_credit_note, name='download_credit_note'),
     path('invoice/download/<int:id>/', download_invoice, name='download_invoice'),
-    path('invoice/download/credited/<int:id>/',
-         download_credited_invoice, name='download_credited_invoice'),
     path('invoice/edit/<int:id>/', edit_invoice, name='edit_invoice'),
     path('invoice/reopen/<int:id>/', reopen_invoice, name='reopen_invoice'),
 
@@ -358,6 +365,11 @@ urlpatterns = [
          name='report_expired_proof_of_address'),
     path('reports/file-reviews-due/', report_file_reviews_due,
          name='report_file_reviews_due'),
+    path('reports/compliance-stats/', compliance_stats, name='compliance_stats'),
+    path('reports/compliance-stats/<slug:metric_key>/', compliance_stats_detail,
+         name='compliance_stats_detail'),
+    path('reports/staff-timeline/panel/', staff_timeline_panel,
+         name='staff_timeline_panel'),
     path('management_reports/', management_reports, name='management_reports'),
     path('internal_pricing/', internal_pricing, name='internal_pricing'),
     path('matter_pricing/', internal_pricing, name='matter_pricing'),
@@ -407,12 +419,22 @@ urlpatterns = [
          bundle_pdf_status, name='bundle_pdf_status'),
     path('bundle/<int:bundle_id>/download/',
          bundle_download, name='bundle_download'),
+    path('bundle/<int:bundle_id>/download-plain/',
+         bundle_download_plain, name='bundle_download_plain'),
     path('bundle/<int:bundle_id>/share-link/',
          bundle_share_link_status_view, name='bundle_share_link_status'),
     path('bundle/<int:bundle_id>/share-link/create/',
          bundle_share_link_create, name='bundle_share_link_create'),
     path('bundle/<int:bundle_id>/share-link/<int:link_id>/revoke/',
          bundle_share_link_revoke, name='bundle_share_link_revoke'),
+    path('bundle/<int:bundle_id>/versions/',
+         bundle_versions_view, name='bundle_versions'),
+    path('bundle/<int:bundle_id>/version/<int:version_id>/promote/',
+         bundle_version_promote, name='bundle_version_promote'),
+    path('bundle/<int:bundle_id>/version/<int:version_id>/pin/',
+         bundle_version_pin, name='bundle_version_pin'),
+    path('bundle/<int:bundle_id>/version/<int:version_id>/download/',
+         bundle_version_download, name='bundle_version_download'),
     path('bundle/<int:bundle_id>/delete/', bundle_delete, name='bundle_delete'),
 
     # Bundle Section URLs

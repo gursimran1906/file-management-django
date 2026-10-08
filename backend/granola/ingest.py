@@ -22,8 +22,8 @@ from users.models import CustomUser
 
 from .client import GranolaClient, GranolaError
 from .markdown_to_quill import markdown_to_html, markdown_to_quill_json
-from .parse import (extract_file_ref, parse_meeting_times, parse_parties,
-                    parse_title)
+from .parse import (extract_file_ref, parse_fee_earner, parse_meeting_times,
+                    parse_parties, parse_title)
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +129,40 @@ def _extract_owner_email(note):
     return _first(note, 'owner_email', 'email', default='') or ''
 
 
+def _resolve_fee_earner(token):
+    """Resolve a parsed fee-earner token to an active CustomUser, or None.
+
+    Notes now come from one shared Granola account, so the fee earner is taken
+    from a ``Fee earner:`` line in the note body. The token is a 3-letter staff
+    code (``username``) first; a full name is accepted as a fallback.
+    """
+    token = (token or '').strip()
+    if not token:
+        return None
+    user = CustomUser.objects.filter(
+        username__iexact=token, is_active=True).first()
+    if user:
+        return user
+    parts = token.split()
+    active = CustomUser.objects.filter(is_active=True)
+    if len(parts) >= 2:
+        return active.filter(
+            first_name__iexact=parts[0], last_name__iexact=parts[-1]).first()
+    return active.filter(first_name__iexact=token).first()
+
+
+def _missing_attendance_fields(matter, fee_earner, has_window):
+    """Human list of what an attendance note still needs before it can file."""
+    missing = []
+    if not matter:
+        missing.append('matter file number')
+    if not fee_earner:
+        missing.append('fee earner')
+    if not has_window:
+        missing.append('start/finish time')
+    return 'Missing ' + ', '.join(missing) + ' — complete and file.' if missing else ''
+
+
 def _extract_summary_markdown(note):
     val = _first(note, 'summary_markdown', 'summary_md', 'summary', 'notes',
                  'content', 'markdown', default='')
@@ -171,16 +205,36 @@ def _compute_unit(start_dt, end_dt):
     return max(1, ceil(minutes / 6))
 
 
+def _unit_from_times(start_time, finish_time):
+    """Units from two ``datetime.time`` values (mirrors AttendanceNoteForm.save)."""
+    minutes = (finish_time.hour * 60 + finish_time.minute) - \
+        (start_time.hour * 60 + start_time.minute)
+    return max(1, ceil(minutes / 6))
+
+
 def create_attendance_note_from_imported(imported, *, file, person_attended,
-                                         is_charged, created_by=None):
+                                         is_charged, created_by=None,
+                                         date=None, start_time=None,
+                                         finish_time=None):
     """Build and persist a MatterAttendanceNotes from an imported Granola note.
 
     Used by both the auto-create path and the manual review inbox. Links the
-    created note back onto ``imported`` and marks it as created.
+    created note back onto ``imported`` and marks it as created. When the caller
+    supplies ``start_time``/``finish_time`` (e.g. a reviewer correcting the
+    window in the Allocate inbox), the billing unit is computed from those;
+    otherwise it comes from the parsed meeting window.
     """
-    date, start_time, finish_time = _meeting_date_times(imported)
+    # A reviewer supplying both times overrides the parsed window (and its unit).
+    override = start_time is not None and finish_time is not None
+    d, st, ft = _meeting_date_times(imported)
+    date = date or d
+    start_time = start_time or st
+    finish_time = finish_time or ft
     parsed = parse_title(imported.title)
     subject = (parsed.subject or imported.title or 'Granola note')[:255]
+
+    unit = (_unit_from_times(start_time, finish_time) if override
+            else _compute_unit(imported.meeting_start, imported.meeting_end))
 
     note = MatterAttendanceNotes.objects.create(
         file_number=file,
@@ -191,7 +245,7 @@ def create_attendance_note_from_imported(imported, *, file, person_attended,
         content=markdown_to_quill_json(imported.summary_md),
         is_charged=is_charged,
         person_attended=person_attended,
-        unit=_compute_unit(imported.meeting_start, imported.meeting_end),
+        unit=unit,
         created_by=created_by,
     )
 
@@ -216,12 +270,28 @@ def _meeting_date_times(imported):
     return date, start_time, finish_time
 
 
-def create_free30_from_imported(imported, *, fee_earner=None, created_by=None):
-    """Build a Free30Mins meeting (plus parsed attendees) from an imported note."""
-    date, start_time, finish_time = _meeting_date_times(imported)
+def create_free30_from_imported(imported, *, fee_earner=None, created_by=None,
+                                attendees=None, date=None, start_time=None,
+                                finish_time=None, matter_type=None):
+    """Build a Free30Mins meeting (plus attendees) from an imported note.
+
+    ``attendees`` is ``None`` on the auto path (parties are parsed from the note)
+    and a list of attendee dicts on the Allocate path (exactly what staff typed,
+    possibly empty). ``date``/``start_time``/``finish_time`` override the parsed
+    window when a reviewer supplies them. Free 30 meetings carry no billing unit,
+    so a missing finish defaults to start + 30 minutes rather than a zero window.
+    """
+    d, st, ft = _meeting_date_times(imported)
+    date = date or d
+    start_time = start_time or st
+    if finish_time is None:
+        finish_time = ft
+        if imported.meeting_end is None:
+            finish_time = (datetime.combine(date, start_time)
+                           + timedelta(minutes=30)).time()
 
     meeting = Free30Mins.objects.create(
-        matter_type=None,
+        matter_type=matter_type,
         notes=markdown_to_quill_json(imported.summary_md),
         date=date,
         start_time=start_time,
@@ -230,10 +300,10 @@ def create_free30_from_imported(imported, *, fee_earner=None, created_by=None):
         created_by=created_by,
     )
 
-    parties = parse_parties(imported.summary_md)
-    attendees = []
+    parties = attendees if attendees is not None else parse_parties(imported.summary_md)
+    attendee_objs = []
     for p in parties:
-        attendees.append(Free30MinsAttendees.objects.create(
+        attendee_objs.append(Free30MinsAttendees.objects.create(
             name=p.get('name', '')[:255],
             address_line1=p.get('address_line1', '') or None,
             address_line2=p.get('address_line2', '') or None,
@@ -243,13 +313,13 @@ def create_free30_from_imported(imported, *, fee_earner=None, created_by=None):
             contact_number=p.get('contact_number', '')[:50],
             created_by=created_by,
         ))
-    if attendees:
-        meeting.attendees.set(attendees)
+    if attendee_objs:
+        meeting.attendees.set(attendee_objs)
 
     imported.free30_meeting = meeting
     imported.matched_fee_earner = meeting.fee_earner
     imported.status = GranolaImportedNote.STATUS_CREATED
-    imported.error_message = '' if attendees else 'No parties parsed from the note.'
+    imported.error_message = '' if attendee_objs else 'No parties recorded.'
     imported.save()
     return meeting
 
@@ -297,38 +367,43 @@ def _ingest_note(client, summary_note,
         parsed_is_charged=ref.is_charged,
     )
 
-    # Match a fee earner by the Granola note owner's email (active staff only).
-    if imported.owner_email:
-        imported.matched_fee_earner = CustomUser.objects.filter(
-            email__iexact=imported.owner_email, is_active=True).first()
+    # All notes now come from one shared Granola account, so the owner no longer
+    # identifies the fee earner — parse it from a "Fee earner:" line in the body.
+    imported.matched_fee_earner = _resolve_fee_earner(parse_fee_earner(summary_md))
 
     if note_type == GranolaImportedNote.TYPE_FREE30:
-        # Free 30 minute meetings need no matter. Auto-create only when we found
-        # at least one party; otherwise send it to the review inbox so a person
-        # can add the attendees before the meeting record is created.
-        if parse_parties(summary_md):
+        # Auto-create only when the record is complete (at least one party AND a
+        # known fee earner); otherwise send it to the Allocate inbox so a person
+        # can add the missing details before the meeting is created.
+        if parse_parties(summary_md) and imported.matched_fee_earner:
             create_free30_from_imported(
-                imported, created_by=imported.matched_fee_earner)
+                imported, fee_earner=imported.matched_fee_earner,
+                created_by=imported.matched_fee_earner)
         else:
             imported.status = GranolaImportedNote.STATUS_PENDING
-            imported.error_message = 'No party details found — review and add attendees.'
+            imported.error_message = 'Add attendees / fee earner, then create.'
             imported.save()
         return imported
 
-    # Attendance note: try to auto-resolve the matter from the parsed file number.
+    # Attendance note: file it automatically only when it is a full record —
+    # matter, fee earner and a start+finish window are all present. Anything
+    # missing sends it to the Allocate inbox to be completed.
     matter = None
     if ref.file_number:
         matter = WIP.objects.filter(file_number__iexact=ref.file_number).first()
+    fee_earner = imported.matched_fee_earner
+    has_window = bool(imported.meeting_start and imported.meeting_end)
 
-    if matter:
-        person = imported.matched_fee_earner or matter.fee_earner
+    if matter and fee_earner and has_window:
         create_attendance_note_from_imported(
-            imported, file=matter, person_attended=person,
-            is_charged=ref.is_charged, created_by=imported.matched_fee_earner,
+            imported, file=matter, person_attended=fee_earner,
+            is_charged=ref.is_charged, created_by=fee_earner,
         )
     else:
-        # No matter (or unknown file number) -> central review inbox.
         imported.status = GranolaImportedNote.STATUS_PENDING
+        imported.matched_file = matter
+        imported.error_message = _missing_attendance_fields(
+            matter, fee_earner, has_window)
         imported.save()
     return imported
 

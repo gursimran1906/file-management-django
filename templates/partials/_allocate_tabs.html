@@ -71,6 +71,31 @@ navigation if JS is unavailable.{% endcomment %}
     loadPanel(tab.getAttribute('href'), true);
   });
 
+  // "Add attendee" on the Meetings panel's Free 30 completion form. Delegated on
+  // document because the panel is swapped in via innerHTML (inline <script> in
+  // the swapped partial would not run). Row 0 keeps bare field names; each added
+  // row is namespaced "i_field" so the server reads it as attendee i.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('[data-add-attendee]');
+    if (!btn) return;
+    var form = btn.closest('form');
+    if (!form) return;
+    var rows = form.querySelector('[data-attendee-rows]');
+    var counter = form.querySelector('input[name="number_of_attendees"]');
+    var first = rows && rows.querySelector('.gr-attendee-row');
+    if (!rows || !counter || !first) return;
+    var index = parseInt(counter.value, 10) || rows.querySelectorAll('.gr-attendee-row').length;
+    var clone = first.cloneNode(true);
+    clone.querySelectorAll('[data-field]').forEach(function (el) {
+      el.name = index + '_' + el.getAttribute('data-field');
+      el.value = '';
+    });
+    rows.appendChild(clone);
+    counter.value = index + 1;
+    var focusEl = clone.querySelector('[data-field="name"]');
+    if (focusEl) focusEl.focus();
+  });
+
   // Back/forward should restore the right tab.
   window.addEventListener('popstate', function () { window.location.reload(); });
 })();

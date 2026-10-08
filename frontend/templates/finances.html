@@ -140,7 +140,7 @@
                         <div class="min-w-0 flex-1">
                             <p class="text-sm font-medium text-gray-900 leading-snug">
                                 {% if slip.file_number_from_id == slip.file_number_to_id %}
-                                    C-O TFR
+                                    {% if slip.from_ledger_account == 'C' %}C-O TFR{% else %}O-C TFR{% endif %}
                                 {% else %}
                                     Transfer {{ slip.file_number_from }} → {{ slip.file_number_to }}
                                 {% endif %}

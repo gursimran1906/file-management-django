@@ -98,6 +98,34 @@ def extract_file_ref(text: str) -> FileRef:
     return FileRef(file_number=None, is_charged=True)
 
 
+# --- Fee earner in the note BODY ----------------------------------------------
+#
+# Every note now comes from one shared Granola account, so the note owner no
+# longer tells us who ran the meeting. Fee earners record themselves on a
+# labelled line (best set up as part of the Granola note template):
+#
+#     Fee earner: ABC          -> the 3-letter staff code (CustomUser.username)
+#     Fee Earner: Jane Smith   -> a full name (resolved as a fallback)
+#     Attended by: ABC
+#
+# We only extract the raw token here (this module stays DB-free); the ingest
+# layer resolves it to a ``CustomUser``.
+
+_FEE_EARNER_RE = re.compile(
+    r'(?:fee[\s-]?earner|attended\s+by|\bFE)\s*[:#\-–]\s*'
+    r'([A-Za-z][A-Za-z .\'-]{0,40})',
+    re.IGNORECASE,
+)
+
+
+def parse_fee_earner(text: str) -> str | None:
+    """Return the raw fee-earner token from a note body, or ``None``."""
+    match = _FEE_EARNER_RE.search(text or '')
+    if not match:
+        return None
+    return match.group(1).strip() or None
+
+
 # --- Meeting start / finish times in the note BODY ----------------------------
 #
 # Granola only exposes start/end times via a note's ``calendar_event`` (i.e. when

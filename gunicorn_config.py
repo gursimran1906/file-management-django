@@ -20,6 +20,12 @@ errorlog = os.path.join(LOGS_DIR, 'gunicorn_error.log')
 loglevel = 'info'
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
 
+# Worker timeout (seconds). Gunicorn defaults to 30s, which SIGKILLs a worker
+# mid-request when a large court-bundle PDF build legitimately runs longer,
+# surfacing to the user as a failed download. Give real work more headroom
+# (override with GUNICORN_TIMEOUT if needed).
+timeout = int(os.environ.get('GUNICORN_TIMEOUT', '120'))
+
 # Capture output
 capture_output = True
 enable_stdio_inheritance = True

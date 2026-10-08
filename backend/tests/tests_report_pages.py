@@ -1,6 +1,7 @@
 import csv
 import io
 from datetime import timedelta
+from decimal import Decimal
 
 from django.test import TestCase
 from django.urls import reverse
@@ -12,6 +13,7 @@ from ..models import (
     ClientContactDetails,
     ClientKeyDocument,
     FileStatus,
+    LedgerAccountTransfers,
     MatterType,
     WIP,
 )
@@ -280,3 +282,64 @@ class AmlChecksDueReportTests(TestCase):
         body = '\n'.join(','.join(r) for r in reader[2:])
         self.assertIn('AML0003', body)
         self.assertIn('fea', body)
+
+
+class TransferDirectionTests(TestCase):
+    """Same-matter (intra-file) client<->office transfers must be classified by
+    their actual ledger direction (from_ledger_account/to_ledger_account), not
+    hard-coded as client-to-office. Regression for office-to-client (O-C)
+    transfers being shown and posted as client-to-office (C-O)."""
+
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            username='tfr', email='tfr@example.com', first_name='Tra',
+            last_name='Nsfer', password='password', max_holidays_in_year=20,
+        )
+        self.client.force_login(self.user)
+        self.matter = make_live_matter('TFR0001', make_client('Tfr Client'))
+
+    def _transfer(self, from_ledger, to_ledger, amount='100.00'):
+        return LedgerAccountTransfers.objects.create(
+            file_number_from=self.matter, file_number_to=self.matter,
+            from_ledger_account=from_ledger, to_ledger_account=to_ledger,
+            amount=Decimal(amount), date=timezone.localdate(),
+            description='Test transfer',
+            balance_left_from=Decimal('0.00'), balance_left_to=Decimal('0.00'),
+            is_cashier_co_transfer=True,
+        )
+
+    def test_get_all_financials_classifies_both_directions(self):
+        from ..views import get_all_financials
+        self._transfer('C', 'O')
+        self._transfer('O', 'C')
+        rows = [r for r in get_all_financials('TFR0001')
+                if r['type'] in ('client_to_office_tfr', 'office_to_client_tfr')]
+        by_type = {r['type']: r for r in rows}
+        self.assertIn('client_to_office_tfr', by_type)
+        self.assertIn('office_to_client_tfr', by_type)
+        self.assertEqual(by_type['client_to_office_tfr']['desc'],
+                         'Client to Office Transfer')
+        self.assertEqual(by_type['office_to_client_tfr']['desc'],
+                         'Office to Client Transfer')
+
+    def test_ledger_deltas_reverse_for_office_to_client(self):
+        from ..views import _finance_activity_ledger_deltas
+        amount = Decimal('250.00')
+        co = self._transfer('C', 'O', amount='250.00')
+        oc = self._transfer('O', 'C', amount='250.00')
+        # C-O: client debited, office credited.
+        self.assertEqual(
+            _finance_activity_ledger_deltas('green_slip', 'TFR0001', green_slip=co),
+            (-amount, amount))
+        # O-C: office debited, client credited (previously mis-posted as C-O).
+        self.assertEqual(
+            _finance_activity_ledger_deltas('green_slip', 'TFR0001', green_slip=oc),
+            (amount, -amount))
+
+    def test_finances_page_labels_each_direction(self):
+        self._transfer('C', 'O')
+        self._transfer('O', 'C')
+        resp = self.client.get(reverse('finance_view', args=['TFR0001']))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'C-O TFR')
+        self.assertContains(resp, 'O-C TFR')

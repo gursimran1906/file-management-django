@@ -1,0 +1,25 @@
+{% with flags=risk_assessment.flagged_answers %}
+<div class="rounded-lg border {% if flags %}border-amber-300 bg-amber-50{% else %}border-green-200 bg-green-50{% endif %} p-3 space-y-2">
+    <div class="flex flex-wrap items-center gap-2">
+        <span class="{% if risk_assessment.client_risk_level == 'Low' %}badge-green{% elif risk_assessment.client_risk_level == 'Medium' %}badge-yellow{% else %}badge-red{% endif %}">Client: {{ risk_assessment.client_risk_level }}</span>
+        <span class="{% if risk_assessment.matter_risk_level == 'Low' %}badge-green{% elif risk_assessment.matter_risk_level == 'Medium' %}badge-yellow{% else %}badge-red{% endif %}">Matter: {{ risk_assessment.matter_risk_level }}</span>
+        <span class="badge-gray">{{ risk_assessment.customer_due_diligence_level }} due diligence</span>
+    </div>
+    {% if flags %}
+    <p class="text-sm font-semibold text-amber-900">{{ flags|length }} answer{{ flags|length|pluralize }} flagged for review</p>
+    <ul class="flex flex-wrap gap-1.5">
+        {% for flag in flags %}
+        <li class="rounded bg-white border border-amber-300 px-2 py-0.5 text-xs text-amber-900">{{ flag }}</li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-sm text-green-800">No answers flagged &mdash; all responses are on the low-risk side.</p>
+    {% endif %}
+    {% if risk_assessment.has_high_risk_outcome %}
+    <p class="text-xs text-red-800 bg-red-50 border border-red-200 rounded px-2 py-1">
+        High-risk outcome: enhanced due diligence applies{% if risk_assessment.politically_exposed_person == 'Yes' %} and PEP involvement requires senior management approval{% endif %}.
+        Escalate to the nominated person if not already done{% if risk_assessment.escalated_date %} (escalated {{ risk_assessment.escalated_date|date:"d/m/Y" }}){% endif %}.
+    </p>
+    {% endif %}
+</div>
+{% endwith %}

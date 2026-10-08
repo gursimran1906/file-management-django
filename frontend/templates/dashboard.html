@@ -1,4 +1,4 @@
-{% extends 'base.html' %} {% block title %}Dashboard{% endblock %}
+{% extends 'base.html' %} {% load static %} {% block title %}Dashboard{% endblock %}
 {% block container %} {% load utils humanize %} {% csrf_token %}
 
 <div class="space-y-5">
@@ -219,6 +219,17 @@
   </div>
 </div>
 
+  <!-- My time (staff timeline) -->
+  <div class="div-container" data-tl-root data-tl-host="{% url 'user_dashboard' %}" data-tl-panel-url="{% url 'staff_timeline_panel' %}" data-tl-user="{{ tl_subject.id }}">
+    <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between mb-3 pb-3 border-b border-gray-100">
+      <div>
+        <h3 class="text-base font-semibold text-gray-900">My time</h3>
+        <p class="text-xs text-gray-500 mt-0.5">Work recorded against you: attendance notes, emails, letters, meetings and completed tasks</p>
+      </div>
+    </div>
+    {% include 'partials/_staff_timeline_panel.html' %}
+  </div>
+
   <!-- Recent files & emails -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <div class="div-container flex flex-col max-h-[28rem] !overflow-hidden">
@@ -334,6 +345,44 @@
           </label>
         </div>
       </div>
+      {% if risk_assessments_awaiting_signoff %}
+      <div class="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 shrink-0 max-h-96 overflow-y-auto">
+        <p class="text-sm font-semibold text-amber-900 mb-1">Awaiting sign-off ({{ risk_assessments_awaiting_signoff|length }})</p>
+        <ul class="space-y-1">
+          {% for ra in risk_assessments_awaiting_signoff %}
+          <li class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-amber-900">
+            <a class="link font-medium" href="{% url 'home' ra.matter.file_number %}">{{ ra.matter.file_number }}</a>
+            {% if ra.signoff_status == 'returned' %}
+            <span class="badge-red">Returned &mdash; with completer</span>
+            {% elif ra.yours_to_sign_off %}
+            <span class="badge-yellow">Yours to sign off</span>
+            {% endif %}
+            <span>{% if ra.completed_by %}{{ ra.completed_by.first_name }} {{ ra.completed_by.last_name }}{% endif %} · {% if ra.completed_at %}{{ ra.completed_at|date:"d/m/Y" }}{% else %}{{ ra.timestamp|date:"d/m/Y" }}{% endif %}</span>
+            <span>{{ ra.flagged_answers|length }} flag{{ ra.flagged_answers|length|pluralize }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if ongoing_monitorings_awaiting_signoff %}
+      <div class="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 shrink-0 max-h-96 overflow-y-auto">
+        <p class="text-sm font-semibold text-amber-900 mb-1">Ongoing monitoring awaiting sign-off ({{ ongoing_monitorings_awaiting_signoff|length }})</p>
+        <ul class="space-y-1">
+          {% for om in ongoing_monitorings_awaiting_signoff %}
+          <li class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-amber-900">
+            <a class="link font-medium" href="{% url 'home' om.file_number.file_number %}">{{ om.file_number.file_number }}</a>
+            {% if om.signoff_status == 'returned' %}
+            <span class="badge-red">Returned &mdash; with completer</span>
+            {% elif om.yours_to_sign_off %}
+            <span class="badge-yellow">Yours to sign off</span>
+            {% endif %}
+            <span>{% if om.completed_by %}{{ om.completed_by.first_name }} {{ om.completed_by.last_name }}{% endif %} · {% if om.completed_at %}{{ om.completed_at|date:"d/m/Y" }}{% else %}{{ om.timestamp|date:"d/m/Y" }}{% endif %}</span>
+            <span>{% with n=om.flagged_answers|length %}{% if n %}{{ n }} to check{% else %}nothing flagged{% endif %}{% endwith %}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
       <p id="risk-loading-state" class="hidden text-xs text-gray-500 mb-2">Updating…</p>
       <ul id="risk-assessments-list" class="overflow-y-auto flex-1 min-h-0 -mx-1 px-1">
         {% for file in risk_assessments_due_files %}
@@ -1302,7 +1351,7 @@
                     <p class="text-xs text-gray-600 mb-1 leading-snug">${taskText}</p>
                     ${metaLine}
                     <div class="flex justify-between items-center pt-1.5 border-t border-gray-100 gap-2">
-                        <span class="text-[11px] text-gray-500">${getDateStatus(task.date)}</span>
+                        <span class="text-[11px] text-gray-500">${status === 'completed' ? (task.date ? 'Completed ' + formatDate(task.date) : '') : getDateStatus(task.date)}</span>
                         <div class="flex items-center gap-2 shrink-0">
                             ${editHtml}
                             ${status === 'admin_pool' ? getClaimButton() : getStatusButtons(status)}
@@ -1545,5 +1594,6 @@
         }
     });
   </script>
+  <script src="{% static 'js/staff-timeline.js' %}"></script>
 </div>
 {% endblock %}

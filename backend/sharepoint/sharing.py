@@ -19,29 +19,33 @@ class SharePointSharingError(Exception):
 
 
 def assert_bundle_final_pdf_path(bundle, storage_path):
-    """Ensure a storage path refers only to this bundle's final PDF."""
+    """Ensure a storage path is one of this bundle's final PDFs.
+
+    Accepts both the legacy overwrite path (BundleFinal/{fn}/{uuid}.pdf) and the
+    versioned path (BundleFinal/{fn}/{uuid}/v{n}.pdf). Ownership is enforced by
+    the bundle uuid so a link can only ever point at this bundle's own rendered
+    PDFs — never source documents, other libraries, or another bundle.
+    """
     if not storage_path:
         raise SharePointSharingError('Bundle has no final PDF to share.')
 
     normalized = normalize_storage_path(storage_path)
-    if not normalized.startswith('BundleFinal/'):
+    if not normalized.startswith('BundleFinal/') or not normalized.endswith('.pdf'):
         raise SharePointSharingError(
             'Sharing is restricted to the bundle final PDF only.'
         )
 
     parts = normalized.split('/')
-    if len(parts) != 3 or not normalized.endswith('.pdf'):
+    if len(parts) == 3:
+        # Legacy overwrite path: BundleFinal/{file_number}/{uuid}.pdf
+        if str(bundle.uuid) not in parts[-1]:
+            raise SharePointSharingError('Storage path does not match this bundle.')
+    elif len(parts) == 4:
+        # Versioned path: BundleFinal/{file_number}/{uuid}/v{n}.pdf
+        if parts[-2] != str(bundle.uuid) or not parts[-1].startswith('v'):
+            raise SharePointSharingError('Storage path does not match this bundle.')
+    else:
         raise SharePointSharingError('Invalid bundle final PDF storage path.')
-
-    if str(bundle.uuid) not in parts[-1]:
-        raise SharePointSharingError('Storage path does not match this bundle.')
-
-    if not bundle.final_pdf or not bundle.final_pdf.name:
-        raise SharePointSharingError('Bundle has no final PDF to share.')
-
-    expected = normalize_storage_path(bundle.final_pdf.name)
-    if normalized != expected:
-        raise SharePointSharingError('Storage path does not match this bundle final PDF.')
 
 
 def bundle_final_pdf_storage_path(bundle):
@@ -50,6 +54,30 @@ def bundle_final_pdf_storage_path(bundle):
     path = normalize_storage_path(bundle.final_pdf.name)
     assert_bundle_final_pdf_path(bundle, path)
     return path
+
+
+def bundle_version_storage_path(version):
+    """Storage path for a specific immutable version's PDF."""
+    if not version.final_pdf or not version.final_pdf.name:
+        raise SharePointSharingError('This version has no PDF to share.')
+    path = normalize_storage_path(version.final_pdf.name)
+    assert_bundle_final_pdf_path(version.bundle, path)
+    return path
+
+
+def _resolve_share_target(bundle, version=None):
+    """Return (version_or_None, storage_path) for the file a link should target.
+
+    Defaults to the bundle's current (promoted) version. Falls back to the
+    denormalised ``final_pdf`` for bundles that predate versioning.
+    """
+    if version is None:
+        version = bundle.current_version
+    if version is not None:
+        return version, bundle_version_storage_path(version)
+    if bundle.final_pdf and bundle.final_pdf.name:
+        return None, bundle_final_pdf_storage_path(bundle)
+    raise SharePointSharingError('Bundle has no generated version to share.')
 
 
 def _parse_graph_datetime(value):
@@ -67,6 +95,8 @@ def _serialize_share_link(link):
         'url': link.url,
         'password': link.password or '',
         'use_password': link.use_password,
+        'version': link.version.version if link.version_id else None,
+        'version_id': link.version_id,
         'expires_at': link.expires_at.isoformat() if link.expires_at else '',
         'created_at': link.created_at.isoformat() if link.created_at else '',
         'revoked_at': link.revoked_at.isoformat() if link.revoked_at else '',
@@ -81,7 +111,10 @@ def _revoke_share_link_record(link, *, save=True):
 
     if settings.USE_SHAREPOINT and link.permission_id:
         try:
-            storage_path = bundle_final_pdf_storage_path(link.bundle)
+            if link.version_id:
+                storage_path = bundle_version_storage_path(link.version)
+            else:
+                storage_path = bundle_final_pdf_storage_path(link.bundle)
             client = get_sharepoint_client()
             resolved_path = resolve_storage_path(storage_path, client=client)
             client.revoke_permission(resolved_path, link.permission_id)
@@ -142,14 +175,20 @@ def _graph_error_detail(exc):
     )
 
 
-def create_bundle_share_link(bundle, *, use_password=None, created_by=None):
-    """Create a view-only Microsoft share link for this bundle's final PDF."""
+def create_bundle_share_link(bundle, *, version=None, use_password=None,
+                             created_by=None):
+    """Create a view-only Microsoft share link for a bundle version's PDF.
+
+    Defaults to the bundle's current (promoted) version; pass ``version`` to
+    share a specific one. The link is bound to that immutable version so it keeps
+    resolving after the bundle is regenerated.
+    """
     if not settings.USE_SHAREPOINT:
         raise SharePointSharingError(
             'SharePoint storage must be enabled to create external links.'
         )
 
-    storage_path = bundle_final_pdf_storage_path(bundle)
+    version, storage_path = _resolve_share_target(bundle, version)
     client = get_sharepoint_client()
     resolved_path = resolve_storage_path(storage_path, client=client)
 
@@ -209,6 +248,7 @@ def create_bundle_share_link(bundle, *, use_password=None, created_by=None):
     graph_expires_at = _parse_graph_datetime(link_data.get('expiration_datetime'))
     share_link = BundleShareLink.objects.create(
         bundle=bundle,
+        version=version,
         url=web_url,
         permission_id=permission_id,
         password=password or '',
@@ -225,12 +265,44 @@ def create_bundle_share_link(bundle, *, use_password=None, created_by=None):
     }
 
 
+def _serialize_bundle_version(version, current_id, links):
+    active_links = [link for link in links if link.is_active()]
+    return {
+        'id': version.id,
+        'version': version.version,
+        'is_current': version.id == current_id,
+        'pdf_generated_at': (
+            version.pdf_generated_at.isoformat()
+            if version.pdf_generated_at else ''
+        ),
+        'created_at': version.created_at.isoformat() if version.created_at else '',
+        'created_by': version.created_by.username if version.created_by_id else '',
+        'page_count': version.page_count,
+        'size_bytes': version.size_bytes,
+        'document_count': version.document_count,
+        'label': version.label,
+        'pinned': version.pinned,
+        'active_link_count': len(active_links),
+        'links': [_serialize_share_link(link) for link in links],
+    }
+
+
 def bundle_share_link_status(bundle):
-    """Return share-link metadata for API/UI consumption."""
-    links = [
-        _serialize_share_link(link)
-        for link in bundle.share_links.all()
+    """Return share-link + version metadata for API/UI consumption."""
+    all_links = list(bundle.share_links.select_related('version').all())
+    links = [_serialize_share_link(link) for link in all_links]
+
+    links_by_version = {}
+    for link in all_links:
+        links_by_version.setdefault(link.version_id, []).append(link)
+
+    current_id = bundle.current_version_id
+    versions = [
+        _serialize_bundle_version(
+            version, current_id, links_by_version.get(version.id, []))
+        for version in bundle.versions.all()
     ]
+
     stale = bool(
         bundle.final_pdf
         and not bundle.pdf_is_current()
@@ -239,6 +311,8 @@ def bundle_share_link_status(bundle):
 
     return {
         'links': links,
+        'versions': versions,
+        'current_version_id': current_id,
         'stale': stale,
         'sharepoint_enabled': settings.USE_SHAREPOINT,
         'link_scope': getattr(settings, 'BUNDLE_SHARE_LINK_SCOPE', 'anonymous'),

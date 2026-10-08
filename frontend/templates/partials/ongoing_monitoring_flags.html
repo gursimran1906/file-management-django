@@ -1,0 +1,25 @@
+{% with flags=ongoing_monitoring.flagged_answers answers=ongoing_monitoring.review_answers %}
+<div class="rounded-lg border {% if flags %}border-amber-300 bg-amber-50{% else %}border-green-200 bg-green-50{% endif %} p-3 space-y-2">
+    <div class="flex flex-wrap items-center gap-2">
+        <span class="{% if ongoing_monitoring.updated_risk_level_client == 'Low' %}badge-green{% elif ongoing_monitoring.updated_risk_level_client == 'Medium' %}badge-yellow{% else %}badge-red{% endif %}">Client: {{ ongoing_monitoring.updated_risk_level_client }}</span>
+        <span class="{% if ongoing_monitoring.updated_risk_level_matter == 'Low' %}badge-green{% elif ongoing_monitoring.updated_risk_level_matter == 'Medium' %}badge-yellow{% else %}badge-red{% endif %}">Matter: {{ ongoing_monitoring.updated_risk_level_matter }}</span>
+        <span class="badge-gray">Monitored {{ ongoing_monitoring.date_due_diligence_conducted|date:"d/m/Y" }}</span>
+    </div>
+    <p class="text-sm font-semibold {% if flags %}text-amber-900{% else %}text-green-800{% endif %}">
+        Review every answer{% if flags %} &mdash; {{ flags|length }} need{{ flags|length|pluralize:"s," }} particular attention{% endif %}
+    </p>
+    <dl class="space-y-1.5">
+        {% for answer in answers %}
+        <div class="rounded border px-2 py-1.5 text-xs {% if answer.risky %}border-amber-300 bg-white text-amber-900{% else %}border-gray-200 bg-white text-gray-700{% endif %}">
+            <dt class="font-medium">{{ answer.label }}{% if answer.risky %} <span class="badge-yellow ml-1">Check</span>{% endif %}</dt>
+            <dd class="mt-0.5 whitespace-pre-line">{{ answer.value|default:"&mdash;" }}</dd>
+        </div>
+        {% endfor %}
+    </dl>
+    {% if ongoing_monitoring.has_high_risk_outcome %}
+    <p class="text-xs text-red-800 bg-red-50 border border-red-200 rounded px-2 py-1">
+        High-risk outcome: enhanced due diligence applies. Escalate to the nominated person if not already done.
+    </p>
+    {% endif %}
+</div>
+{% endwith %}

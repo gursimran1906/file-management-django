@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% block title %}Compliance stats{% endblock %}
+{% block container_class %}container {% endblock %}
+{% block container %}
+<div class="space-y-5">
+    <div class="div-container py-3">
+        <a href="{% url 'reports_hub' %}" class="text-xs text-gray-500 hover:text-gray-900">&larr; Reports</a>
+        <h1 class="text-2xl font-semibold text-gray-900 mt-1">Compliance stats</h1>
+        <p class="text-sm text-gray-600 mt-1">
+            Green is done, red is not done. Live matters are those with status Open or To Be Closed;
+            the file closure checks look at archived files. Click any red number for the list behind it.
+        </p>
+        <p class="text-xs text-gray-500 mt-1 tabular-nums">
+            As at {{ generated|date:"d/m/Y" }} &middot; {{ live_matter_count }} live matter{{ live_matter_count|pluralize }}
+            &middot; {{ live_client_count }} client{{ live_client_count|pluralize }} on live matters
+            &middot; {{ archived_matter_count }} archived file{{ archived_matter_count|pluralize }}
+        </p>
+    </div>
+
+    {% for group in groups %}
+    <div class="div-container" id="group-{{ group.key }}">
+        <div class="mb-3 pb-3 border-b border-gray-100">
+            <h2 class="text-lg font-semibold text-gray-900">{{ group.title }}</h2>
+            <p class="text-xs text-gray-500 mt-0.5">{{ group.description }} <span class="text-gray-400">Of {{ group.scope_line }}.</span></p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            {% for metric in group.metrics %}
+            <div class="rounded-lg border border-gray-100 bg-gray-50 p-3 flex items-center gap-3" data-metric="{{ metric.key }}" title="{{ metric.help }}">
+                {% include 'partials/_compliance_donut.html' with metric=metric %}
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-gray-900 leading-snug">{{ metric.label }}</p>
+                    {% if metric.na %}
+                    <p class="text-xs text-gray-400 mt-0.5">Nothing to count</p>
+                    {% else %}
+                    <p class="text-xs mt-0.5 tabular-nums">
+                        <span class="text-green-700 font-medium">{{ metric.done }} done</span><span class="text-gray-400"> &middot; </span>{% if metric.not_done %}<a href="{{ metric.detail_url }}" class="text-red-700 font-medium hover:underline">{{ metric.not_done }} not done</a>{% else %}<span class="text-gray-400">0 not done</span>{% endif %}<span class="text-gray-400"> of {{ metric.total }}</span>
+                    </p>
+                    {% if metric.reasons %}
+                    <p class="text-[11px] text-gray-500 mt-0.5 tabular-nums">
+                        {% for r in metric.reasons %}<a href="{{ r.url }}" class="text-red-700 hover:underline">{{ r.count }} {{ r.label }}</a>{% if not forloop.last %} &middot; {% endif %}{% endfor %}
+                    </p>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if group.fee_earner_rows %}
+        <div class="mt-4 overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="py-2 px-2 text-left text-xs font-medium text-gray-600 whitespace-nowrap sticky left-0 bg-white">Fee earner</th>
+                        {% for metric in group.metrics %}
+                        <th class="py-2 px-2 text-left text-xs font-medium text-gray-600 whitespace-nowrap" title="{{ metric.label }}">{{ metric.short_label }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in group.fee_earner_rows %}
+                    <tr class="border-b border-gray-100" data-fee-earner="{{ row.code }}">
+                        <td class="py-2 px-2 whitespace-nowrap sticky left-0 bg-white">
+                            <span class="font-medium text-gray-900">{{ row.code }}</span>
+                            <span class="text-xs text-gray-500">{{ row.name }}</span>
+                        </td>
+                        {% for cell in row.cells %}
+                        <td class="py-2 px-2 whitespace-nowrap tabular-nums align-top">
+                            {% if cell.na %}
+                            <span class="text-gray-400">n/a</span>
+                            {% elif cell.ok %}
+                            <span class="text-green-700 font-medium">{{ cell.done }}/{{ cell.total }}</span>
+                            <span class="text-xs text-green-700">100%</span>
+                            {% else %}
+                            <span class="text-red-700 font-medium">{{ cell.done }}/{{ cell.total }}</span>
+                            <span class="text-xs text-red-700">{{ cell.pct }}%</span>
+                            <a href="{{ cell.detail_url }}" class="block text-xs text-red-700 hover:underline">{{ cell.not_done }} outstanding</a>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if group.footnote %}
+        <p class="text-[11px] text-gray-400 mt-2">{{ group.footnote }}</p>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="div-container">
+        <h2 class="text-sm font-semibold text-gray-900">Not tracked in this system</h2>
+        <p class="text-xs text-gray-500 mt-0.5">A page of green does not cover these areas the SRA also expects; they are kept elsewhere or not yet recorded.</p>
+        <ul class="mt-2 text-xs text-gray-600 list-disc pl-4 space-y-0.5">
+            {% for item in not_tracked %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}

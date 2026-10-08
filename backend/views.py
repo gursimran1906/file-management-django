@@ -12,7 +12,7 @@ from django.db.models.functions import Cast, Coalesce, Greatest, Concat
 from .models import WIP, Memo, NextWork, LastWork, MatterKeyDate, FileStatus, FileLocation, MatterType, PricingItem, ClientContactDetails, ClientKeyDocument, AuthorisedParties, MatterClient, MatterClientDocument, ConveyancingDetails
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
-from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, MatterFileReview
+from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, BundleVersion, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
 from .forms import PmtsForm, PmtsHalfForm, PmtsSlipEditForm, GreenSlipEditForm, apply_pmts_slip_edit_locks, apply_green_slip_edit_locks, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm
@@ -39,6 +39,8 @@ from .finance_display import build_invoice_finance_detail, compute_invoice_balan
 from .audit_display import build_change_items, enrich_file_logs
 from .onboarding_views import link_group_to_matter
 from .matter_compliance import matter_compliance, ensure_matter_clients
+from .fee_earners import responsible_user_ids, responsible_user_ids_for_id, responsible_username
+from .staff_timeline import build_timeline, parse_timeline_params
 from django.utils import timezone
 from users.models import CPDTrainingLog, CustomUser, HolidayRecord, SicknessRecord
 from django.contrib import messages
@@ -71,12 +73,13 @@ from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, Http404
 from django.conf import settings
 from django.utils.dateparse import parse_date
+import hashlib
 import os
 import PyPDF2
 import zipfile
 from io import BytesIO
 from django.core.files.storage import default_storage
-from django.core.files.base import ContentFile, File
+from django.core.files.base import ContentFile
 from backend.sharepoint.bundle_cache import BundleTempCache
 from backend.sharepoint.sharing import (
     SharePointSharingError,
@@ -101,6 +104,41 @@ def manager_required(view_func):
                 'This report is restricted to managers.')
         return view_func(request, *args, **kwargs)
     return _wrapped
+
+
+def _timeline_subject(request, default_user):
+    """Who a staff-timeline request is about.
+
+    Without ``tl_user`` it is the default (normally the requester). Managers
+    may name anyone; anyone else naming another user gets a 403, matching
+    the other per-user APIs.
+    """
+    raw = (request.GET.get('tl_user') or '').strip()
+    if not raw:
+        return default_user
+    try:
+        user_id = int(raw)
+    except ValueError:
+        raise Http404('Unknown user')
+    if user_id != request.user.id and not request.user.is_manager:
+        raise PermissionDenied('You can only view your own timeline.')
+    return get_object_or_404(CustomUser, pk=user_id)
+
+
+def _timeline_context(request, subject, host_url):
+    """Template context for the staff timeline panel embedded in ``host_url``."""
+    view, anchor, kinds = parse_timeline_params(request.GET)
+    timeline = build_timeline(
+        subject, view, anchor, kinds,
+        user_id_for_links=subject.id if request.user.is_manager else None,
+    )
+    return {
+        'tl': timeline,
+        'tl_subject': subject,
+        'tl_host_url': host_url,
+        'tl_show_value': bool(request.user.is_manager),
+        'tl_anchor_iso': anchor.isoformat(),
+    }
 
 
 def coerce_json_dict(value):
@@ -499,7 +537,7 @@ def get_user_dashboard_wip_ids(user):
         touch(row['file_number'], row['latest'])
 
     fee_earner_ids = WIP.objects.filter(
-        fee_earner=user,
+        fee_earner_id__in=responsible_user_ids(user),
         file_status__status__in=['Open', 'To Be Closed'],
     ).values_list('id', flat=True)
 
@@ -533,7 +571,7 @@ def build_dashboard_files(user, display_limit=40):
     all_wip_ids = {wip.id for wip in all_wips}
     fee_earner_wip_ids = set(
         WIP.objects.filter(
-            fee_earner=user,
+            fee_earner_id__in=responsible_user_ids(user),
             file_status__status__in=['Open', 'To Be Closed'],
         ).values_list('id', flat=True)
     )
@@ -911,7 +949,7 @@ def get_index_search_filter(search_by, val_to_search, show_archived):
             additional_clients__name__icontains=val_to_search
         )
     elif search_by == 'FeeEarner':
-        if val_to_search == "DC":
+        if val_to_search.strip().lower() in ('unassigned', 'none', 'no fee earner'):
             filter_factor &= Q(fee_earner=None)
         else:
             filter_factor &= Q(fee_earner__username__icontains=val_to_search)
@@ -1168,6 +1206,41 @@ def user_dashboard(request):
         )
     ).filter(is_read=False).exists()
 
+    risk_assessments_awaiting_signoff = []
+    if user.is_matter_fee_earner:
+        risk_assessments_awaiting_signoff = list(
+            RiskAssessment.objects.filter(
+                signoff_status__in=[
+                    RiskAssessment.SIGNOFF_AWAITING,
+                    RiskAssessment.SIGNOFF_RETURNED,
+                ],
+                matter__isnull=False,
+            ).select_related('matter', 'matter__fee_earner', 'completed_by')
+            .order_by('-timestamp')
+        )
+        # The matter's responsible fee earner sees theirs first; others can cover.
+        for ra in risk_assessments_awaiting_signoff:
+            ra.yours_to_sign_off = _signoff_owner_id(ra.matter) == user.id
+        risk_assessments_awaiting_signoff.sort(
+            key=lambda ra: 0 if ra.yours_to_sign_off else 1)
+
+    ongoing_monitorings_awaiting_signoff = []
+    if user.is_matter_fee_earner:
+        ongoing_monitorings_awaiting_signoff = list(
+            OngoingMonitoring.objects.filter(
+                signoff_status__in=[
+                    OngoingMonitoring.SIGNOFF_AWAITING,
+                    OngoingMonitoring.SIGNOFF_RETURNED,
+                ],
+                file_number__isnull=False,
+            ).select_related('file_number', 'file_number__fee_earner', 'completed_by')
+            .order_by('-timestamp')
+        )
+        for om in ongoing_monitorings_awaiting_signoff:
+            om.yours_to_sign_off = _signoff_owner_id(om.file_number) == user.id
+        ongoing_monitorings_awaiting_signoff.sort(
+            key=lambda om: 0 if om.yours_to_sign_off else 1)
+
     context = {
         'now': now,
         'user_next_works': user_next_works,
@@ -1187,7 +1260,11 @@ def user_dashboard(request):
         'key_doc_scope': validated_key_doc_scope,
         'file_reviews_due_files': file_reviews_due,
         'pending_credit_notes': pending_credit_notes,
+        'risk_assessments_awaiting_signoff': risk_assessments_awaiting_signoff,
+        'ongoing_monitorings_awaiting_signoff': ongoing_monitorings_awaiting_signoff,
     }
+    # "My time" card: always the logged-in user, whatever tl_user says.
+    context.update(_timeline_context(request, user, reverse('user_dashboard')))
 
     return render(request, 'dashboard.html', context)
 
@@ -1235,7 +1312,6 @@ def update_task_status(request):
                 file_number=task.file_number,
                 person=task.person,
                 task=task.task,
-                date=task.date,
             ).order_by('-timestamp').first()
             serialized = serialize_kanban_task(
                 completed_entry or task, request.user, is_completed=True)
@@ -1780,7 +1856,7 @@ def display_data_home_page(request, file_number):
         last_work_form = LastWorkFormWithoutFileNumber()
         ongoing_monitorings = OngoingMonitoring.objects.filter(
             file_number=matter.id).select_related(
-            'signed_by', 'created_by').order_by('-timestamp')
+            'signed_by', 'created_by', 'completed_by', 'signed_off_by').order_by('-timestamp')
         risk_assessment = RiskAssessment.objects.filter(
             matter=matter
         ).select_related('due_diligence_signed_by').order_by('-due_diligence_date')
@@ -2089,7 +2165,8 @@ def _build_central_key_dates_context(request):
     ).prefetch_related('additional_clients')
 
     if selected_fee_earner:
-        base_matters = base_matters.filter(fee_earner_id=selected_fee_earner)
+        base_matters = base_matters.filter(
+            fee_earner_id__in=responsible_user_ids_for_id(selected_fee_earner))
     if selected_matter_type:
         base_matters = base_matters.filter(matter_type_id=selected_matter_type)
     if selected_file_status and selected_file_status != 'all':
@@ -2457,7 +2534,7 @@ def _key_date_event_row(event):
         file_number = matter.file_number
         matter_description = matter.matter_description or ''
         client = ' / '.join(c.name for c in matter.all_clients)
-        fee_earner = str(matter.fee_earner or '')
+        fee_earner = str(matter.responsible_fee_earner or '')
 
     return [
         event['date'].isoformat(),
@@ -3191,7 +3268,7 @@ def update_checkbox_values(data, *fields):
 def get_aml_checks_due_from_wips(wips, threshold_date, user=None, sort_by='date'):
     base_filter = Q(file_status__status='Open')
     if user is not None:
-        base_filter &= Q(fee_earner=user)
+        base_filter &= Q(fee_earner_id__in=responsible_user_ids(user))
 
     relation_configs = [
         ('client1', 'Client', 'edit_client'),
@@ -3234,7 +3311,7 @@ def get_aml_checks_due_from_wips(wips, threshold_date, user=None, sort_by='date'
             file_number = result['file_number']
             if file_number and file_number not in entry['file_numbers']:
                 entry['file_numbers'].append(file_number)
-            fee_earner = result['fee_earner__username']
+            fee_earner = responsible_username(result['fee_earner__username'])
             if fee_earner and fee_earner not in entry['fee_earners']:
                 entry['fee_earners'].append(fee_earner)
 
@@ -3265,13 +3342,58 @@ def get_standard_data():
     return form_data
 
 
+class FileOpeningError(Exception):
+    """Raised to unwind the open-file transaction when the matter can't be saved.
+
+    Carries no message of its own — the caller has already queued the user
+    facing errors; this only exists to roll the transaction back."""
+
+
+def _open_file_error_context(request, form_data):
+    """Re-render context for a failed open-file POST.
+
+    Binds the form to the untouched POST rather than the working copy: by the
+    time we get here the copy holds ids of contact records the rollback has
+    just removed, whereas the raw POST still holds what the user actually
+    typed."""
+    return {
+        'form_data': form_data,
+        'form': OpenFileForm(request.POST),
+        # The client picker is rendered from this rather than the form field.
+        'client1': request.POST.get('client1'),
+        'onboarding_group_id': request.POST.get('onboarding_group_id', ''),
+    }
+
+
 @login_required
 def open_new_file_page(request):
     form_data = get_standard_data()
 
-    if request.method == 'POST':
-        request_post_copy = preprocess_form_data(request.POST)
-        try:
+    if request.method != 'POST':
+        # The open-file form is only the final step of onboarding. If we didn't
+        # arrive here from a conversion (no prefill in session), send the user
+        # to onboarding — every new file is opened through it.
+        prefill = request.session.pop('onboarding_prefill', None)
+        if not prefill:
+            messages.info(
+                request, 'Open a new file by starting client onboarding first.')
+            return redirect('onboarding_list')
+        return render(request, 'open_file.html', {
+            'form_data': form_data,
+            'client1': str(prefill.get('client1') or '0'),
+            'prefill_additional_client_ids': prefill.get('additional') or [],
+            'onboarding_group_id': prefill.get('group_id'),
+        })
+
+    request_post_copy = preprocess_form_data(request.POST)
+    form = None
+    try:
+        # Opening a file also creates the client / authorised party / other
+        # side records the matter points at. Keep the whole sequence in one
+        # transaction: if anything later fails, those contacts must go with it,
+        # otherwise every retry leaves another duplicate contact behind for
+        # staff to pick from.
+        with transaction.atomic():
             if request_post_copy['client1'] == '-1':
                 request_post_copy['client1'] = add_new_client(
                     request_post_copy, 1, request.user)
@@ -3299,44 +3421,119 @@ def open_new_file_page(request):
             request_post_copy['created_by'] = request.user
 
             form = OpenFileForm(request_post_copy)
-            if form.is_valid():
-                instance = form.save()
-                instance.additional_clients.set(additional_client_ids)
-                # Link back to an onboarding group when opened from a conversion.
-                link_group_to_matter(request, instance)
-                messages.success(request, 'File opened successfully.')
-                return redirect('index')
-            else:
-                # Add error messages to be displayed in the template
-                for field, errors in form.errors.items():
-                    for error in errors:
-                        messages.error(
-                            request, f"{form[field].label}: {error}")
-                return render(request, 'open_file.html', {
-                    'form_data': form_data, 'form': form,
-                    'onboarding_group_id': request.POST.get('onboarding_group_id', '')})
+            if not form.is_valid():
+                # Roll the new contacts back with the failed matter.
+                raise FileOpeningError()
 
-        except Exception as e:
-            messages.error(request, f"Error during file opening: {str(e)}")
-            return render(request, 'open_file.html', {
-                'form_data': form_data,
-                'onboarding_group_id': request.POST.get('onboarding_group_id', '')})
-    else:
-        # The open-file form is now only the final step of onboarding. If we
-        # didn't arrive here from a conversion (no prefill in session), send the
-        # user to onboarding — every new file is opened through it.
-        prefill = request.session.pop('onboarding_prefill', None)
-        if not prefill:
-            messages.info(
-                request, 'Open a new file by starting client onboarding first.')
-            return redirect('onboarding_list')
-        context = {
-            'form_data': form_data,
-            'client1': str(prefill.get('client1') or '0'),
-            'prefill_additional_client_ids': prefill.get('additional') or [],
-            'onboarding_group_id': prefill.get('group_id'),
-        }
-        return render(request, 'open_file.html', context)
+            instance = form.save()
+            instance.additional_clients.set(additional_client_ids)
+
+    except FileOpeningError:
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(request, f"{form[field].label}: {error}")
+        return render(request, 'open_file.html', _open_file_error_context(request, form_data))
+
+    except Exception:
+        # Don't leave staff staring at a form that silently refused to save —
+        # record the real cause so it can be diagnosed from the logs.
+        logger.exception(
+            'Failed to open new file (user=%s, file_number=%s)',
+            request.user, request.POST.get('file_number'))
+        messages.error(
+            request,
+            'Something went wrong opening this file and nothing was saved. '
+            'Please check the details and try again — if it keeps happening, '
+            'report it with the file number you used.')
+        return render(request, 'open_file.html', _open_file_error_context(request, form_data))
+
+    # Link back to the onboarding case when opened from a conversion. This talks
+    # to the portal, so it runs after the matter is committed: a portal hiccup
+    # can't undo the file, and the transaction isn't held open across the call.
+    try:
+        link_group_to_matter(request, instance)
+    except Exception:  # noqa: BLE001 - the file is open; don't lose it over the link
+        logger.exception('Opened %s but could not link it to its onboarding case',
+                         instance.file_number)
+        messages.warning(
+            request, 'File opened, but it could not be linked back to its '
+            'onboarding case. Open the case and check it.')
+
+    messages.success(request, 'File opened successfully.')
+    return redirect('index')
+
+
+def _apply_risk_assessment_signoff(risk_assessment, user):
+    """Mark an assessment as signed off by `user` (a fee earner)."""
+    risk_assessment.signoff_status = RiskAssessment.SIGNOFF_SIGNED
+    risk_assessment.signed_off_by = user
+    risk_assessment.signed_off_at = timezone.now()
+    # Keep the legacy signer field in step so existing displays and the
+    # download template keep working for old and new records alike.
+    risk_assessment.due_diligence_signed_by = user
+    risk_assessment.signoff_comments = ''
+
+
+def _apply_risk_assessment_completion(risk_assessment, user):
+    """Record who completed the form; auto-sign when a fee earner did.
+
+    Returns the flash message to show. Fee earners completing their own
+    assessment see a one-step flow; anyone else sends it for sign-off.
+    """
+    risk_assessment.completed_by = user
+    risk_assessment.completed_at = timezone.now()
+    if user.is_matter_fee_earner:
+        _apply_risk_assessment_signoff(risk_assessment, user)
+        return 'Risk Assessment saved and signed off.'
+    risk_assessment.signoff_status = RiskAssessment.SIGNOFF_AWAITING
+    risk_assessment.signed_off_by = None
+    risk_assessment.signed_off_at = None
+    fee_earner = risk_assessment.matter.responsible_fee_earner if risk_assessment.matter else None
+    if fee_earner:
+        return (
+            'Risk Assessment saved and sent to '
+            f'{fee_earner.first_name} {fee_earner.last_name} for sign-off.'
+        )
+    return 'Risk Assessment saved and awaiting fee earner sign-off.'
+
+
+def _signoff_owner_id(matter):
+    """Id of the person expected to sign off work on `matter` (DC files -> ND)."""
+    return matter.responsible_fee_earner_id if matter else None
+
+
+def _apply_ongoing_monitoring_signoff(monitoring, user):
+    """Mark an ongoing monitoring record as signed off by `user` (a fee earner)."""
+    monitoring.signoff_status = OngoingMonitoring.SIGNOFF_SIGNED
+    monitoring.signed_off_by = user
+    monitoring.signed_off_at = timezone.now()
+    # Keep the legacy signer field in step so existing displays and the
+    # download template keep working for old and new records alike.
+    monitoring.signed_by = user
+    monitoring.signoff_comments = ''
+
+
+def _apply_ongoing_monitoring_completion(monitoring, user):
+    """Record who completed the form; auto-sign when a fee earner did.
+
+    Returns the flash message to show. Fee earners recording monitoring see a
+    one-step flow; anyone else sends it to the matter's fee earner for sign-off.
+    """
+    monitoring.completed_by = user
+    monitoring.completed_at = timezone.now()
+    if user.is_matter_fee_earner:
+        _apply_ongoing_monitoring_signoff(monitoring, user)
+        return 'Ongoing monitoring saved and signed off.'
+    monitoring.signoff_status = OngoingMonitoring.SIGNOFF_AWAITING
+    monitoring.signed_off_by = None
+    monitoring.signed_off_at = None
+    fee_earner = monitoring.file_number.responsible_fee_earner if monitoring.file_number else None
+    if fee_earner:
+        return (
+            'Ongoing monitoring saved and sent to '
+            f'{fee_earner.first_name} {fee_earner.last_name} for sign-off.'
+        )
+    return 'Ongoing monitoring saved and awaiting fee earner sign-off.'
 
 
 @login_required
@@ -3353,13 +3550,16 @@ def add_risk_assessment(request, file_number):
         form = RiskAssessmentForm(post_data)
 
         if form.is_valid():
-            risk_assessment = form.save()
+            risk_assessment = form.save(commit=False)
+            message = _apply_risk_assessment_completion(
+                risk_assessment, request.user)
+            risk_assessment.save()
             log_created(
                 request.user,
                 risk_assessment,
                 f'Risk assessment for {risk_assessment.matter.file_number}',
             )
-            messages.success(request, 'Risk Assessment successfully added.')
+            messages.success(request, message)
             return redirect('home', risk_assessment.matter.file_number)
         else:
             error_message = 'Form is not valid. Please correct the errors:'
@@ -4505,6 +4705,22 @@ def edit_letter(request, id):
     return render(request, 'edit_models.html', {'form': form, 'title': 'Letter', 'file_number': letter_instance.file_number.file_number})
 
 
+
+def _matter_rate_amount(matter):
+    """Hourly rate to charge work with no recorded person: the file's
+    responsible fee earner's rate (DC files -> ND), or 0 when none is set."""
+    fee_earner = matter.responsible_fee_earner if matter else None
+    rate = getattr(fee_earner, 'hourly_rate', None)
+    return rate.hourly_amount if rate is not None else Decimal('0')
+
+
+def _first_recipient(receiver):
+    """(name, address) of an email's first To recipient, blank when it has
+    none: the sync stores bcc-only mail with an empty toRecipients list."""
+    address = (receiver[0].get('emailAddress') or {}) if receiver else {}
+    return address.get('name') or '', address.get('address') or ''
+
+
 @login_required
 def download_sowc(request, file_number):
     file = WIP.objects.filter(file_number=file_number).first()
@@ -4528,7 +4744,7 @@ def download_sowc(request, file_number):
             '%I:%M %p')} to {note.finish_time.strftime('%I:%M %p')}"
         units = note.unit
         amount = ((note.person_attended.hourly_rate.hourly_amount/10) * units) if note.person_attended != None else (
-            (note.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
+            (_matter_rate_amount(note.file_number)/10) * units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
 
@@ -4540,11 +4756,13 @@ def download_sowc(request, file_number):
         fee_earner = email.fee_earner.username if email.fee_earner != None else ''
         receiver = json.loads(email.receiver)
         sender = json.loads(email.sender)
-        to_or_from = f"Email to {receiver[0]['emailAddress']['name']}" if email.is_sent else f"Perusal of email from {sender['emailAddress']['name']}"
+        to_name = _first_recipient(receiver)[0]
+        sent_desc = f"Email to {to_name}" if to_name else "Email sent"
+        to_or_from = sent_desc if email.is_sent else f"Perusal of email from {sender['emailAddress']['name']}"
         desc = to_or_from + f" @ {time}"
         units = email.units
         amount = ((email.fee_earner.hourly_rate.hourly_amount/10) * units) if email.fee_earner != None else (
-            (email.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
+            (_matter_rate_amount(email.file_number)/10) * units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
 
@@ -4556,7 +4774,7 @@ def download_sowc(request, file_number):
         desc = f'{to_or_from} - {letter.subject_line}'
         units = 1
         amount = ((letter.person_attended.hourly_rate.hourly_amount/10) * units) if letter.person_attended != None else (
-            (letter.file_number.fee_earner.hourly_rate.hourly_amount/10) * units)
+            (_matter_rate_amount(letter.file_number)/10) * units)
         row = [date, time, fee_earner, desc, units, amount]
         rows.append(row)
 
@@ -4591,7 +4809,7 @@ def download_sowc(request, file_number):
         user = CustomUser.objects.filter(username=fee_earner).first()
         if user != None:
             writer.writerow(
-                ['', '', f'({user.first_name} {user.last_name}) {user.username} rate GBP{user.hourly_rate.hourly_amount} + VAT per hour, 6 minutes = 1 unit '])
+                ['', '', f'({user.first_name} {user.last_name}) {user.username} rate GBP{user.hourly_rate.hourly_amount if user.hourly_rate else "n/a"} + VAT per hour, 6 minutes = 1 unit '])
     writer.writerow([])
     writer.writerow(['Date', 'Fee Earner', 'Description', 'Unit(s)', 'Amount'])
     for row in sorted_rows:
@@ -4647,7 +4865,9 @@ def _finance_activity_ledger_deltas(kind, file_number, *, invoice=None, credit_n
         return zero, delta
     if kind == 'green_slip':
         if green_slip.file_number_from.file_number == green_slip.file_number_to.file_number:
-            return -green_slip.amount, green_slip.amount
+            if green_slip.from_ledger_account == 'C':
+                return -green_slip.amount, green_slip.amount    # C-O: client -, office +
+            return green_slip.amount, -green_slip.amount         # O-C: client +, office -
         amount = green_slip.amount
         ledger = green_slip.from_ledger_account
         if green_slip.file_number_from.file_number == file_number:
@@ -6094,388 +6314,6 @@ def download_invoice(request, id):
 
 
 @login_required
-def download_credited_invoice(request, id):
-    invoice = get_object_or_404(
-        Invoices.objects.select_related(
-            'file_number',
-            'file_number__client1',
-        ).prefetch_related(
-            'file_number__additional_clients',
-            'disbs_ids',
-            'moa_ids',
-            'green_slip_ids',
-            'cash_allocated_slips',
-            'credit_notes',
-        ),
-        id=id,
-    )
-
-    def parse_json_dict(value):
-        if isinstance(value, str):
-            return json.loads(value) if value else {}
-        if isinstance(value, (bytes, bytearray)):
-            return json.loads(value.decode('utf-8'))
-        if isinstance(value, dict):
-            return value
-        if value in (None, ''):
-            return {}
-        raise ValueError("Unsupported JSON value type")
-
-    file_details_display = f"<tr><td><b>Our Ref:</b>{invoice.file_number.file_number}</td><td></td></tr>"
-    file_details_display = file_details_display + \
-        f"<tr><td><b>Invoice No:</b>{invoice.invoice_number}</td><td></td></tr>"
-    file_details_display = file_details_display + \
-        f"<tr><td><b>Date:</b>{invoice.date.strftime('%d/%m/%Y')}</td><td></td></tr>"
-    file_details_display = file_details_display + \
-        f"<tr><td>&nbsp;</td><td></td></tr>"
-    file_details_display = file_details_display + \
-        f"<tr><td><b>Private & Confidential</b></td><td></td></tr>"
-    file_details_display = file_details_display + \
-        f"""<tr><td class='d-flex flex-row'>
-        <div class="me-4 " >{invoice.file_number.client1.name}<br>
-        {invoice.file_number.client1.address_line1}<br>
-        {invoice.file_number.client1.address_line2}<br>
-        {invoice.file_number.client1.county}, {invoice.file_number.client1.postcode}
-        </div>"""
-    for extra_client in invoice.file_number.additional_clients.all():
-        file_details_display = file_details_display + f"""
-            <div class="border-start ps-4">{extra_client.name}<br>
-            {extra_client.address_line1}<br>
-            {extra_client.address_line2}<br>
-            {extra_client.county}, {extra_client.postcode}
-            </div>"""
-    file_details_display = file_details_display + """ </td><td></td></tr>"""
-    if invoice.payable_by == 'Client':
-        payable_by = "&nbsp;"
-    else:
-        payable_by = invoice.payable_by
-        payable_by = f"<tr><td><b>Payable by: </b>{payable_by}</td><td></td></tr>"
-
-    file_details_display = file_details_display + payable_by
-    client_emails = ', '.join(invoice.file_number.all_client_emails)
-    if invoice.by_email == True and invoice.by_post == True:
-        send_via = f'<b>By post and email to: </b>{client_emails}'
-    elif invoice.by_email == True:
-        send_via = f'<b>By email to: </b>{client_emails}'
-    elif invoice.by_post == True:
-        send_via = f'<b>By post</b>'
-    else:
-        send_via = ""
-
-    file_details_display = file_details_display + \
-        f"<tr><td><b>Re: </b>{invoice.file_number.matter_description}</td><td></td></tr>"
-    file_details_display = file_details_display + \
-        f"<tr><td colspan='2' style='text-align: right;'>{send_via}</td></tr>"
-
-    desc_and_cost_display = "<tr><td>&nbsp;</td><td></td></tr>"
-    desc_and_cost_display = desc_and_cost_display + \
-        f"<tr><td style='text-align: justify; text-justify: inter-word;' colspan='2'>{invoice.description}</td></tr>"
-    desc_and_cost_display = desc_and_cost_display + \
-        "<tr><td>&nbsp;</td><td></td></tr>"
-
-    costs = ast.literal_eval(invoice.our_costs) if type(
-        invoice.our_costs) != type([]) else invoice.our_costs
-    our_costs_desc = ast.literal_eval(invoice.our_costs_desc) if type(
-        invoice.our_costs_desc) != type([]) else invoice.our_costs_desc
-    costs_display = ""
-    for i in range(len(costs)):
-        costs_display = costs_display + \
-            f"<tr><td><b>{our_costs_desc[i]}</b>:</td><td style='text-align: center;"
-        if i == 0:
-            costs_display = costs_display + "border-top: solid; border-top-width: thin;'"
-        else:
-            costs_display = costs_display + "'"
-        costs_display = costs_display + \
-            f">£{round(Decimal(costs[i]), 2)}</td></tr>"
-    _, vat_inv, total_cost_and_vat = calculate_invoice_total_with_vat(invoice)
-    costs_display = costs_display + \
-        f"<tr><td >Add VAT @{CURRENT_VAT_RATE_PERCENT}%:</td><td style='text-align: center; border-top: solid; border-top-width: thin;'>£{round(vat_inv, 2)}</td></tr>"
-    total_cost_and_vat = round(total_cost_and_vat, 2)
-    costs_display = costs_display + \
-        f"<tr><td ><b>Total Costs and VAT:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{total_cost_and_vat}</td></tr>"
-    costs_display = costs_display + f"<tr><td>&nbsp;</td><td></td></tr>"
-    desc_and_cost_display = desc_and_cost_display + costs_display
-
-    total_pink_slips = Decimal('0')
-    if invoice.disbs_ids.exists():
-        pink_slips_display = "<tr><td colspan='2'><b>Add Disbursement</b></td><tr>"
-        for slip in invoice.disbs_ids.all():
-            date = slip.date.strftime('%d/%m/%Y')
-            pink_slips_display = pink_slips_display + \
-                f"<tr><td>{slip.description} - {date}</td><td style='text-align: center;"
-            if total_pink_slips == 0:
-                pink_slips_display = pink_slips_display + \
-                    "border-top: solid; border-top-width: thin;'"
-            else:
-                pink_slips_display = pink_slips_display + "'"
-
-            total_pink_slips = total_pink_slips + slip.amount
-            pink_slips_display = pink_slips_display + \
-                f">£{slip.amount}</td></tr>"
-        pink_slips_display = pink_slips_display + \
-            f"<tr><td><b>Total Disbursements:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{total_pink_slips}</td></tr>"
-        pink_slips_display = pink_slips_display + f"<tr><td>&nbsp;</td><td></td></tr>"
-    else:
-        pink_slips_display = ''
-
-    total_blue_slips = Decimal('0')
-    if invoice.moa_ids.exists():
-        blue_slips_display = "<tr><td colspan='2'><b>Less Monies Received</b></td></tr>"
-        for slip in invoice.moa_ids.all():
-            amount_invoiced = parse_json_dict(slip.amount_invoiced)
-            date = slip.date.strftime('%d/%m/%Y')
-            amt = Decimal(
-                str(amount_invoiced[f"{invoice.id}"]['amt_invoiced']))
-
-            blue_slips_display = blue_slips_display + \
-                f"<tr><td>Remittance {date} - balance of monies remaining on account</td><td style='text-align: center;"
-            if total_blue_slips == 0:
-                blue_slips_display = blue_slips_display + \
-                    f"border-top: solid; border-top-width: thin;'"
-            else:
-                blue_slips_display = blue_slips_display + f"'"
-            total_blue_slips = total_blue_slips + amt
-            blue_slips_display = blue_slips_display + f" >£{amt}</td></tr>"
-        blue_slips_display = blue_slips_display + \
-            f"<tr><td><b>Total Monies Received:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{round(total_blue_slips, 2)}</td></tr>"
-        blue_slips_display = blue_slips_display + f"<tr><td>&nbsp;</td><td></td></tr>"
-    else:
-        blue_slips_display = ''
-
-    total_green_slips = Decimal('0')
-    if invoice.green_slip_ids.exists():
-        green_slips_display = "<tr><td colspan='2'><b>Inter Matter(s) Transfers</b></td></tr>"
-        for slip in invoice.green_slip_ids.all():
-            date = slip.date.strftime('%d/%m/%Y')
-            if slip.file_number_from.file_number == invoice.file_number.file_number:
-                green_slips_display = green_slips_display + \
-                    f"<tr><td>Transfer to {slip.file_number_to} - {date}</td><td style='text-align: center;"
-                if total_green_slips == 0:
-                    green_slips_display = green_slips_display + \
-                        "border-top: solid; border-top-width: thin;'"
-                else:
-                    green_slips_display = green_slips_display + "'"
-                total_green_slips = total_green_slips - slip.amount
-                green_slips_display = green_slips_display + \
-                    f">£{slip.amount}</td></tr>"
-            else:
-                amount_invoiced = parse_json_dict(slip.amount_invoiced_to)
-                amt = Decimal(
-                    str(amount_invoiced[f"{invoice.id}"]['amt_invoiced']))
-                total_green_slips = total_green_slips + amt
-                green_slips_display = green_slips_display + \
-                    f"<tr><td>Transfer from {slip.file_number_from} - {date}</td><td style='text-align: center;"
-                if total_green_slips == 0:
-                    green_slips_display = green_slips_display + \
-                        "border-top: solid; border-top-width: thin;'"
-                else:
-                    green_slips_display = green_slips_display + "'"
-                green_slips_display = green_slips_display + \
-                    f">£{amt}</td></tr>"
-        green_slips_display = green_slips_display + \
-            f"<tr><td ><b>Total Green Slips:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{total_green_slips}</td></tr>"
-        green_slips_display = green_slips_display + f"<tr><td>&nbsp;</td><td></td></tr>"
-    else:
-        green_slips_display = ""
-
-    total_cash_allocated_slips = Decimal('0')
-    if invoice.cash_allocated_slips.exists():
-        cash_allocated_slips_display = "<tr><td colspan='2'><b>Less Monies Received After Invoice Creation</b></td></tr>"
-        for slip in invoice.cash_allocated_slips.all():
-            amount_allocated = parse_json_dict(slip.amount_allocated)
-            invoice_id_str = f"{invoice.id}"
-            if invoice_id_str not in amount_allocated:
-                continue
-            date = slip.date.strftime('%d/%m/%Y')
-            amt = Decimal(str(amount_allocated[invoice_id_str]))
-            cash_allocated_slips_display = cash_allocated_slips_display + \
-                f"<tr><td>Payment from {slip.pmt_person} - {date}</td><td style='text-align: center;"
-            if total_cash_allocated_slips == 0:
-                cash_allocated_slips_display = cash_allocated_slips_display + \
-                    "border-top: solid; border-top-width: thin;'"
-            else:
-                cash_allocated_slips_display = cash_allocated_slips_display + "'"
-            total_cash_allocated_slips = total_cash_allocated_slips + amt
-            cash_allocated_slips_display = cash_allocated_slips_display + \
-                f">£{amt}</td></tr>"
-        cash_allocated_slips_display = cash_allocated_slips_display + \
-            f"<tr><td><b>Total Post-Invoice Monies Received:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{round(total_cash_allocated_slips, 2)}</td></tr>"
-        cash_allocated_slips_display = cash_allocated_slips_display + \
-            f"<tr><td>&nbsp;</td><td></td></tr>"
-    else:
-        cash_allocated_slips_display = ""
-
-    approved_credit_notes = invoice.credit_notes.filter(
-        status='F').order_by('date', 'id')
-    approved_credit_total = Decimal('0')
-    if approved_credit_notes.exists():
-        credit_notes_display = "<tr><td colspan='2'><b>Less Approved Credit Notes</b></td></tr>"
-        for note in approved_credit_notes:
-            approved_credit_total = approved_credit_total + note.amount
-            credit_notes_display = credit_notes_display + \
-                f"<tr><td>Credit Note CN-{note.id} - {note.date.strftime('%d/%m/%Y')}</td><td style='text-align: center;"
-            if approved_credit_total == note.amount:
-                credit_notes_display = credit_notes_display + \
-                    "border-top: solid; border-top-width: thin;'"
-            else:
-                credit_notes_display = credit_notes_display + "'"
-            credit_notes_display = credit_notes_display + \
-                f">£{note.amount}</td></tr>"
-        credit_notes_display = credit_notes_display + \
-            f"<tr><td><b>Total Approved Credit Notes:</b></td><td style='text-align: center; border-bottom: solid; border-bottom-width: thin; border-top: solid; border-top-width: thin;'>£{round(approved_credit_total, 2)}</td></tr>"
-        credit_notes_display = credit_notes_display + \
-            f"<tr><td>&nbsp;</td><td></td></tr>"
-    else:
-        credit_notes_display = ""
-
-    balance = (total_cost_and_vat + total_pink_slips) - \
-        total_blue_slips - total_green_slips - \
-        total_cash_allocated_slips - approved_credit_total
-    balance = round(balance, 2)
-    if balance >= 0:
-        total_due_display = f"<tr class='mt-5'><td><b>Total Due:</b></td><td style='text-align: center; border-top: solid; border-top-width: thin; border-bottom: solid;  border-bottom-style:double;'>£{balance}</td></tr>"
-        bank_details = f"""
-                <tr>
-                        <td>&nbsp;</td>
-                        <td></td>
-
-                        </tr>
-                    <tr>
-                    <td style=" font-size: 12px"><b>Account Name:</b> ANP Solicitors Limited; <b>Sort Code:</b> 20-70-93; <b>Account No:</b> 13065049;  <b>Ref:</b>{invoice.file_number.file_number}<td>
-                    </tr>
-                 """
-    else:
-        balance = balance * -1
-        bank_details = ""
-        total_due_display = f"<tr><td><b>Balance Remaining on Account</b>&nbsp;</td><td style='text-align: center; border-top: solid; border-top-width: thin; border-bottom: solid;  border-bottom-style:double;'>£{balance}</td></tr>"
-
-    if invoice.state == "D":
-        state = """
-                <div>
-                    <h1 class="position-fixed top-50 start-50 translate-middle z-n1 text-secondary opacity-50 text-center strong" style="font-size: 1200%;">
-                        DRAFT
-                    <h1>
-                </div>
-                """
-    else:
-        state = ""
-
-    footer = """
-            ANP Solicitors is a trading name of ANP Solicitors Limited<br>
-            Registered in England and Wales - Company No: 6948759 | Registered office at 290 Kiln Road, Benfleet, Essex SS7 1QT<br>
-            T: 01702 556688 | F: 01702 556696 | E: info@anpsolicitors.com | www.anpsolicitors.com<br>
-            This firm is authorised and regulated by the Solicitors Regulation Authority<br>
-            A list of directors is open to inspection at the office<br>
-            VAT No. 977 542 767 | SRA No. 515388<br>
-            """
-    style = """
-            @page :first {
-                    size: A4;
-                    margin-top: 0mm;
-                    margin-bottom: 4px;
-                    margin-left: 40px;
-                    margin-right: 40px;
-            }
-            @page {
-                    size: A4;
-                    margin-top: 20px;
-                    margin-bottom: 4px;
-                    margin-left: 40px;
-                    margin-right: 40px;
-            }
-            .logoDiv{
-                position: absolute;
-                top: 15px;
-                left: 40px;
-                right: 40px;
-                z-index: 1000;
-                width: auto;
-                text-align: right;
-                margin: 0;
-                padding: 0;
-            }
-            .docTitle {
-                text-align: center;
-                font-size: 28px;
-                font-weight: bold;
-                margin-top: 4px;
-                margin-bottom: 8px;
-            }
-            .docSubtitle {
-                text-align: center;
-                font-size: 20px;
-                font-weight: bold;
-                margin-top: 0;
-                margin-bottom: 8px;
-            }
-            .overflow-auto {
-                padding-top: 0;
-            }
-            table {
-                margin-top: 0;
-            }
-            @media print {
-                .logoDiv {
-                    position: absolute;
-                    top: 15px;
-                    left: 40px;
-                    right: 40px;
-                    width: auto;
-                    text-align: right;
-                }
-                @page :first {
-                    size: A4;
-                    margin-top: 0mm;
-                    margin-bottom: 4px;
-                    margin-left: 40px;
-                    margin-right: 40px;
-                }
-                @page {
-                    size: A4;
-                    margin-top: 20px;
-                    margin-bottom: 4px;
-                    margin-left: 40px;
-                    margin-right: 40px;
-                }
-            }
-            .logoDiv img {
-                width: 180px;
-                height: auto;
-                margin: 0;
-                padding: 0;
-                display: inline-block;
-            }
-            """
-
-    matter_final_heading = invoice_matter_final_pdf_heading(invoice)
-
-    html = render_to_string('download_templates/credited_invoice.html', {
-        'invoice_number': invoice.invoice_number,
-        'style': style,
-        'state': mark_safe(state),
-        'matter_final_heading': mark_safe(matter_final_heading),
-        'file_details_display': mark_safe(file_details_display),
-        'desc_and_cost_display': mark_safe(desc_and_cost_display),
-        'pink_slips_display': mark_safe(pink_slips_display),
-        'blue_slips_display': mark_safe(blue_slips_display),
-        'green_slips_display': mark_safe(green_slips_display),
-        'cash_allocated_slips_display': mark_safe(cash_allocated_slips_display),
-        'credit_notes_display': mark_safe(credit_notes_display),
-        'total_due_display': mark_safe(total_due_display),
-        'bank_details': mark_safe(bank_details),
-        'footer': mark_safe(footer),
-    })
-
-    pdf_file = HTML(
-        string=html, base_url=request.build_absolute_uri()).write_pdf()
-
-    response = HttpResponse(pdf_file, content_type='application/pdf')
-    response[
-        'Content-Disposition'] = f'attachment; filename="Credited Invoice {invoice.invoice_number} - {invoice.file_number.all_client_names} ({invoice.file_number.matter_description}).pdf"'
-    return response
-
-
-@login_required
 def download_credit_note(request, id):
     credit_note = get_object_or_404(CreditNote, id=id)
     file_obj = credit_note.file_number
@@ -6662,8 +6500,12 @@ def get_all_financials(file_number):
 
     for slip in green_slips:
         if slip.file_number_from == slip.file_number_to:
-            type_obj = 'client_to_office_tfr'
-            desc = f"Client to Office Transfer"
+            if slip.from_ledger_account == 'C':
+                type_obj = 'client_to_office_tfr'
+                desc = f"Client to Office Transfer"
+            else:
+                type_obj = 'office_to_client_tfr'
+                desc = f"Office to Client Transfer"
         elif slip.file_number_from.file_number == file_number:
             type_obj = 'money_out'
             desc = f"Transfer to {slip.file_number_to}"
@@ -6753,10 +6595,10 @@ def download_statement_account(request, file_number):
     writer.writerow(
         ['Date', 'Description', 'Money In', 'Money Out', 'Balance'])
     balance = 0
-    client_to_office_tfr_rows = 0
+    same_matter_tfr_rows = 0
     for row in sorted_rows:
-        if row['type'] == 'client_to_office_tfr':
-            client_to_office_tfr_rows = client_to_office_tfr_rows + 1
+        if row['type'] in ('client_to_office_tfr', 'office_to_client_tfr'):
+            same_matter_tfr_rows = same_matter_tfr_rows + 1
             continue
         if row['type'] == 'money_out':
             balance = balance - row['amount']
@@ -6765,7 +6607,7 @@ def download_statement_account(request, file_number):
         writer.writerow([row['date'], row['desc'], row['amount'] if row['type'] ==
                         'money_in' else '', row['amount'] if row['type'] == 'money_out' else '', balance])
     writer.writerow([])
-    final_cell = (len(sorted_rows)-client_to_office_tfr_rows) + 4
+    final_cell = (len(sorted_rows)-same_matter_tfr_rows) + 4
     writer.writerow(
         ['', 'Total', f'=sum(c5:c{final_cell})', f'=sum(d5:d{final_cell})'])
     return response
@@ -6834,6 +6676,37 @@ def generate_ledgers_report(request, file_number):
             office_balance += row['amount']
             client_amount = ''
             office_amount = str(row['amount'])
+
+            html_content += f"""
+                <tr>
+                    <td>{row['date']}</td>
+                    <td>{row['desc']}</td>
+                    <td>{office_amount}</td>
+                    <td class="balance">{office_balance}</td>
+                    <td>{client_amount}</td>
+                    <td class="balance">{client_balance}</td>
+                </tr>
+            """
+            continue
+
+        if row['type'] == 'office_to_client_tfr':
+            office_balance -= row['amount']
+            office_amount = '-' + str(row['amount'])
+            client_amount = ''
+            html_content += f"""
+                <tr>
+                    <td>{row['date']}</td>
+                    <td>{row['desc']}</td>
+                    <td>{office_amount}</td>
+                    <td class="balance">{office_balance}</td>
+                    <td>{client_amount}</td>
+                    <td class="balance">{client_balance}</td>
+                </tr>
+             """
+
+            client_balance += row['amount']
+            office_amount = ''
+            client_amount = str(row['amount'])
 
             html_content += f"""
                 <tr>
@@ -7400,15 +7273,23 @@ def unallocated_emails(request):
         receiver = json.loads(email.receiver)
         sender = json.loads(email.sender)
 
-        row = f"""<tr class="email-row even:bg-white odd:bg-gray-50 border-b text-gray-900 px-2" data-email="{receiver[0]['emailAddress']['address']} {sender['emailAddress']['address']}">
+        # Names, addresses and the subject come from the email itself, so
+        # escape them before they go into the mark_safe row.
+        sender_name = html_escape(sender['emailAddress'].get('name') or '')
+        sender_address = html_escape(
+            sender['emailAddress'].get('address') or '')
+        to_name, to_address = map(html_escape, _first_recipient(receiver))
+        to = f"{to_name} ({to_address})" if to_address else "(no recipients)"
+
+        row = f"""<tr class="email-row even:bg-white odd:bg-gray-50 border-b text-gray-900 px-2" data-email="{to_address} {sender_address}">
                         <td class='td'>{i}</td>
                         <td class='td'>{email.time.strftime('%d-%m-%Y <br> %H:%M %p')}</td>
                         <td>
-                            <b>From:</b> {sender['emailAddress']['name']} ({sender['emailAddress']['address']})<br>
-                            <b>To:</b> {receiver[0]['emailAddress']['name']} ({receiver[0]['emailAddress']['address']})
+                            <b>From:</b> {sender_name} ({sender_address})<br>
+                            <b>To:</b> {to}
                         </td>
-                        <td class='td'>{email.subject}</td>
-                        <td class='td'><a class="link" target="_blank" href="{email.link}">See Email</a></td>
+                        <td class='td'>{html_escape(email.subject or '')}</td>
+                        <td class='td'><a class="link" target="_blank" href="{html_escape(email.link or '')}">See Email</a></td>
                         <td>
                             <input class="hidden" name="email_ids[]" value={email.id}></input>
                             {files_options}
@@ -7453,7 +7334,7 @@ def allocate_emails(request):
 
             email.file_number = file
             j += 1
-            email.fee_earner = file.fee_earner if file.fee_earner is not None else None
+            email.fee_earner = file.responsible_fee_earner
             email.save()
 
         i += 1
@@ -8631,21 +8512,22 @@ def add_ongoing_monitoring(request, file_number):
             request, 'Matter with the given file number does not exist.')
         return redirect('index')
     if request.method == 'POST':
-        post_data = request.POST.copy()
-        post_data['created_by'] = request.user
-        post_data['file_number'] = matter.id
-        form = OngoingMonitoringForm(post_data)
+        form = OngoingMonitoringForm(request.POST)
 
         if form.is_valid():
-            ongoing_monitoring = form.save()
+            ongoing_monitoring = form.save(commit=False)
+            ongoing_monitoring.file_number = matter
+            ongoing_monitoring.created_by = request.user
+            message = _apply_ongoing_monitoring_completion(
+                ongoing_monitoring, request.user)
+            ongoing_monitoring.save()
             log_created(
                 request.user,
                 ongoing_monitoring,
-                f'Ongoing monitoring for {ongoing_monitoring.file_number.file_number}',
+                f'Ongoing monitoring for {matter.file_number}',
             )
-            messages.success(
-                request, 'Ongoing Monitoring successfully recorded.')
-            return redirect('home', ongoing_monitoring.file_number.file_number)
+            messages.success(request, message)
+            return redirect('home', matter.file_number)
         else:
             error_message = 'Form is not valid. Please correct the errors:'
             for field, errors in form.errors.items():
@@ -8653,7 +8535,8 @@ def add_ongoing_monitoring(request, file_number):
             messages.error(request, error_message)
     else:
         form = OngoingMonitoringForm()
-        return render(request, 'ongoing_monitoring.html', {'form': form, 'file_number': file_number, 'title': 'Add'})
+
+    return render(request, 'ongoing_monitoring.html', {'form': form, 'file_number': file_number, 'title': 'Add'})
 
 
 @login_required
@@ -8949,11 +8832,22 @@ def edit_risk_assessment(request, id):
                     'old_value': str(getattr(duplicate_obj, field)),
                     'new_value': None
                 }
-            form.save()
+            risk_assesssment = form.save(commit=False)
+            # Any edit re-runs the sign-off flow: a fee earner's edit stays
+            # signed off (by them); anyone else's edit sends it back for
+            # sign-off so a signed assessment can't change silently.
+            message = _apply_risk_assessment_completion(
+                risk_assesssment, request.user)
+            risk_assesssment.save()
 
             for field in changed_fields:
                 changes[field]['new_value'] = str(
                     getattr(risk_assesssment, field))
+            if duplicate_obj.signoff_status != risk_assesssment.signoff_status:
+                changes['signoff_status'] = {
+                    'old_value': duplicate_obj.get_signoff_status_display(),
+                    'new_value': risk_assesssment.get_signoff_status_display(),
+                }
 
             if changes:
                 create_modification(
@@ -8961,7 +8855,7 @@ def edit_risk_assessment(request, id):
                     modified_obj=risk_assesssment,
                     changes=changes
                 )
-            messages.success(request, 'Successfully updated Risk Assessment.')
+            messages.success(request, message)
             return redirect('home', risk_assesssment.matter.file_number)
         else:
             error_message = 'Form is not valid. Please correct the errors:'
@@ -8974,6 +8868,74 @@ def edit_risk_assessment(request, id):
     return render(request, 'risk_assessment.html', {'form': form, 'file_number': risk_assesssment.matter.file_number, 'title': 'Edit'})
 
 
+def _risk_assessment_signoff_redirect(risk_assessment):
+    if risk_assessment.matter:
+        return redirect('home', risk_assessment.matter.file_number)
+    return redirect('index')
+
+
+@login_required
+@require_POST
+def sign_off_risk_assessment(request, id):
+    """Fee earner signs off a completed risk assessment."""
+    risk_assessment = get_object_or_404(RiskAssessment, pk=id)
+    if not request.user.is_matter_fee_earner:
+        messages.error(
+            request, 'Only fee earners can sign off risk assessments.')
+        return _risk_assessment_signoff_redirect(risk_assessment)
+    if risk_assessment.is_signed_off:
+        messages.info(request, 'This risk assessment is already signed off.')
+        return _risk_assessment_signoff_redirect(risk_assessment)
+
+    old_status = risk_assessment.get_signoff_status_display()
+    _apply_risk_assessment_signoff(risk_assessment, request.user)
+    risk_assessment.save()
+    create_modification(
+        user=request.user,
+        modified_obj=risk_assessment,
+        changes={'signoff_status': {
+            'old_value': old_status,
+            'new_value': risk_assessment.get_signoff_status_display(),
+        }},
+    )
+    messages.success(request, 'Risk assessment signed off.')
+    return _risk_assessment_signoff_redirect(risk_assessment)
+
+
+@login_required
+@require_POST
+def return_risk_assessment(request, id):
+    """Fee earner sends a risk assessment back to the completer with comments."""
+    risk_assessment = get_object_or_404(RiskAssessment, pk=id)
+    if not request.user.is_matter_fee_earner:
+        messages.error(
+            request, 'Only fee earners can review risk assessments.')
+        return _risk_assessment_signoff_redirect(risk_assessment)
+
+    comments = request.POST.get('comments', '').strip()
+    if not comments:
+        messages.error(
+            request, 'Please say what needs changing before returning the assessment.')
+        return _risk_assessment_signoff_redirect(risk_assessment)
+
+    old_status = risk_assessment.get_signoff_status_display()
+    risk_assessment.signoff_status = RiskAssessment.SIGNOFF_RETURNED
+    risk_assessment.signed_off_by = None
+    risk_assessment.signed_off_at = None
+    risk_assessment.signoff_comments = comments
+    risk_assessment.save()
+    create_modification(
+        user=request.user,
+        modified_obj=risk_assessment,
+        changes={'signoff_status': {
+            'old_value': old_status,
+            'new_value': risk_assessment.get_signoff_status_display(),
+        }},
+    )
+    messages.success(request, 'Risk assessment returned for changes.')
+    return _risk_assessment_signoff_redirect(risk_assessment)
+
+
 @login_required
 def edit_ongoing_monitoring(request, id):
     try:
@@ -8983,10 +8945,7 @@ def edit_ongoing_monitoring(request, id):
         return redirect('index')
     if request.method == 'POST':
         duplicate_obj = copy.deepcopy(ongoing_monitoring)
-        post_copy = request.POST.copy()
-        post_copy['file_number'] = ongoing_monitoring.file_number.id
-        post_copy['created_by'] = ongoing_monitoring.created_by
-        form = OngoingMonitoringForm(post_copy, instance=ongoing_monitoring)
+        form = OngoingMonitoringForm(request.POST, instance=ongoing_monitoring)
         if form.is_valid():
             changed_fields = form.changed_data
             changes = {}
@@ -8995,11 +8954,22 @@ def edit_ongoing_monitoring(request, id):
                     'old_value': str(getattr(duplicate_obj, field)),
                     'new_value': None
                 }
-            form.save()
+            ongoing_monitoring = form.save(commit=False)
+            # Any edit re-runs the sign-off flow: a fee earner's edit stays
+            # signed off (by them); anyone else's edit sends it back for
+            # sign-off so a signed record can't change silently.
+            message = _apply_ongoing_monitoring_completion(
+                ongoing_monitoring, request.user)
+            ongoing_monitoring.save()
 
             for field in changed_fields:
                 changes[field]['new_value'] = str(
                     getattr(ongoing_monitoring, field))
+            if duplicate_obj.signoff_status != ongoing_monitoring.signoff_status:
+                changes['signoff_status'] = {
+                    'old_value': duplicate_obj.get_signoff_status_display(),
+                    'new_value': ongoing_monitoring.get_signoff_status_display(),
+                }
 
             if changes:
                 create_modification(
@@ -9007,8 +8977,7 @@ def edit_ongoing_monitoring(request, id):
                     modified_obj=ongoing_monitoring,
                     changes=changes
                 )
-            messages.success(
-                request, 'Successfully updated Ongoing Monitoring.')
+            messages.success(request, message)
             return redirect('home', ongoing_monitoring.file_number.file_number)
         else:
             error_message = 'Form is not valid. Please correct the errors:'
@@ -9019,6 +8988,74 @@ def edit_ongoing_monitoring(request, id):
         form = OngoingMonitoringForm(instance=ongoing_monitoring)
 
     return render(request, 'ongoing_monitoring.html', {'form': form, 'file_number': ongoing_monitoring.file_number.file_number, 'title': 'Edit'})
+
+
+def _ongoing_monitoring_signoff_redirect(monitoring):
+    if monitoring.file_number:
+        return redirect('home', monitoring.file_number.file_number)
+    return redirect('index')
+
+
+@login_required
+@require_POST
+def sign_off_ongoing_monitoring(request, id):
+    """Fee earner signs off a completed ongoing monitoring record."""
+    monitoring = get_object_or_404(OngoingMonitoring, pk=id)
+    if not request.user.is_matter_fee_earner:
+        messages.error(
+            request, 'Only fee earners can sign off ongoing monitoring.')
+        return _ongoing_monitoring_signoff_redirect(monitoring)
+    if monitoring.is_signed_off:
+        messages.info(request, 'This ongoing monitoring is already signed off.')
+        return _ongoing_monitoring_signoff_redirect(monitoring)
+
+    old_status = monitoring.get_signoff_status_display()
+    _apply_ongoing_monitoring_signoff(monitoring, request.user)
+    monitoring.save()
+    create_modification(
+        user=request.user,
+        modified_obj=monitoring,
+        changes={'signoff_status': {
+            'old_value': old_status,
+            'new_value': monitoring.get_signoff_status_display(),
+        }},
+    )
+    messages.success(request, 'Ongoing monitoring signed off.')
+    return _ongoing_monitoring_signoff_redirect(monitoring)
+
+
+@login_required
+@require_POST
+def return_ongoing_monitoring(request, id):
+    """Fee earner sends an ongoing monitoring record back with comments."""
+    monitoring = get_object_or_404(OngoingMonitoring, pk=id)
+    if not request.user.is_matter_fee_earner:
+        messages.error(
+            request, 'Only fee earners can review ongoing monitoring.')
+        return _ongoing_monitoring_signoff_redirect(monitoring)
+
+    comments = request.POST.get('comments', '').strip()
+    if not comments:
+        messages.error(
+            request, 'Please say what needs changing before returning the monitoring.')
+        return _ongoing_monitoring_signoff_redirect(monitoring)
+
+    old_status = monitoring.get_signoff_status_display()
+    monitoring.signoff_status = OngoingMonitoring.SIGNOFF_RETURNED
+    monitoring.signed_off_by = None
+    monitoring.signed_off_at = None
+    monitoring.signoff_comments = comments
+    monitoring.save()
+    create_modification(
+        user=request.user,
+        modified_obj=monitoring,
+        changes={'signoff_status': {
+            'old_value': old_status,
+            'new_value': monitoring.get_signoff_status_display(),
+        }},
+    )
+    messages.success(request, 'Ongoing monitoring returned for changes.')
+    return _ongoing_monitoring_signoff_redirect(monitoring)
 
 
 @login_required
@@ -9464,13 +9501,17 @@ def management_reports(request):
     cpds = CPDTrainingLog.objects.all()
     expired_client_ids = get_clients_with_expired_id()
 
-    return render(request, 'management_reports.html', {
+    timeline_subject = _timeline_subject(request, request.user)
+    context = {
         'users': users,
         'aml_checks_due': unique_aml_checks_due,
         'risk_assessments_due': risk_assessments_due,
         'cpds': cpds,
         'expired_client_ids': expired_client_ids,
-    })
+    }
+    context.update(_timeline_context(
+        request, timeline_subject, reverse('management_reports')))
+    return render(request, 'management_reports.html', context)
 
 
 @login_required
@@ -9535,6 +9576,11 @@ def reports_hub(request):
                     'description': 'Who has read each policy and which version.',
                     'url_name': 'policies_read_per_user',
                 },
+                {
+                    'name': 'Compliance stats',
+                    'description': 'Done vs not done for risk reviews, client due diligence, client care paperwork and file closure, firm-wide and by fee earner.',
+                    'url_name': 'compliance_stats',
+                },
             ],
         },
         {
@@ -9546,11 +9592,6 @@ def reports_hub(request):
                     'name': 'Management reports',
                     'description': 'AML, risk, holidays, CPD logs and team tasks in one view.',
                     'url_name': 'management_reports',
-                },
-                {
-                    'name': 'Weekly work report',
-                    'description': 'Weekly work recorded per user.',
-                    'url_name': 'user_weekly_report',
                 },
             ],
         },
@@ -9606,7 +9647,8 @@ def _report_querystring(request, exclude=()):
     return params.urlencode()
 
 
-def render_report(request, *, slug, title, description, filters, columns, rows):
+def render_report(request, *, slug, title, description, filters, columns, rows,
+                  back_url=None, back_label='Reports'):
     """Sort, optionally export to CSV, and render a report preview page.
 
     rows: list of {'cells': {col_key: {'value': str, 'href': url|None}},
@@ -9614,6 +9656,8 @@ def render_report(request, *, slug, title, description, filters, columns, rows):
     columns: list of {'key', 'label', 'sortable'(bool), 'align'('left'|'right')}
     filters: list of {'name', 'label', 'type'('text'|'select'|'number'),
                       'value', 'options'(select only), 'placeholder'}
+    back_url/back_label: where the "back" link at the top points (the reports
+                         hub unless the report was opened from another page).
     """
     sort_param = request.GET.get('sort', '')
     sort_key = sort_param.lstrip('-')
@@ -9681,6 +9725,8 @@ def render_report(request, *, slug, title, description, filters, columns, rows):
         'export_url': export_url,
         'filters_active': any(request.GET.get(f['name']) for f in filters),
         'reset_url': request.path,
+        'back_url': back_url or reverse('reports_hub'),
+        'back_label': back_label,
     })
 
 
@@ -9807,14 +9853,15 @@ def report_file_reviews_due(request):
     source = []
     fee_earner_options = {}
     for wip in review_wips:
-        fe_name = wip.fee_earner.get_full_name() if wip.fee_earner else ''
-        if wip.fee_earner_id:
-            fee_earner_options[str(wip.fee_earner_id)] = fe_name or wip.fee_earner.username
+        fee_earner = wip.responsible_fee_earner
+        fe_name = fee_earner.get_full_name() if fee_earner else ''
+        if fee_earner:
+            fee_earner_options[str(fee_earner.id)] = fe_name or fee_earner.username
         source.append({
             'file_number': wip.file_number,
             'matter': wip.matter_description or '',
             'client': wip.client1.name if wip.client1 else '',
-            'fee_earner_id': str(wip.fee_earner_id) if wip.fee_earner_id else '',
+            'fee_earner_id': str(fee_earner.id) if fee_earner else '',
             'fee_earner': fe_name,
             'last_review': wip.latest_review_date,
             'never_reviewed': wip.latest_review_date is None,
@@ -10069,6 +10116,23 @@ def weekly_report_view(request):
         return JsonResponse(data, safe=False)
     except CustomUser.DoesNotExist:
         return JsonResponse({"error": "User not found"}, status=404)
+
+
+@login_required
+def staff_timeline_panel(request):
+    """The staff timeline panel on its own, for in-place swaps.
+
+    The dashboard ("My time") and management reports embed the same partial;
+    their controls fetch this endpoint instead of reloading the whole page.
+    """
+    subject = _timeline_subject(request, request.user)
+    host_url = reverse('user_dashboard')
+    if request.user.is_manager and (
+            request.GET.get('tl_host') == reverse('management_reports')
+            or subject.pk != request.user.pk):
+        host_url = reverse('management_reports')
+    context = _timeline_context(request, subject, host_url)
+    return render(request, 'partials/_staff_timeline_panel.html', context)
 
 
 @login_required
@@ -10819,56 +10883,49 @@ def _ensure_bundle_final_pdf(bundle, user=None, progress_callback=None):
         if progress_callback:
             progress_callback(95, 'Saving PDF...')
 
-        if bundle.final_pdf:
-            try:
-                default_storage.delete(bundle.final_pdf.name)
-            except Exception:
-                logger.warning(
-                    'Could not delete previous final PDF for bundle %s', bundle.id)
-
+        # Read the rendered bytes once: needed both to hash (for dedupe) and to
+        # persist as an immutable version.
         work_dir = None
-        output_bytes_len = 0
-        if build_stats is not None:
-            build_stats.start('save_final_pdf')
         if pdf_result.get('path'):
             output_path = pdf_result['path']
             work_dir = pdf_result.get('work_dir')
-            output_bytes_len = os.path.getsize(output_path)
             with open(output_path, 'rb') as pdf_file:
-                bundle.final_pdf.save(f'{bundle.uuid}.pdf', File(pdf_file))
+                pdf_bytes = pdf_file.read()
         else:
-            output_bytes_len = len(pdf_result['bytes'])
-            bundle.final_pdf.save(
-                f'{bundle.uuid}.pdf',
-                ContentFile(pdf_result['bytes']),
-            )
+            pdf_bytes = pdf_result['bytes']
+        output_bytes_len = len(pdf_bytes)
+
+        if build_stats is not None:
+            build_stats.start('save_final_pdf')
+        version, created_new = _save_bundle_version(
+            bundle,
+            pdf_bytes,
+            page_count=pdf_result.get('output_pages'),
+            document_count=len(documents_info),
+            user=user,
+        )
         if build_stats is not None:
             build_stats.finish_stage()
             build_stats.add_meta(
                 output_pages=pdf_result.get('output_pages'),
                 output_mb=round(output_bytes_len / (1024 * 1024), 2),
+                bundle_version=version.version,
+                new_version=created_new,
             )
             build_stats.log_summary()
         if work_dir:
             import shutil
             shutil.rmtree(work_dir, ignore_errors=True)
-        saved_name = bundle.final_pdf.name
-        now = timezone.now()
-        Bundle.objects.filter(pk=bundle.pk).update(
-            final_pdf=saved_name,
-            pdf_generated_at=now,
-            updated_at=now,
-        )
-        bundle.final_pdf.name = saved_name
-        bundle.pdf_generated_at = now
-        bundle.updated_at = now
         if user:
             log_bundle_event(
                 user,
                 bundle,
                 'Bundle PDF generated',
                 document_count=len(documents_info),
+                version=version.version,
             )
+        if created_new:
+            _prune_bundle_versions(bundle)
         if progress_callback:
             progress_callback(100, 'PDF ready')
         return True, None, True
@@ -10877,6 +10934,92 @@ def _ensure_bundle_final_pdf(bundle, user=None, progress_callback=None):
     finally:
         if cache_obj is not None:
             cache_obj.cleanup()
+
+
+def _save_bundle_version(bundle, pdf_bytes, *, page_count=None,
+                         document_count=None, user=None):
+    """Persist a freshly rendered bundle PDF as an immutable version.
+
+    Returns (version, created_new). When the rendered output is byte-identical
+    to the current version, no new version is created; the current one is reused
+    and just marked fresh (so ``pdf_is_current()`` returns True again).
+    """
+    content_hash = hashlib.sha256(pdf_bytes).hexdigest()
+    now = timezone.now()
+    current = bundle.current_version
+
+    if current is not None and current.content_hash \
+            and current.content_hash == content_hash:
+        Bundle.objects.filter(pk=bundle.pk).update(
+            pdf_generated_at=now, updated_at=now)
+        bundle.pdf_generated_at = now
+        bundle.updated_at = now
+        return current, False
+
+    next_version = (
+        bundle.versions.aggregate(m=Max('version'))['m'] or 0) + 1
+    version = BundleVersion(
+        bundle=bundle,
+        version=next_version,
+        pdf_generated_at=now,
+        page_count=page_count,
+        size_bytes=len(pdf_bytes),
+        content_hash=content_hash,
+        document_count=document_count,
+        created_by=user,
+    )
+    version.final_pdf.save(
+        f'v{next_version}.pdf', ContentFile(pdf_bytes), save=False)
+    version.save()
+
+    saved_name = version.final_pdf.name
+    Bundle.objects.filter(pk=bundle.pk).update(
+        current_version=version,
+        final_pdf=saved_name,
+        pdf_generated_at=now,
+        updated_at=now,
+    )
+    bundle.current_version = version
+    bundle.final_pdf.name = saved_name
+    bundle.pdf_generated_at = now
+    bundle.updated_at = now
+    return version, True
+
+
+def _prune_bundle_versions(bundle, keep_recent=None):
+    """Delete old versions that are safe to remove, bounding storage growth.
+
+    A version is kept if it is the current version, is within the most recent
+    ``keep_recent`` versions, is pinned/labelled, or still has a live share
+    link. Everything else has its file and row removed. Returns the count pruned.
+    """
+    if keep_recent is None:
+        keep_recent = getattr(settings, 'BUNDLE_VERSION_KEEP_RECENT', 3)
+
+    versions = list(bundle.versions.order_by('-version'))
+    recent_ids = {v.id for v in versions[:keep_recent]}
+    current_id = bundle.current_version_id
+    pruned = 0
+
+    for version in versions:
+        if version.id in recent_ids or version.id == current_id:
+            continue
+        if version.is_protected():
+            continue
+        if version.final_pdf and version.final_pdf.name:
+            try:
+                default_storage.delete(version.final_pdf.name)
+            except Exception:
+                logger.warning(
+                    'Could not delete pruned bundle version file %s',
+                    version.final_pdf.name,
+                )
+        version.delete()
+        pruned += 1
+
+    if pruned:
+        logger.info('Pruned %s old version(s) for bundle %s', pruned, bundle.id)
+    return pruned
 
 
 @login_required
@@ -11311,6 +11454,124 @@ def bundle_section_reorder(request, bundle_id):
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
 
+def _merge_uploaded_pdfs(files):
+    """Merge uploaded PDF files (in the given order) into a single PDF's bytes."""
+    from backend.pdf.bundle_builder import merge_pdf_files, qpdf_available
+
+    if qpdf_available():
+        import shutil
+        import tempfile
+
+        work_dir = tempfile.mkdtemp(prefix='bundle_upload_merge_')
+        try:
+            paths = []
+            for index, file in enumerate(files):
+                path = os.path.join(work_dir, f'part_{index}.pdf')
+                with open(path, 'wb') as part_file:
+                    for chunk in file.chunks():
+                        part_file.write(chunk)
+                paths.append(path)
+            output_path = os.path.join(work_dir, 'merged.pdf')
+            merge_pdf_files(paths, output_path)
+            with open(output_path, 'rb') as merged_file:
+                return merged_file.read()
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+    from PyPDF2 import PdfReader, PdfWriter
+
+    writer = PdfWriter()
+    for file in files:
+        file.seek(0)
+        reader = PdfReader(file)
+        for page in reader.pages:
+            writer.add_page(page)
+    buffer = BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def _upload_combined_bundle_document(request, section, files, descriptions, dates):
+    """Merge several uploaded PDFs into one BundleDocument (one index item)."""
+    for file in files:
+        if not file.name.lower().endswith('.pdf'):
+            return JsonResponse(
+                {'error': f'Only PDF files are allowed: {file.name}'},
+                status=400,
+            )
+
+    description = (descriptions[0] if descriptions else '').strip()
+    date_str = dates[0] if dates and dates[0] else None
+
+    parsed_description, parsed_date = parse_bundle_filename(files[0].name)
+    if not description:
+        description = parsed_description
+    if not description:
+        return JsonResponse(
+            {'error': 'Description required for the combined document'},
+            status=400,
+        )
+
+    doc_date = None
+    if date_str:
+        try:
+            doc_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return JsonResponse(
+                {'error': 'Invalid date format for the combined document'},
+                status=400,
+            )
+    elif parsed_date:
+        doc_date = parsed_date
+
+    try:
+        merged_bytes = _merge_uploaded_pdfs(files)
+    except Exception as e:
+        logger.exception(
+            'Could not combine %s uploaded PDFs for section %s: %s',
+            len(files), section.id, e)
+        return JsonResponse(
+            {'error': 'Could not combine the uploaded PDFs. Check every file is a valid PDF.'},
+            status=400,
+        )
+
+    last_doc = section.documents.order_by('-order').first()
+    next_order = (last_doc.order + 1) if last_doc else 1
+
+    document = BundleDocument.objects.create(
+        section=section,
+        file=ContentFile(merged_bytes, name=files[0].name),
+        description=description,
+        date=doc_date,
+        order=next_order,
+    )
+
+    log_bundle_event(
+        request.user,
+        section.bundle,
+        'Documents combined into one item',
+        section=section.heading,
+        document=description,
+        file_count=len(files),
+    )
+
+    return JsonResponse({
+        'success': True,
+        'documents': [{
+            'id': document.id,
+            'description': document.description,
+            'date': document.date.strftime('%Y-%m-%d') if document.date else '',
+            'filename': document.file.name,
+            'order': document.order,
+        }],
+        'section': {
+            'id': section.id,
+            'date_sort': section.date_sort,
+            'document_ids': _section_ordered_document_ids(section),
+        },
+    })
+
+
 @login_required
 def bundle_document_upload(request, section_id):
     """Upload a document to a section"""
@@ -11322,9 +11583,14 @@ def bundle_document_upload(request, section_id):
         files = request.FILES.getlist('files[]')
         descriptions = request.POST.getlist('descriptions[]')
         dates = request.POST.getlist('dates[]')
+        combine = request.POST.get('combine') in ('1', 'true', 'on')
 
         if not files:
             return JsonResponse({'error': 'No files uploaded'}, status=400)
+
+        if combine and len(files) > 1:
+            return _upload_combined_bundle_document(
+                request, section, files, descriptions, dates)
 
         uploaded_docs = []
 
@@ -11741,9 +12007,14 @@ def bundle_download(request, bundle_id):
     if serve_only and progress and progress.get('status') == 'running':
         return JsonResponse({'error': 'PDF is not ready yet.'}, status=409)
 
-    if _bundle_pdf_is_current(bundle):
+    # verify_file=False: skip the open-and-read verify probe here because we open
+    # the file to serve it immediately below (and fall through to regeneration if
+    # that fails). Probing first would download the whole PDF from SharePoint twice
+    # and, worse, leave a closed handle cached on the FieldFile so the serve-open
+    # would raise "The file cannot be reopened".
+    if _bundle_pdf_is_current(bundle, verify_file=False):
         try:
-            pdf_file = bundle.final_pdf.open('rb')
+            pdf_file = _open_bundle_final_pdf(bundle)
         except Exception as exc:
             logger.warning(
                 'Could not open current bundle PDF for %s (%s): %s',
@@ -11762,7 +12033,7 @@ def bundle_download(request, bundle_id):
             return redirect('bundle_edit', bundle_id=bundle.id)
         bundle.refresh_from_db()
         try:
-            pdf_file = bundle.final_pdf.open('rb')
+            pdf_file = _open_bundle_final_pdf(bundle)
         except Exception as exc:
             logger.exception(
                 'Could not open generated bundle PDF for %s: %s', bundle.id, exc)
@@ -11782,6 +12053,77 @@ def bundle_download(request, bundle_id):
 
 
 @login_required
+def bundle_download_plain(request, bundle_id):
+    """Download all bundle documents merged into one PDF, with no index page
+    and no page-number stamps. Built fresh on every request; nothing is
+    persisted (no version, no stored page ranges)."""
+    from backend.pdf.bundle_builder import build_plain_combined_pdf, qpdf_available
+
+    bundle = _get_accessible_bundle(request, bundle_id)
+
+    def _fail(message):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'error': message}, status=400)
+        messages.error(request, message)
+        return redirect('bundle_edit', bundle_id=bundle.id)
+
+    cache_obj = BundleTempCache(bundle)
+    work_dir = None
+    try:
+        all_documents = [
+            document
+            for section in bundle.sections.all().order_by('order')
+            for document in section.documents.all().order_by('order')
+        ]
+        if all_documents:
+            cache_obj.prefetch_all(all_documents)
+        documents_info = _collect_bundle_documents(bundle, cache=cache_obj)
+        if not documents_info:
+            return _fail('Cannot combine documents: no valid documents with pages.')
+
+        if qpdf_available():
+            output_path, work_dir = build_plain_combined_pdf(
+                documents_info, cache_obj)
+            pdf_file = open(output_path, 'rb')
+        else:
+            from PyPDF2 import PdfReader, PdfWriter
+
+            writer = PdfWriter()
+            for doc_info in documents_info:
+                with _open_document_pdf(doc_info['document'], cache=cache_obj) as source:
+                    reader = PdfReader(BytesIO(source.read()))
+                    for page_index in doc_info['page_indices']:
+                        if page_index < len(reader.pages):
+                            writer.add_page(reader.pages[page_index])
+            buffer = BytesIO()
+            writer.write(buffer)
+            buffer.seek(0)
+            pdf_file = buffer
+
+        log_bundle_event(
+            request.user,
+            bundle,
+            'Combined PDF downloaded (no index)',
+            document_count=len(documents_info),
+        )
+        response = FileResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = \
+            f'attachment; filename="{bundle.name} (combined).pdf"'
+        return response
+    except Exception as e:
+        logger.exception(
+            'Could not build combined PDF for bundle %s: %s', bundle.id, e)
+        return _fail('Could not combine the documents into one PDF.')
+    finally:
+        cache_obj.cleanup()
+        if work_dir:
+            # The served file handle is already open; removing the directory
+            # is safe on POSIX because the inode lives until the handle closes.
+            import shutil
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+
+@login_required
 def bundle_share_link_status_view(request, bundle_id):
     """Return Microsoft share-link metadata for a bundle."""
     bundle = _get_accessible_bundle(request, bundle_id)
@@ -11791,7 +12133,13 @@ def bundle_share_link_status_view(request, bundle_id):
 @login_required
 @require_POST
 def bundle_share_link_create(request, bundle_id):
-    """Create a view-only Microsoft share link for the bundle final PDF."""
+    """Create a view-only Microsoft share link for a bundle version's PDF.
+
+    Shares the current version by default, or a specific one when a
+    ``version_id`` is supplied. A specific version is an immutable snapshot, so
+    the "PDF must be up to date" guard only applies to the default (current)
+    case, where sharing a stale current PDF would be surprising.
+    """
     bundle = _get_accessible_bundle(request, bundle_id)
 
     try:
@@ -11803,17 +12151,24 @@ def bundle_share_link_create(request, bundle_id):
     if use_password is not None:
         use_password = bool(use_password)
 
-    ok, error = _require_current_bundle_pdf(bundle)
-    if not ok:
-        return JsonResponse(
-            {'error': error or 'The bundle PDF is not ready to share.'},
-            status=400,
-        )
+    version = None
+    version_id = payload.get('version_id')
+    if version_id:
+        version = get_object_or_404(
+            BundleVersion, id=version_id, bundle=bundle)
+    else:
+        ok, error = _require_current_bundle_pdf(bundle)
+        if not ok:
+            return JsonResponse(
+                {'error': error or 'The bundle PDF is not ready to share.'},
+                status=400,
+            )
 
     bundle.refresh_from_db()
     try:
         link_data = create_bundle_share_link(
             bundle,
+            version=version,
             use_password=use_password,
             created_by=request.user,
         )
@@ -11824,6 +12179,7 @@ def bundle_share_link_create(request, bundle_id):
         request.user,
         bundle,
         'External share link created',
+        version=link_data.get('version'),
     )
     status = bundle_share_link_status(bundle)
     return JsonResponse({
@@ -11832,6 +12188,7 @@ def bundle_share_link_create(request, bundle_id):
             'id': link_data['id'],
             'url': link_data['url'],
             'password': link_data.get('password') or '',
+            'version': link_data.get('version'),
             'expires_at': link_data['expires_at'],
             'status': link_data['status'],
             'active': link_data['active'],
@@ -11858,6 +12215,87 @@ def bundle_share_link_revoke(request, bundle_id, link_id):
         'revoked': revoked,
         **bundle_share_link_status(bundle),
     })
+
+
+@login_required
+def bundle_versions_view(request, bundle_id):
+    """Return the bundle's version history + share-link metadata."""
+    bundle = _get_accessible_bundle(request, bundle_id)
+    return JsonResponse(bundle_share_link_status(bundle))
+
+
+@login_required
+@require_POST
+def bundle_version_promote(request, bundle_id, version_id):
+    """Promote an existing version to be the bundle's current PDF."""
+    bundle = _get_accessible_bundle(request, bundle_id)
+    version = get_object_or_404(BundleVersion, id=version_id, bundle=bundle)
+
+    now = timezone.now()
+    Bundle.objects.filter(pk=bundle.pk).update(
+        current_version=version,
+        final_pdf=version.final_pdf.name,
+        pdf_generated_at=now,
+    )
+    bundle.refresh_from_db()
+    log_bundle_event(
+        request.user, bundle, 'Bundle version promoted', version=version.version)
+    return JsonResponse({
+        'success': True,
+        **bundle_share_link_status(bundle),
+    })
+
+
+@login_required
+@require_POST
+def bundle_version_pin(request, bundle_id, version_id):
+    """Pin/unpin (and optionally label) a version so retention keeps it."""
+    bundle = _get_accessible_bundle(request, bundle_id)
+    version = get_object_or_404(BundleVersion, id=version_id, bundle=bundle)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        payload = {}
+
+    pinned = payload.get('pinned')
+    version.pinned = (not version.pinned) if pinned is None else bool(pinned)
+    update_fields = ['pinned']
+    if 'label' in payload:
+        version.label = (payload.get('label') or '')[:120]
+        update_fields.append('label')
+    version.save(update_fields=update_fields)
+
+    log_bundle_event(
+        request.user,
+        bundle,
+        'Bundle version pinned' if version.pinned else 'Bundle version unpinned',
+        version=version.version,
+    )
+    return JsonResponse({
+        'success': True,
+        **bundle_share_link_status(bundle),
+    })
+
+
+@login_required
+def bundle_version_download(request, bundle_id, version_id):
+    """Download a specific immutable version's PDF."""
+    bundle = _get_accessible_bundle(request, bundle_id)
+    version = get_object_or_404(BundleVersion, id=version_id, bundle=bundle)
+    if not version.final_pdf or not version.final_pdf.name:
+        raise Http404('This version has no PDF.')
+    try:
+        pdf_file = version.final_pdf.storage.open(version.final_pdf.name, 'rb')
+    except Exception as exc:
+        logger.exception(
+            'Could not open bundle version %s PDF: %s', version.id, exc)
+        raise Http404('Could not read this version PDF.')
+    response = FileResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'attachment; filename="{bundle.name} v{version.version}.pdf"'
+    )
+    return response
 
 
 def _parse_order_ids(raw_values):
@@ -11900,6 +12338,19 @@ def _open_document_pdf(document, cache=None):
     # closes its underlying handle, so the merge pass would drop every document
     # and leave only the index page.
     field_file = document.file
+    return field_file.storage.open(field_file.name, 'rb')
+
+
+def _open_bundle_final_pdf(bundle):
+    """Open a fresh handle to the final bundle PDF straight from storage.
+
+    Mirrors _open_document_pdf: FieldFile.open('rb') raises "The file cannot be
+    reopened" for SharePoint-backed files once the cached handle has been opened
+    and closed (e.g. by _bundle_pdf_is_current's verify step), because the file
+    has no local path to reopen from. Going through storage.open returns a fresh
+    SharePointFile with freshly-downloaded bytes on every call.
+    """
+    field_file = bundle.final_pdf
     return field_file.storage.open(field_file.name, 'rb')
 
 
@@ -12372,6 +12823,11 @@ def _index_header_row_offset(bundle):
     rows = 1 + max(len(claimants), 1) + 1 + max(len(defendants), 1) + 5
     if len(bundle.court_name or '') > 42:
         rows += 1
+    for party in list(claimants) + list(defendants):
+        if len(str((party or {}).get('name') or '')) > 45:
+            rows += 1
+    if len(bundle.index_title or '') > 60:
+        rows += 1
     if bundle.hearing_line or bundle.conference_line:
         rows += 1
     return rows
@@ -12506,12 +12962,14 @@ def _wrap_court_heading_lines(canvas, text, max_width, font_name=None, font_size
         if canvas.stringWidth(line, font_name, font_size) <= max_width:
             wrapped.append(line)
             continue
-        chunk = line
-        while chunk and canvas.stringWidth(chunk, font_name, font_size) > max_width:
-            chunk = chunk[:-1]
-        if chunk and len(chunk) < len(line):
-            chunk = chunk[:-3].rstrip() + '...'
-        wrapped.append(chunk or line[:1])
+        while line:
+            chunk = line
+            while chunk and canvas.stringWidth(chunk, font_name, font_size) > max_width:
+                chunk = chunk[:-1]
+            if not chunk:
+                chunk = line[:1]
+            wrapped.append(chunk)
+            line = line[len(chunk):]
     return wrapped
 
 
@@ -12534,6 +12992,8 @@ def _draw_court_index_header(index_canvas, bundle, margin_x, page_width, top_y):
     footer_font_size = 10
     row1_leading = 20
     party_row_leading = 30
+    party_name_leading = 18
+    index_title_leading = 18
 
     case_text = (
         f'{case_label} {bundle.case_number.upper()}'
@@ -12572,66 +13032,76 @@ def _draw_court_index_header(index_canvas, bundle, margin_x, page_width, top_y):
         )
     y -= row1_leading * max(len(court_lines), 1) + 14
 
-    for party in claimants:
-        if party.get('name'):
-            _draw_semibold_text(
-                index_canvas,
-                _court_heading_text(party['name']),
-                page_width / 2,
-                y,
-                party_font_size,
-                align='center',
+    def draw_party_rows(parties):
+        nonlocal y
+        for party in parties:
+            role_text = _court_heading_text(party.get('role'))
+            role_width = (
+                _semibold_string_width(index_canvas, role_text, party_font_size)
+                if role_text else 0
             )
-        if party.get('role'):
-            _draw_semibold_text(
-                index_canvas,
-                _court_heading_text(party['role']),
-                page_width - margin_x,
-                y,
-                party_font_size,
-                align='right',
-            )
-        y -= party_row_leading
+            name_lines = []
+            if party.get('name'):
+                # Names are centred, so reserve the role's width on both sides
+                # to keep the wrapped name clear of the right-aligned role.
+                name_max_width = max(
+                    page_width - (2 * (margin_x + role_width + 12)), 120)
+                name_lines = _wrap_court_heading_lines(
+                    index_canvas,
+                    _court_heading_text(party['name']),
+                    name_max_width,
+                    font_size=party_font_size,
+                )
+            for line_index, line in enumerate(name_lines):
+                _draw_semibold_text(
+                    index_canvas,
+                    line,
+                    page_width / 2,
+                    y - (line_index * party_name_leading),
+                    party_font_size,
+                    align='center',
+                )
+            if role_text:
+                _draw_semibold_text(
+                    index_canvas,
+                    role_text,
+                    page_width - margin_x,
+                    y,
+                    party_font_size,
+                    align='right',
+                )
+            y -= party_row_leading + \
+                max(len(name_lines) - 1, 0) * party_name_leading
+
+    draw_party_rows(claimants)
 
     _draw_semibold_text(
         index_canvas, '-V-', page_width / 2, y, party_font_size, align='center')
     y -= party_row_leading
 
-    for party in defendants:
-        if party.get('name'):
-            _draw_semibold_text(
-                index_canvas,
-                _court_heading_text(party['name']),
-                page_width / 2,
-                y,
-                party_font_size,
-                align='center',
-            )
-        if party.get('role'):
-            _draw_semibold_text(
-                index_canvas,
-                _court_heading_text(party['role']),
-                page_width - margin_x,
-                y,
-                party_font_size,
-                align='right',
-            )
-        y -= party_row_leading
+    draw_party_rows(defendants)
 
     y -= 8
     index_canvas.setStrokeColor(_bundle_index_rule_color())
     index_canvas.line(margin_x, y, page_width - margin_x, y)
     y -= 20
 
-    _draw_semibold_text(
+    title_lines = _wrap_court_heading_lines(
         index_canvas,
         _court_heading_text(bundle.index_title or 'Index to the Bundle'),
-        page_width / 2,
-        y,
-        index_title_font_size,
-        align='center',
-    )
-    y -= 10
+        page_width - (2 * margin_x),
+        font_size=index_title_font_size,
+    ) or [_court_heading_text('Index to the Bundle')]
+    for line_index, line in enumerate(title_lines):
+        _draw_semibold_text(
+            index_canvas,
+            line,
+            page_width / 2,
+            y - (line_index * index_title_leading),
+            index_title_font_size,
+            align='center',
+        )
+    y -= (len(title_lines) - 1) * index_title_leading + 10
 
     footer_parts = []
     if bundle.hearing_line.strip():
@@ -12639,15 +13109,22 @@ def _draw_court_index_header(index_canvas, bundle, margin_x, page_width, top_y):
     if bundle.conference_line.strip():
         footer_parts.append(_court_heading_text(bundle.conference_line))
     if footer_parts:
-        _draw_semibold_text(
+        footer_lines = _wrap_court_heading_lines(
             index_canvas,
             '   '.join(footer_parts),
-            page_width / 2,
-            y,
-            footer_font_size,
-            align='center',
+            page_width - (2 * margin_x),
+            font_size=footer_font_size,
         )
-        y -= 12
+        for line_index, line in enumerate(footer_lines):
+            _draw_semibold_text(
+                index_canvas,
+                line,
+                page_width / 2,
+                y - (line_index * 12),
+                footer_font_size,
+                align='center',
+            )
+        y -= 12 * len(footer_lines)
 
     y -= 6
     index_canvas.line(margin_x, y, page_width - margin_x, y)
@@ -12757,11 +13234,13 @@ def _generate_index_pdf(bundle, documents_info):
         section_lines = []
         section_row_height = row_height
         if current_section != doc_info['section']:
+            # Measure with the bold font: the heading is drawn bold, and bold
+            # glyphs are wider, so measuring regular can overflow the band.
             section_lines = _wrap_index_text_lines(
                 index_canvas,
                 doc_info['section'],
                 section_max_width,
-                font_name=_BUNDLE_INDEX_SERIF_FONT,
+                font_name=_BUNDLE_INDEX_SERIF_FONT_BOLD,
                 font_size=index_font_size,
             )
             section_row_height = _index_row_min_height(
@@ -12861,16 +13340,28 @@ def _add_page_number(page, page_number):
     from PyPDF2 import PdfReader
     from reportlab.pdfgen import canvas
 
+    # Scanned pages are often stored upright with a /Rotate flag (and sometimes a
+    # MediaBox that does not start at the origin). merge_page ignores /Rotate, so
+    # the number would otherwise be stamped in the unrotated frame and end up
+    # rotated and mid-edge once the viewer applies the rotation. Bake the rotation
+    # into the content first so the box below is the true, upright visible area.
+    page.transfer_rotation_to_content()
+
+    left = float(page.mediabox.left)
+    bottom = float(page.mediabox.bottom)
     width = float(page.mediabox.width)
     height = float(page.mediabox.height)
 
-    # Create an in-memory PDF with just the page number.
+    # Create an in-memory PDF with just the page number. Size it to the page's
+    # top-right so a non-zero MediaBox origin is honoured when the overlay merges.
     number_buffer = BytesIO()
-    temp_canvas = canvas.Canvas(number_buffer, pagesize=(width, height))
+    temp_canvas = canvas.Canvas(
+        number_buffer, pagesize=(left + width, bottom + height)
+    )
 
     text = str(page_number)
-    x_position = width - _BUNDLE_PAGE_NUMBER_RIGHT_MARGIN
-    y_position = _BUNDLE_PAGE_NUMBER_BOTTOM_MARGIN
+    x_position = left + width - _BUNDLE_PAGE_NUMBER_RIGHT_MARGIN
+    y_position = bottom + _BUNDLE_PAGE_NUMBER_BOTTOM_MARGIN
     text_width = temp_canvas.stringWidth(
         text,
         _BUNDLE_INDEX_SERIF_FONT_BOLD,

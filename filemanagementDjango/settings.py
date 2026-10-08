@@ -108,10 +108,17 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 # ---------------------------------------------------------------------------
 
+# Database-backed cache so state is shared across gunicorn workers. The default
+# cache is used for the court-bundle PDF generation lock and progress (backend
+# views); with a per-process LocMemCache each of the 3 workers kept its own copy,
+# so the generation lock did not hold across workers (duplicate concurrent builds
+# racing to save the same PDF, and progress polls hitting a different worker saw
+# nothing). DatabaseCache gives an atomic, cross-worker cache.add() lock.
+# Requires the cache table: `python manage.py createcachetable` (run in entrypoint).
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'file-management-django',
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache_table',
     }
 }
 
@@ -128,6 +135,7 @@ INSTALLED_APPS = [
     'users',
     'frontend',
     'backend',
+    'email_sorting',
     'django_quill',
     'django_crontab',
     'django.contrib.humanize',
@@ -355,10 +363,24 @@ SHAREPOINT_DRIVE_IDS = os.getenv(
     '{"Undertakings":"","StaffDocuments":"","BundleSources":"","BundleFinal":""}',
 )
 BUNDLE_SHARE_LINK_EXPIRY_DAYS = int(os.getenv('BUNDLE_SHARE_LINK_EXPIRY_DAYS', '30'))
+
+# Pseudo fee earners used to group files (e.g. "DC" for Debt Collection) map
+# to the person responsible for those files for sign-off, dashboards and
+# reporting. JSON object of staff codes; a file's own fee_earner never changes.
+RESPONSIBLE_FEE_EARNER_ALIASES = os.getenv(
+    'RESPONSIBLE_FEE_EARNER_ALIASES', '{"DC": "ND"}')
+
+# Compliance stats: archived files opened on/after this ISO date are checked for
+# client money still held. Older matters were not run through this system's
+# ledgers. Leave blank to check files opened in the last 12 months.
+COMPLIANCE_CLIENT_MONEY_FROM = os.getenv('COMPLIANCE_CLIENT_MONEY_FROM', '')
 BUNDLE_SHARE_LINK_USE_PASSWORD = os.getenv(
     'BUNDLE_SHARE_LINK_USE_PASSWORD', 'true'
 ).lower() in ('true', '1', 'yes')
 BUNDLE_SHARE_LINK_SCOPE = os.getenv('BUNDLE_SHARE_LINK_SCOPE', 'anonymous').strip().lower()
+# How many recent bundle versions to always keep, even when unshared. Older
+# versions are pruned unless they are current, pinned/labelled, or still shared.
+BUNDLE_VERSION_KEEP_RECENT = int(os.getenv('BUNDLE_VERSION_KEEP_RECENT', '3'))
 
 if USE_SHAREPOINT:
     STORAGES = {

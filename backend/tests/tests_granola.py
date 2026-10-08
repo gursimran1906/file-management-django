@@ -7,8 +7,8 @@ from django.test import TestCase
 from users.models import CustomUser
 from ..models import (ClientContactDetails, Free30Mins, GranolaImportedNote,
                      MatterAttendanceNotes, MatterType, WIP)
-from ..granola.parse import (extract_file_ref, parse_meeting_times,
-                             parse_parties, parse_title)
+from ..granola.parse import (extract_file_ref, parse_fee_earner,
+                             parse_meeting_times, parse_parties, parse_title)
 from ..granola.markdown_to_quill import markdown_to_html, markdown_to_quill_json
 from ..granola import ingest
 
@@ -80,6 +80,20 @@ class ExtractFileRefTests(TestCase):
         self.assertIsNone(extract_file_ref('just a chat, no file').file_number)
 
 
+class ParseFeeEarnerTests(TestCase):
+    def test_staff_code(self):
+        self.assertEqual(parse_fee_earner('Notes\nFee earner: ABC\nmore'), 'ABC')
+
+    def test_hyphen_and_case_insensitive(self):
+        self.assertEqual(parse_fee_earner('FEE-EARNER: xy'), 'xy')
+
+    def test_attended_by_and_full_name(self):
+        self.assertEqual(parse_fee_earner('Attended by: Jane Smith'), 'Jane Smith')
+
+    def test_none_when_absent(self):
+        self.assertIsNone(parse_fee_earner('a chat with no attribution'))
+
+
 class MarkdownConversionTests(TestCase):
     def test_html_renders_and_sanitises(self):
         html = markdown_to_html('# Title\n\n- a\n- b\n\n**bold**')
@@ -106,7 +120,7 @@ class IngestTests(TestCase):
         note = {
             'id': 'note-1',
             'title': '[GRN0001] Call with client',
-            'summary': '## Discussion\n\n- agreed next steps',
+            'summary': '## Discussion\n\nFee earner: FEE\n\n- agreed next steps',
             'transcript': [
                 {'speaker': 'Lawyer', 'text': 'Hello'},
                 {'speaker': 'Client', 'text': 'Hi'},
@@ -148,7 +162,7 @@ class IngestTests(TestCase):
     def test_file_number_picked_up_from_body(self):
         matter = make_matter('GRN0001', fee_earner=self.fee_earner)
         note = self._note(title='Client call',  # no code in the title
-                          summary='## Notes\n\nFile number: GRN0001\n\n- agreed steps')
+                          summary='## Notes\n\nFile number: GRN0001\nFee earner: FEE\n\n- agreed steps')
         imported = ingest._ingest_note(FakeClient(note), note)
         self.assertEqual(imported.status, GranolaImportedNote.STATUS_CREATED)
         self.assertEqual(imported.parsed_file_number, 'GRN0001')
@@ -159,7 +173,7 @@ class IngestTests(TestCase):
     def test_not_charged_from_body(self):
         make_matter('GRN0001', fee_earner=self.fee_earner)
         note = self._note(title='Client call',
-                          summary='File number: GRN0001 (NC)')
+                          summary='File number: GRN0001 (NC)\nFee earner: FEE')
         imported = ingest._ingest_note(FakeClient(note), note)
         self.assertFalse(imported.attendance_note.is_charged)
 
@@ -192,10 +206,24 @@ class IngestTests(TestCase):
         self.assertEqual(GranolaImportedNote.objects.count(), 1)
         self.assertEqual(MatterAttendanceNotes.objects.count(), 1)
 
-    def test_fee_earner_matched_by_email(self):
+    def test_fee_earner_matched_from_body(self):
+        # The default fixture carries a "Fee earner: FEE" line in the body.
         note = self._note(title='Unmatched matter')
         imported = ingest._ingest_note(FakeClient(note), note)
         self.assertEqual(imported.matched_fee_earner, self.fee_earner)
+
+    def test_no_fee_earner_line_leaves_unmatched(self):
+        note = self._note(title='Unmatched matter', summary='Just a chat, no code.')
+        imported = ingest._ingest_note(FakeClient(note), note)
+        self.assertIsNone(imported.matched_fee_earner)
+
+    def test_missing_fee_earner_goes_to_inbox(self):
+        # Matter + a calendar window, but no fee-earner code -> Allocate.
+        make_matter('GRN0001', fee_earner=self.fee_earner)
+        note = self._note(summary='File number: GRN0001\nDiscussion, no code.')
+        imported = ingest._ingest_note(FakeClient(note), note)
+        self.assertEqual(imported.status, GranolaImportedNote.STATUS_PENDING)
+        self.assertIsNone(imported.attendance_note)
 
     def test_unit_from_calendar_event(self):
         # The default fixture carries a 10:00–10:30 calendar event (30 min -> 5).
@@ -207,7 +235,7 @@ class IngestTests(TestCase):
     def test_meeting_window_from_body_when_no_calendar_event(self):
         # Ad-hoc recording: no calendar_event, so the window comes from the body.
         make_matter('GRN0001', fee_earner=self.fee_earner)
-        note = self._note(summary=('File number: GRN0001\n'
+        note = self._note(summary=('File number: GRN0001\nFee earner: FEE\n'
                                    'Start Time: 10:00 ; Finish Time: 10:30\n'))
         note.pop('calendar_event')
         imported = ingest._ingest_note(FakeClient(note), note)
@@ -218,19 +246,22 @@ class IngestTests(TestCase):
     def test_body_finish_completes_calendar_start(self):
         # Calendar event with a start but no end -> body supplies the finish.
         make_matter('GRN0001', fee_earner=self.fee_earner)
-        note = self._note(summary='File number: GRN0001\nFinish Time: 11:00\n')
+        note = self._note(summary='File number: GRN0001\nFee earner: FEE\nFinish Time: 11:00\n')
         note['calendar_event'] = {
             'scheduled_start_time': '2026-06-10T10:00:00+01:00'}
         imported = ingest._ingest_note(FakeClient(note), note)
         self.assertEqual(imported.attendance_note.unit, 10)  # 60 min / 6
 
-    def test_no_end_anywhere_yields_single_unit(self):
+    def test_no_end_time_goes_to_inbox(self):
+        # An incomplete window (no finish) can't produce a reliable unit, so the
+        # note waits in Allocate for the times to be filled in rather than filing.
         make_matter('GRN0001', fee_earner=self.fee_earner)
-        note = self._note(summary='File number: GRN0001\nNo times given.')
+        note = self._note(summary='File number: GRN0001\nFee earner: FEE\nNo times given.')
         note.pop('calendar_event')
         imported = ingest._ingest_note(FakeClient(note), note)
         self.assertIsNone(imported.meeting_end)
-        self.assertEqual(imported.attendance_note.unit, 1)
+        self.assertEqual(imported.status, GranolaImportedNote.STATUS_PENDING)
+        self.assertIsNone(imported.attendance_note)
 
 
 class ParsePartiesTests(TestCase):
@@ -301,7 +332,8 @@ class Free30IngestTests(TestCase):
         note = {
             'id': 'free-1',
             'title': 'Initial consultation',
-            'summary': ('## Info of Parties\n'
+            'summary': ('Fee earner: FEE\n'
+                        '## Info of Parties\n'
                         'Party 1\n'
                         '- Name: Alice Brown\n'
                         '- Email: alice@example.com\n'
@@ -341,11 +373,20 @@ class Free30IngestTests(TestCase):
         note = self._note(summary='General chat, no party details.')
         imported = ingest._ingest_note(
             FakeClient(note), note, GranolaImportedNote.TYPE_FREE30)
-        # No attendees -> sent to the review inbox, not auto-created.
+        # No attendees -> sent to the Allocate inbox, not auto-created.
         self.assertEqual(imported.status, GranolaImportedNote.STATUS_PENDING)
         self.assertIsNone(imported.free30_meeting)
         self.assertEqual(Free30Mins.objects.count(), 0)
-        self.assertIn('No party details', imported.error_message)
+        self.assertIn('attendees', imported.error_message)
+
+    def test_free30_without_fee_earner_goes_to_review(self):
+        # Parties present but no fee-earner code -> Allocate to complete.
+        note = self._note(summary=('## Info of Parties\nParty 1\n'
+                                   '- Name: Alice Brown\n- Email: a@x.com\n'))
+        imported = ingest._ingest_note(
+            FakeClient(note), note, GranolaImportedNote.TYPE_FREE30)
+        self.assertEqual(imported.status, GranolaImportedNote.STATUS_PENDING)
+        self.assertIsNone(imported.free30_meeting)
 
     def test_folder_id_resolution(self):
         folders = [
@@ -377,13 +418,14 @@ class SyncRoutingTests(TestCase):
 
         att_note = {
             'id': 'att-1', 'title': '[GRN0001] Client call',
-            'summary': '- discussed matters', 'owner': {'email': 'fee@example.com'},
+            'summary': 'Fee earner: FEE\n- discussed matters',
+            'owner': {'email': 'fee@example.com'},
             'start_time': '2026-06-10T09:00:00+01:00',
             'end_time': '2026-06-10T09:12:00+01:00',
         }
         free_note = {
             'id': 'free-1', 'title': 'Consultation',
-            'summary': 'Party 1\n- Name: Alice Brown\n- Email: a@x.com',
+            'summary': 'Fee earner: FEE\nParty 1\n- Name: Alice Brown\n- Email: a@x.com',
             'owner': {'email': 'fee@example.com'},
             'start_time': '2026-06-10T14:00:00+01:00',
             'end_time': '2026-06-10T14:30:00+01:00',
@@ -591,19 +633,56 @@ class InboxActionTests(TestCase):
         self.assertIsNone(note.reviewed_at)
 
     def test_create_free30_from_pending(self):
+        # The reviewer completes the missing info (attendees + times) in Allocate.
         note = self._pending(
-            note_type=GranolaImportedNote.TYPE_FREE30,
-            summary_md='Party 1\n- Name: Alice Brown\n- Email: a@x.com')
-        r = self.client.post(self.reverse('granola_create_free30', args=[note.id]),
-                             {'fee_earner': self.mgr.id})
+            note_type=GranolaImportedNote.TYPE_FREE30, summary_md='chat')
+        r = self.client.post(self.reverse('granola_create_free30', args=[note.id]), {
+            'fee_earner': self.mgr.id,
+            'number_of_attendees': '1',
+            'name': 'Alice Brown', 'email': 'a@x.com', 'contact_number': '',
+            'address_line1': '', 'address_line2': '', 'county': '', 'postcode': '',
+            'date': '2026-06-10', 'start_time': '14:00', 'finish_time': '14:30',
+        })
         self.assertEqual(r.status_code, 302)
         note.refresh_from_db()
         self.assertEqual(note.status, GranolaImportedNote.STATUS_CREATED)
         self.assertIsNotNone(note.free30_meeting)
         self.assertEqual(Free30Mins.objects.count(), 1)
+        meeting = note.free30_meeting
+        self.assertEqual(meeting.attendees.count(), 1)
+        self.assertEqual(meeting.attendees.first().name, 'Alice Brown')
+        self.assertEqual(str(meeting.start_time), '14:00:00')
+        self.assertEqual(str(meeting.finish_time), '14:30:00')
+
+    def test_assign_attendance_with_times(self):
+        make_matter('GRN0001', fee_earner=self.mgr)
+        note = self._pending(note_type=GranolaImportedNote.TYPE_ATTENDANCE,
+                             parsed_file_number='GRN0001')
+        r = self.client.post(self.reverse('granola_assign_note', args=[note.id]), {
+            'file_number': 'GRN0001', 'person_attended': self.mgr.id,
+            'is_charged': 'on', 'date': '2026-06-10',
+            'start_time': '10:00', 'finish_time': '10:30',
+        })
+        self.assertEqual(r.status_code, 302)
+        note.refresh_from_db()
+        self.assertEqual(note.status, GranolaImportedNote.STATUS_CREATED)
+        self.assertIsNotNone(note.attendance_note)
+        self.assertEqual(note.attendance_note.unit, 5)  # 30 min / 6
 
     def test_inbox_shows_dismissed_section(self):
         self._pending(status=GranolaImportedNote.STATUS_IGNORED, title='Gone note')
         body = self.client.get(self.reverse('granola_inbox')).content.decode()
         self.assertIn('Gone note', body)
         self.assertIn('Restore', body)
+
+    def test_inbox_renders_completion_forms(self):
+        # Free 30 completion (attendees + times) and attendance time-capture forms.
+        self._pending(note_type=GranolaImportedNote.TYPE_FREE30,
+                      granola_note_id='f30', title='F30')
+        self._pending(note_type=GranolaImportedNote.TYPE_ATTENDANCE,
+                      granola_note_id='att', title='Att')
+        body = self.client.get(self.reverse('granola_inbox')).content.decode()
+        self.assertIn('data-add-attendee', body)
+        self.assertIn('number_of_attendees', body)
+        self.assertIn('name="start_time"', body)
+        self.assertIn('name="finish_time"', body)

@@ -390,8 +390,15 @@
             </div>
             
             <div class="md:col-span-4">
-                {{ form.due_diligence_signed_by.label }}
-                {{ form.due_diligence_signed_by }}
+                <label>Sign-off</label>
+                <p class="text-sm text-gray-600 mt-1">
+                    {% if request.user.is_matter_fee_earner %}
+                    Saving as a fee earner signs this assessment off in your name.
+                    {% else %}
+                    On save this goes to the matter's fee earner to review the
+                    flagged answers and sign off.
+                    {% endif %}
+                </p>
             </div>
         </div>
         
