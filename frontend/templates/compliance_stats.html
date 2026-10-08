@@ -4,17 +4,23 @@
 {% block container %}
 <div class="space-y-5">
     <div class="div-container py-3">
-        <a href="{% url 'reports_hub' %}" class="text-xs text-gray-500 hover:text-gray-900">&larr; Reports</a>
-        <h1 class="text-2xl font-semibold text-gray-900 mt-1">Compliance stats</h1>
-        <p class="text-sm text-gray-600 mt-1">
-            Green is done, red is not done. Live matters are those with status Open or To Be Closed;
-            the file closure checks look at archived files. Click any red number for the list behind it.
-        </p>
-        <p class="text-xs text-gray-500 mt-1 tabular-nums">
-            As at {{ generated|date:"d/m/Y" }} &middot; {{ live_matter_count }} live matter{{ live_matter_count|pluralize }}
-            &middot; {{ live_client_count }} client{{ live_client_count|pluralize }} on live matters
-            &middot; {{ archived_matter_count }} archived file{{ archived_matter_count|pluralize }}
-        </p>
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <a href="{% url 'reports_hub' %}" class="text-xs text-gray-500 hover:text-gray-900">&larr; Reports</a>
+                <h1 class="text-2xl font-semibold text-gray-900 mt-1">Compliance stats</h1>
+                <p class="text-sm text-gray-600 mt-1">
+                    Green is done, red is not. Live matters are those with status Open or To Be Closed.
+                    Click any red number for the list behind it; "awaiting sign-off" opens the sign-off queue.
+                </p>
+                <p class="text-xs text-gray-500 mt-1 tabular-nums">
+                    As at {{ generated|date:"d/m/Y" }} &middot; {{ live_matter_count }} live matter{{ live_matter_count|pluralize }}
+                    &middot; {{ live_client_count }} client{{ live_client_count|pluralize }} on live matters
+                </p>
+            </div>
+            {% if request.user.is_matter_fee_earner %}
+            <a href="{% url 'signoff_queue' %}" class="btn-primary text-sm shrink-0">Sign-off queue{% if signoff_pending_count %} <span class="ml-1.5 rounded-full bg-white/20 px-1.5 text-xs tabular-nums">{{ signoff_pending_count }}</span>{% endif %}</a>
+            {% endif %}
+        </div>
     </div>
 
     {% for group in groups %}
@@ -34,7 +40,7 @@
                     <p class="text-xs text-gray-400 mt-0.5">Nothing to count</p>
                     {% else %}
                     <p class="text-xs mt-0.5 tabular-nums">
-                        <span class="text-green-700 font-medium">{{ metric.done }} done</span><span class="text-gray-400"> &middot; </span>{% if metric.not_done %}<a href="{{ metric.detail_url }}" class="text-red-700 font-medium hover:underline">{{ metric.not_done }} not done</a>{% else %}<span class="text-gray-400">0 not done</span>{% endif %}<span class="text-gray-400"> of {{ metric.total }}</span>
+                        <span class="text-green-700 font-medium">{{ metric.done }} {{ metric.done_label }}</span><span class="text-gray-400"> &middot; </span>{% if metric.not_done %}<a href="{{ metric.detail_url }}" class="text-red-700 font-medium hover:underline">{{ metric.not_done }} {{ metric.not_done_label }}</a>{% else %}<span class="text-gray-400">0 {{ metric.not_done_label }}</span>{% endif %}<span class="text-gray-400"> of {{ metric.total }}</span>
                     </p>
                     {% if metric.reasons %}
                     <p class="text-[11px] text-gray-500 mt-0.5 tabular-nums">
@@ -75,7 +81,7 @@
                             {% else %}
                             <span class="text-red-700 font-medium">{{ cell.done }}/{{ cell.total }}</span>
                             <span class="text-xs text-red-700">{{ cell.pct }}%</span>
-                            <a href="{{ cell.detail_url }}" class="block text-xs text-red-700 hover:underline">{{ cell.not_done }} outstanding</a>
+                            <a href="{{ cell.detail_url }}" class="block text-xs text-red-700 hover:underline">{{ cell.not_done }} {{ cell.not_done_label }}</a>
                             {% endif %}
                         </td>
                         {% endfor %}

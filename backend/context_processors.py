@@ -21,3 +21,13 @@ def matter_nav(request):
         'matter_is_probate': matter_is_probate,
         'matter_is_conveyancing': matter_is_conveyancing,
     }
+
+
+def signoff_pending(request):
+    """How many items await the signed-in fee earner's sign-off, for the
+    navbar badge. Zero (and no query) for anyone who cannot sign off."""
+    user = getattr(request, 'user', None)
+    if user is None or not user.is_authenticated or not user.is_matter_fee_earner:
+        return {'signoff_pending_count': 0}
+    from .signoff_queue import pending_count
+    return {'signoff_pending_count': pending_count(user)}

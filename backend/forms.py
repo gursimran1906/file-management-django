@@ -10,13 +10,30 @@ from django.utils.safestring import mark_safe
 from django.utils.html import format_html, format_html_join
 from django_quill.forms import QuillFormField
 
+class ArchiveDetailsForm(forms.ModelForm):
+    """Retention and physical-file facts recorded once a matter is archived."""
+
+    class Meta:
+        model = WIP
+        fields = ['latest_destruction_date', 'actual_destruction_date', 'brought_down_on']
+        labels = {
+            'latest_destruction_date': 'Latest destruction date',
+            'actual_destruction_date': 'Actual destruction date',
+            'brought_down_on': 'Physical file brought down on',
+        }
+        widgets = {name: forms.DateInput(attrs={'type': 'date', 'class': 'form-input'})
+                   for name in fields}
+
+
 class OpenFileForm(forms.ModelForm):
     class Meta:
         model = WIP
         # additional_clients is handled manually in the view (custom add-client
-        # UI), so keep it off the ModelForm.
+        # UI); the archive / retention dates have their own form on the matter
+        # home. Keep them all off this ModelForm so a save never blanks them.
         exclude = [
             'additional_clients',
+            *ArchiveDetailsForm.Meta.fields,
         ]
 
     undertakings = forms.CharField(widget=forms.Textarea(attrs={'rows': 3}), required=False)

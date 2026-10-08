@@ -50,7 +50,7 @@ _SOURCE_PRIORITY = {SOURCE_OPPOSING: 0, SOURCE_CLIENT: 1, SOURCE_AUTHORISED: 2}
 _SOURCE_LABELS = {
     SOURCE_OPPOSING: 'Opposing party',
     SOURCE_CLIENT: 'Existing client',
-    SOURCE_AUTHORISED: 'Authorised party',
+    SOURCE_AUTHORISED: 'Authorised or paying party',
 }
 
 DOB_MATCH = 'match'
@@ -188,7 +188,7 @@ def run_conflict_check(name, dob=None):
 
     for party in AuthorisedParties.objects.filter(name_filter):
         file_numbers = WIP.objects.filter(
-            Q(authorised_party1=party) | Q(authorised_party2=party)
+            Q(authorised_party1=party) | Q(authorised_party2=party) | Q(paying_party=party)
         ).exclude(file_number__isnull=True).values_list(
             'file_number', flat=True).distinct()
         consider(SOURCE_AUTHORISED, party, list(file_numbers),

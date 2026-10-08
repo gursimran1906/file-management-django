@@ -14,7 +14,6 @@ from ..compliance_stats import (
     GREEN,
     METRICS,
     RED,
-    Snapshot,
     build_compliance_stats,
     build_metric_detail,
     donut_segments,
@@ -23,8 +22,6 @@ from ..models import (
     WIP,
     AuthorisedParties,
     ClientKeyDocument,
-    FileStatus,
-    LedgerAccountTransfers,
     MatterFileReview,
     OngoingMonitoring,
     PmtsSlips,
@@ -65,14 +62,6 @@ def make_slip(matter, amount, *, money_out=False, ledger='C', when=None):
     )
 
 
-def make_transfer(src, dst, amount, *, from_ledger='C', to_ledger='O'):
-    return LedgerAccountTransfers.objects.create(
-        file_number_from=src, file_number_to=dst, from_ledger_account=from_ledger,
-        to_ledger_account=to_ledger, amount=Decimal(amount), date=timezone.localdate(),
-        description='Transfer', balance_left_from=Decimal('0'), balance_left_to=Decimal('0'),
-    )
-
-
 def make_undertaking(matter, discharged=None):
     return Undertaking.objects.create(
         file_number=matter, date_given=date(2026, 1, 5), given_to='Other side',
@@ -104,6 +93,10 @@ def not_done_rows(metric_key, **kwargs):
     return rows
 
 
+def reasons_of(metric):
+    return {r['key']: r['count'] for r in metric['reasons']}
+
+
 class DonutHelperTests(SimpleTestCase):
     def test_first_segment_starts_at_twelve_oclock(self):
         ring = donut_segments(3, 1)
@@ -130,9 +123,10 @@ class DonutHelperTests(SimpleTestCase):
         self.assertIsNone(ring['pct'])
         self.assertEqual(ring['segments'], [])
 
-    def test_colours(self):
-        done, not_done = donut_segments(1, 1)['segments']
+    def test_colours_and_labels(self):
+        done, not_done = donut_segments(1, 1, labels=('Active', 'Not active'))['segments']
         self.assertEqual((done['color'], not_done['color']), (GREEN, RED))
+        self.assertEqual((done['label'], not_done['label']), ('Active', 'Not active'))
 
 
 class ComplianceSnapshotTests(TestCase):
@@ -146,10 +140,9 @@ class ComplianceSnapshotTests(TestCase):
         make_live_matter('L0003', make_client('Three'), self.fe, status='Archived')
         stats = build_compliance_stats()
         self.assertEqual(stats['live_matter_count'], 2)
-        self.assertEqual(stats['archived_matter_count'], 1)
         self.assertEqual(metric_ctx(stats, 'client_care_sent')['total'], 2)
-        self.assertEqual(metric_ctx(stats, 'closed_no_open_undertakings')['total'], 1)
-        self.assertEqual(metric_ctx(stats, 'closed_no_client_money')['total'], 1)
+        self.assertEqual([g['key'] for g in stats['groups']],
+                         ['matter_risk', 'client_dd', 'client_care'])
 
     def test_risk_assessment_signed_awaiting_none(self):
         signed = make_live_matter('R0001', make_client('S'), self.fe)
@@ -160,9 +153,18 @@ class ComplianceSnapshotTests(TestCase):
         stats = build_compliance_stats()
         ra = metric_ctx(stats, 'risk_assessment')
         self.assertEqual((ra['done'], ra['not_done'], ra['pct']), (1, 2, 33))
-        self.assertEqual({r['key']: r['count'] for r in ra['reasons']}, {'awaiting': 1, 'none': 1})
+        self.assertEqual(reasons_of(ra), {'awaiting': 1, 'none': 1})
         rows = not_done_rows('risk_assessment', reason='none')
         self.assertEqual([r['cells']['file_number']['value'] for r in rows], ['R0003'])
+
+    def test_awaiting_sign_off_links_to_the_queue(self):
+        make_risk_assessment(make_live_matter('R0005', make_client('Q'), self.fe))
+        make_live_matter('R0006', make_client('No RA'), self.fe)
+        ra = metric_ctx(build_compliance_stats(), 'risk_assessment')
+        awaiting = next(r for r in ra['reasons'] if r['key'] == 'awaiting')
+        self.assertEqual(awaiting['url'], reverse('signoff_queue') + '?type=risk_assessment')
+        none = next(r for r in ra['reasons'] if r['key'] == 'none')
+        self.assertTrue(none['url'].endswith('?reason=none'))
 
     def test_latest_assessment_wins(self):
         matter = make_live_matter('R0010', make_client('Late'), self.fe)
@@ -171,27 +173,48 @@ class ComplianceSnapshotTests(TestCase):
         make_risk_assessment(matter, due_diligence_date=date(2026, 6, 1))
         self.assertEqual(metric_ctx(build_compliance_stats(), 'risk_assessment')['done'], 0)
 
-    def test_risk_review_current_follows_due_queryset(self):
+    def test_ongoing_monitoring_states(self):
         never = make_live_matter('V0001', make_client('Never'), self.fe)
-        old = make_live_matter('V0002', make_client('Old'), self.fe)
+        overdue = make_live_matter('V0002', make_client('Old'), self.fe)
         fresh = make_live_matter('V0003', make_client('Fresh'), self.fe)
-        make_risk_assessment(old, due_diligence_date=self.today - relativedelta(years=2))
-        make_risk_assessment(fresh, due_diligence_date=self.today - timedelta(days=30))
+        awaiting = make_live_matter('V0004', make_client('Await'), self.fe)
+        make_risk_assessment(overdue, due_diligence_date=self.today - relativedelta(years=2),
+                             signoff_status=RiskAssessment.SIGNOFF_SIGNED)
+        make_risk_assessment(fresh, due_diligence_date=self.today - timedelta(days=30),
+                             signoff_status=RiskAssessment.SIGNOFF_SIGNED)
+        # Signed assessment two months ago, then monitoring last week not yet signed off.
+        make_risk_assessment(awaiting, due_diligence_date=self.today - timedelta(days=60),
+                             signoff_status=RiskAssessment.SIGNOFF_SIGNED)
+        make_monitoring(awaiting, date_due_diligence_conducted=self.today - timedelta(days=7))
         stats = build_compliance_stats()
-        rr = metric_ctx(stats, 'risk_review_current')
-        self.assertEqual((rr['done'], rr['not_done']), (1, 2))
-        self.assertEqual({r['key']: r['count'] for r in rr['reasons']}, {'never': 1, 'overdue': 1})
-        self.assertEqual({r['cells']['file_number']['value'] for r in not_done_rows('risk_review_current')},
-                         {'V0001', 'V0002'})
+        om = metric_ctx(stats, 'ongoing_monitoring')
+        self.assertEqual((om['done'], om['not_done'], om['total']), (1, 3, 4))
+        self.assertEqual(reasons_of(om), {'awaiting': 1, 'overdue': 1, 'never': 1})
+        self.assertEqual((om['done_label'], om['not_done_label']), ('done', 'not completed'))
+        by_file = {r['cells']['file_number']['value']: r for r in not_done_rows('ongoing_monitoring')}
+        self.assertEqual(set(by_file), {'V0001', 'V0002', 'V0004'})
+        self.assertEqual(by_file['V0001']['cells']['status']['value'], 'Never done')
+        self.assertEqual(by_file['V0001']['cells']['action']['value'], 'Add assessment')
+        self.assertEqual(by_file['V0002']['cells']['status']['value'], 'Review overdue')
+        self.assertEqual(by_file['V0002']['cells']['action']['value'], 'Add monitoring')
+        self.assertEqual(by_file['V0004']['cells']['status']['value'], 'Awaiting sign-off')
+        self.assertEqual(by_file['V0004']['cells']['kind']['value'], 'Ongoing monitoring')
+        self.assertIn('/ongoing_monitoring/edit/', by_file['V0004']['cells']['action']['href'])
 
-    def test_ongoing_monitoring_counts_records(self):
-        matter = make_live_matter('M0001', make_client('Mon'), self.fe)
-        make_monitoring(matter, signoff_status=OngoingMonitoring.SIGNOFF_SIGNED)
-        make_monitoring(matter)
-        make_monitoring(matter, signoff_status=OngoingMonitoring.SIGNOFF_RETURNED)
-        om = metric_ctx(build_compliance_stats(), 'ongoing_monitoring_signoff')
-        self.assertEqual((om['total'], om['done']), (3, 1))
-        self.assertEqual({r['key']: r['count'] for r in om['reasons']}, {'awaiting': 1, 'returned': 1})
+    def test_ongoing_monitoring_signed_keeps_an_old_assessment_current(self):
+        matter = make_live_matter('V0010', make_client('Mon'), self.fe)
+        make_risk_assessment(matter, due_diligence_date=self.today - relativedelta(years=2),
+                             signoff_status=RiskAssessment.SIGNOFF_SIGNED)
+        make_monitoring(matter, date_due_diligence_conducted=self.today - timedelta(days=100),
+                        signoff_status=OngoingMonitoring.SIGNOFF_SIGNED)
+        self.assertEqual(metric_ctx(build_compliance_stats(), 'ongoing_monitoring')['done'], 1)
+        # A returned record counts as awaiting completion / sign-off.
+        make_monitoring(matter, date_due_diligence_conducted=self.today - timedelta(days=1),
+                        signoff_status=OngoingMonitoring.SIGNOFF_RETURNED)
+        om = metric_ctx(build_compliance_stats(), 'ongoing_monitoring')
+        self.assertEqual(reasons_of(om), {'awaiting': 1})
+        self.assertEqual(not_done_rows('ongoing_monitoring')[0]['cells']['status']['value'],
+                         'Returned for changes')
 
     def test_file_review_current(self):
         never = make_live_matter('F0001', make_client('Never'), self.fe)
@@ -221,7 +244,7 @@ class ComplianceSnapshotTests(TestCase):
         make_live_matter('H0010', make_client('Low'), self.fe)
         self.assertTrue(metric_ctx(build_compliance_stats(), 'high_risk_signed_off')['na'])
 
-    def test_dormancy(self):
+    def test_dormancy_reads_active_or_not(self):
         new = make_live_matter('D0001', make_client('New'), self.fe)
         active = make_live_matter('D0002', make_client('Active'), self.fe)
         quiet = make_live_matter('D0003', make_client('Quiet'), self.fe)
@@ -231,13 +254,17 @@ class ComplianceSnapshotTests(TestCase):
         stats = build_compliance_stats()
         nd = metric_ctx(stats, 'not_dormant')
         self.assertEqual((nd['done'], nd['not_done']), (2, 1))
+        self.assertEqual((nd['done_label'], nd['not_done_label']), ('active', 'not active'))
+        self.assertEqual([seg['label'] for seg in nd['donut']], ['Active', 'Not active'])
+        self.assertEqual(row_cell(stats, 'matter_risk', 'AAA', 'not_dormant')['not_done_label'], 'not active')
+        self.assertEqual(row_cell(stats, 'matter_risk', 'AAA', 'client_care_sent' if False else 'risk_assessment')['not_done_label'], 'outstanding')
         rows = not_done_rows('not_dormant')
         self.assertEqual(rows[0]['cells']['file_number']['value'], 'D0003')
         self.assertEqual(rows[0]['cells']['kind']['value'], 'File opened')
         self.assertEqual(rows[0]['cells']['last_activity']['value'],
                          four_months_ago.date().strftime('%d/%m/%Y'))
 
-    def test_aml_null_and_boundary(self):
+    def test_aml_id_check_null_and_boundary(self):
         never = make_client('Never')
         boundary = make_client('Boundary')
         boundary.date_of_last_aml = self.today - relativedelta(months=11)
@@ -247,18 +274,16 @@ class ComplianceSnapshotTests(TestCase):
         fresh.save()
         for i, client in enumerate([never, boundary, fresh]):
             make_live_matter(f'A000{i}', client, self.fe)
-        aml = metric_ctx(build_compliance_stats(), 'aml_check')
+        stats = build_compliance_stats()
+        aml = metric_ctx(stats, 'aml_id_check')
         self.assertEqual((aml['done'], aml['not_done']), (1, 2))
-        self.assertEqual({r['key']: r['count'] for r in aml['reasons']}, {'never': 1, 'overdue': 1})
-
-    def test_id_verified_null_is_not_done(self):
-        yes = make_client('Yes'); yes.id_verified = True; yes.save()
-        no = make_client('No'); no.id_verified = False; no.save()
-        make_live_matter('I0001', yes, self.fe)
-        make_live_matter('I0002', no, self.fe)
-        make_live_matter('I0003', make_client('Null'), self.fe)
-        idv = metric_ctx(build_compliance_stats(), 'id_verified')
-        self.assertEqual((idv['done'], idv['not_done']), (1, 2))
+        self.assertEqual(reasons_of(aml), {'never': 1, 'overdue': 1})
+        self.assertNotIn('id_verified', METRICS)
+        self.assertNotIn('aml_check', METRICS)
+        rows = not_done_rows('aml_id_check', reason='overdue')
+        self.assertEqual(rows[0]['cells']['client']['value'], 'Boundary')
+        self.assertEqual(rows[0]['cells']['last_check']['value'],
+                         boundary.date_of_last_aml.strftime('%d/%m/%Y'))
 
     def test_proof_of_id_missing_and_expired(self):
         missing = make_client('Missing Mo')
@@ -273,7 +298,7 @@ class ComplianceSnapshotTests(TestCase):
         stats = build_compliance_stats()
         pid = metric_ctx(stats, 'proof_of_id')
         self.assertEqual((pid['done'], pid['not_done']), (1, 2))
-        self.assertEqual({r['key']: r['count'] for r in pid['reasons']}, {'missing': 1, 'expired': 1})
+        self.assertEqual(reasons_of(pid), {'missing': 1, 'expired': 1})
         rows = not_done_rows('proof_of_id', reason='expired')
         self.assertEqual(rows[0]['cells']['client']['value'], 'Expired Ed')
         self.assertEqual(rows[0]['cells']['days_overdue']['value'], '3')
@@ -300,19 +325,23 @@ class ComplianceSnapshotTests(TestCase):
         self.assertEqual(rows[0]['cells']['sent']['value'], self.today.strftime('%d/%m/%Y'))
         self.assertEqual(metric_ctx(stats, 'ncba_received')['done'], 0)
 
-    def test_authorised_parties_counted_once(self):
-        party = make_party(id_check=True, date_of_last_aml=self.today - relativedelta(years=2))
+    def test_third_parties_counted_once_across_roles(self):
+        party = make_party(date_of_last_aml=self.today - relativedelta(years=2))
+        payer = make_party('Penny Payer', relationship_to_client='Mother',
+                           date_of_last_aml=self.today - timedelta(days=10))
         m1 = make_live_matter('U0001', make_client('One'), self.fe)
         m2 = make_live_matter('U0002', make_client('Two'), self.fe)
-        WIP.objects.filter(pk=m1.pk).update(authorised_party1=party)
-        WIP.objects.filter(pk=m2.pk).update(authorised_party2=party)
+        WIP.objects.filter(pk=m1.pk).update(authorised_party1=party, paying_party=payer)
+        WIP.objects.filter(pk=m2.pk).update(paying_party=party)
         stats = build_compliance_stats()
-        self.assertEqual(metric_ctx(stats, 'authorised_party_id')['total'], 1)
-        self.assertEqual(metric_ctx(stats, 'authorised_party_id')['done'], 1)
-        ap_aml = metric_ctx(stats, 'authorised_party_aml')
-        self.assertEqual((ap_aml['total'], ap_aml['done']), (1, 0))
-        rows = not_done_rows('authorised_party_aml')
+        ap = metric_ctx(stats, 'party_aml_id_check')
+        self.assertEqual((ap['total'], ap['done']), (2, 1))
+        self.assertIn('2 third parties', group_ctx(stats, 'client_dd')['scope_line'])
+        rows = not_done_rows('party_aml_id_check')
+        self.assertEqual(rows[0]['cells']['party']['value'], 'Pat Attorney')
+        self.assertEqual(rows[0]['cells']['role']['value'], 'Authorised party / Paying party')
         self.assertEqual(rows[0]['cells']['files']['value'], 'U0001, U0002')
+        self.assertNotIn('authorised_party_id', METRICS)
 
     def test_undertakings_on_live_matters(self):
         matter = make_live_matter('K0001', make_client('Und'), self.fe)
@@ -328,10 +357,10 @@ class ComplianceSnapshotTests(TestCase):
         second = make_live_matter('S0002', make_client('Solo'), other)
         second.additional_clients.add(shared)
         stats = build_compliance_stats()
-        self.assertEqual(metric_ctx(stats, 'aml_check')['total'], 2)
-        self.assertEqual(row_cell(stats, 'client_dd', 'AAA', 'aml_check')['total'], 1)
-        self.assertEqual(row_cell(stats, 'client_dd', 'BBB', 'aml_check')['total'], 2)
-        rows = not_done_rows('aml_check', fee_earner=str(self.fe.id))
+        self.assertEqual(metric_ctx(stats, 'aml_id_check')['total'], 2)
+        self.assertEqual(row_cell(stats, 'client_dd', 'AAA', 'aml_id_check')['total'], 1)
+        self.assertEqual(row_cell(stats, 'client_dd', 'BBB', 'aml_id_check')['total'], 2)
+        rows = not_done_rows('aml_id_check', fee_earner=str(self.fe.id))
         self.assertEqual([r['cells']['client']['value'] for r in rows], ['Shared'])
         self.assertEqual(rows[0]['cells']['fee_earners']['value'], 'AAA, BBB')
 
@@ -370,90 +399,12 @@ class ComplianceSnapshotTests(TestCase):
         for i in range(3, 15):
             m = make_live_matter(f'Q0{i:02d}', make_client(f'Q{i}'), fee_earners[i % 3])
             make_risk_assessment(m)
+            make_monitoring(m)
             make_undertaking(m)
         with CaptureQueriesContext(connection) as large:
             build_compliance_stats()
         self.assertEqual(len(small), len(large))
-        self.assertLessEqual(len(large), 40)
-
-
-class FileClosureTests(TestCase):
-    def setUp(self):
-        self.fe = make_user('AAA')
-        self.archived = make_live_matter('Z0001', make_client('Closed'), self.fe, status='Archived')
-
-    def balance_metric(self):
-        return metric_ctx(build_compliance_stats(), 'closed_no_client_money')
-
-    def test_client_money_in_is_held(self):
-        make_slip(self.archived, '500.00')
-        m = self.balance_metric()
-        self.assertEqual((m['total'], m['done']), (1, 0))
-        rows = not_done_rows('closed_no_client_money')
-        self.assertEqual(rows[0]['cells']['balance']['value'], '£500.00')
-        self.assertEqual(rows[0]['cells']['opened']['value'], timezone.localdate().strftime('%d/%m/%Y'))
-
-    def test_client_to_office_transfer_clears_it(self):
-        make_slip(self.archived, '500.00')
-        make_transfer(self.archived, self.archived, '500.00', from_ledger='C', to_ledger='O')
-        self.assertEqual(self.balance_metric()['done'], 1)
-
-    def test_office_to_client_transfer_adds_to_it(self):
-        make_transfer(self.archived, self.archived, '20.00', from_ledger='O', to_ledger='C')
-        self.assertEqual(self.balance_metric()['done'], 0)
-
-    def test_cross_matter_transfer_moves_the_balance(self):
-        other = make_live_matter('Z0002', make_client('Other'), self.fe, status='Archived')
-        make_slip(self.archived, '300.00')
-        make_transfer(self.archived, other, '300.00', from_ledger='C', to_ledger='C')
-        rows = not_done_rows('closed_no_client_money')
-        self.assertEqual([r['cells']['file_number']['value'] for r in rows], ['Z0002'])
-        self.assertEqual(rows[0]['cells']['balance']['value'], '£300.00')
-
-    def test_office_ledger_does_not_count(self):
-        make_slip(self.archived, '100.00', ledger='O')
-        make_slip(self.archived, '40.00', money_out=True)
-        make_slip(self.archived, '40.00')
-        self.assertEqual(self.balance_metric()['done'], 1)
-
-    def test_files_opened_before_the_window_are_left_out(self):
-        old = make_live_matter('Z0009', make_client('Historic'), self.fe, status='Archived')
-        WIP.objects.filter(pk=old.pk).update(timestamp=timezone.now() - relativedelta(months=13))
-        make_slip(old, '999.00')
-        m = self.balance_metric()
-        self.assertEqual((m['total'], m['done']), (1, 1))   # only the recent file, which holds nothing
-        # The undertakings check still covers every archived file.
-        self.assertEqual(metric_ctx(build_compliance_stats(), 'closed_no_open_undertakings')['total'], 2)
-
-    @override_settings(COMPLIANCE_CLIENT_MONEY_FROM='2026-03-01')
-    def test_setting_pins_the_cutoff(self):
-        before = make_live_matter('Z0010', make_client('Before'), self.fe, status='Archived')
-        after = make_live_matter('Z0011', make_client('After'), self.fe, status='Archived')
-        WIP.objects.filter(pk=before.pk).update(timestamp=timezone.make_aware(timezone.datetime(2026, 2, 28, 12)))
-        WIP.objects.filter(pk=after.pk).update(timestamp=timezone.make_aware(timezone.datetime(2026, 3, 1, 9)))
-        make_slip(before, '10.00')
-        make_slip(after, '10.00')
-        rows = not_done_rows('closed_no_client_money')
-        self.assertEqual([r['cells']['file_number']['value'] for r in rows], ['Z0011'])
-        stats = build_compliance_stats()
-        self.assertIn('opened on or after 01/03/2026', metric_ctx(stats, 'closed_no_client_money')['help'])
-        self.assertIn('opened since 01/03/2026', group_ctx(stats, 'closure')['scope_line'])
-
-    @override_settings(COMPLIANCE_CLIENT_MONEY_FROM='not a date')
-    def test_bad_setting_falls_back_to_recent_months(self):
-        self.assertEqual(self.balance_metric()['total'], 1)
-
-    def test_open_undertakings_on_archived_files(self):
-        make_undertaking(self.archived)
-        live = make_live_matter('Z0003', make_client('Live'), self.fe)
-        make_undertaking(live)
-        stats = build_compliance_stats()
-        m = metric_ctx(stats, 'closed_no_open_undertakings')
-        self.assertEqual((m['total'], m['done']), (1, 0))
-        rows = not_done_rows('closed_no_open_undertakings')
-        self.assertEqual(rows[0]['cells']['open_count']['value'], '1')
-        Undertaking.objects.filter(file_number=self.archived).update(date_discharged=date(2026, 2, 1))
-        self.assertEqual(metric_ctx(build_compliance_stats(), 'closed_no_open_undertakings')['done'], 1)
+        self.assertLessEqual(len(large), 30)
 
 
 class ComplianceStatsPageTests(TestCase):
@@ -475,24 +426,31 @@ class ComplianceStatsPageTests(TestCase):
         self.assertContains(resp, 'Matter risk &amp; reviews')
         self.assertContains(resp, 'Client due diligence')
         self.assertContains(resp, 'Client care paperwork')
-        self.assertContains(resp, 'File closure')
+        self.assertNotContains(resp, 'File closure')
+        self.assertContains(resp, 'Ongoing monitoring up to date')
+        self.assertContains(resp, 'AML / ID check within 11 months')
+        self.assertNotContains(resp, 'ID verified')
         self.assertContains(resp, '>n/a<')
         self.assertNotContains(resp, f'stroke="{GREEN}"')
         self.assertContains(resp, 'Not tracked in this system')
 
-    def test_page_renders_rings_and_fee_earner_links(self):
+    def test_page_renders_rings_labels_and_fee_earner_links(self):
         matter = make_live_matter('PG0001', make_client('Page'), self.fe)
         matter.date_of_client_care_sent = timezone.localdate()
         matter.save()
         make_live_matter('PG0002', make_client('Gap'), self.fe)
-        self.client.force_login(self.staff)
+        self.client.force_login(self.fe)
         resp = self.client.get(reverse('compliance_stats'))
         self.assertContains(resp, f'stroke="{GREEN}"')
         self.assertContains(resp, f'stroke="{RED}"')
         self.assertContains(resp, '>50%<')
+        self.assertContains(resp, '2 active</span>')
+        self.assertContains(resp, '0 not active</span>')
+        self.assertContains(resp, '2 not completed</a>')
         detail = reverse('compliance_stats_detail', args=['client_care_sent'])
         self.assertContains(resp, f'{detail}?fee_earner={self.fe.id}')
         self.assertContains(resp, '1 outstanding')
+        self.assertContains(resp, reverse('signoff_queue'))
 
     def test_reports_hub_lists_compliance_stats(self):
         self.client.force_login(self.staff)
@@ -521,6 +479,7 @@ class ComplianceStatsDetailTests(TestCase):
 
     def test_unknown_metric_404(self):
         self.assertEqual(self.client.get(reverse('compliance_stats_detail', args=['nope'])).status_code, 404)
+        self.assertEqual(self.client.get(reverse('compliance_stats_detail', args=['risk_review_current'])).status_code, 404)
 
     def test_lists_only_not_done_items(self):
         resp = self.client.get(self.url)

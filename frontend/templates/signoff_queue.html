@@ -1,0 +1,164 @@
+{% extends 'base.html' %}
+{% block title %}Sign-off queue{% endblock %}
+{% block container_class %}container {% endblock %}
+{% block container %}
+<div class="space-y-5">
+    <div class="div-container py-3">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <a href="{% url 'reports_hub' %}" class="text-xs text-gray-500 hover:text-gray-900">&larr; Reports</a>
+                <h1 class="text-2xl font-semibold text-gray-900 mt-1">Sign-off queue</h1>
+                <p class="text-sm text-gray-600 mt-1">
+                    Risk assessments and ongoing monitoring completed by staff and waiting for a fee earner.
+                    {% if can_sign_off %}Review the flagged answers, then sign off or return each one here &mdash; the page does not reload, so work through several at once.{% else %}Only fee earners can sign off; this list shows what is pending.{% endif %}
+                </p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0 text-xs tabular-nums">
+                <span class="badge-yellow"><span data-count-pending>{{ items|length }}</span> pending</span>
+                {% if can_sign_off %}<span class="badge-zinc"><span data-count-yours>{{ yours_count }}</span> yours</span>{% endif %}
+            </div>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+            <a href="{% url 'signoff_queue' %}" class="rounded-full px-3 py-1 text-xs font-medium border {% if not type %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-700 border-gray-200 hover:bg-gray-50{% endif %}">All</a>
+            {% for key, label in types.items %}
+            <a href="{% url 'signoff_queue' %}?type={{ key }}" class="rounded-full px-3 py-1 text-xs font-medium border {% if type == key %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-700 border-gray-200 hover:bg-gray-50{% endif %}">{{ label }}s</a>
+            {% endfor %}
+            {% if can_sign_off %}
+            <label class="ml-auto inline-flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
+                <input type="checkbox" id="only-mine" class="rounded border-gray-300">
+                Only mine
+            </label>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="signoff-list" class="space-y-4">
+        {% for item in items %}
+        <article class="div-container" data-signoff-item data-yours="{{ item.yours|yesno:'1,0' }}" data-type="{{ item.type }}">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <a class="link text-base font-semibold" href="{{ item.home_url }}">{{ item.matter.file_number }}</a>
+                        <span class="badge-gray">{{ item.type_label }}</span>
+                        {% if item.is_returned %}<span class="badge-red">Returned &mdash; with completer</span>{% else %}<span class="badge-yellow">Awaiting sign-off</span>{% endif %}
+                        {% if item.yours %}<span class="badge-purple">Yours to sign off</span>{% endif %}
+                    </div>
+                    <p class="text-sm text-gray-700 mt-1 truncate">{{ item.matter.client1.name }}{% if item.matter.matter_description %} &middot; {{ item.matter.matter_description }}{% endif %}</p>
+                    <p class="text-xs text-gray-500 mt-0.5">
+                        Fee earner {{ item.matter.fee_earner|default:"unassigned" }}
+                        &middot; {{ item.type_label }} dated {{ item.reviewed_on|date:"d/m/Y" }}
+                        {% if item.record.completed_by %}&middot; Completed by {{ item.record.completed_by.first_name }} {{ item.record.completed_by.last_name }}{% endif %}
+                        on {{ item.completed_at|date:"d/m/Y" }}
+                    </p>
+                </div>
+                <div class="flex items-center gap-3 shrink-0 text-xs">
+                    <a class="link" href="{{ item.edit_url }}">Open full {{ item.type_label|lower }}</a>
+                </div>
+            </div>
+
+            <div class="mt-3">
+                {% if item.type == 'risk_assessment' %}
+                {% include 'partials/risk_assessment_flags.html' with risk_assessment=item.record %}
+                {% else %}
+                {% include 'partials/ongoing_monitoring_flags.html' with ongoing_monitoring=item.record %}
+                {% endif %}
+            </div>
+
+            {% if item.is_returned and item.record.signoff_comments %}
+            <p class="mt-3 px-2 py-2 bg-red-50 rounded-lg border border-red-200 text-red-900 text-sm">Returned for changes: {{ item.record.signoff_comments }}</p>
+            {% endif %}
+
+            {% if can_sign_off %}
+            <div class="mt-3 flex flex-wrap items-start gap-3" data-signoff-actions>
+                <form method="post" action="{{ item.sign_off_url }}" data-signoff-form>
+                    {% csrf_token %}
+                    <button type="submit" class="btn-primary text-xs">Sign off</button>
+                </form>
+                <details class="min-w-0">
+                    <summary class="btn-secondary text-xs cursor-pointer inline-block">Return with comments</summary>
+                    <form method="post" action="{{ item.return_url }}" class="mt-2 flex flex-col gap-2 sm:w-96" data-signoff-form>
+                        {% csrf_token %}
+                        <textarea name="comments" rows="2" class="form-input w-full" placeholder="What needs changing?" required></textarea>
+                        <div>
+                            <button type="submit" class="btn-secondary text-xs">Return{% if item.record.completed_by %} to {{ item.record.completed_by.first_name }}{% endif %}</button>
+                        </div>
+                    </form>
+                </details>
+            </div>
+            <p class="mt-3 hidden rounded-lg border px-3 py-2 text-sm" data-signoff-result></p>
+            {% endif %}
+        </article>
+        {% empty %}
+        <div class="div-container">
+            <p class="text-sm text-gray-500 py-6 text-center">Nothing is waiting for sign-off{% if type %} of this type{% endif %}.</p>
+        </div>
+        {% endfor %}
+        <div class="div-container hidden" data-only-mine-empty>
+            <p class="text-sm text-gray-500 py-6 text-center">Nothing in your own queue &mdash; untick "Only mine" to see files you can cover.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+  const list = document.getElementById('signoff-list');
+  if (!list) return;
+  const onlyMine = document.getElementById('only-mine');
+
+  function cards() { return Array.from(list.querySelectorAll('[data-signoff-item]')); }
+
+  function refresh() {
+    const open = cards().filter(c => !c.dataset.done);
+    const pending = document.querySelector('[data-count-pending]');
+    const yours = document.querySelector('[data-count-yours]');
+    if (pending) pending.textContent = open.length;
+    if (yours) yours.textContent = open.filter(c => c.dataset.yours === '1').length;
+    const mineOnly = onlyMine && onlyMine.checked;
+    let visible = 0;
+    cards().forEach(c => {
+      const hide = mineOnly && c.dataset.yours !== '1';
+      c.classList.toggle('hidden', hide);
+      if (!hide) visible += 1;
+    });
+    const empty = list.querySelector('[data-only-mine-empty]');
+    if (empty) empty.classList.toggle('hidden', !(mineOnly && visible === 0));
+  }
+
+  if (onlyMine) onlyMine.addEventListener('change', refresh);
+
+  list.querySelectorAll('[data-signoff-form]').forEach(form => {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const card = form.closest('[data-signoff-item]');
+      const buttons = card.querySelectorAll('[data-signoff-actions] button');
+      buttons.forEach(b => b.disabled = true);
+      try {
+        const resp = await fetch(form.action, {
+          method: 'POST',
+          body: new FormData(form),
+          credentials: 'same-origin',
+          headers: { 'X-Requested-With': 'fetch', 'Accept': 'application/json' },
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) throw new Error(data.message || 'Could not update this record.');
+        const returned = data.status === 'returned';
+        card.querySelector('[data-signoff-actions]').classList.add('hidden');
+        const result = card.querySelector('[data-signoff-result]');
+        result.textContent = data.message;
+        result.className = 'mt-3 rounded-lg border px-3 py-2 text-sm ' +
+          (returned ? 'border-red-200 bg-red-50 text-red-900' : 'border-green-200 bg-green-50 text-green-900');
+        if (!returned) {
+          card.dataset.done = '1';
+          card.classList.add('opacity-70');
+        }
+        if (window.showAppToast) window.showAppToast(data.message, returned ? 'warning' : 'success');
+        refresh();
+      } catch (err) {
+        if (window.showAppToast) window.showAppToast(err.message, 'error');
+        buttons.forEach(b => b.disabled = false);
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

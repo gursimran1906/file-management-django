@@ -87,6 +87,11 @@ class CPDTrainingLog(models.Model):
     date_completed = models.DateField()
     impact = models.TextField()
     certificate_provided = models.BooleanField()
+    # Anyone may record CPD for anyone, so keep who entered it separately from
+    # whose training it is.
+    added_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cpd_logs_added')
     created_at = models.DateTimeField(auto_now_add=True) 
     updated_at = models.DateTimeField(auto_now=True) 
 
