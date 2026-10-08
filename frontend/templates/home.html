@@ -558,17 +558,17 @@
                             </div>
                         </div>
                         <div class='mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-sm'>
-                            <p class='text-xs text-gray-500 mb-1'>Recommendations</p>
-                            {% if item.review.recommendations_and_further_actions %}
-                                {% if item.review.recommendations_and_further_actions|length > 120 %}
-                                <span class='review-rec-short'>{{ item.review.recommendations_and_further_actions|truncatechars:120 }}
+                            <p class='text-xs text-gray-500 mb-1'>Comments, recommendations and further actions</p>
+                            {% if item.review.comments_recommendations_and_further_actions %}
+                                {% if item.review.comments_recommendations_and_further_actions|length > 120 %}
+                                <span class='review-rec-short'>{{ item.review.comments_recommendations_and_further_actions|truncatechars:120 }}
                                     <button class='link text-xs review-rec-toggle' type='button'>View More</button>
                                 </span>
-                                <span class='review-rec-full hidden'>{{ item.review.recommendations_and_further_actions }}
+                                <span class='review-rec-full hidden'>{{ item.review.comments_recommendations_and_further_actions|linebreaksbr }}
                                     <button class='link text-xs review-rec-toggle' type='button'>View Less</button>
                                 </span>
                                 {% else %}
-                                {{ item.review.recommendations_and_further_actions }}
+                                {{ item.review.comments_recommendations_and_further_actions|linebreaksbr }}
                                 {% endif %}
                             {% else %}
                             ---

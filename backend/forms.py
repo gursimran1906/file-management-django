@@ -11,6 +11,14 @@ from django.utils.html import format_html, format_html_join
 from django_quill.forms import QuillFormField
 
 class OpenFileForm(forms.ModelForm):
+    # Fields a matter can't be opened without. Enforced when a file is first
+    # opened (the last step of onboarding) via require_critical=True; the edit
+    # page keeps the model's own rules so older records with gaps still save.
+    CRITICAL_FIELDS = (
+        'file_number', 'fee_earner', 'matter_type', 'funding',
+        'matter_description', 'client1',
+    )
+
     class Meta:
         model = WIP
         # additional_clients is handled manually in the view (custom add-client
@@ -20,6 +28,12 @@ class OpenFileForm(forms.ModelForm):
         ]
 
     undertakings = forms.CharField(widget=forms.Textarea(attrs={'rows': 3}), required=False)
+
+    def __init__(self, *args, require_critical=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if require_critical:
+            for name in self.CRITICAL_FIELDS:
+                self.fields[name].required = True
 
 class NextWorkFormWithoutFileNumber(forms.ModelForm):
     class Meta:

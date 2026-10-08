@@ -164,11 +164,6 @@ MATTER_FILE_REVIEW_SECTIONS = [
         'title': 'Client Onboarding',
         'rows': [
             {
-                'question': 'File Opening Checklist completed?',
-                'answer_field': 'file_opening_checklist_completed',
-                'comments_field': 'file_opening_checklist_completed_comments',
-            },
-            {
                 'question': 'Engagement documents sent to the client and copies kept on file?',
                 'bullets': [
                     'Client care letter',
@@ -196,39 +191,9 @@ MATTER_FILE_REVIEW_SECTIONS = [
                 'comments_field': 'letter_of_authority_obtained_comments',
             },
             {
-                'question': 'Initial Risk Assessment completed?',
+                'question': 'Initial Risk Assessment completed & filed?',
                 'answer_field': 'initial_risk_assessment_completed',
                 'comments_field': 'initial_risk_assessment_completed_comments',
-            },
-        ],
-    },
-    {
-        'title': 'Matter Management',
-        'rows': [
-            {
-                'question': 'All key dates recorded in shared calendar and WIP?',
-                'answer_field': 'key_dates_recorded_in_calendar_and_wip',
-                'comments_field': 'key_dates_recorded_in_calendar_and_wip_comments',
-            },
-            {
-                'question': 'Key information and advice shared with the client?',
-                'answer_field': 'key_information_and_advice_shared',
-                'comments_field': 'key_information_and_advice_shared_comments',
-            },
-            {
-                'question': 'Costs estimates updated as necessary?',
-                'answer_field': 'costs_estimates_updated',
-                'comments_field': 'costs_estimates_updated_comments',
-            },
-            {
-                'question': 'Overall, the matter is progressing without any long unexplained periods of dormancy?',
-                'answer_field': 'matter_progressing_without_dormancy',
-                'comments_field': 'matter_progressing_without_dormancy_comments',
-            },
-            {
-                'question': 'Overall, the file appears to be maintained in good order?',
-                'answer_field': 'file_maintained_in_good_order',
-                'comments_field': 'file_maintained_in_good_order_comments',
             },
         ],
     },
@@ -236,12 +201,12 @@ MATTER_FILE_REVIEW_SECTIONS = [
         'title': 'Ongoing Monitoring',
         'rows': [
             {
-                'question': 'Ongoing AML, financial crime prevention and sanctions monitoring carried out at appropriate intervals or on appropriate triggers (if applicable)?',
+                'question': 'Ongoing AML, financial crime prevention and sanctions monitoring carried out in accordance with company policy and procedures?',
                 'answer_field': 'ongoing_aml_sanctions_monitoring_carried_out',
                 'comments_field': 'ongoing_aml_sanctions_monitoring_carried_out_comments',
             },
             {
-                'question': 'Copies of all documents obtained from ongoing monitoring activities kept and correctly filed?',
+                'question': 'Ongoing monitoring documents correctly filed?',
                 'answer_field': 'ongoing_monitoring_documents_kept_and_filed',
                 'comments_field': 'ongoing_monitoring_documents_kept_and_filed_comments',
             },
@@ -256,7 +221,7 @@ MATTER_FILE_REVIEW_SECTIONS = [
         'title': 'Finance, Costs And Accounting',
         'rows': [
             {
-                'question': 'Money on account (as appropriate to the matter) has been requested at appropriate times and received before significant work undertaken?',
+                'question': 'Has Money on Account been received as requested in the client care letter?',
                 'answer_field': 'money_on_account_requested_and_received',
                 'comments_field': 'money_on_account_requested_and_received_comments',
             },
@@ -271,24 +236,29 @@ MATTER_FILE_REVIEW_SECTIONS = [
                 'comments_field': 'costs_and_disbursements_billed_timely_comments',
             },
             {
-                'question': 'Overdue invoices?',
-                'answer_field': 'overdue_invoices',
-                'comments_field': 'overdue_invoices_comments',
+                'question': 'Are there any unpaid invoices?',
+                'answer_field': 'unpaid_invoices',
+                'comments_field': 'unpaid_invoices_comments',
             },
         ],
     },
     {
-        'title': 'Legal Advice And Instructions',
+        'title': 'Client Care, Legal Advice And Instructions',
         'rows': [
             {
-                'question': 'Appropriate advice given to the client on all substantive issues to date?',
-                'answer_field': 'appropriate_advice_given',
-                'comments_field': 'appropriate_advice_given_comments',
+                'question': 'Has the client been kept updated?',
+                'answer_field': 'client_kept_updated',
+                'comments_field': 'client_kept_updated_comments',
             },
             {
-                'question': 'Matter proceeding within the scope set out in the client care letter? If not, why?',
-                'answer_field': 'matter_within_client_care_scope',
-                'comments_field': 'matter_within_client_care_scope_comments',
+                'question': 'Is the matter proceeding in accordance with client instructions?',
+                'answer_field': 'matter_proceeding_per_client_instructions',
+                'comments_field': 'matter_proceeding_per_client_instructions_comments',
+            },
+            {
+                'question': 'Have cost estimates been updated as necessary?',
+                'answer_field': 'costs_estimates_updated',
+                'comments_field': 'costs_estimates_updated_comments',
             },
         ],
     },
@@ -296,9 +266,9 @@ MATTER_FILE_REVIEW_SECTIONS = [
         'title': 'Specific Risk Issues',
         'rows': [
             {
-                'question': 'Undertakings given by the firm have been discharged appropriately and on time, or released in writing (if not ongoing)?',
-                'answer_field': 'undertakings_discharged_or_released',
-                'comments_field': 'undertakings_discharged_or_released_comments',
+                'question': 'Undertakings given by the firm have been satisfied?',
+                'answer_field': 'undertakings_satisfied',
+                'comments_field': 'undertakings_satisfied_comments',
             },
             {
                 'question': 'Have any complaints been raised by the client? If so, has the firms complaints procedure been followed?',
@@ -318,7 +288,6 @@ MATTER_FILE_REVIEW_SECTIONS = [
         ],
     },
 ]
-
 
 def build_matter_file_review_display_data(reviews):
     output = []
@@ -3420,7 +3389,7 @@ def open_new_file_page(request):
 
             request_post_copy['created_by'] = request.user
 
-            form = OpenFileForm(request_post_copy)
+            form = OpenFileForm(request_post_copy, require_critical=True)
             if not form.is_valid():
                 # Roll the new contacts back with the failed matter.
                 raise FileOpeningError()
