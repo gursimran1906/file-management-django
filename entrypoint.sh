@@ -11,12 +11,14 @@ chmod 644 /app/logs/*.log 2>/dev/null || true
 echo 'Running migrations...'
 python manage.py migrate
 
+# NOTE: previously this dumped all env vars (incl. secrets) to /etc/environment.
+# Removed: it was a world-readable secret leak and is unnecessary — cron jobs run
+# `python manage.py ...`, and settings.py loads the baked-in .env via load_dotenv,
+# so the cron environment already has everything it needs.
 # Ensure the database cache table exists (idempotent). The default cache uses
 # DatabaseCache so the bundle-PDF generation lock is shared across gunicorn workers.
 echo 'Ensuring cache table...'
 python manage.py createcachetable
-
-printenv > /etc/environment
 
 
 # Add crontab

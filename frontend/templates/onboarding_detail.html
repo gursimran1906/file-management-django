@@ -1,0 +1,387 @@
+{% extends 'base.html' %}
+{% block title %}Onboarding · {{ group.label|default:"Case" }}{% endblock %}
+
+{% block styles %}
+<style>
+  /* Calm status language for the onboarding console — quiet over loud. */
+  .oi-pill { display:inline-flex; align-items:center; gap:.4rem; font-size:11px; font-weight:600;
+             letter-spacing:.01em; padding:.18rem .6rem; border-radius:9999px; white-space:nowrap; }
+  .oi-pill .pip { width:.45rem; height:.45rem; border-radius:9999px; flex:none; }
+  .oi-pill--amber  { background:#fffbeb; color:#b45309; } .oi-pill--amber  .pip{ background:#f59e0b; }
+  .oi-pill--violet { background:#f5f3ff; color:#6d28d9; } .oi-pill--violet .pip{ background:#8b5cf6; }
+  .oi-pill--green  { background:#ecfdf5; color:#047857; } .oi-pill--green  .pip{ background:#10b981; }
+
+  .oi-dot { width:.65rem; height:.65rem; border-radius:9999px; flex:none; }
+  .oi-dot--awaited  { border:1.5px solid #d1d5db; background:#fff; }
+  .oi-dot--provided { background:#10b981; box-shadow:0 0 0 3px #d1fae5; }
+
+  .oi-meter { width:8.5rem; height:.4rem; border-radius:9999px; background:#eef2f7; position:relative; overflow:hidden; }
+  .oi-meter > span { position:absolute; left:0; top:0; bottom:0; border-radius:9999px; }
+  .oi-meter > .prov { background:#10b981; }
+
+  .oi-row { transition:background-color .12s ease; }
+  .oi-row:hover { background:#fafbfc; }
+  .oi-link { font-size:12px; color:#9ca3af; transition:color .12s ease; }
+  .oi-link:hover { color:#2563eb; }
+  .oi-card { transition:box-shadow .15s ease; }
+  .oi-card:hover { box-shadow:0 1px 3px rgba(16,24,40,.06), 0 1px 2px rgba(16,24,40,.04); }
+</style>
+{% endblock %}
+
+{% block container %}
+<div class="space-y-4">
+
+  {# ── Header ─────────────────────────────────────────────── #}
+  <div>
+    <a href="{% url 'onboarding_list' %}" class="text-xs text-gray-400 hover:text-gray-600">← All onboarding</a>
+    <div class="mt-1.5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="min-w-0 flex items-center gap-3">
+        <h1 class="text-xl font-semibold text-gray-900 truncate">{{ group.label|default:"Onboarding case" }}</h1>
+        {% if group.status == 'converted' %}<span class="oi-pill oi-pill--green"><span class="pip"></span>Converted</span>
+        {% elif group.status == 'ready_for_review' %}<span class="oi-pill oi-pill--violet"><span class="pip"></span>Ready for review</span>
+        {% else %}<span class="oi-pill oi-pill--amber"><span class="pip"></span>Collecting</span>{% endif %}
+      </div>
+      {% if group.status != 'converted' %}
+      <form method="post" action="{% url 'onboarding_send_all_invites' group.id %}" class="shrink-0">
+        {% csrf_token %}
+        <button type="submit" class="btn-secondary text-xs">Send all invites</button>
+      </form>
+      {% endif %}
+    </div>
+    <p class="mt-1 text-xs text-gray-500">{{ members|length }} client{{ members|length|pluralize }}{% if portal_is_mock %} · <span class="text-amber-600">preview mode — document statuses are mock data</span>{% endif %}</p>
+  </div>
+
+  {# ── Per-client cards ───────────────────────────────────── #}
+  {% for entry in members %}
+  <div class="oi-card div-container">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold text-gray-900">{{ entry.member.client_name }}</h2>
+        <p class="text-xs text-gray-400 mt-0.5">{{ entry.member.email }} · <span class="font-mono">{{ entry.member.client_ref }}</span>
+          {% if entry.member.invite_sent_at %}· invited {{ entry.member.invite_sent_at|date:"d M" }}{% else %}· not invited{% endif %}{% if entry.flags.portal_status == 'submitted' %} · <span class="font-medium text-emerald-600">submitted by client</span>{% endif %}</p>
+        {% if entry.flags.portal_capacity.acting_for == 'company' %}
+        <p class="text-xs text-gray-600 mt-1">Completing on behalf of <span class="font-medium text-gray-800">{{ entry.flags.portal_capacity.company_name }}</span>{% if entry.flags.portal_capacity.company_number %} (company no. {{ entry.flags.portal_capacity.company_number }}){% endif %}{% if entry.flags.portal_capacity.signatory_role %} · {{ entry.flags.portal_capacity.signatory_role }}{% endif %} — the company is the client; check Companies House and the beneficial owners before converting.</p>
+        {% endif %}
+      </div>
+      <div class="flex items-center gap-4 shrink-0">
+        <div class="text-right">
+          <p class="js-count text-[11px] text-gray-400 mb-1">{{ entry.flags.provided_count }}/{{ entry.flags.total_count }} provided</p>
+          <div class="oi-meter"><span class="prov" style="width:{{ entry.flags.provided_pct }}%"></span></div>
+        </div>
+        {% if group.status != 'converted' %}
+        <form method="post" action="{% url 'onboarding_send_invite' entry.member.id %}">
+          {% csrf_token %}
+          <button type="submit" class="oi-link">{% if entry.member.invite_sent_at %}Resend{% else %}Send invite{% endif %}</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if group.status != 'converted' %}
+      {% if entry.member.invite_sent_at and not entry.member.invite_expired_at %}
+      <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        <span class="inline-flex items-center gap-1.5 font-medium text-emerald-600">
+          <span style="width:.45rem;height:.45rem;border-radius:9999px;background:#10b981;display:inline-block;"></span>Link active
+        </span>
+        {% if entry.member.portal_invite_link %}
+        <a href="{{ entry.member.portal_invite_link }}" target="_blank" rel="noopener" class="font-mono text-gray-400 truncate max-w-xs hover:text-blue-600">{{ entry.member.portal_invite_link }}</a>
+        <button type="button" class="oi-link js-copy" data-copy="{{ entry.member.portal_invite_link }}">Copy</button>
+        {% else %}
+        <span class="text-gray-400">emailed to the client · link not kept here</span>
+        {% endif %}
+        <form method="post" action="{% url 'onboarding_expire_invite' entry.member.id %}" onsubmit="return confirm('Expire this invite link? The client will no longer be able to use it.');">
+          {% csrf_token %}<button type="submit" class="oi-link" style="color:#dc2626">Expire link</button>
+        </form>
+      </div>
+      {% elif entry.member.invite_expired_at %}
+      <p class="mt-2 text-xs text-gray-400">Link expired {{ entry.member.invite_expired_at|date:"d M, H:i" }} — resend to issue a new one.</p>
+      {% endif %}
+    {% endif %}
+
+    {% if entry.flags.portal_error %}
+    <p class="text-xs text-red-600 mt-2">Could not reach the portal: {{ entry.flags.portal_error }}</p>
+    {% endif %}
+
+    {# Documents to request — staff choose which docs this client must provide #}
+    {% if group.status != 'converted' %}
+    <div class="mt-3 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-xs font-medium text-gray-600">Documents requested <span class="text-gray-400">· {{ entry.required_count }} of {{ entry.doc_choices|length }}</span></p>
+        <button type="button" class="oi-link" onclick="toggleNormalCollapse('reqdocs-{{ entry.member.id }}')">Choose documents</button>
+      </div>
+      <form id="reqdocs-{{ entry.member.id }}" method="post" action="{% url 'onboarding_set_required_docs' entry.member.id %}" class="hidden mt-2 space-y-1.5">
+        {% csrf_token %}
+        {% for choice in entry.doc_choices %}
+        <label class="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" name="required_documents" value="{{ choice.key }}" {% if choice.required %}checked{% endif %} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span>{{ choice.label }}</span>
+          {% if choice.key == 'proof_id' and entry.existing_docs.proof_of_id.has %}
+          <span class="text-[11px] {% if entry.existing_docs.proof_of_id.expired %}text-red-600{% else %}text-emerald-600{% endif %}">on file{% if entry.existing_docs.proof_of_id.expiry %} · expires {{ entry.existing_docs.proof_of_id.expiry|date:"d M Y" }}{% endif %}{% if entry.existing_docs.proof_of_id.expired %} · expired{% endif %}</span>
+          {% elif choice.key == 'proof_address' and entry.existing_docs.proof_of_address.has %}
+          <span class="text-[11px] {% if entry.existing_docs.proof_of_address.expired %}text-red-600{% else %}text-emerald-600{% endif %}">on file{% if entry.existing_docs.proof_of_address.expiry %} · expires {{ entry.existing_docs.proof_of_address.expiry|date:"d M Y" }}{% endif %}{% if entry.existing_docs.proof_of_address.expired %} · expired{% endif %}</span>
+          {% endif %}
+        </label>
+        {% endfor %}
+        {% if entry.is_existing %}
+        <p class="text-[11px] text-gray-400">Existing client — proof of ID/address still valid on file (verified within 12 months) are left unticked automatically; tick to re-request. Source of funds, PEP and signed terms are needed for each new matter.</p>
+        {% endif %}
+        <div class="pt-1"><button type="submit" class="btn-secondary text-xs">Save requirements</button></div>
+      </form>
+    </div>
+    {% endif %}
+
+    {# Documents — quiet checklist #}
+    <ul class="mt-3 -mx-2">
+      {% for item in entry.items %}
+      <li class="oi-row flex items-center gap-3 rounded-md px-2 py-2">
+        <span class="js-dot oi-dot oi-dot--{% if item.provided %}provided{% else %}awaited{% endif %}"></span>
+        <span class="flex-1 min-w-0 truncate text-sm text-gray-800">{{ item.label }}{% if item.on_file %} <span class="text-[11px] font-medium text-emerald-600">· on file{% if item.expiry %} · expires {{ item.expiry|date:"d/m/Y" }}{% endif %}</span>{% elif item.meta_expiry_date %} <span class="text-[11px] text-gray-400">· expires {{ item.meta_expiry_date|date:"d/m/Y" }}</span>{% endif %}</span>
+        <div class="flex items-center gap-3 shrink-0">
+          {% if item.on_file %}<a href="{% url 'edit_client' entry.member.client_id %}" class="oi-link">View record</a>{% endif %}
+          {% if item.portal_provided %}<a href="{% url 'onboarding_preview_portal_doc' entry.member.id item.key %}" target="_blank" rel="noopener" class="oi-link">Client copy</a>{% endif %}
+          {% if item.has_file %}<a href="{% url 'onboarding_preview_doc' entry.member.id item.key %}" target="_blank" rel="noopener" class="oi-link">Office copy</a>{% endif %}
+          {% if item.is_identity and not item.on_file and group.status != 'converted' %}<button type="button" class="oi-link" onclick="toggleNormalCollapse('doc-meta-{{ entry.member.id }}-{{ item.key }}')">Details</button>{% endif %}
+          {% if group.status != 'converted' %}<button type="button" class="oi-link" onclick="toggleNormalCollapse('doc-up-{{ entry.member.id }}-{{ item.key }}')">{% if item.has_file %}Replace{% else %}Upload{% endif %}</button>{% endif %}
+        </div>
+      </li>
+      {% if group.status != 'converted' %}
+      <form id="doc-up-{{ entry.member.id }}-{{ item.key }}" method="post" enctype="multipart/form-data" action="{% url 'onboarding_upload_doc' entry.member.id item.key %}" class="hidden px-2 pb-2 flex items-center gap-2">
+        {% csrf_token %}
+        <input type="file" name="document" accept=".pdf,.jpg,.jpeg,.png,.heic" required class="text-xs">
+        <button type="submit" class="btn-secondary text-xs shrink-0">Save</button>
+      </form>
+      {% if item.is_identity and not item.on_file %}
+      <form id="doc-meta-{{ entry.member.id }}-{{ item.key }}" method="post" action="{% url 'onboarding_save_doc_details' entry.member.id item.key %}" class="hidden px-2 pb-3">
+        {% csrf_token %}
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <label class="text-[11px] text-gray-500">Document type
+            <input type="text" name="document_type" value="{{ item.meta_type }}" class="form-input mt-0.5 text-xs" placeholder="e.g. Passport">
+          </label>
+          <label class="text-[11px] text-gray-500">Reference
+            <input type="text" name="document_reference" value="{{ item.meta_reference }}" class="form-input mt-0.5 text-xs">
+          </label>
+          <label class="text-[11px] text-gray-500">Issue date
+            <input type="date" name="issue_date" value="{{ item.meta_issue_date|date:'Y-m-d' }}" class="form-input mt-0.5 text-xs">
+          </label>
+          <label class="text-[11px] text-gray-500">Expiry date
+            <input type="date" name="expiry_date" value="{{ item.meta_expiry_date|date:'Y-m-d' }}" class="form-input mt-0.5 text-xs">
+          </label>
+        </div>
+        <div class="pt-2"><button type="submit" class="btn-secondary text-xs">Save details</button></div>
+      </form>
+      {% endif %}
+      {% endif %}
+      {% endfor %}
+    </ul>
+
+    {# Conflict check — one quiet line, details on demand #}
+    <div class="mt-3 pt-3 border-t border-gray-100">
+      <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div class="flex items-center gap-2 text-sm">
+          {% if entry.conflict %}
+            {% if entry.conflict.result == 'clear' %}
+            <span class="text-emerald-500">✓</span><span class="text-gray-700">No conflicts found{% if entry.conflict_ruled_out %} <span class="text-gray-400">({{ entry.conflict_ruled_out|length }} ruled out by DOB)</span>{% endif %}</span>
+            {% elif entry.conflict.acknowledged %}
+            <span class="text-gray-400">⚠</span><span class="text-gray-700">{{ entry.conflict_blocking|length }} potential — acknowledged</span>
+            <button type="button" class="oi-link" onclick="toggleNormalCollapse('conf-{{ entry.member.id }}')">details</button>
+            {% else %}
+            <span class="text-amber-500">⚠</span><span class="font-medium text-amber-700">{{ entry.conflict_blocking|length }} potential — needs review</span>
+            <button type="button" class="oi-link" onclick="toggleNormalCollapse('conf-{{ entry.member.id }}')">details</button>
+            {% endif %}
+          {% else %}
+            <span class="text-gray-300">○</span><span class="text-gray-500">Conflict check not run</span>
+          {% endif %}
+        </div>
+        <div class="flex items-center gap-3">
+          {% if group.status != 'converted' %}
+          <button type="button" class="oi-link" onclick="toggleNormalCollapse('addr-form-{{ entry.member.id }}')">{% if entry.flags.address_display %}Edit details{% else %}Enter address{% endif %}</button>
+          {% if entry.flags.address_display %}
+          <form method="post" action="{% url 'onboarding_run_conflict_check' entry.member.id %}">
+            {% csrf_token %}<button type="submit" class="oi-link">{% if entry.conflict %}Re-run check{% else %}Run check{% endif %}</button>
+          </form>
+          {% else %}
+          <span class="text-[11px] text-amber-600">Enter address to run check</span>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+      <p class="text-[11px] text-gray-400 mt-1">Searched on {{ entry.member.client_name }}{% if entry.flags.address_display %} · {{ entry.flags.address_display }}{% else %} · <span class="text-amber-600">no address entered yet</span>{% endif %}{% if entry.conflict %} · last run {{ entry.conflict.timestamp|date:"d M Y, H:i" }}{% endif %}</p>
+
+      {# Edit details (collapsed) #}
+      {% if group.status != 'converted' %}
+      <form id="addr-form-{{ entry.member.id }}" method="post" action="{% url 'onboarding_edit_address' entry.member.id %}" class="hidden mt-3 rounded-lg bg-gray-50/70 p-3">
+        {% csrf_token %}
+        <div class="mb-2">
+          <label class="block text-[11px] font-medium text-gray-600 mb-0.5">Date of birth <span class="font-normal text-gray-400">— sharpens the conflict check against the other side</span></label>
+          <input type="date" name="dob" class="form-input sm:max-w-xs" value="{{ entry.member.dob|date:'Y-m-d' }}">
+        </div>
+        <div class="grid md:grid-cols-2 gap-2">
+          <input type="email" name="email" class="form-input" placeholder="Email" value="{{ entry.member.email }}">
+          <input type="text" name="contact_number" class="form-input" placeholder="Contact number" value="{{ entry.member.contact_number }}">
+          <input type="text" name="address_line1" class="form-input" placeholder="Address line 1" value="{{ entry.member.address_line1 }}">
+          <input type="text" name="address_line2" class="form-input" placeholder="Address line 2" value="{{ entry.member.address_line2 }}">
+          <input type="text" name="county" class="form-input" placeholder="County" value="{{ entry.member.county }}">
+          <input type="text" name="postcode" class="form-input" placeholder="Postcode" maxlength="10" value="{{ entry.member.postcode }}">
+        </div>
+        <input type="hidden" name="occupation" value="{{ entry.member.occupation }}">
+        <button type="submit" class="btn-secondary text-xs mt-2">Save details</button>
+      </form>
+      {% endif %}
+
+      {# Conflict detail (collapsed) #}
+      {% if entry.conflict and entry.conflict_blocking %}
+      <div id="conf-{{ entry.member.id }}" class="hidden mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <ul class="space-y-1">
+          {% for m in entry.conflict_blocking %}
+          <li class="text-xs text-amber-900"><span class="font-medium">{{ m.source_label }}:</span> {{ m.name }}{% if m.matters %} — matters: {{ m.matters|join:", " }}{% else %} — not yet on a matter{% endif %}{% if m.detail %} <span class="text-amber-700">({{ m.detail }})</span>{% endif %}{% if m.dob_status == 'match' %} <span class="rounded bg-red-100 px-1 text-[10px] text-red-700">DOB matches</span>{% elif m.dob_status == 'unknown' %} <span class="rounded bg-amber-100 px-1 text-[10px] text-amber-700">DOB not confirmed</span>{% endif %}{% if m.match_strength == 'partial' %} <span class="text-[10px] text-gray-400">partial name match</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% if entry.conflict_ruled_out %}
+        <p class="text-[11px] text-gray-500 mt-2">{{ entry.conflict_ruled_out|length }} other name match(es) ruled out — date of birth differs.</p>
+        {% endif %}
+        {% if entry.conflict.acknowledged %}
+        <p class="text-xs text-gray-600 mt-2">Acknowledged{% if entry.conflict.acknowledgement_note %} — {{ entry.conflict.acknowledgement_note }}{% endif %}.</p>
+        {% elif group.status != 'converted' %}
+        <form method="post" action="{% url 'onboarding_acknowledge_conflict' entry.member.id %}" class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+          {% csrf_token %}
+          <input type="text" name="conflict_ack_note" class="form-input sm:max-w-md" placeholder="Reason for proceeding (optional)">
+          <button type="submit" class="btn-secondary text-xs shrink-0">Acknowledge &amp; proceed</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+  {# ── Add another client ─────────────────────────────────── #}
+  {% if group.status != 'converted' %}
+  <details class="div-container group">
+    <summary class="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700 marker:content-['']">
+      <span class="flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500 group-open:rotate-45 transition-transform">+</span>
+      Add another client to this case
+    </summary>
+    <form method="post" action="{% url 'onboarding_add_member' group.id %}" class="mt-3" id="add-member-form">
+      {% csrf_token %}
+      <div class="inline-flex rounded-md border border-gray-200 overflow-hidden text-xs mb-2" role="group">
+        <button type="button" id="am-mode-new" class="px-3 py-1 bg-blue-600 text-white">New client</button>
+        <button type="button" id="am-mode-existing" class="px-3 py-1 bg-white text-gray-700 border-l border-gray-200">Existing client</button>
+      </div>
+      <div id="am-new" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-2xl">
+        <input type="text" name="client_name" class="form-input" placeholder="Client name" required>
+        <input type="email" name="email" class="form-input" placeholder="Client email" required>
+      </div>
+      <div id="am-existing" class="hidden relative max-w-2xl">
+        <input type="text" id="am-search" class="form-input" placeholder="Search existing clients by name or email" autocomplete="off">
+        <input type="hidden" name="existing_client_id" id="am-existing-id" value="">
+        <div id="am-results" class="absolute z-20 mt-1 w-full hidden max-h-56 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg text-sm"></div>
+        <p id="am-chosen" class="hidden mt-1 text-xs text-green-700"></p>
+      </div>
+      <label class="mt-3 flex items-center gap-2 text-sm text-gray-600">
+        <input type="checkbox" name="send_invite" value="1" checked class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+        Send their invite now <span class="text-gray-400">(new clients only)</span>
+      </label>
+      <div class="mt-3"><button type="submit" class="btn-secondary text-xs">Add client</button></div>
+    </form>
+  </details>
+  {% endif %}
+
+  {# ── Convert ────────────────────────────────────────────── #}
+  {% if group.status == 'converted' %}
+  <div class="div-container flex items-center gap-3 border-emerald-200 bg-emerald-50">
+    <span class="text-emerald-600 text-lg">✓</span>
+    <p class="text-sm text-emerald-900">Converted to matter
+      <a href="{% url 'home' group.matter.file_number %}" class="font-semibold underline hover:no-underline">{{ group.matter.file_number }}</a>.</p>
+  </div>
+  {% else %}
+  <div class="div-container">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold text-gray-900">Convert to matter</h2>
+        <p class="text-xs text-gray-500 mt-0.5">Creates a client record for each person, then opens the new-file form with them pre-selected.</p>
+        {% if not all_conflicts_ok %}
+        <p class="mt-2 text-xs text-amber-700">Every client needs a conflict check that is clear or acknowledged first.</p>
+        {% endif %}
+      </div>
+      <form method="post" action="{% url 'onboarding_convert_to_matter' group.id %}" class="shrink-0">
+        {% csrf_token %}
+        <button type="submit" class="btn-primary text-xs" {% if not all_conflicts_ok %}disabled{% endif %}>{% if has_new_clients %}Create clients &amp; open file{% else %}Open file{% endif %}</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  // Copy an active invite link to the clipboard.
+  document.querySelectorAll('.js-copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = btn.getAttribute('data-copy') || '';
+      navigator.clipboard.writeText(text).then(function () {
+        window.showAppToast('Link copied to clipboard', 'success');
+      }).catch(function () {
+        window.showAppToast('Could not copy link', 'error');
+      });
+    });
+  });
+
+  // Add-member: New / Existing toggle + existing-client typeahead.
+  (function () {
+    const form = document.getElementById('add-member-form');
+    if (!form) return;
+    const SEARCH_URL = "{% url 'client_search_json' %}";
+    const newWrap = document.getElementById('am-new');
+    const exWrap = document.getElementById('am-existing');
+    const newInputs = newWrap.querySelectorAll('input');
+    const search = document.getElementById('am-search');
+    const hidden = document.getElementById('am-existing-id');
+    const results = document.getElementById('am-results');
+    const chosen = document.getElementById('am-chosen');
+    const btnNew = document.getElementById('am-mode-new');
+    const btnEx = document.getElementById('am-mode-existing');
+
+    const setMode = (existing) => {
+      newWrap.classList.toggle('hidden', existing);
+      exWrap.classList.toggle('hidden', !existing);
+      newInputs.forEach(i => { i.required = !existing; });
+      btnNew.className = 'px-3 py-1 ' + (existing ? 'bg-white text-gray-700' : 'bg-blue-600 text-white');
+      btnEx.className = 'px-3 py-1 border-l border-gray-200 ' + (existing ? 'bg-blue-600 text-white' : 'bg-white text-gray-700');
+      if (!existing) { hidden.value = ''; search.value = ''; chosen.classList.add('hidden'); results.classList.add('hidden'); }
+    };
+    btnNew.addEventListener('click', () => setMode(false));
+    btnEx.addEventListener('click', () => setMode(true));
+
+    let timer = null;
+    search.addEventListener('input', function () {
+      hidden.value = ''; chosen.classList.add('hidden');
+      const q = search.value.trim();
+      clearTimeout(timer);
+      if (q.length < 2) { results.classList.add('hidden'); results.innerHTML = ''; return; }
+      timer = setTimeout(() => {
+        fetch(SEARCH_URL + '?q=' + encodeURIComponent(q), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(r => r.json())
+          .then(data => {
+            const items = data.results || [];
+            results.innerHTML = items.length
+              ? items.map(c => '<button type="button" class="am-result block w-full text-left px-3 py-2 hover:bg-blue-50" data-id="' + c.id + '" data-name="' + (c.name || '').replace(/"/g, '&quot;') + '" data-email="' + (c.email || '').replace(/"/g, '&quot;') + '"><span class="font-medium text-gray-900">' + (c.name || '') + '</span>' + (c.email ? '<span class="text-gray-500"> · ' + c.email + '</span>' : '') + '</button>').join('')
+              : '<div class="px-3 py-2 text-gray-400">No matching clients</div>';
+            results.classList.remove('hidden');
+          })
+          .catch(() => results.classList.add('hidden'));
+      }, 200);
+    });
+    results.addEventListener('click', function (e) {
+      const r = e.target.closest('.am-result');
+      if (!r) return;
+      hidden.value = r.dataset.id;
+      search.value = r.dataset.name;
+      chosen.textContent = '✓ ' + r.dataset.name + (r.dataset.email ? ' · ' + r.dataset.email : '');
+      chosen.classList.remove('hidden');
+      results.classList.add('hidden');
+    });
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('#am-existing')) results.classList.add('hidden');
+    });
+  })();
+</script>
+{% endblock %}

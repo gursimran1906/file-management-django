@@ -213,7 +213,9 @@ def completion_statement_line_update(request, file_number):
                 'sort_order': entry.sort_order,
             }),
         }
-        return _success_response(completion_statement, matter, {'line': line_data})
+        return _sync_and_respond(
+            completion_statement, matter, request.user, {'line': line_data}
+        )
 
     source_type = data.get('source_type')
     source_id = data.get('source_id')
@@ -293,7 +295,7 @@ def completion_statement_line_add(request, file_number):
             'sort_order': entry.sort_order,
         }),
     }
-    return _success_response(completion_statement, matter, {'line': line})
+    return _sync_and_respond(completion_statement, matter, request.user, {'line': line})
 
 
 @login_required
@@ -315,7 +317,7 @@ def completion_statement_line_delete(request, file_number):
             completion_statement=completion_statement,
         )
         entry.delete()
-        return _success_response(completion_statement, matter)
+        return _sync_and_respond(completion_statement, matter, request.user)
 
     source_type = data.get('source_type')
     source_id = data.get('source_id')
@@ -669,6 +671,11 @@ def completion_statement_schedule_add(request, file_number):
         source_kind=CompletionStatementScheduledPayment.SOURCE_MANUAL,
         source_id=0,
         sort_order=int(data.get('sort_order') or 0),
+        bank_name=(data.get('bank_name') or '').strip(),
+        bank_sort_code=(data.get('bank_sort_code') or '').strip(),
+        bank_account_number=(data.get('bank_account_number') or '').strip(),
+        bank_account_name=(data.get('bank_account_name') or '').strip(),
+        bank_reference=(data.get('bank_reference') or '').strip(),
     )
     row.source_id = row.id
     row.save(update_fields=['source_id'])
@@ -693,7 +700,12 @@ def completion_statement_schedule_update(request, file_number):
     if row.status != CompletionStatementScheduledPayment.STATUS_PENDING:
         return JsonResponse({'error': 'Cannot edit after slip created.'}, status=400)
 
-    for field in ('payee_name', 'description', 'reference'):
+    editable_text_fields = (
+        'payee_name', 'description', 'reference',
+        'bank_name', 'bank_sort_code', 'bank_account_number',
+        'bank_account_name', 'bank_reference',
+    )
+    for field in editable_text_fields:
         if field in data:
             setattr(row, field, (data.get(field) or '').strip())
     if 'direction' in data and data.get('direction') in ('add', 'less'):
@@ -757,6 +769,11 @@ def completion_statement_schedule_create_slip(request, file_number, schedule_id)
         ledger_account = row.ledger_account
     payee = (data.get('payee_name') or row.payee_name).strip()
     description = (data.get('description') or row.description or row.payee_name).strip()
+    # Fold the payee bank reference onto the slip so it's visible at payment time
+    # (PmtsSlips has no dedicated reference field).
+    bank_reference = (data.get('bank_reference') or row.bank_reference or '').strip()
+    if bank_reference:
+        description = f'{description} — Ref: {bank_reference}'[:255]
     payment_date = _parse_date(data.get('payment_date')) or row.payment_date or timezone.localdate()
     is_money_out = row.direction == 'less'
 
@@ -779,6 +796,14 @@ def completion_statement_schedule_create_slip(request, file_number, schedule_id)
     row.status = CompletionStatementScheduledPayment.STATUS_SLIP_CREATED
     row.ledger_account = ledger_account
     row.save()
+
+    # The new slip now represents this payment on the main statement as a finance
+    # line. Remove the originating pending line it was scheduled from so the
+    # amount isn't counted twice (the slip stands in its place).
+    if row.source_kind == CompletionStatementScheduledPayment.SOURCE_MAIN_LINE and row.source_id:
+        CompletionStatementManualEntry.objects.filter(
+            completion_statement=completion_statement, id=row.source_id,
+        ).delete()
 
     sync_all(completion_statement, matter, request.user, calculate_invoice_total_with_vat)
     return _success_response(

@@ -13,6 +13,7 @@
         table.lines th, table.lines td { padding: 0.15cm 0.2cm; vertical-align: top; }
         table.lines th { border-bottom: 1px solid #000; text-align: left; }
         table.lines td.amount { text-align: right; width: 2.5cm; }
+        table.lines tbody tr:nth-child(even) { background-color: #f3f4f6; }
         .outcome { margin-top: 0.5cm; font-weight: bold; font-size: 12pt; }
     </style>
 </head>
@@ -72,10 +73,11 @@
 
     {% if data.schedule %}
     <p class="section-title">Schedule of payments</p>
-    <table class="lines"><thead><tr><th>Payee</th><th>Account</th><th class="amount">Projected</th><th class="amount">Actual</th><th>Status</th></tr></thead><tbody>
+    <table class="lines"><thead><tr><th>Payee</th><th>Bank details</th><th>Account</th><th class="amount">Projected</th><th class="amount">Actual</th><th>Status</th></tr></thead><tbody>
     {% for row in data.schedule %}
     <tr>
         <td>{{ row.payee_name }}</td>
+        <td>{% if row.has_bank_details or row.bank_account_name %}{{ row.bank_account_name|default:row.payee_name }}{% if row.bank_sort_code %} · {{ row.bank_sort_code }}{% endif %}{% if row.bank_account_number %} · {{ row.bank_account_number }}{% endif %}{% if row.bank_reference %}<br>Ref: {{ row.bank_reference }}{% endif %}{% else %}—{% endif %}</td>
         <td>{{ row.ledger_account_display }}</td>
         <td class="amount">{{ row.projected_amount_display }}</td>
         <td class="amount">{{ row.actual_amount_display|default:"—" }}</td>

@@ -3,7 +3,6 @@
     if (!app) return;
 
     const editable = app.dataset.editable === 'true';
-    const saveStatus = document.getElementById('cs-save-status');
     let headerSaveTimer = null;
 
     function getCsrfToken() {
@@ -12,7 +11,9 @@
     }
 
     function setSaveStatus(text) {
-        if (saveStatus) saveStatus.textContent = text || '';
+        // Re-query: the header chrome (and this element) can be swapped by softReload.
+        const el = document.getElementById('cs-save-status');
+        if (el) el.textContent = text || '';
     }
 
     function postJson(url, payload) {
@@ -44,7 +45,7 @@
             });
     }
 
-    function updateTotals(data) {
+    function updateTotalsHeader(data) {
         const totals = data.totals || {};
         const map = {
             'cs-add-total': totals.money_in_total_display || totals.add_total_display,
@@ -70,6 +71,11 @@
             banner.classList.toggle('bg-amber-50', !totals.is_balanced);
         }
 
+        updateSummaries(data.summaries);
+    }
+
+    function updateTotals(data) {
+        updateTotalsHeader(data);
         if (data.lines) {
             data.lines.forEach((line, index) => {
                 const rows = app.querySelectorAll('#cs-lines-list .estate-line-row:not([data-pinned="true"])');
@@ -96,8 +102,6 @@
                 }
             }
         }
-
-        updateSummaries(data.summaries);
     }
 
     function updateSummaries(summaries) {
@@ -341,7 +345,7 @@
                 field.addEventListener('blur', queueHeaderSave);
             } else if (field.tagName === 'SELECT') {
                 field.addEventListener('change', () => {
-                    saveHeaderField(field).then(() => window.location.reload()).catch(() => {});
+                    saveHeaderField(field).then(() => softReload()).catch(() => {});
                 });
             } else {
                 field.addEventListener('blur', () => {
@@ -365,7 +369,7 @@
             finaliseBtn.addEventListener('click', () => {
                 if (!window.confirm('Finalise this completion statement? Balance must be £0.00.')) return;
                 postJson(app.dataset.statusUrl, { action: 'finalise' }).then(() => {
-                    window.location.reload();
+                    softReload();
                 }).catch(() => {});
             });
         }
@@ -374,21 +378,30 @@
         if (reopenBtn) {
             reopenBtn.addEventListener('click', () => {
                 postJson(app.dataset.statusUrl, { action: 'reopen' }).then(() => {
-                    window.location.reload();
+                    softReload();
                 }).catch(() => {});
             });
         }
     }
 
-    bindHeaderFields();
-    bindLineRows();
-    bindActions();
-    bindTabs();
-    bindMortgageFields();
-    bindApportionmentPanel();
-    bindDistributionPanel();
-    bindSchedulePanel();
-    initAutoTextareas();
+    // Bind (or re-bind) every panel. Called on load and again after softReload
+    // swaps in freshly server-rendered content.
+    function bindAll() {
+        bindHeaderFields();
+        bindLineRows();
+        bindActions();
+        bindTabs();
+        bindMortgageFields();
+        bindApportionmentPanel();
+        bindDistributionPanel();
+        bindSchedulePanel();
+        initAutoTextareas();
+    }
+
+    // Expose the re-bind entry point so softReload can re-wire fresh content.
+    app.csBindAll = bindAll;
+
+    bindAll();
 })();
 
 function bindTabs() {
@@ -396,18 +409,37 @@ function bindTabs() {
     if (!app) return;
     const tabs = app.querySelectorAll('[data-cs-tab]');
     const panels = app.querySelectorAll('[data-cs-panel]');
+
+    function activate(name) {
+        tabs.forEach(t => {
+            const on = t.dataset.csTab === name;
+            t.classList.toggle('is-active', on);
+            t.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        panels.forEach(panel => {
+            panel.classList.toggle('hidden', panel.dataset.csPanel !== name);
+        });
+    }
+
+    function rememberTab(name) {
+        try { sessionStorage.setItem('cs-active-tab', name); } catch (e) { /* ignore */ }
+    }
+
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
             const name = tab.dataset.csTab;
-            tabs.forEach(t => {
-                t.classList.toggle('is-active', t === tab);
-                t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
-            });
-            panels.forEach(panel => {
-                panel.classList.toggle('hidden', panel.dataset.csPanel !== name);
-            });
+            rememberTab(name);
+            activate(name);
         });
     });
+
+    // Restore the last active tab after a (soft) reload so actions don't bounce
+    // the user back to the main statement.
+    let restore = null;
+    try { restore = sessionStorage.getItem('cs-active-tab'); } catch (e) { /* ignore */ }
+    if (restore && Array.from(tabs).some(t => t.dataset.csTab === restore)) {
+        activate(restore);
+    }
 }
 
 function bindMortgageFields() {
@@ -446,7 +478,7 @@ function bindMortgageFields() {
                     if (interest) interest.textContent = m.calculated_interest_display;
                     if (total) total.textContent = m.total_amount_display;
                 }
-                window.location.reload();
+                softReload();
             }).catch(err => alert(err.message));
         }, 500);
     }
@@ -471,25 +503,41 @@ function csPost(app, url, payload) {
     });
 }
 
-function bindApportionmentPanel() {
+// Re-render the whole page in place: fetch the freshly server-rendered page,
+// swap the app section and header chrome, and re-bind. Keeps the app element
+// itself (so the page's event closures stay valid) and restores the active tab.
+function softReload() {
     const app = document.getElementById('completion-statement-app');
-    if (!app || app.dataset.editable !== 'true') return;
-    const addBtn = document.getElementById('cs-apportionment-add');
-    if (addBtn) {
-        addBtn.addEventListener('click', () => {
-            csPost(app, app.dataset.apportionmentAddUrl, {
-                description: 'Rent apportionment',
-                annual_amount: '0',
-                item_type: 'rent',
-                direction: 'add',
-                paid_in_advance: true,
-            }).then(() => window.location.reload());
-        });
+    if (!app) { window.location.reload(); return Promise.resolve(); }
+    const active = app.querySelector('[data-cs-tab].is-active')?.dataset.csTab;
+    if (active) {
+        try { sessionStorage.setItem('cs-active-tab', active); } catch (e) { /* ignore */ }
     }
+    return fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(r => r.text())
+        .then(html => {
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const fresh = doc.getElementById('completion-statement-app');
+            if (!fresh) { window.location.reload(); return; }
+            app.innerHTML = fresh.innerHTML;
+            if (fresh.dataset.editable) app.dataset.editable = fresh.dataset.editable;
+            // Refresh the header chrome that reflects status / type / finalise state.
+            ['cs-header-badges', 'cs-header-actions'].forEach(id => {
+                const cur = document.getElementById(id);
+                const next = doc.getElementById(id);
+                if (cur && next) cur.innerHTML = next.innerHTML;
+            });
+            if (app.csBindAll) app.csBindAll();
+        })
+        .catch(() => window.location.reload());
+}
+
+function bindApportionmentRows(app) {
+    if (app.dataset.editable !== 'true') return;
     app.querySelectorAll('[data-ap-delete]').forEach(btn => {
         btn.addEventListener('click', () => {
             csPost(app, app.dataset.apportionmentDeleteUrl, { id: btn.dataset.apDelete })
-                .then(() => window.location.reload());
+                .then(() => softReload()).catch(err => alert(err.message));
         });
     });
     app.querySelectorAll('[data-apportionment-id]').forEach(row => {
@@ -500,10 +548,29 @@ function bindApportionmentPanel() {
                     payload[f.dataset.apField] = f.value;
                 });
                 csPost(app, app.dataset.apportionmentUpdateUrl, payload)
-                    .then(() => window.location.reload());
+                    .then(() => softReload()).catch(err => alert(err.message));
             });
         });
     });
+}
+
+function bindApportionmentPanel() {
+    const app = document.getElementById('completion-statement-app');
+    if (!app) return;
+    bindApportionmentRows(app);
+    if (app.dataset.editable !== 'true') return;
+    const addBtn = document.getElementById('cs-apportionment-add');
+    if (addBtn) {
+        addBtn.addEventListener('click', () => {
+            csPost(app, app.dataset.apportionmentAddUrl, {
+                description: 'Rent apportionment',
+                annual_amount: '0',
+                item_type: 'rent',
+                direction: 'add',
+                paid_in_advance: true,
+            }).then(() => softReload()).catch(err => alert(err.message));
+        });
+    }
 }
 
 function bindDistributionPanel() {
@@ -516,13 +583,13 @@ function bindDistributionPanel() {
                 payee_name: 'Payee',
                 share_mode: 'remainder',
                 share_value: '',
-            }).then(() => window.location.reload());
+            }).then(() => softReload()).catch(err => alert(err.message));
         });
     }
     app.querySelectorAll('[data-dist-delete]').forEach(btn => {
         btn.addEventListener('click', () => {
             csPost(app, app.dataset.distributionDeleteUrl, { id: btn.dataset.distDelete })
-                .then(() => window.location.reload());
+                .then(() => softReload()).catch(err => alert(err.message));
         });
     });
     app.querySelectorAll('[data-distribution-id]').forEach(row => {
@@ -532,7 +599,7 @@ function bindDistributionPanel() {
                 payload[f.dataset.distField] = f.value;
             });
             csPost(app, app.dataset.distributionUpdateUrl, payload)
-                .then(() => window.location.reload());
+                .then(() => softReload()).catch(err => alert(err.message));
         };
         row.querySelectorAll('[data-dist-field]').forEach(field => {
             field.addEventListener('blur', save);
@@ -541,39 +608,65 @@ function bindDistributionPanel() {
     });
 }
 
-function bindSchedulePanel() {
-    const app = document.getElementById('completion-statement-app');
-    if (!app || app.dataset.editable !== 'true') return;
-    const addBtn = document.getElementById('cs-schedule-add');
-    if (addBtn) {
-        addBtn.addEventListener('click', () => {
-            csPost(app, app.dataset.scheduleAddUrl, {
-                payee_name: 'Payee',
-                description: 'Manual payment',
-                direction: 'less',
-                ledger_account: 'C',
-                projected_amount: '0',
-            }).then(() => window.location.reload());
+function refreshBankIndicator(app, id) {
+    const bankRow = app.querySelector(`[data-bank-row="${id}"]`);
+    const toggle = app.querySelector(`[data-sched-bank-toggle="${id}"]`);
+    if (!bankRow || !toggle) return;
+    const sort = bankRow.querySelector('[data-sched-field="bank_sort_code"]')?.value.trim();
+    const acct = bankRow.querySelector('[data-sched-field="bank_account_number"]')?.value.trim();
+    toggle.innerHTML = (sort && acct) ? '<span class="text-green-700">✓ Bank</span>' : 'Add bank';
+}
+
+// Bind the per-row handlers. Called on load and after every in-place re-render.
+function bindScheduleRows(app) {
+    app.querySelectorAll('[data-sched-bank-toggle]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const bankRow = app.querySelector(`[data-bank-row="${btn.dataset.schedBankToggle}"]`);
+            if (bankRow) bankRow.classList.toggle('hidden');
         });
-    }
+    });
+    if (app.dataset.editable !== 'true') return;
     app.querySelectorAll('[data-sched-create-slip]').forEach(btn => {
         btn.addEventListener('click', () => {
             const row = btn.closest('[data-schedule-id]');
             const ledger = row?.querySelector('[data-sched-field="ledger_account"]')?.value || 'C';
             const url = app.dataset.scheduleCreateSlipUrl.replace('/0/', `/${btn.dataset.schedCreateSlip}/`);
             if (!window.confirm(`Create slip from client/${ledger === 'O' ? 'office' : 'client'} account?`)) return;
-            csPost(app, url, { ledger_account: ledger }).then(() => window.location.reload());
+            csPost(app, url, { ledger_account: ledger }).then(() => softReload()).catch(err => alert(err.message));
         });
     });
-    app.querySelectorAll('[data-schedule-id]').forEach(row => {
-        const ledgerField = row.querySelector('[data-sched-field="ledger_account"]');
-        if (ledgerField) {
-            ledgerField.addEventListener('change', () => {
-                csPost(app, app.dataset.scheduleUpdateUrl, {
-                    id: row.dataset.scheduleId,
-                    ledger_account: ledgerField.value,
-                }).then(() => window.location.reload());
-            });
-        }
+    app.querySelectorAll('[data-sched-field]').forEach(field => {
+        const scheduleId = field.closest('[data-schedule-id]')?.dataset.scheduleId
+            || field.closest('[data-bank-row]')?.dataset.bankRow;
+        if (!scheduleId) return;
+        field.addEventListener('change', () => {
+            const payload = { id: scheduleId };
+            payload[field.dataset.schedField] = field.value;
+            csPost(app, app.dataset.scheduleUpdateUrl, payload).then(() => {
+                // Keep the bank panel open; just refresh its summary indicator.
+                if (field.dataset.schedField.startsWith('bank_')) {
+                    refreshBankIndicator(app, scheduleId);
+                }
+            }).catch(err => alert(err.message));
+        });
     });
+}
+
+function bindSchedulePanel() {
+    const app = document.getElementById('completion-statement-app');
+    if (!app) return;
+    bindScheduleRows(app);
+    if (app.dataset.editable !== 'true') return;
+    const addBtn = document.getElementById('cs-schedule-add');
+    if (addBtn) {
+        addBtn.addEventListener('click', () => {
+            csPost(app, app.dataset.scheduleAddUrl, {
+                payee_name: 'New payee',
+                description: '',
+                direction: 'less',
+                ledger_account: 'C',
+                projected_amount: '0',
+            }).then(() => softReload()).catch(err => alert(err.message));
+        });
+    }
 }

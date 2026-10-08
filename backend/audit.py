@@ -82,6 +82,29 @@ def snapshot_key_document(document):
     return f'{client_name} - {document.get_category_display()} - {doc_type}'
 
 
+def snapshot_pmts_slip(slip):
+    kind = 'Pink slip' if slip.is_money_out else 'Blue slip'
+    return (
+        f'{kind} £{slip.amount} - {slip.description} '
+        f'({slip.get_ledger_account_display()}, '
+        f'{slip.get_mode_of_pmt_display()}, {slip.date})'
+    )
+
+
+def snapshot_ledger_transfer(transfer):
+    from_matter = transfer.file_number_from.file_number if transfer.file_number_from else 'Unknown'
+    to_matter = transfer.file_number_to.file_number if transfer.file_number_to else 'Unknown'
+    return (
+        f'Green slip £{transfer.amount} - {transfer.description} '
+        f'({from_matter} {transfer.get_from_ledger_account_display()} → '
+        f'{to_matter} {transfer.get_to_ledger_account_display()}, {transfer.date})'
+    )
+
+
+def snapshot_temp_slip(slip):
+    return f'Temp slip £{slip.amount} - {slip.description} ({slip.date})'
+
+
 def audit_client_key_document_formset(user, formset, client):
     """Record create/update/delete events from a ClientKeyDocument formset."""
     for deleted in formset.deleted_objects:

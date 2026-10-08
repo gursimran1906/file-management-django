@@ -50,12 +50,28 @@ from .views import edit_ongoing_monitoring, download_document, onboarding_docume
 from .views import undertakings, edit_undertaking, undertaking_file_download, add_policy, edit_policy, download_policy_pdf, download_all_policies_word, management_reports, reports_hub, report_expired_ids, report_expired_proof_of_address, report_file_reviews_due, weekly_report_view, policies_read_per_user, staff_timeline_panel
 from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundle_court_update, bundle_section_add, bundle_section_delete, bundle_section_update, bundle_section_reorder, bundle_document_upload, bundle_document_file, bundle_document_update, bundle_document_delete, bundle_document_pages_update, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_download_plain, bundle_pdf_prepare, bundle_pdf_status, bundle_delete, bundle_share_link_status_view, bundle_share_link_create, bundle_share_link_revoke, bundle_versions_view, bundle_version_promote, bundle_version_pin, bundle_version_download
 from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, download_user_key_documents_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review, internal_pricing
-from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, add_matter_key_document, central_key_dates, download_central_key_dates
+from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, central_key_dates, download_central_key_dates
 from .compliance_stats_views import compliance_stats, compliance_stats_detail
 from .granola.views import (
     granola_inbox, granola_assign_note, granola_ignore_note,
     granola_settings, granola_sync_now, granola_create_free30,
     granola_restore_note, granola_guide, granola_test_connection,
+)
+from .onboarding_views import (
+    onboarding_list, onboarding_start, onboarding_detail,
+    onboarding_add_member, onboarding_edit_address, onboarding_send_invite,
+    onboarding_expire_invite, onboarding_send_all_invites,
+    onboarding_upload_doc, onboarding_save_doc_details,
+    onboarding_preview_doc, onboarding_preview_portal_doc,
+    onboarding_run_conflict_check, onboarding_acknowledge_conflict,
+    onboarding_convert_to_matter, client_search_json,
+    onboarding_set_required_docs,
+)
+from .matter_compliance_views import (
+    matter_save_client_compliance, matter_upload_client_doc,
+    matter_upload_identity_doc, matter_save_ncba,
+    matter_preview_client_doc, matter_save_conveyancing,
+    client_key_document_upload, client_key_document_preview,
 )
 
 urlpatterns = [
@@ -68,6 +84,37 @@ urlpatterns = [
     path('index/search/download/', download_search_report,
          name='download_search_report'),
     path('new_file/', open_new_file_page, name='new_file'),
+
+    path('onboarding/', onboarding_list, name='onboarding_list'),
+    path('onboarding/start/', onboarding_start, name='onboarding_start'),
+    path('onboarding/clients/search/', client_search_json, name='client_search_json'),
+    path('onboarding/<int:id>/', onboarding_detail, name='onboarding_detail'),
+    path('onboarding/<int:group_id>/add_member/',
+         onboarding_add_member, name='onboarding_add_member'),
+    path('onboarding/<int:group_id>/send_invites/',
+         onboarding_send_all_invites, name='onboarding_send_all_invites'),
+    path('onboarding/<int:id>/convert/',
+         onboarding_convert_to_matter, name='onboarding_convert_to_matter'),
+    path('onboarding/member/<int:id>/edit_address/',
+         onboarding_edit_address, name='onboarding_edit_address'),
+    path('onboarding/member/<int:id>/send_invite/',
+         onboarding_send_invite, name='onboarding_send_invite'),
+    path('onboarding/member/<int:id>/required_docs/',
+         onboarding_set_required_docs, name='onboarding_set_required_docs'),
+    path('onboarding/member/<int:id>/expire_invite/',
+         onboarding_expire_invite, name='onboarding_expire_invite'),
+    path('onboarding/member/<int:id>/upload/<str:item_type>/',
+         onboarding_upload_doc, name='onboarding_upload_doc'),
+    path('onboarding/member/<int:id>/doc_details/<str:item_type>/',
+         onboarding_save_doc_details, name='onboarding_save_doc_details'),
+    path('onboarding/member/<int:id>/preview/<str:item_type>/',
+         onboarding_preview_doc, name='onboarding_preview_doc'),
+    path('onboarding/member/<int:id>/client-doc/<str:item_type>/',
+         onboarding_preview_portal_doc, name='onboarding_preview_portal_doc'),
+    path('onboarding/member/<int:id>/conflict-check/',
+         onboarding_run_conflict_check, name='onboarding_run_conflict_check'),
+    path('onboarding/member/<int:id>/acknowledge-conflict/',
+         onboarding_acknowledge_conflict, name='onboarding_acknowledge_conflict'),
 
     path('risk_assessment/add/<str:file_number>/',
          add_risk_assessment, name='add_risk_assessment'),
@@ -101,8 +148,6 @@ urlpatterns = [
 
     path('<str:file_number>/key_dates/add/',
          add_matter_key_date, name='add_matter_key_date'),
-    path('<str:file_number>/key_documents/add/',
-         add_matter_key_document, name='add_matter_key_document'),
     path('key_dates/<int:id>/edit/',
          edit_matter_key_date, name='edit_matter_key_date'),
     path('key_dates/<int:id>/delete/',
@@ -117,6 +162,22 @@ urlpatterns = [
     path('other_side/edit/<int:id>/', edit_otherside, name='edit_otherside'),
 
     path('home/<str:file_number>/', display_data_home_page, name='home'),
+    path('home/<str:file_number>/compliance/<int:mc_id>/save/',
+         matter_save_client_compliance, name='matter_save_client_compliance'),
+    path('home/<str:file_number>/compliance/<int:mc_id>/upload/',
+         matter_upload_client_doc, name='matter_upload_client_doc'),
+    path('home/<str:file_number>/compliance/<int:mc_id>/identity/',
+         matter_upload_identity_doc, name='matter_upload_identity_doc'),
+    path('home/<str:file_number>/compliance/ncba/',
+         matter_save_ncba, name='matter_save_ncba'),
+    path('compliance/document/<int:doc_id>/',
+         matter_preview_client_doc, name='matter_preview_client_doc'),
+    path('home/<str:file_number>/key_document/<int:doc_id>/upload/',
+         client_key_document_upload, name='client_key_document_upload'),
+    path('key_document/<int:doc_id>/preview/',
+         client_key_document_preview, name='client_key_document_preview'),
+    path('home/<str:file_number>/conveyancing/save/',
+         matter_save_conveyancing, name='matter_save_conveyancing'),
     path('home/<str:file_number>/next_work/add/',
          add_new_work_file, name='add_next_work_file'),
     path('home/<str:file_number>/last_work/add/',

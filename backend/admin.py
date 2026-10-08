@@ -20,7 +20,7 @@
 # admin.site.register(Modifications)
 from django.contrib import admin
 from .models import (Memo, Modifications, ClientContactDetails, AuthorisedParties, OthersideDetails,
-                     ClientKeyDocument, MatterKeyDate,
+                     ClientKeyDocument, ConflictCheck, MatterKeyDate,
                      FileLocation, FileStatus, MatterType, WIP, NextWork, LastWork, PmtsSlips,
                      LedgerAccountTransfers, Policy, PolicyVersion, TempSlips, Invoices, MatterEmails, MatterLetters,
                      MatterAttendanceNotes, RiskAssessment, OngoingMonitoring, Free30Mins, Free30MinsAttendees, Undertaking,
@@ -29,6 +29,35 @@ from .models import (Memo, Modifications, ClientContactDetails, AuthorisedPartie
                      EstateAccount, EstateAccountFinanceLineOverride,
                      EstateAccountManualEntry, EstateAccountDistribution,
                      EstateAccountSigner)
+from .audit import (log_deleted_on_parent, snapshot_pmts_slip,
+                    snapshot_ledger_transfer, snapshot_temp_slip)
+
+
+class SlipDeleteAuditMixin:
+    """Record a durable 'slip removed' audit event on the owning matter before
+    a slip is hard-deleted via the Django admin (single or bulk), so the trail
+    survives the deletion. Mirrors the log_deleted_on_parent convention used for
+    key dates, key documents, and bundles."""
+    audit_entity_type = 'slip'
+
+    def audit_targets(self, obj):
+        """Return a list of (parent_wip, snapshot_str) tuples to log."""
+        raise NotImplementedError
+
+    def _log_deletion(self, request, obj):
+        for parent, snapshot in self.audit_targets(obj):
+            if parent is not None:
+                log_deleted_on_parent(
+                    request.user, parent, self.audit_entity_type, snapshot)
+
+    def delete_model(self, request, obj):
+        self._log_deletion(request, obj)
+        super().delete_model(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset:
+            self._log_deletion(request, obj)
+        super().delete_queryset(request, queryset)
 
 
 @admin.register(Modifications)
@@ -51,6 +80,16 @@ class ClientKeyDocumentAdmin(admin.ModelAdmin):
                     'issue_date', 'expiry_date', 'verified_on', 'verified_by', 'timestamp']
     list_filter = ['category', 'expiry_date', 'verified_on']
     search_fields = ['client__name', 'document_type', 'document_reference']
+
+
+@admin.register(ConflictCheck)
+class ConflictCheckAdmin(admin.ModelAdmin):
+    list_display = ['id', 'searched_name', 'result', 'acknowledged',
+                    'onboarding', 'client', 'wip', 'performed_by', 'timestamp']
+    list_filter = ['result', 'acknowledged', 'timestamp']
+    search_fields = ['searched_name', 'client__name', 'wip__file_number',
+                     'onboarding__client_ref']
+    readonly_fields = ['timestamp']
 
 
 @admin.register(AuthorisedParties)
@@ -119,7 +158,12 @@ class LastWorkAdmin(admin.ModelAdmin):
 
 
 @admin.register(PmtsSlips)
-class PmtsSlipsAdmin(admin.ModelAdmin):
+class PmtsSlipsAdmin(SlipDeleteAuditMixin, admin.ModelAdmin):
+    audit_entity_type = 'pmts_slip'
+
+    def audit_targets(self, obj):
+        return [(obj.file_number, snapshot_pmts_slip(obj))]
+
     # Display settings
     list_display = [
         'id', 'file_number', 'ledger_account', 'mode_of_pmt', 'amount',
@@ -145,14 +189,34 @@ class PmtsSlipsAdmin(admin.ModelAdmin):
 
 
 @admin.register(LedgerAccountTransfers)
-class LedgerAccountTransfersAdmin(admin.ModelAdmin):
+class LedgerAccountTransfersAdmin(SlipDeleteAuditMixin, admin.ModelAdmin):
+    audit_entity_type = 'green_slip'
+
+    def audit_targets(self, obj):
+        # A transfer spans two matters; log the removal in each (dedupe if same).
+        snapshot = snapshot_ledger_transfer(obj)
+        parents = []
+        seen = set()
+        for parent in (obj.file_number_from, obj.file_number_to):
+            if parent is not None and parent.pk not in seen:
+                seen.add(parent.pk)
+                parents.append((parent, snapshot))
+        return parents
+
     list_display = ['id', 'file_number_from', 'file_number_to', 'from_ledger_account', 'to_ledger_account', 'amount', 'date',
                     'description', 'amount_invoiced_from', 'balance_left_from', 'amount_invoiced_to', 'balance_left_to',
                     'is_cashier_co_transfer', 'is_bank_transfer_done', 'bank_transfer_done_on', 'bank_transfer_done_by', 'created_by', 'timestamp']
 
 
 @admin.register(TempSlips)
-class TempSlipsAdmin(admin.ModelAdmin):
+class TempSlipsAdmin(SlipDeleteAuditMixin, admin.ModelAdmin):
+    audit_entity_type = 'temp_slip'
+
+    def audit_targets(self, obj):
+        # TempSlips.file_number is a plain CharField, not an FK — resolve the WIP.
+        wip = WIP.objects.filter(file_number=obj.file_number).first()
+        return [(wip, snapshot_temp_slip(obj))]
+
     list_display = ['id', 'file_number', 'date', 'amount',
                     'description', 'created_by', 'timestamp']
 

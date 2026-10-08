@@ -1,0 +1,256 @@
+{% extends 'base.html' %}
+{% block title %}Onboarding{% endblock %}
+{% block styles %}
+<style>
+  .oi-tip { position: relative; display: inline-flex; }
+  .oi-tip > .oi-tip-body {
+    position: absolute; left: 0; top: calc(100% + 6px); z-index: 30;
+    width: 17rem; padding: .5rem .625rem; border-radius: .375rem;
+    background: #111827; color: #fff; font-size: 11px; line-height: 1.45; font-weight: 400;
+    box-shadow: 0 6px 16px rgba(16,24,40,.18);
+    opacity: 0; visibility: hidden; transition: opacity .12s ease; pointer-events: none;
+  }
+  .oi-tip:hover > .oi-tip-body, .oi-tip:focus-within > .oi-tip-body { opacity: 1; visibility: visible; }
+</style>
+{% endblock %}
+{% block container %}
+
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div class="min-w-0">
+        <h1 class="text-2xl font-semibold text-gray-900">Client onboarding</h1>
+        <p class="text-sm text-gray-600 mt-1">Invite one or more clients to provide ID, proof of address and AML declarations before opening a matter</p>
+      </div>
+      <button type="button" id="toggle-onboarding-form" class="btn-primary text-xs shrink-0">Start onboarding</button>
+    </div>
+    {% if portal_is_mock %}
+    <p class="mt-3 inline-flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+      <svg class="h-4 w-4 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92ZM11 13a1 1 0 1 0-2 0 1 1 0 0 0 2 0Zm-1-8a1 1 0 0 0-1 1v3a1 1 0 0 0 2 0V6a1 1 0 0 0-1-1Z" clip-rule="evenodd"/></svg>
+      The client portal is not configured yet — running in preview mode with mock document data.
+    </p>
+    {% endif %}
+  </div>
+
+  <div id="onboarding-form-panel" class="div-container hidden">
+    <div class="flex items-start justify-between gap-3 pb-3 mb-4 border-b border-gray-100">
+      <div>
+        <h2 class="text-base font-semibold text-gray-900">Start onboarding</h2>
+        <p class="text-xs text-gray-500 mt-0.5">Add every client for the matter — each gets their own secure upload link</p>
+      </div>
+      <button type="button" id="close-onboarding-form" class="text-gray-500 hover:text-gray-900 text-xl leading-none" aria-label="Close">&times;</button>
+    </div>
+    <form method="post" action="{% url 'onboarding_start' %}">
+      {% csrf_token %}
+      <div class="max-w-3xl">
+        <div class="mb-4">
+          <label class="form-label" for="label">Case label <span class="text-gray-400 font-normal">(optional)</span></label>
+          <input type="text" name="label" id="label" class="form-input" placeholder="e.g. Smith — purchase of 12 Oak Street">
+        </div>
+
+        <p class="form-label flex items-center gap-1.5 mb-2">Clients
+          <span class="oi-tip text-gray-400 hover:text-gray-600 cursor-help align-middle" tabindex="0" role="img" aria-label="About New vs Existing clients">
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span class="oi-tip-body">New creates a client record; Existing reuses one already on file (no duplicate). Both are invited now if you tick send — a new client is asked for all documents; an existing client only for what's still needed (proof of ID/address still valid on file is skipped).</span>
+          </span>
+        </p>
+        <div id="client-rows" class="space-y-3">
+          <div class="client-row rounded-md border border-gray-200 p-3 flex items-start gap-2">
+            <div class="flex-1 space-y-2">
+              <div class="inline-flex rounded-md border border-gray-200 overflow-hidden text-xs" role="group">
+                <button type="button" class="mode-btn mode-new bg-blue-600 text-white px-3 py-1">New client</button>
+                <button type="button" class="mode-btn mode-existing bg-white text-gray-700 px-3 py-1 border-l border-gray-200">Existing client</button>
+              </div>
+
+              <div class="new-fields grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input type="text" name="client_name" class="form-input" placeholder="Client name" required>
+                <input type="email" name="email" class="form-input" placeholder="Client email" required>
+              </div>
+
+              <div class="existing-fields hidden relative">
+                <input type="text" class="client-search form-input" placeholder="Search existing clients by name or email" autocomplete="off">
+                <input type="hidden" name="existing_client_id" class="existing-client-id" value="">
+                <div class="client-search-results absolute z-20 mt-1 w-full hidden max-h-56 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg text-sm"></div>
+                <p class="chosen-client hidden mt-1 text-xs text-green-700"></p>
+              </div>
+            </div>
+            <button type="button" class="remove-client-row shrink-0 px-2 py-2 text-gray-400 hover:text-red-600 text-xl leading-none" aria-label="Remove client" title="Remove client">&times;</button>
+          </div>
+        </div>
+        <button type="button" id="add-client-row" class="btn-secondary text-xs mt-2">+ Add another client</button>
+      </div>
+
+      <label class="mt-4 flex items-center gap-2 text-sm text-gray-700">
+        <input type="checkbox" name="send_invite" value="1" checked class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+        Send each client their upload invite now
+      </label>
+      <div class="flex gap-2 mt-4">
+        <button type="submit" class="btn-primary text-xs">Start onboarding</button>
+        <button type="button" id="cancel-onboarding-form" class="btn-secondary text-xs">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="div-container">
+    {% if groups %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+            <th class="py-2 pr-4 font-medium">Case</th>
+            <th class="py-2 pr-4 font-medium">Clients</th>
+            <th class="py-2 pr-4 font-medium">Status</th>
+            <th class="py-2 pr-4 font-medium">Started</th>
+            <th class="py-2 pr-4 font-medium">Matter</th>
+            <th class="py-2"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for group in groups %}
+          <tr class="hover:bg-gray-50">
+            <td class="py-2.5 pr-4 font-medium text-gray-900">{{ group.label|default:"Onboarding" }}</td>
+            <td class="py-2.5 pr-4 text-gray-600">{{ group.members.all|length }} · {{ group.members.all|join:", " }}</td>
+            <td class="py-2.5 pr-4">
+              {% if group.status == 'converted' %}<span class="badge-green">Converted</span>
+              {% elif group.status == 'ready_for_review' %}<span class="badge-purple">Ready for review</span>
+              {% else %}<span class="badge-yellow">Collecting</span>{% endif %}
+            </td>
+            <td class="py-2.5 pr-4 text-gray-500">{{ group.timestamp|date:"d M Y" }}</td>
+            <td class="py-2.5 pr-4">
+              {% if group.matter %}<a href="{% url 'home' group.matter.file_number %}" class="text-blue-600 hover:underline font-mono text-xs">{{ group.matter.file_number }}</a>{% else %}<span class="text-gray-300">—</span>{% endif %}
+            </td>
+            <td class="py-2.5 text-right">
+              <a href="{% url 'onboarding_detail' group.id %}" class="btn-secondary text-xs">Open</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-10">
+      <p class="text-sm text-gray-500">No onboarding cases yet.</p>
+      <p class="text-xs text-gray-400 mt-1">Use “Start onboarding” to invite your first client.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  (function () {
+    const SEARCH_URL = "{% url 'client_search_json' %}";
+    const panel = document.getElementById('onboarding-form-panel');
+    const open = () => { panel.classList.remove('hidden'); panel.querySelector('input[name="label"]').focus(); };
+    const close = () => panel.classList.add('hidden');
+    document.getElementById('toggle-onboarding-form').addEventListener('click', open);
+    document.getElementById('close-onboarding-form').addEventListener('click', close);
+    document.getElementById('cancel-onboarding-form').addEventListener('click', close);
+
+    const rows = document.getElementById('client-rows');
+
+    // Switch a row between 'new' (name+email) and 'existing' (pick a client on
+    // file). Both modes always keep their inputs in the DOM so the POST lists
+    // client_name[]/email[]/existing_client_id[] stay index-aligned per row.
+    const setMode = (row, mode) => {
+      const isNew = mode !== 'existing';
+      row.querySelector('.new-fields').classList.toggle('hidden', !isNew);
+      row.querySelector('.existing-fields').classList.toggle('hidden', isNew);
+      row.querySelectorAll('.new-fields input').forEach(i => { i.required = isNew; });
+      row.querySelector('.mode-new').className = 'mode-btn mode-new px-3 py-1 ' + (isNew ? 'bg-blue-600 text-white' : 'bg-white text-gray-700');
+      row.querySelector('.mode-existing').className = 'mode-btn mode-existing px-3 py-1 border-l border-gray-200 ' + (isNew ? 'bg-white text-gray-700' : 'bg-blue-600 text-white');
+      if (isNew) {
+        row.querySelector('.existing-client-id').value = '';
+        row.querySelector('.client-search').value = '';
+        row.querySelector('.chosen-client').classList.add('hidden');
+        row.querySelector('.client-search-results').classList.add('hidden');
+      }
+    };
+
+    // Only allow removing rows when more than one remains.
+    const refreshRemoveButtons = () => {
+      const all = rows.querySelectorAll('.client-row');
+      all.forEach(r => {
+        const btn = r.querySelector('.remove-client-row');
+        if (btn) btn.classList.toggle('invisible', all.length <= 1);
+      });
+    };
+
+    document.getElementById('add-client-row').addEventListener('click', function () {
+      const row = rows.firstElementChild.cloneNode(true);
+      row.querySelectorAll('input').forEach(i => { i.value = ''; });
+      row.querySelector('.client-search-results').innerHTML = '';
+      setMode(row, 'new');
+      rows.appendChild(row);
+      refreshRemoveButtons();
+    });
+
+    rows.addEventListener('click', function (e) {
+      const modeBtn = e.target.closest('.mode-btn');
+      if (modeBtn) {
+        setMode(modeBtn.closest('.client-row'), modeBtn.classList.contains('mode-existing') ? 'existing' : 'new');
+        return;
+      }
+      const result = e.target.closest('.client-result');
+      if (result) {
+        const row = result.closest('.client-row');
+        row.querySelector('.existing-client-id').value = result.dataset.id;
+        row.querySelector('.client-search').value = result.dataset.name;
+        const chosen = row.querySelector('.chosen-client');
+        chosen.textContent = '✓ ' + result.dataset.name + (result.dataset.email ? ' · ' + result.dataset.email : '');
+        chosen.classList.remove('hidden');
+        row.querySelector('.client-search-results').classList.add('hidden');
+        return;
+      }
+      const removeBtn = e.target.closest('.remove-client-row');
+      if (removeBtn) {
+        if (rows.querySelectorAll('.client-row').length <= 1) return;
+        removeBtn.closest('.client-row').remove();
+        refreshRemoveButtons();
+      }
+    });
+
+    // Debounced typeahead against the existing-client search endpoint.
+    let timer = null;
+    rows.addEventListener('input', function (e) {
+      const search = e.target.closest('.client-search');
+      if (!search) return;
+      const row = search.closest('.client-row');
+      const box = row.querySelector('.client-search-results');
+      // Typing invalidates any previous pick.
+      row.querySelector('.existing-client-id').value = '';
+      row.querySelector('.chosen-client').classList.add('hidden');
+      const q = search.value.trim();
+      clearTimeout(timer);
+      if (q.length < 2) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+      timer = setTimeout(() => {
+        fetch(SEARCH_URL + '?q=' + encodeURIComponent(q), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(r => r.json())
+          .then(data => {
+            const items = (data.results || []);
+            if (!items.length) {
+              box.innerHTML = '<div class="px-3 py-2 text-gray-400">No matching clients</div>';
+            } else {
+              box.innerHTML = items.map(c =>
+                '<button type="button" class="client-result block w-full text-left px-3 py-2 hover:bg-blue-50" '
+                + 'data-id="' + c.id + '" data-name="' + (c.name || '').replace(/"/g, '&quot;') + '" data-email="' + (c.email || '').replace(/"/g, '&quot;') + '">'
+                + '<span class="font-medium text-gray-900">' + (c.name || '') + '</span>'
+                + (c.email ? '<span class="text-gray-500"> · ' + c.email + '</span>' : '')
+                + '</button>'
+              ).join('');
+            }
+            box.classList.remove('hidden');
+          })
+          .catch(() => { box.classList.add('hidden'); });
+      }, 200);
+    });
+
+    // Close any open results when clicking elsewhere.
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('.existing-fields')) return;
+      rows.querySelectorAll('.client-search-results').forEach(b => b.classList.add('hidden'));
+    });
+
+    refreshRemoveButtons();
+  })();
+</script>
+{% endblock %}

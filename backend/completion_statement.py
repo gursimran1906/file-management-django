@@ -256,7 +256,10 @@ def _signed_amount(direction, amount):
 
 def _line_sort_key(line):
     sort_order = line.get('sort_order', 0)
-    date_str = line.get('date_iso') or line.get('date') or '0001-01-01'
+    # Always sort on a normalised ISO string — raw lines carry a date object in
+    # 'date' while dateless lines fall back to a string, which can't be compared
+    # against each other directly.
+    date_str = line.get('date_iso') or _format_date_iso(line.get('date')) or '0001-01-01'
     return (sort_order, date_str, line.get('id') or 0)
 
 
@@ -482,11 +485,33 @@ def _serialize_schedule_row(row):
     amount_variance = False
     if row.actual_amount is not None and row.actual_amount != row.projected_amount:
         amount_variance = True
+    is_pending = row.status == CompletionStatementScheduledPayment.STATUS_PENDING
+    # Payee/description can be edited inline where the edit survives a re-sync:
+    # manually-added rows and main-statement-line mirrors. Structured rows
+    # (mortgage/apportionment/distribution) are driven by their own tabs. The
+    # amount/direction are only free-form for manual rows.
+    payee_editable = is_pending and row.source_kind in (
+        CompletionStatementScheduledPayment.SOURCE_MANUAL,
+        CompletionStatementScheduledPayment.SOURCE_MAIN_LINE,
+    )
+    amount_editable = is_pending and (
+        row.source_kind == CompletionStatementScheduledPayment.SOURCE_MANUAL
+    )
     return {
         'id': row.id,
         'payee_name': row.payee_name,
+        'payee_editable': payee_editable,
+        'amount_editable': amount_editable,
         'description': row.description,
         'reference': row.reference,
+        'bank_name': row.bank_name,
+        'bank_sort_code': row.bank_sort_code,
+        'bank_account_number': row.bank_account_number,
+        'bank_account_name': row.bank_account_name,
+        'bank_reference': row.bank_reference,
+        'has_bank_details': bool(
+            row.bank_sort_code and row.bank_account_number
+        ),
         'direction': row.direction,
         'ledger_account': row.ledger_account,
         'ledger_account_display': row.get_ledger_account_display(),
@@ -869,7 +894,15 @@ def _upsert_schedule_row(
     projected_amount,
     payment_date=None,
     sort_order=0,
+    refresh_fields=None,
 ):
+    """Create or refresh a scheduled-payment row sourced from another object.
+
+    ``refresh_fields`` limits which fields are overwritten on an existing
+    *pending* row. Pass it for user-editable sources (e.g. main statement lines)
+    so caseworker edits to the payee or bank details survive a re-sync. When
+    ``None`` (the default), every derived field is refreshed.
+    """
     defaults = {
         'payee_name': payee_name,
         'description': description or '',
@@ -886,8 +919,9 @@ def _upsert_schedule_row(
         defaults=defaults,
     )
     if not created and row.status == CompletionStatementScheduledPayment.STATUS_PENDING:
-        for key, value in defaults.items():
-            setattr(row, key, value)
+        keys = defaults.keys() if refresh_fields is None else refresh_fields
+        for key in keys:
+            setattr(row, key, defaults[key])
         row.save()
     return row
 
@@ -1058,6 +1092,52 @@ def sync_proceeds_distribution(completion_statement, user, matter, calculate_inv
         )
 
 
+def sync_main_lines(completion_statement):
+    """Mirror pending main-statement lines into the schedule of payments.
+
+    Only manual entries the caseworker has flagged ``is_pending`` (and that are
+    not system-managed mirrors of mortgage/apportionment/distribution rows) flow
+    in. Each becomes a SOURCE_MAIN_LINE schedule row so bank details can be added
+    and a slip created. Only the financial facts (direction, projected amount,
+    payment date) are refreshed on re-sync — the payee name, description and bank
+    details remain editable. Rows whose source entry is no longer pending are
+    removed, unless a slip has already been created from them.
+    """
+    pending_entries = completion_statement.manual_entries.filter(
+        is_pending=True, is_system_managed=False
+    )
+    live_ids = set()
+    for entry in pending_entries:
+        # Skip £0 placeholder lines (e.g. the default template rows) — they are
+        # not yet a real payment. They flow in once an amount is entered.
+        if not entry.amount or entry.amount == 0:
+            continue
+        live_ids.add(entry.id)
+        _upsert_schedule_row(
+            completion_statement,
+            source_kind=CompletionStatementScheduledPayment.SOURCE_MAIN_LINE,
+            source_id=entry.id,
+            payee_name=(entry.description or 'Payment')[:255],
+            description=entry.description,
+            direction=entry.direction,
+            ledger_account=CompletionStatementScheduledPayment.LEDGER_CLIENT,
+            projected_amount=entry.amount,
+            payment_date=entry.date,
+            sort_order=100 + entry.sort_order,
+            refresh_fields=('direction', 'projected_amount', 'payment_date'),
+        )
+
+    # Drop main-line rows whose source entry is no longer pending/exists, but
+    # keep any that have already progressed to a slip.
+    stale = completion_statement.scheduled_payments.filter(
+        source_kind=CompletionStatementScheduledPayment.SOURCE_MAIN_LINE,
+        status=CompletionStatementScheduledPayment.STATUS_PENDING,
+    )
+    if live_ids:
+        stale = stale.exclude(source_id__in=live_ids)
+    stale.delete()
+
+
 def refresh_schedule_from_slips(completion_statement):
     for row in completion_statement.scheduled_payments.filter(linked_slip__isnull=False):
         slip = row.linked_slip
@@ -1070,15 +1150,21 @@ def sync_all(completion_statement, matter, user, calculate_invoice_total):
     sync_mortgage_redemption(completion_statement, user)
     sync_apportionments(completion_statement, user)
     sync_proceeds_distribution(completion_statement, user, matter, calculate_invoice_total)
+    sync_main_lines(completion_statement)
     refresh_schedule_from_slips(completion_statement)
     return completion_statement
 
 
 def validate_for_finalise(completion_statement):
     errors = []
+    # Main-line rows mirror pending main-statement lines purely as a convenience
+    # for creating slips — they do not gate finalisation (those amounts are
+    # already reflected in the statement balance). Structured rows
+    # (mortgage/apportionment/distribution) and manually-added schedule rows
+    # still block until a slip is created or they are marked complete.
     pending = completion_statement.scheduled_payments.filter(
         status=CompletionStatementScheduledPayment.STATUS_PENDING
-    )
+    ).exclude(source_kind=CompletionStatementScheduledPayment.SOURCE_MAIN_LINE)
     if pending.exists():
         errors.append(
             f'{pending.count()} scheduled payment(s) still pending — create slips or mark complete.'

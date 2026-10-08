@@ -14,12 +14,30 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 import socket
+import sys
 import logging.config
+from django.core.exceptions import ImproperlyConfigured
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / 'filemanagementDjango' / '.env')
 load_dotenv(BASE_DIR / '.env')
+
+
+def require_env(name):
+    """Return a required environment variable or fail fast.
+
+    Secrets must come from the environment (or a .env file that is NOT
+    committed) — there are deliberately no hardcoded fallbacks in this file,
+    which is tracked in git.
+    """
+    value = os.environ.get(name)
+    if not value:
+        raise ImproperlyConfigured(
+            f"Required environment variable {name!r} is not set. "
+            f"Set it in the environment or the (gitignored) .env file."
+        )
+    return value
 
 # Create logs directory if it doesn't exist
 LOGS_DIR = BASE_DIR / 'logs'
@@ -36,12 +54,13 @@ except OSError as e:
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv(
-    'SECRET_KEY', 'django-insecure-3b1_t+z*dfo81p)$x=wa7uygt)x0%-6n+h3fhlkrg@xkuzq=7s')
+# No hardcoded fallback — this file is tracked in git. Set SECRET_KEY via env/.env.
+SECRET_KEY = require_env('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# For local development, set DEBUG=True. For production, set DEBUG=False via environment variable
-DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
+# Fails safe: defaults to False so a missing env var never enables DEBUG in prod.
+# For local development, set DEBUG=True in your .env.
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 
 # Production: Set ALLOWED_HOSTS from environment variable or use specific domains
 ALLOWED_HOSTS_ENV = os.getenv('ALLOWED_HOSTS', '')
@@ -61,6 +80,33 @@ LOGIN_REDIRECT_URL = '/dashboard/'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_COOKIE_AGE = 36000
+
+# --- Security / HTTPS hardening ---------------------------------------------
+# The app runs behind a TLS-terminating reverse proxy. Without this, Django
+# thinks every request is plain HTTP, so Secure cookies and is_secure() break.
+# Requires the proxy to set "X-Forwarded-Proto: https".
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Cookies only over HTTPS in production (kept off in DEBUG so local dev works).
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+# NOTE: do NOT set CSRF_COOKIE_HTTPONLY — front-end AJAX reads the csrftoken
+# cookie via getCookie('csrftoken') and sends it as the X-CSRFToken header.
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+# Redirect HTTP->HTTPS at the app layer (proxy header above makes this safe).
+SECURE_SSL_REDIRECT = not DEBUG
+
+# HSTS: start conservative (1 hour) and ramp up once confirmed stable. Avoid
+# enabling preload until HSTS has run cleanly for a while (hard to undo).
+SECURE_HSTS_SECONDS = 3600 if not DEBUG else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = False
+
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+# ---------------------------------------------------------------------------
 
 # Database-backed cache so state is shared across gunicorn workers. The default
 # cache is used for the court-bundle PDF generation lock and progress (backend
@@ -93,7 +139,8 @@ INSTALLED_APPS = [
     'django_quill',
     'django_crontab',
     'django.contrib.humanize',
-    'compressor'
+    'compressor',
+    'axes',
 ]
 
 MIDDLEWARE = [
@@ -102,8 +149,35 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # Views require login by default; opt out with @login_not_required.
+    'django.contrib.auth.middleware.LoginRequiredMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # AxesMiddleware must be last so it sees the result of authentication.
+    'axes.middleware.AxesMiddleware',
+]
+
+# django-axes brute-force protection. AxesStandaloneBackend must come first.
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesStandaloneBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
+# Disabled in local dev (DEBUG) so test logins can't lock you out and no axes
+# migration/DB is needed locally; fully active in production.
+AXES_ENABLED = not DEBUG
+# Lock by USERNAME only — all staff share one office NAT IP, so locking by IP
+# would lock out the whole office when one person mistypes their password.
+AXES_LOCKOUT_PARAMETERS = [['username']]
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = 1  # hours
+AXES_RESET_ON_SUCCESS = True
+# Behind the proxy, derive the real client IP from X-Forwarded-For for accurate
+# audit records (lockout itself is username-keyed, see above).
+AXES_IPWARE_PROXY_COUNT = 1
+AXES_IPWARE_META_PRECEDENCE_ORDER = [
+    'HTTP_X_FORWARDED_FOR',
+    'REMOTE_ADDR',
 ]
 
 ROOT_URLCONF = 'filemanagementDjango.urls'
@@ -141,7 +215,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.getenv('DB_NAME', 'wip'),
         'USER': os.getenv('DB_USER', 'gb'),
-        'PASSWORD': os.getenv('DB_USER_PASS', 'Mango@ANP290!'),
+        'PASSWORD': require_env('DB_USER_PASS'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
         'OPTIONS': {
@@ -177,6 +251,50 @@ else:
     DATABASES['default']['ENGINE'] = 'django.db.backends.sqlite3'
     DATABASES['default']['NAME'] = os.path.join(BASE_DIR, 'db.sqlite3')
     DATABASES['default'].pop('OPTIONS', None)
+
+
+# ---- Client onboarding portal (separate internet-facing app) ----
+# Base URL of the FastAPI portal backend, and the shared key the office uses to
+# call its internal API. When ONBOARDING_PORTAL_BASE_URL is empty, the staff
+# onboarding console runs against a built-in mock (no outbound portal calls), so
+# it works before the portal is deployed. See
+# plans/lets-plan-for-separate-bubbly-pony.md for the full design.
+ONBOARDING_PORTAL_BASE_URL = os.getenv('ONBOARDING_PORTAL_BASE_URL', '')
+ONBOARDING_PORTAL_API_KEY = os.getenv('ONBOARDING_PORTAL_API_KEY', '')
+# Client-facing base URL the upload link points at (used to build the invite link).
+ONBOARDING_PORTAL_PUBLIC_URL = os.getenv(
+    'ONBOARDING_PORTAL_PUBLIC_URL', 'https://portal.anpsolicitors.com')
+
+# Onboarding invite email, sent via Microsoft Graph (app-only) from this mailbox.
+# Requires the Graph app registration to hold the Mail.Send application permission
+# for this sender. When the credentials are unset, invites are still recorded but
+# no email is sent (logged instead).
+ONBOARDING_INVITE_FROM = os.getenv('ONBOARDING_INVITE_FROM', 'mail@anpsolicitors.com')
+ONBOARDING_MAIL_CLIENT_ID = os.getenv(
+    'ONBOARDING_MAIL_CLIENT_ID', os.getenv('AZURE_CLIENT_ID', ''))
+ONBOARDING_MAIL_CLIENT_SECRET = os.getenv(
+    'ONBOARDING_MAIL_CLIENT_SECRET', os.getenv('AZURE_CLIENT_SECRET', ''))
+ONBOARDING_MAIL_TENANT_ID = os.getenv(
+    'ONBOARDING_MAIL_TENANT_ID', os.getenv('AZURE_TENANT_ID', ''))
+# Outbound invite emails are opt-in so test and development environments never
+# email real people. Set ONBOARDING_SEND_INVITE_EMAILS=true in production. Invites
+# still work without it: the link is kept on the case page for manual delivery.
+ONBOARDING_SEND_INVITE_EMAILS = os.getenv(
+    'ONBOARDING_SEND_INVITE_EMAILS', 'false').lower() in ('true', '1', 'yes')
+if sys.argv[1:2] == ['test']:
+    # Never email anyone from the test suite, whatever the environment says.
+    ONBOARDING_SEND_INVITE_EMAILS = False
+
+# Where the portal stores client uploads in SharePoint, so the office app can
+# read them back ("Client copy" preview + convert-time copy). These MUST mirror
+# the portal's own SHAREPOINT_ROOT / SHAREPOINT_TESTING / INTAKE_DRIVE_ID. The
+# office reads with its existing (broader) SHAREPOINT_AZURE_* credential — see
+# the Phase 0 setup guide. When ONBOARDING_INTAKE_DRIVE_ID is unset, the client
+# copy falls back to the preview-mode placeholder.
+ONBOARDING_INTAKE_DRIVE_ID = os.getenv('ONBOARDING_INTAKE_DRIVE_ID', '')
+ONBOARDING_SHAREPOINT_ROOT = os.getenv('ONBOARDING_SHAREPOINT_ROOT', 'client_portal')
+ONBOARDING_SHAREPOINT_TESTING = os.getenv(
+    'ONBOARDING_SHAREPOINT_TESTING', 'true').lower() in ('true', '1', 'yes')
 
 
 # Password validation

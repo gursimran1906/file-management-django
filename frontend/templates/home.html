@@ -12,9 +12,27 @@
   .activity-log-filter.is-active { background-color: white; color: rgb(17 24 39); box-shadow: 0 1px 2px rgb(0 0 0 / 0.06); }
   details > summary { list-style: none; }
   details > summary::-webkit-details-marker { display: none; }
+
+  /* Light polish for the matter home (scoped so no other page is affected). Keep the
+     container radius as-is — only refine shadow depth and heading tracking. */
+  .home-page .div-container { box-shadow: 0 1px 2px rgba(16,24,40,.05), 0 6px 18px rgba(16,24,40,.04); }
+  .home-page h3 { letter-spacing: -0.01em; }
+  .home-page h1 { letter-spacing: -0.02em; }
+  .home-page details.div-container[open] { box-shadow: 0 1px 2px rgba(16,24,40,.05), 0 10px 28px rgba(16,24,40,.06); }
+
+  /* Section nav — sticky headings bar with scroll-spy. The window scrolls, so the
+     bar must stick BELOW the fixed top navbar, and anchor jumps clear both bars. */
+  html { scroll-behavior: smooth; }
+  /* Only the section nav sticks (just below the fixed navbar). The heading and all
+     content scroll through beneath it. Anchor jumps clear the navbar + the nav bar. */
+  .home-page [id^="sec-"] { scroll-margin-top: calc(var(--navbar-height, 64px) + var(--home-nav-h, 3.25rem)); }
+  .home-sec-link { padding: .3rem .75rem; border-radius: 9999px; font-size: .82rem; color: #6b7280; white-space: nowrap; transition: background-color .12s ease, color .12s ease; }
+  .home-sec-link:hover { background: #f3f4f6; color: #111827; }
+  .home-sec-link.is-active { background: #111827; color: #fff; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 </style>
 
-<div class='mt-4 space-y-5'>
+<div class='mt-4 space-y-6 home-page'>
     <div class='div-container py-3'>
         <div class='flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3'>
             <div class="min-w-0 flex-1">
@@ -62,10 +80,22 @@
         </div>
         {% endif %}
     </div>
+    <nav class="home-section-nav sticky z-30 bg-white border border-gray-200 rounded-lg shadow-sm px-1" style="top: var(--navbar-height, 64px);">
+        <div class="flex gap-1 overflow-x-auto py-2">
+            <a href="#sec-summary" class="home-sec-link" data-target="sec-summary">Summary</a>
+            <a href="#sec-dates" class="home-sec-link" data-target="sec-dates">Key dates</a>
+            <a href="#sec-risk" class="home-sec-link" data-target="sec-risk">Risk</a>
+            <a href="#sec-compliance" class="home-sec-link" data-target="sec-compliance">Compliance</a>
+            <a href="#sec-bundles" class="home-sec-link" data-target="sec-bundles">Bundles</a>
+            {% if is_conveyancing %}<a href="#sec-conveyancing" class="home-sec-link" data-target="sec-conveyancing">Conveyancing</a>{% endif %}
+            <a href="#sec-reviews" class="home-sec-link" data-target="sec-reviews">Reviews</a>
+            <a href="#sec-activity" class="home-sec-link" data-target="sec-activity">Activity</a>
+        </div>
+    </nav>
     <div class="div-container">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-3 mb-1">
             <div>
-                <h3 class="text-base font-semibold text-gray-900">Daily Tasks</h3>
+                <h3 class="text-base font-semibold text-gray-900">Daily tasks</h3>
                 <p class="text-xs text-gray-500 mt-0.5">What needs doing and what was done recently</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
@@ -117,34 +147,34 @@
             {% endfor %}
         </div>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:items-start">
-    <div class='div-container max-h-[32rem] overflow-y-auto'>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class='div-container'>
             <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between mb-4 pb-3 border-b border-gray-100">
                 <div>
-                    <h3 class='text-base font-semibold text-gray-900'>File Summary</h3>
+                    <h3 id="sec-summary" class='text-base font-semibold text-gray-900'>File summary</h3>
                     <p class="text-xs text-gray-500 mt-0.5">{{ matter.matter_type }}</p>
                 </div>
             </div>
 
             <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-5">
                 <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                    <dt class="text-xs uppercase text-gray-500">Fee Earner</dt>
+                    <dt class="text-xs text-gray-500">Fee earner</dt>
                     <dd class="font-medium text-gray-900">{{matter.fee_earner}}</dd>
                 </div>
                 <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                    <dt class="text-xs uppercase text-gray-500">File Location</dt>
+                    <dt class="text-xs text-gray-500">File location</dt>
                     <dd class="font-medium text-gray-900">{{matter.file_location}}</dd>
                 </div>
                 <div class="rounded border border-gray-200 bg-gray-50 p-3 sm:col-span-2">
-                    <dt class="text-xs uppercase text-gray-500">Z Drive Location</dt>
+                    <dt class="text-xs text-gray-500">Z drive location</dt>
                     <dd class="font-medium text-gray-900 break-words">{{matter.zdrive_location|default:"Not recorded"}}</dd>
                 </div>
                 <div class="rounded border border-gray-200 bg-gray-50 p-3 sm:col-span-2">
-                    <dt class="text-xs uppercase text-gray-500">Matter Description</dt>
+                    <dt class="text-xs text-gray-500">Matter description</dt>
                     <dd class="font-medium text-gray-900">{{matter.matter_description|default:"No description"}}</dd>
                 </div>
                 <div class="rounded border border-gray-200 bg-gray-50 p-3 sm:col-span-2">
-                    <dt class="text-xs uppercase text-gray-500">Key information</dt>
+                    <dt class="text-xs text-gray-500">Key information</dt>
                     <dd class="font-medium text-gray-900 whitespace-pre-line">{{ matter.key_information|default:"-" }}</dd>
                 </div>
             </dl>
@@ -153,7 +183,7 @@
                 <div class="rounded border border-gray-200 p-4">
                     <div class="flex items-start justify-between gap-3">
                         <div>
-                            <p class="text-xs uppercase text-gray-500">Client 1</p>
+                            <p class="text-xs text-gray-500">Client</p>
                             <h4 class="font-semibold text-gray-900">{{matter.client1.name}}</h4>
                         </div>
                         <a class='btn-secondary text-xs' href="{% url 'edit_client' matter.client1.id %}">Edit</a>
@@ -165,20 +195,23 @@
                         <div><dt class="text-gray-500">Contact</dt><dd>{{matter.client1.contact_number|default:"-"}}</dd></div>
                         <div class="sm:col-span-2"><dt class="text-gray-500">Address</dt><dd>{{matter.client1.address_line1}}, {{matter.client1.address_line2}}, {{matter.client1.county}}, {{matter.client1.postcode}}</dd></div>
                     </dl>
-                    <div class="mt-3 flex flex-wrap gap-2">
+                    {% with c=compliance_by_client|get_item:matter.client1.id %}
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
                         <span class="{% if matter.client1.id_verified %}badge-green{% else %}badge-red{% endif %}">ID</span>
-                        <span class="{% if matter.client1.terms_of_engagement_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
-                        <span class="{% if matter.client1.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>
-                        <span class="{% if matter.client1.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
-                        <span class="{% if matter.client1.source_of_funds_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
+                        <span class="{% if c.terms_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
+                        {% if matter.ncba_required %}<span class="{% if c.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>{% endif %}
+                        <span class="{% if c.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
+                        <span class="{% if c.sof_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
+                        <span class="text-[11px] text-gray-400">· this matter</span>
                     </div>
+                    {% endwith %}
                 </div>
 
                 {% for extra_client in matter.additional_clients.all %}
                 <div class="rounded border border-gray-200 p-4">
                     <div class="flex items-start justify-between gap-3">
                         <div>
-                            <p class="text-xs uppercase text-gray-500">Client {{ forloop.counter|add:1 }}</p>
+                            <p class="text-xs text-gray-500">Client</p>
                             <h4 class="font-semibold text-gray-900">{{extra_client.name}}</h4>
                         </div>
                         <a class='btn-secondary text-xs' href="{% url 'edit_client' extra_client.id %}">Edit</a>
@@ -190,13 +223,16 @@
                         <div><dt class="text-gray-500">Contact</dt><dd>{{extra_client.contact_number|default:"-"}}</dd></div>
                         <div class="sm:col-span-2"><dt class="text-gray-500">Address</dt><dd>{{extra_client.address_line1}}, {{extra_client.address_line2}}, {{extra_client.county}}, {{extra_client.postcode}}</dd></div>
                     </dl>
-                    <div class="mt-3 flex flex-wrap gap-2">
+                    {% with c=compliance_by_client|get_item:extra_client.id %}
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
                         <span class="{% if extra_client.id_verified %}badge-green{% else %}badge-red{% endif %}">ID</span>
-                        <span class="{% if extra_client.terms_of_engagement_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
-                        <span class="{% if extra_client.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>
-                        <span class="{% if extra_client.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
-                        <span class="{% if extra_client.source_of_funds_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
+                        <span class="{% if c.terms_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
+                        {% if matter.ncba_required %}<span class="{% if c.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>{% endif %}
+                        <span class="{% if c.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
+                        <span class="{% if c.sof_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
+                        <span class="text-[11px] text-gray-400">· this matter</span>
                     </div>
+                    {% endwith %}
                 </div>
                 {% endfor %}
 
@@ -205,7 +241,7 @@
                     <div class="rounded border border-gray-200 p-4">
                         <div class="flex items-start justify-between gap-3">
                             <div>
-                                <p class="text-xs uppercase text-gray-500">Authorised Party 1</p>
+                                <p class="text-xs text-gray-500">Authorised party</p>
                                 <h4 class="font-semibold text-gray-900">{{matter.authorised_party1.name}}</h4>
                             </div>
                             <a class='btn-secondary text-xs' href="{% url 'edit_authorised_party' matter.authorised_party1.id %}">Edit</a>
@@ -221,7 +257,7 @@
                     <div class="rounded border border-gray-200 p-4">
                         <div class="flex items-start justify-between gap-3">
                             <div>
-                                <p class="text-xs uppercase text-gray-500">Authorised Party 2</p>
+                                <p class="text-xs text-gray-500">Authorised party</p>
                                 <h4 class="font-semibold text-gray-900">{{matter.authorised_party2.name}}</h4>
                             </div>
                             <a class='btn-secondary text-xs' href="{% url 'edit_authorised_party' matter.authorised_party2.id %}">Edit</a>
@@ -239,7 +275,7 @@
                 <div class="rounded border border-gray-200 p-4">
                     <div class="flex items-start justify-between gap-3">
                         <div>
-                            <p class="text-xs uppercase text-gray-500">Other Side</p>
+                            <p class="text-xs text-gray-500">Other side</p>
                             <h4 class="font-semibold text-gray-900">{{matter.other_side.name}}</h4>
                         </div>
                         <a class='btn-secondary text-xs' href="{% url 'edit_otherside' matter.other_side.id %}">Edit</a>
@@ -269,31 +305,32 @@
                                 </span>
                             </div>
                         {% empty %}
-                            <p class="text-sm text-green-700">No undertakings available.</p>
+                            <p class="py-2 text-center text-sm text-gray-400">No undertakings on this file.</p>
                         {% endfor %}
                     </div>
                 </div>
 
                 <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                     <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">Funding</dt>
+                        <dt class="text-xs text-gray-500">Funding</dt>
                         <dd class="font-medium text-gray-900">{% if matter.funding == 'PF'%}Private Funding{% else %}Conditional Fee Agreement{% endif %}</dd>
                     </div>
                     <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">Matter Type</dt>
+                        <dt class="text-xs text-gray-500">Matter type</dt>
                         <dd class="font-medium text-gray-900">{{matter.matter_type}}</dd>
                     </div>
                     <div class="rounded border border-gray-200 bg-gray-50 p-3 sm:col-span-2">
-                        <dt class="text-xs uppercase text-gray-500">Comments</dt>
+                        <dt class="text-xs text-gray-500">Comments</dt>
                         <dd class="font-medium text-gray-900 whitespace-pre-line">{{matter.comments|default:"-"}}</dd>
                     </div>
                 </dl>
             </div>
         </div>
-        <div class="flex flex-col gap-4 md:max-h-[32rem]">
-        <div class='div-container max-h-60 overflow-y-auto md:max-h-[14.5rem]'>
+        {# Key dates stays in view while the (longer) file summary scrolls past #}
+        <div class="flex flex-col gap-4 md:sticky" style="top: calc(var(--navbar-height, 64px) + var(--home-nav-h, 3.25rem) + 1rem);">
+        <div class='div-container max-h-[32rem] overflow-y-auto'>
             <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
-                <h3 class='text-base font-semibold text-gray-900'>Key Dates</h3>
+                <h3 id="sec-dates" class='text-base font-semibold text-gray-900'>Key dates</h3>
                 <button class='btn-primary text-xs' type="button" data-open-modal="matterKeyDateModal">Add</button>
             </div>
             <div class='divide-y divide-gray-100'>
@@ -321,39 +358,7 @@
                     </div>
                 </div>
                 {% empty %}
-                <p class='py-4 text-center text-sm text-gray-400'>No key dates recorded.</p>
-                {% endfor %}
-            </div>
-        </div>
-        <div class='div-container max-h-60 overflow-y-auto md:max-h-[14.5rem]'>
-            <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
-                <h3 class='text-base font-semibold text-gray-900'>Key Documents</h3>
-                <button class='btn-primary text-xs' type="button" data-open-modal="matterKeyDocumentModal">Add</button>
-            </div>
-            <div class='divide-y divide-gray-100'>
-                {% for item in matter_key_documents %}
-                {% with document=item.document %}
-                <div class='py-3 text-sm first:pt-0'>
-                    <div class='flex justify-between gap-2'>
-                        <div class="min-w-0">
-                            <p class='font-medium text-gray-900'>{{ document.client.name }}</p>
-                            <p class='text-xs text-gray-600 mt-0.5'>{{ document.get_category_display }}{% if document.document_type %}: {{ document.document_type }}{% endif %}</p>
-                        </div>
-                        {% if item.status == 'expired' %}
-                        <span class='h-fit text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-800 shrink-0'>Expired</span>
-                        {% elif item.status == 'due_soon' %}
-                        <span class='h-fit text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 shrink-0'>Due soon</span>
-                        {% endif %}
-                    </div>
-                    <div class='mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500'>
-                        {% if document.expiry_date %}<span>Expires {{ document.expiry_date|date:"d/m/Y" }}</span>{% endif %}
-                        {% if document.verified_on %}<span>Verified {{ document.verified_on|date:"d/m/Y" }}</span>{% endif %}
-                    </div>
-                    <a class='link text-xs mt-2 inline-block' href="{% url 'edit_client' document.client.id %}">Edit documents</a>
-                </div>
-                {% endwith %}
-                {% empty %}
-                <p class='py-4 text-center text-sm text-gray-400'>No key documents for this matter's clients.</p>
+                <p class='py-4 text-center text-sm text-gray-400'>No key dates yet.</p>
                 {% endfor %}
             </div>
         </div>
@@ -361,7 +366,7 @@
     </div>
     <div class='div-container max-h-96 overflow-y-auto space-y-4'>
         <div class='flex justify-between items-center pb-3 border-b border-gray-100'>
-            <h3 class='text-base font-semibold text-gray-900'>Risk Assessment</h3>
+            <h3 id="sec-risk" class='text-base font-semibold text-gray-900'>Risk assessment</h3>
             <div class='flex gap-2'>
                 {% if risk_assessment %}
                 <a class="btn-secondary text-xs" href="{% url 'edit_risk_assessment' risk_assessment.id %}">Edit</a>
@@ -374,12 +379,12 @@
         {% if risk_assessment %}
 
         {% if eleven_months_since_last_risk_assessment  %}
-            <p class='px-2 py-2 bg-red-50 rounded-lg border border-red-200 text-red-900'>Ongoing Monitoring required as last risk assessment or last ongoing monitoring was done 11 months ago.</p>
+            <p class='px-3 py-2 bg-red-50 rounded-lg border border-red-200 text-sm text-red-900'>Ongoing monitoring is due: the last risk assessment or monitoring was over 11 months ago.</p>
         {% endif %}
 
         <div class="pt-3 border-t border-gray-100">
             <div class="flex items-center justify-between gap-3 mb-3">
-                <h4 class="text-sm font-semibold text-gray-900">Ongoing Monitoring</h4>
+                <h4 class="text-sm font-semibold text-gray-900">Ongoing monitoring</h4>
                 <a class="btn-secondary text-xs" href="{% url "add_ongoing_monitoring" file_number %}">Add</a>
             </div>
             <div class="divide-y divide-gray-100">
@@ -421,14 +426,14 @@
                     </div>
                 </div>
                 {% empty %}
-                <p class="py-2 text-sm {% if eleven_months_since_last_risk_assessment %}text-red-700{% else %}text-gray-400{% endif %}">No ongoing monitoring recorded.</p>
+                <p class="py-2 text-sm {% if eleven_months_since_last_risk_assessment %}text-red-700{% else %}text-gray-400{% endif %}">No ongoing monitoring yet.</p>
                 {% endfor %}
             </div>
         </div>
         <div class="rounded-lg border border-gray-200 p-4">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h4 class="text-sm font-semibold text-gray-900">Initial Risk Assessment
+                    <h4 class="text-sm font-semibold text-gray-900">Initial risk assessment
                         {% if risk_assessment.is_signed_off %}<span class="badge-green ml-1">Signed off</span>
                         {% elif risk_assessment.signoff_status == 'returned' %}<span class="badge-red ml-1">Returned for changes</span>
                         {% else %}<span class="badge-yellow ml-1">Awaiting sign-off</span>{% endif %}
@@ -456,110 +461,77 @@
         </div>
 
         {% else %}
-        <p class='px-2 py-2 bg-red-50 rounded-lg border border-red-200 text-red-900'>No Risk Assessment Done</p>
+        <p class='px-3 py-2 bg-red-50 rounded-lg border border-red-200 text-sm text-red-900'>No risk assessment on this file yet.</p>
         {% endif %}
     </div>
-    <div class='div-container max-h-96 overflow-y-auto'>
-        <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
-            <div>
-                <h3 class='text-base font-semibold text-gray-900'>Document Bundles</h3>
-                <p class="text-xs text-gray-500 mt-0.5">PDF bundles for this matter</p>
-            </div>
-            <a class='btn-primary text-xs' href="{% url 'matter_bundle_create' file_number %}">New bundle</a>
-        </div>
-        {% if bundles %}
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {% for bundle in bundles %}
-            <div class="rounded-lg border border-gray-200 p-3 text-sm hover:border-gray-300 transition-colors">
-                <div class="flex items-start justify-between gap-2">
-                    <span class="font-medium text-gray-900 leading-snug">{{ bundle.name }}</span>
-                </div>
-                <p class="text-xs text-gray-400 mt-2">{{ bundle.created_at|date:"d/m/Y H:i" }}</p>
-                <div class="mt-2 flex flex-wrap gap-3 text-xs">
-                    <a href="{% url 'bundle_edit' bundle.id %}" class="link">Edit</a>
-                    <a href="{% url 'bundle_download' bundle.id %}" class="link" onclick="return downloadBundlePdfLink(event, '{{ bundle.name|escapejs }}.pdf', {{ bundle.id }})">Download</a>
-                    <a href="#" class="link" onclick="return openBundleShareModal(event, {{ bundle.id }}, '{{ bundle.name|escapejs }}')">Share</a>
-                    <button type="button" class="link text-red-700" onclick="deleteHomeBundle({{ bundle.id }}, '{{ bundle.name|escapejs }}')">Delete</button>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p class="py-4 text-center text-sm text-gray-400">No document bundles yet.</p>
-        {% endif %}
-    </div>
-    <div class='grid grid-cols-1 md:grid-cols-2 gap-4'>
-        <div class='div-container max-h-[28rem] overflow-y-auto'>
-            <h3 class='text-base font-semibold text-gray-900 mb-3 pb-3 border-b border-gray-100'>Compliance</h3>
-            <div class="space-y-4" id="Compliance">
-                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                    <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">Client Care Letter</dt>
-                        <dd class="font-medium text-gray-900">{{matter.date_of_client_care_sent|date:"d/m/Y"|default:"Not sent"}}</dd>
-                    </div>
-                    <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">Funding</dt>
-                        <dd class="font-medium text-gray-900">{% if matter.funding == 'PF'%}Private Funding{% else %}Conditional Fee Agreement{% endif %}</dd>
-                    </div>
-                    <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">Terms Sent</dt>
-                        <dd class="font-medium text-gray-900">{{matter.date_of_toe_sent|date:"d/m/Y"|default:"-"}}</dd>
-                    </div>
-                    <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">Terms Received</dt>
-                        <dd class="font-medium text-gray-900">{{matter.date_of_toe_rcvd|date:"d/m/Y"|default:"-"}}</dd>
-                    </div>
-                    <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">NCBA Sent</dt>
-                        <dd class="font-medium text-gray-900">{{matter.date_of_ncba_sent|date:"d/m/Y"|default:"-"}}</dd>
-                    </div>
-                    <div class="rounded border border-gray-200 bg-gray-50 p-3">
-                        <dt class="text-xs uppercase text-gray-500">NCBA Received</dt>
-                        <dd class="font-medium text-gray-900">{{matter.date_of_ncba_rcvd|date:"d/m/Y"|default:"-"}}</dd>
-                    </div>
-                </dl>
+    <div class='grid grid-cols-1 gap-6'>
+        {% include 'partials/matter_client_care.html' %}
 
-                <div class="rounded border border-gray-200 p-4">
-                    <div class="flex items-start justify-between gap-3">
-                        <div>
-                            <p class="text-xs uppercase text-gray-500">Client 1 Compliance</p>
-                            <h4 class="font-semibold text-gray-900">{{matter.client1.name}}</h4>
-                        </div>
-                        <a class='btn-secondary text-xs' href="{% url 'edit_client' matter.client1.id %}">Edit</a>
-                    </div>
-                    <div class="mt-3 flex flex-wrap gap-2">
-                        <span class="{% if matter.client1.terms_of_engagement_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
-                        <span class="{% if matter.client1.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>
-                        <span class="{% if matter.client1.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
-                        <span class="{% if matter.client1.source_of_funds_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
-                        <span class="{% if matter.client1.id_verified %}badge-green{% else %}badge-red{% endif %}">ID Verified</span>
-                    </div>
+        <div class='div-container max-h-96 overflow-y-auto'>
+            <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
+                <div>
+                    <h3 id="sec-bundles" class='text-base font-semibold text-gray-900'>Document bundles</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">PDF bundles for this matter</p>
                 </div>
-
-                {% for extra_client in matter.additional_clients.all %}
-                <div class="rounded border border-gray-200 p-4">
-                    <div class="flex items-start justify-between gap-3">
-                        <div>
-                            <p class="text-xs uppercase text-gray-500">Client {{ forloop.counter|add:1 }} Compliance</p>
-                            <h4 class="font-semibold text-gray-900">{{extra_client.name}}</h4>
-                        </div>
-                        <a class='btn-secondary text-xs' href="{% url 'edit_client' extra_client.id %}">Edit</a>
+                <a class='btn-primary text-xs' href="{% url 'matter_bundle_create' file_number %}">New bundle</a>
+            </div>
+            {% if bundles %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {% for bundle in bundles %}
+                <div class="rounded-lg border border-gray-200 p-3 text-sm hover:border-gray-300 transition-colors">
+                    <div class="flex items-start justify-between gap-2">
+                        <span class="font-medium text-gray-900 leading-snug">{{ bundle.name }}</span>
                     </div>
-                    <div class="mt-3 flex flex-wrap gap-2">
-                        <span class="{% if extra_client.terms_of_engagement_signed %}badge-green{% else %}badge-red{% endif %}">Terms</span>
-                        <span class="{% if extra_client.ncba_signed %}badge-green{% else %}badge-red{% endif %}">NCBA</span>
-                        <span class="{% if extra_client.pep_signed %}badge-green{% else %}badge-red{% endif %}">PEP</span>
-                        <span class="{% if extra_client.source_of_funds_signed %}badge-green{% else %}badge-red{% endif %}">SOF</span>
-                        <span class="{% if extra_client.id_verified %}badge-green{% else %}badge-red{% endif %}">ID Verified</span>
+                    <p class="text-xs text-gray-400 mt-2">{{ bundle.created_at|date:"d/m/Y H:i" }}</p>
+                    <div class="mt-2 flex flex-wrap gap-3 text-xs">
+                        <a href="{% url 'bundle_edit' bundle.id %}" class="link">Edit</a>
+                        <a href="{% url 'bundle_download' bundle.id %}" class="link" onclick="return downloadBundlePdfLink(event, '{{ bundle.name|escapejs }}.pdf', {{ bundle.id }})">Download</a>
+                        <a href="#" class="link" onclick="return openBundleShareModal(event, {{ bundle.id }}, '{{ bundle.name|escapejs }}')">Share</a>
+                        <button type="button" class="link text-red-700" onclick="deleteHomeBundle({{ bundle.id }}, '{{ bundle.name|escapejs }}')">Delete</button>
                     </div>
                 </div>
                 {% endfor %}
             </div>
+            {% else %}
+            <p class="py-4 text-center text-sm text-gray-400">No document bundles yet.</p>
+            {% endif %}
         </div>
+
+        {% if is_conveyancing %}
+        <div class='div-container'>
+            <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
+                <h3 id="sec-conveyancing" class='text-base font-semibold text-gray-900'>Conveyancing</h3>
+                <span class="text-xs text-gray-400">Property &amp; transaction value</span>
+            </div>
+            <form method="post" action="{% url 'matter_save_conveyancing' matter.file_number %}" class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                {% csrf_token %}
+                <label class="text-xs text-gray-500">Transaction
+                  <select name="transaction_type" class="form-input text-sm mt-0.5">
+                    <option value="">—</option>
+                    <option value="purchase" {% if conveyancing.transaction_type == 'purchase' %}selected{% endif %}>Purchase</option>
+                    <option value="sale" {% if conveyancing.transaction_type == 'sale' %}selected{% endif %}>Sale</option>
+                    <option value="purchase_sale" {% if conveyancing.transaction_type == 'purchase_sale' %}selected{% endif %}>Purchase &amp; sale</option>
+                    <option value="remortgage" {% if conveyancing.transaction_type == 'remortgage' %}selected{% endif %}>Remortgage</option>
+                    <option value="transfer" {% if conveyancing.transaction_type == 'transfer' %}selected{% endif %}>Transfer of equity</option>
+                  </select>
+                </label>
+                <label class="text-xs text-gray-500">Property price (£)
+                  <input type="text" name="property_price" value="{{ conveyancing.property_price|default_if_none:'' }}" class="form-input text-sm mt-0.5" placeholder="450000">
+                </label>
+                <label class="sm:col-span-2 text-xs text-gray-500">Property address
+                  <input type="text" name="property_address" value="{{ conveyancing.property_address|default:'' }}" class="form-input text-sm mt-0.5">
+                </label>
+                <label class="text-xs text-gray-500">Completion date
+                  <input type="date" name="completion_date" value="{{ conveyancing.completion_date|date:'Y-m-d' }}" class="form-input text-sm mt-0.5">
+                </label>
+                <div class="sm:col-span-2"><button type="submit" class="btn-primary text-xs">Save conveyancing</button></div>
+            </form>
+        </div>
+        {% endif %}
 
         <div class='div-container max-h-[28rem] overflow-y-auto'>
             <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
-                <h3 class='text-base font-semibold text-gray-900'>File Reviews</h3>
+                <h3 id="sec-reviews" class='text-base font-semibold text-gray-900'>File reviews</h3>
                 <a class='btn-primary text-xs' href="{% url 'add_matter_file_review' matter.file_number %}">Add</a>
             </div>
 
@@ -586,7 +558,7 @@
                             </div>
                         </div>
                         <div class='mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-sm'>
-                            <p class='text-xs uppercase text-gray-500 mb-1'>Recommendations</p>
+                            <p class='text-xs text-gray-500 mb-1'>Recommendations</p>
                             {% if item.review.recommendations_and_further_actions %}
                                 {% if item.review.recommendations_and_further_actions|length > 120 %}
                                 <span class='review-rec-short'>{{ item.review.recommendations_and_further_actions|truncatechars:120 }}
@@ -603,8 +575,10 @@
                             {% endif %}
                         </div>
 
-                        <details class='mt-2'>
-                            <summary class='text-sm link cursor-pointer'>View Full Review</summary>
+                        <details class='mt-2 group/review'>
+                            <summary class='text-sm link cursor-pointer inline-flex items-center gap-1'>View full review
+                                <svg class="h-3.5 w-3.5 transition-transform group-open/review:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </summary>
                             <div class='space-y-3 mt-2'>
                                 {% for section in item.sections %}
                                 <div class='overflow-x-auto rounded border'>
@@ -641,7 +615,7 @@
                         </details>
                     </div>
                     {% empty %}
-                    <p class='rounded border border-gray-200 bg-gray-50 p-3 text-sm text-green-700'>No file reviews added yet.</p>
+                    <p class='py-4 text-center text-sm text-gray-400'>No file reviews yet.</p>
                     {% endfor %}
                 </div>
         </div>
@@ -649,7 +623,7 @@
     <details class='div-container group' open>
         <summary class='flex cursor-pointer list-none items-center justify-between gap-3 pb-3 border-b border-gray-100'>
             <div>
-                <h3 class='text-base font-semibold text-gray-900 inline'>Activity Log</h3>
+                <h3 id="sec-activity" class='text-base font-semibold text-gray-900 inline'>Activity log</h3>
                 <p class="text-xs text-gray-500 mt-0.5">{{ log_meta.total }} entries · showing latest {{ log_limit }}</p>
             </div>
             <div class="flex items-center gap-2 shrink-0">
@@ -735,9 +709,7 @@
                 </table>
             </div>
             {% else %}
-            <div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-500">
-                No activity recorded for this matter yet.
-            </div>
+            <p class="py-6 text-center text-sm text-gray-400">No activity on this file yet.</p>
             {% endif %}
 
             <p id="activityLogEmptyState" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -752,7 +724,7 @@
     <div class="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-lg bg-white shadow-xl">
         <div class="flex items-center justify-between border-b px-4 py-3 shrink-0">
             <div>
-                <h3 class="text-lg font-semibold text-gray-900">Initial Risk Assessment
+                <h3 class="text-lg font-semibold text-gray-900">Initial risk assessment
                     {% if risk_assessment.is_signed_off %}<span class="badge-green ml-1">Signed off</span>
                     {% elif risk_assessment.signoff_status == 'returned' %}<span class="badge-red ml-1">Returned for changes</span>
                     {% else %}<span class="badge-yellow ml-1">Awaiting sign-off</span>{% endif %}
@@ -855,7 +827,7 @@
 <div id="nextWorkModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
     <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
         <div class="flex items-center justify-between border-b px-4 py-3">
-            <h3 class="text-lg font-semibold text-gray-900">Add Next Work</h3>
+            <h3 class="text-lg font-semibold text-gray-900">Add next work</h3>
             <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal>&times;</button>
         </div>
         <form class="p-4 space-y-3" method="post" action="{% url 'add_next_work_file' matter.file_number %}">
@@ -872,7 +844,7 @@
 <div id="lastWorkModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
     <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
         <div class="flex items-center justify-between border-b px-4 py-3">
-            <h3 class="text-lg font-semibold text-gray-900">Add Last Work</h3>
+            <h3 class="text-lg font-semibold text-gray-900">Add last work</h3>
             <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal>&times;</button>
         </div>
         <form class="p-4 space-y-3" method="post" action="{% url 'add_last_work_file' matter.file_number %}">
@@ -889,29 +861,12 @@
 <div id="matterKeyDateModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
     <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
         <div class="flex items-center justify-between border-b px-4 py-3">
-            <h3 class="text-lg font-semibold text-gray-900">Add Key Date</h3>
+            <h3 class="text-lg font-semibold text-gray-900">Add key date</h3>
             <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal>&times;</button>
         </div>
         <form class="p-4 space-y-3" method="post" action="{% url 'add_matter_key_date' matter.file_number %}">
             {% csrf_token %}
             {{ matter_key_date_form.as_p }}
-            <div class="flex justify-end gap-2">
-                <button class="btn-secondary" type="button" data-close-modal>Cancel</button>
-                <button class="btn-primary" type="submit">Add</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div id="matterKeyDocumentModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4" data-modal>
-    <div class="w-full max-w-lg rounded-lg bg-white shadow-xl">
-        <div class="flex items-center justify-between border-b px-4 py-3">
-            <h3 class="text-lg font-semibold text-gray-900">Add Key Document</h3>
-            <button class="text-2xl leading-none text-gray-500 hover:text-gray-900" type="button" data-close-modal>&times;</button>
-        </div>
-        <form class="p-4 space-y-3" method="post" action="{% url 'add_matter_key_document' matter.file_number %}">
-            {% csrf_token %}
-            {{ matter_key_document_form.as_p }}
             <div class="flex justify-end gap-2">
                 <button class="btn-secondary" type="button" data-close-modal>Cancel</button>
                 <button class="btn-primary" type="submit">Add</button>
@@ -1183,5 +1138,33 @@ async function revokeHomeBundleShareLink(linkId) {
         alert(error.message || 'Could not revoke share link.');
     }
 }
+
+// Section nav — scroll-spy: highlight whichever section is currently in view.
+// The window is the scroll container, so we observe against the viewport and push
+// the active zone below the fixed navbar + the sticky headings bar.
+(function () {
+    const links = Array.from(document.querySelectorAll('.home-sec-link'));
+    if (!links.length) return;
+    const targets = links.map(l => document.getElementById(l.dataset.target)).filter(Boolean);
+    const navEl = document.querySelector('.home-section-nav');
+    const navbarH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--navbar-height')) || 64;
+    function measure() {
+        const h = navEl ? navEl.offsetHeight : 44;
+        document.documentElement.style.setProperty('--home-nav-h', h + 'px');
+        return h;
+    }
+    const topOffset = navbarH + measure();
+    window.addEventListener('resize', measure);
+    function setActive(id) {
+        links.forEach(l => l.classList.toggle('is-active', l.dataset.target === id));
+    }
+    const obs = new IntersectionObserver(function (entries) {
+        const vis = entries.filter(e => e.isIntersecting)
+            .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (vis.length) setActive(vis[0].target.id);
+    }, { rootMargin: '-' + topOffset + 'px 0px -70% 0px', threshold: 0 });
+    targets.forEach(t => obs.observe(t));
+    if (targets[0]) setActive(targets[0].id);
+})();
 </script>
 {% endblock %}
