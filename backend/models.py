@@ -383,7 +383,9 @@ class WIP(models.Model):
 
     # Physical file retention, recorded once a matter is archived. Edited from
     # the Archive card on the matter home rather than the edit-file form.
-    latest_destruction_date = models.DateField(null=True, blank=True)
+    # earliest_destruction_date is the end of the retention period: the file
+    # may be destroyed on or after it.
+    earliest_destruction_date = models.DateField(null=True, blank=True)
     actual_destruction_date = models.DateField(null=True, blank=True)
     # Set while an archived file's paper folder is back in the office. The matter
     # stays Archived but is listed amongst the open files until it goes back.
@@ -426,9 +428,21 @@ class WIP(models.Model):
 
     @property
     def third_parties(self):
-        """(party, role) for every third party on the matter, in display order."""
-        return [(getattr(self, field), role)
-                for field, role in self.THIRD_PARTY_FIELDS if getattr(self, field + '_id')]
+        """(party, roles) for every distinct third party on the matter, in
+        display order. The same person can be both an authorised and a paying
+        party; they then appear once, as "Authorised party & paying party"."""
+        found = {}
+        for field, role in self.THIRD_PARTY_FIELDS:
+            party_id = getattr(self, field + '_id')
+            if not party_id:
+                continue
+            if party_id in found:
+                if role not in found[party_id][1]:
+                    found[party_id][1].append(role)
+            else:
+                found[party_id] = (getattr(self, field), [role])
+        return [(party, ' & '.join([roles[0]] + [r.lower() for r in roles[1:]]))
+                for party, roles in found.values()]
 
     @property
     def is_archived(self):

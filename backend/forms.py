@@ -15,9 +15,9 @@ class ArchiveDetailsForm(forms.ModelForm):
 
     class Meta:
         model = WIP
-        fields = ['latest_destruction_date', 'actual_destruction_date', 'brought_down_on']
+        fields = ['earliest_destruction_date', 'actual_destruction_date', 'brought_down_on']
         labels = {
-            'latest_destruction_date': 'Latest destruction date',
+            'earliest_destruction_date': 'Earliest destruction date',
             'actual_destruction_date': 'Actual destruction date',
             'brought_down_on': 'Physical file brought down on',
         }

@@ -23,7 +23,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name='wip',
-            name='latest_destruction_date',
+            name='earliest_destruction_date',
             field=models.DateField(blank=True, null=True),
         ),
         migrations.AddField(

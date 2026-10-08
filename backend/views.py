@@ -3243,6 +3243,8 @@ def get_aml_checks_due_from_wips(wips, threshold_date, user=None, sort_by='date'
         ('additional_clients', 'Client', 'edit_client'),
     ] + [(field, role, 'edit_authorised_party') for field, role in WIP.THIRD_PARTY_FIELDS]
 
+    # Keyed by the record, not the role: one person who is both the authorised
+    # and the paying party is one AML check, listed once with both roles.
     results = {}
     for relation, entity_type, edit_url_name in relation_configs:
         relation_results = wips.filter(
@@ -3258,8 +3260,10 @@ def get_aml_checks_due_from_wips(wips, threshold_date, user=None, sort_by='date'
         ).order_by('file_number')
 
         for result in relation_results:
-            key = (entity_type, result['entity_id'])
+            key = (edit_url_name, result['entity_id'])
             entry = results.get(key)
+            if entry is not None and entity_type not in entry['entity_type']:
+                entry['entity_type'] += f' / {entity_type}'
             if entry is None:
                 entry = {
                     'entity_id': result['entity_id'],
@@ -3874,7 +3878,7 @@ def edit_authorised_party(request, id):
                 changes=changes
             )
             messages.success(
-                request, 'Successfully updated Authorised Party. Please search for File Number.')
+                request, 'Successfully updated third party. Please search for File Number.')
             return redirect('index')
         else:
             error_message = 'Form is not valid. Please correct the errors:'
@@ -3883,7 +3887,8 @@ def edit_authorised_party(request, id):
             messages.error(request, error_message)
     else:
         form = AuthorisedPartyForm(instance=ap)
-    return render(request, 'edit_models.html', {'form': form, 'title': 'Authorised Party Information'})
+    return render(request, 'edit_models.html', {
+        'form': form, 'title': 'Third party information (authorised / paying party)'})
 
 
 @login_required
@@ -4005,9 +4010,9 @@ def edit_file(request, file_number):
                     )
 
                 messages.success(request, 'File successfully updated.')
-                if 'file_status' in changes and file.is_archived and not file.latest_destruction_date:
+                if 'file_status' in changes and file.is_archived and not file.earliest_destruction_date:
                     messages.info(
-                        request, 'This file is now archived: record its latest destruction '
+                        request, 'This file is now archived: record its earliest destruction '
                         'date in the Archive card below.')
                 return redirect('home', file_number=file_number)
             else:

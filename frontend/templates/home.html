@@ -181,8 +181,8 @@
                 </div>
             </dl>
 
-            {% if matter.is_archived or matter.latest_destruction_date or matter.actual_destruction_date or matter.brought_down_on %}
-            <div id="archive-card" class="rounded border p-4 mb-5 {% if matter.is_archived and not matter.latest_destruction_date %}border-amber-300 bg-amber-50{% else %}border-gray-200 bg-gray-50{% endif %}">
+            {% if matter.is_archived or matter.earliest_destruction_date or matter.actual_destruction_date or matter.brought_down_on %}
+            <div id="archive-card" class="rounded border p-4 mb-5 {% if matter.is_archived and not matter.earliest_destruction_date %}border-amber-300 bg-amber-50{% else %}border-gray-200 bg-gray-50{% endif %}">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <p class="text-xs text-gray-500">Archive &amp; retention</p>
@@ -192,10 +192,10 @@
                             {% elif matter.is_archived %}Physical file in archive storage
                             {% else %}Retention{% endif %}
                         </h4>
-                        {% if matter.is_archived and not matter.latest_destruction_date %}
-                        <p class="text-xs text-amber-800 mt-0.5">Record the latest date this file may be destroyed.</p>
-                        {% elif matter.latest_destruction_date and not matter.actual_destruction_date %}
-                        <p class="text-xs text-gray-500 mt-0.5">Destroy by {{ matter.latest_destruction_date|date:"d/m/Y" }}.</p>
+                        {% if matter.is_archived and not matter.earliest_destruction_date %}
+                        <p class="text-xs text-amber-800 mt-0.5">Record the earliest date this file may be destroyed (end of its retention period).</p>
+                        {% elif matter.earliest_destruction_date and not matter.actual_destruction_date %}
+                        <p class="text-xs text-gray-500 mt-0.5">May be destroyed from {{ matter.earliest_destruction_date|date:"d/m/Y" }}.</p>
                         {% endif %}
                     </div>
                     {% if matter.brought_down_on and not matter.actual_destruction_date %}

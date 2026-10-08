@@ -222,6 +222,23 @@ class OpenNewFileTests(TestCase):
         self.assertRedirects(resp, reverse('index'))
         self.assertEqual(WIP.objects.get(file_number='LIN0020001').paying_party, party)
 
+    def test_same_person_can_be_authorised_and_paying_party(self):
+        party = AuthorisedParties.objects.create(
+            name='Both Roles', relationship_to_client='Son', address_line1='1 St',
+            address_line2='', county='Essex', postcode='SS7 1QT', email='b@example.com',
+            contact_number='0123456789',
+        )
+        resp = self.client.post(reverse('new_file'), self._payload(
+            authorised_party1=str(party.id), paying_party=str(party.id)))
+        self.assertRedirects(resp, reverse('index'))
+        matter = WIP.objects.get(file_number='LIN0020001')
+        self.assertEqual(matter.third_parties, [(party, 'Authorised party & paying party')])
+
+        home = self.client.get(reverse('home', args=['LIN0020001']))
+        # One card for the person (the name also appears in the activity log).
+        self.assertContains(home, '<h4 class="font-semibold text-gray-900">Both Roles</h4>', count=1)
+        self.assertContains(home, 'Authorised party &amp; paying party')
+
     def test_payload_without_paying_party_still_opens(self):
         payload = self._payload()
         payload.pop('paying_party')

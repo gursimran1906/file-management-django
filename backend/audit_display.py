@@ -46,7 +46,7 @@ FIELD_LABELS = {
 LOG_TYPE_META = {
     'file_info': {'label': 'File', 'group': 'matter'},
     'client_info': {'label': 'Client', 'group': 'matter'},
-    'authorised_party_info': {'label': 'Authorised party', 'group': 'matter'},
+    'authorised_party_info': {'label': 'Third party', 'group': 'matter'},
     'other_side_info': {'label': 'Other side', 'group': 'matter'},
     'next_work': {'label': 'Next work', 'group': 'matter'},
     'last_work': {'label': 'Last work', 'group': 'matter'},
