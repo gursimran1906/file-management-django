@@ -531,7 +531,14 @@
 
         <div class='div-container max-h-[28rem] overflow-y-auto'>
             <div class='flex items-center justify-between mb-3 pb-3 border-b border-gray-100'>
-                <h3 id="sec-reviews" class='text-base font-semibold text-gray-900'>File reviews</h3>
+                <div>
+                    <h3 id="sec-reviews" class='text-base font-semibold text-gray-900'>File reviews</h3>
+                    {% if matter.file_review_overdue %}
+                    <p class='text-xs text-red-600 mt-0.5'>Review overdue since {{ matter.next_file_review_due|date:"d/m/Y" }}</p>
+                    {% elif matter.is_live %}
+                    <p class='text-xs text-gray-500 mt-0.5'>Next review due {{ matter.next_file_review_due|date:"d/m/Y" }} · every 4 months from opening or the last review</p>
+                    {% endif %}
+                </div>
                 <a class='btn-primary text-xs' href="{% url 'add_matter_file_review' matter.file_number %}">Add</a>
             </div>
 

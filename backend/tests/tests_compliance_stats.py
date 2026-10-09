@@ -195,6 +195,8 @@ class ComplianceSnapshotTests(TestCase):
 
     def test_file_review_current(self):
         never = make_live_matter('F0001', make_client('Never'), self.fe)
+        # A first review is due four months after opening.
+        WIP.objects.filter(pk=never.pk).update(timestamp=timezone.now() - relativedelta(months=5))
         old = make_live_matter('F0002', make_client('Old'), self.fe)
         fresh = make_live_matter('F0003', make_client('Fresh'), self.fe)
         MatterFileReview.objects.create(matter=old, date_review_completed=self.today - relativedelta(months=4))

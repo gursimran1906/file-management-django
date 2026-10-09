@@ -1,9 +1,18 @@
 import importlib
+from datetime import date, datetime
 
+from dateutil.relativedelta import relativedelta
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from users.models import CustomUser
+
+from ..file_reviews import (
+    FILE_REVIEW_INTERVAL_MONTHS,
+    file_review_due_date,
+    get_file_reviews_due_queryset,
+)
 
 from ..models import (
     ClientContactDetails,
@@ -230,3 +239,128 @@ class MatterFileReviewViewTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp['Content-Type'], 'application/pdf')
         self.assertTrue(resp.content.startswith(b'%PDF'))
+
+
+class FileReviewCadenceTests(TestCase):
+    """A file review falls due every four months from the date the file was
+    opened or from its last completed review."""
+
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            username='fr2', email='fr2@example.com', first_name='Sue',
+            last_name='Pervisor', password='password', max_holidays_in_year=20,
+            is_matter_fee_earner=True,
+        )
+        self.client.force_login(self.user)
+        self.client_record = ClientContactDetails.objects.create(
+            name='Cadence Client', address_line1='1 St', address_line2='',
+            county='Essex', postcode='SS7 1QT', email='cc@example.com',
+            contact_number='0123456789', occupation='Chef',
+        )
+        self.open_status = FileStatus.objects.create(status='Open')
+        self.closed_status = FileStatus.objects.create(status='Closed')
+        self.matter_type = MatterType.objects.create(type='Probate')
+        self.today = timezone.localdate()
+
+    def _matter(self, file_number, opened_months_ago, status=None):
+        matter = WIP.objects.create(
+            file_number=file_number, fee_earner=self.user, client1=self.client_record,
+            matter_description='Cadence', funding='PF', matter_type=self.matter_type,
+            file_status=status or self.open_status, created_by=self.user,
+        )
+        WIP.objects.filter(pk=matter.pk).update(
+            timestamp=timezone.now() - relativedelta(months=opened_months_ago))
+        matter.refresh_from_db()
+        return matter
+
+    def _due_numbers(self):
+        return list(get_file_reviews_due_queryset(WIP.objects.all())
+                    .values_list('file_number', flat=True))
+
+    def test_due_date_rule(self):
+        self.assertEqual(FILE_REVIEW_INTERVAL_MONTHS, 4)
+        self.assertEqual(file_review_due_date(date(2026, 1, 31)), date(2026, 5, 31))
+        self.assertEqual(
+            file_review_due_date(date(2026, 1, 31), date(2026, 3, 1)), date(2026, 7, 1))
+        opened = timezone.make_aware(datetime(2026, 10, 8, 23, 30))
+        self.assertEqual(file_review_due_date(opened), date(2027, 2, 8))
+        self.assertIsNone(file_review_due_date(None))
+
+    def test_new_file_is_not_due_until_four_months_after_opening(self):
+        self._matter('CAD0000001', opened_months_ago=0)
+        self._matter('CAD0000002', opened_months_ago=3)
+        self.assertEqual(self._due_numbers(), [])
+
+    def test_old_file_never_reviewed_is_due(self):
+        self._matter('CAD0000003', opened_months_ago=4)
+        self.assertEqual(self._due_numbers(), ['CAD0000003'])
+
+    def test_last_review_resets_the_clock(self):
+        recent = self._matter('CAD0000004', opened_months_ago=12)
+        stale = self._matter('CAD0000005', opened_months_ago=12)
+        MatterFileReview.objects.create(
+            matter=recent, date_review_completed=self.today - relativedelta(months=3))
+        MatterFileReview.objects.create(
+            matter=stale, date_review_completed=self.today - relativedelta(months=4))
+        self.assertEqual(self._due_numbers(), ['CAD0000005'])
+
+    def test_pending_review_does_not_count(self):
+        matter = self._matter('CAD0000006', opened_months_ago=6)
+        MatterFileReview.objects.create(matter=matter, date_reviewed=self.today)
+        self.assertEqual(self._due_numbers(), ['CAD0000006'])
+        due = get_file_reviews_due_queryset(WIP.objects.all()).get()
+        self.assertIsNone(due.latest_review_date)
+
+    def test_closed_file_is_not_due(self):
+        self._matter('CAD0000007', opened_months_ago=9, status=self.closed_status)
+        self.assertEqual(self._due_numbers(), [])
+
+    def test_matter_due_properties(self):
+        matter = self._matter('CAD0000008', opened_months_ago=5)
+        self.assertEqual(
+            matter.next_file_review_due,
+            timezone.localtime(matter.timestamp).date() + relativedelta(months=4))
+        self.assertTrue(matter.file_review_overdue)
+
+        MatterFileReview.objects.create(
+            matter=matter, date_review_completed=self.today - relativedelta(months=1))
+        matter = WIP.objects.get(pk=matter.pk)
+        self.assertEqual(matter.next_file_review_due, self.today + relativedelta(months=3))
+        self.assertFalse(matter.file_review_overdue)
+
+        # The annotated listing path gives the same answer without another query.
+        annotated = get_file_reviews_due_queryset(WIP.objects.all())
+        self.assertEqual(list(annotated), [])
+        from ..file_reviews import annotate_latest_file_review
+        row = annotate_latest_file_review(WIP.objects.filter(pk=matter.pk)).get()
+        with self.assertNumQueries(0):
+            self.assertEqual(row.next_file_review_due, self.today + relativedelta(months=3))
+
+    def test_matter_home_shows_next_due_or_overdue(self):
+        fresh = self._matter('CAD0000009', opened_months_ago=1)
+        resp = self.client.get(reverse('home', args=[fresh.file_number]))
+        self.assertContains(resp, 'Next review due')
+        self.assertContains(resp, fresh.next_file_review_due.strftime('%d/%m/%Y'))
+
+        stale = self._matter('CAD0000010', opened_months_ago=7)
+        resp = self.client.get(reverse('home', args=[stale.file_number]))
+        self.assertContains(resp, 'Review overdue since')
+        self.assertContains(resp, stale.next_file_review_due.strftime('%d/%m/%Y'))
+
+    def test_dashboard_lists_only_due_files_with_due_since(self):
+        self._matter('CAD0000011', opened_months_ago=1)
+        stale = self._matter('CAD0000012', opened_months_ago=5)
+        resp = self.client.get(reverse('user_dashboard'))
+        self.assertEqual(resp.status_code, 200)
+        listed = [w.file_number for w in resp.context['file_reviews_due_files']]
+        self.assertEqual(listed, ['CAD0000012'])
+        self.assertContains(resp, 'Due since ' + stale.next_file_review_due.strftime('%d/%m/%Y'))
+        self.assertContains(resp, 'Due every 4 months from opening or the last review')
+
+    def test_report_shows_due_since_column(self):
+        stale = self._matter('CAD0000013', opened_months_ago=5)
+        resp = self.client.get(reverse('report_file_reviews_due'))
+        self.assertContains(resp, 'CAD0000013')
+        self.assertContains(resp, 'Due since')
+        self.assertContains(resp, stale.next_file_review_due.strftime('%d/%m/%Y'))
+        self.assertContains(resp, 'every four months')

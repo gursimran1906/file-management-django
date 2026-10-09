@@ -1,3 +1,5 @@
+from functools import cached_property
+
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -319,6 +321,11 @@ class PricingItem(models.Model):
         return bool(getattr(user, 'is_manager', False) or (self.is_active and not self.manager_only))
 
 
+# File statuses that count as a live matter for compliance rules (file reviews,
+# risk reviews, dashboards).
+LIVE_FILE_STATUSES = ('Open', 'To Be Closed')
+
+
 class WIP(models.Model):
     def convert_on_to_bool(self, value):
         return value.lower() == 'on' if value else False
@@ -372,6 +379,33 @@ class WIP(models.Model):
         CustomUser, on_delete=models.SET_NULL, related_name='wip_created_by', null=True, blank=True)
 
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def is_live(self):
+        return bool(self.file_status_id) and self.file_status.status in LIVE_FILE_STATUSES
+
+    @cached_property
+    def latest_file_review_date(self):
+        """Date of the most recent completed file review, or None. Listing
+        pages annotate ``latest_review_date`` (backend.file_reviews) and that
+        is used when present, so they don't pay a query per matter."""
+        if hasattr(self, 'latest_review_date'):
+            return self.latest_review_date
+        return self.matter_file_reviews.filter(
+            date_review_completed__isnull=False,
+        ).aggregate(latest=models.Max('date_review_completed'))['latest']
+
+    @property
+    def next_file_review_due(self):
+        """When the next supervisor file review falls due: every
+        FILE_REVIEW_INTERVAL_MONTHS from opening or the last completed review."""
+        from .file_reviews import file_review_due_date
+        return file_review_due_date(self.timestamp, self.latest_file_review_date)
+
+    @property
+    def file_review_overdue(self):
+        due = self.next_file_review_due
+        return self.is_live and due is not None and due <= timezone.localdate()
 
     @property
     def all_clients(self):

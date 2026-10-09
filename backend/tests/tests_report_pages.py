@@ -183,7 +183,9 @@ class FileReviewsReportTests(TestCase):
             username='fe1', email='fe1@example.com', first_name='Fee',
             last_name='Earner', password='password', max_holidays_in_year=20,
         )
-        make_live_matter('REV0001', make_client('Rev Client'), fee_earner=fee_earner)
+        matter = make_live_matter('REV0001', make_client('Rev Client'), fee_earner=fee_earner)
+        # Opened five months ago and never reviewed, so its first review is due.
+        WIP.objects.filter(pk=matter.pk).update(timestamp=timezone.now() - timedelta(days=150))
 
         resp = self.client.get(reverse('report_file_reviews_due'))
         self.assertEqual(resp.status_code, 200)
