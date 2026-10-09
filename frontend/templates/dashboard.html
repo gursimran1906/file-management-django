@@ -412,7 +412,7 @@
         <div class="flex items-center gap-2">
           <div>
             <h3 class="text-base font-semibold text-gray-900">File reviews</h3>
-            <p class="text-xs text-gray-500 mt-0.5">Missing or older than 3 months</p>
+            <p class="text-xs text-gray-500 mt-0.5">Due every 4 months from opening or the last review</p>
           </div>
           <span class="badge-zinc">{{ file_reviews_due_files|length }}</span>
         </div>
@@ -423,13 +423,14 @@
           <div class="flex justify-between items-start gap-2">
             <a class="link text-sm font-medium" href="{% url 'home' file.file_number %}">{{ file.file_number }}</a>
             {% if file.latest_review_date %}
-            <span class="badge-yellow shrink-0">Over 3 months</span>
+            <span class="badge-yellow shrink-0">Overdue</span>
             {% else %}
-            <span class="badge-red shrink-0">Not done</span>
+            <span class="badge-red shrink-0">Never reviewed</span>
             {% endif %}
           </div>
           <p class="mt-1.5 text-xs text-gray-500">
             Last review: {% if file.latest_review_date %}{{ file.latest_review_date|date:"d/m/Y" }}{% if file.latest_review_by %} · {{ file.latest_review_by }}{% endif %}{% else %}<span class="text-red-600">None</span>{% endif %}
+            · Due since {{ file.next_file_review_due|date:"d/m/Y" }}
           </p>
         </li>
         {% empty %}

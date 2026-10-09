@@ -179,6 +179,18 @@ class OpenNewFileTests(TestCase):
         self.assertEqual(matter.authorised_party1.name, 'Ann Agent')
         self.assertEqual(AuthorisedParties.objects.count(), 1)
 
+    def test_critical_fields_are_required_when_opening(self):
+        resp = self.client.post(
+            reverse('new_file'),
+            self._payload(matter_description='', fee_earner=''))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(WIP.objects.filter(file_number='LIN0020001').exists())
+        # The inline-entered client is rolled back with the failed matter.
+        self.assertEqual(ClientContactDetails.objects.count(), 0)
+        shown = [str(m) for m in resp.context['messages']]
+        self.assertTrue(any('Matter description' in m for m in shown), shown)
+        self.assertTrue(any('Fee earner' in m for m in shown), shown)
     def _new_paying_party(self):
         return {
             'paying_party': '-1',

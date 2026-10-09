@@ -10,9 +10,8 @@ Metrics are declared once in ``METRICS``; the page and the drill-down both read
 that registry, so adding a metric is one entry plus its collector.
 
 Rules reused from elsewhere in the app rather than re-stated:
-- a review is current for a year: the same rule as the "Risk assessments due"
-  report (``get_risk_assessments_due_queryset``)
-- three-monthly file review: ``get_file_reviews_due_queryset``
+- annual risk review: ``get_risk_assessments_due_queryset``
+- four-monthly file review (from opening or the last review): ``get_file_reviews_due_queryset``
 - missing / expired proof of ID and address: ``get_live_matter_client_document_issues``
 - responsible fee earner aliases (DC -> ND): ``backend.fee_earners``
 """
@@ -904,7 +903,7 @@ METRICS = {m.key: m for m in [
     ),
     _metric(
         'file_review_current', 'File review up to date', 'File review', 'matter_risk',
-        'Live matters reviewed by a supervisor in the last three months. Same rule as the "File reviews due" report.',
+        'Live matters whose four-monthly supervisor file review (counted from opening or the last review) is not yet due. Same rule as the "File reviews due" report.',
         collect_file_review_current,
         MATTER_COLUMNS + [_col('status', 'Status'), _col('last_review', 'Last review'),
                           _col('reviewed_by', 'Reviewed by'), ACTION_COLUMN],

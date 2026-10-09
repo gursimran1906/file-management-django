@@ -108,12 +108,8 @@
         </div>
         <div class='div-container grid grid-cols-1 md:grid-cols-12 gap-2'>
             <div class='md:col-span-12'>
-                <label class='form-label'>Recommendations and further action required (if any):</label>
-                {{ form.recommendations_and_further_actions }}
-            </div>
-            <div class='md:col-span-12'>
-                <label class='form-label'>Additional notes or comments:</label>
-                {{ form.additional_notes_or_comments }}
+                <label class='form-label'>Additional comments, recommendations and further actions (if any):</label>
+                {{ form.comments_recommendations_and_further_actions }}
             </div>
             <div class='md:col-span-6'>
                 {{ form.file_review_completed_by.label_tag }}
