@@ -10,13 +10,15 @@
         <h1 class="text-2xl font-semibold text-gray-900">Edit CPD record</h1>
         <p class="text-sm text-gray-600 mt-1">Update continuing professional development details</p>
       </div>
-      <a href="{% url 'profile_page' %}" class="btn-secondary text-xs shrink-0">Back to profile</a>
+      <a href="{{ back_url }}" class="btn-secondary text-xs shrink-0">Back</a>
     </div>
   </div>
 
   <form class="div-container max-w-2xl" method="POST" action="{% url 'edit_cpd' cpd.id %}">
     {% csrf_token %}
+    <input type="hidden" name="next" value="{{ back_url }}">
     {{ form.as_p }}
+    <p class="text-xs text-gray-500">Added by {{ cpd.added_by|default:"unknown" }} on {{ cpd.created_at|date:"d/m/Y" }}</p>
     <button type="submit" class="btn-primary text-xs mt-4">Save changes</button>
   </form>
 </div>

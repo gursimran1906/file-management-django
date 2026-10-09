@@ -53,6 +53,7 @@ class OpenNewFileTests(TestCase):
             'Client1AMLCheckDate': '',
             'authorised_party1': '0',
             'authorised_party2': '0',
+            'paying_party': '0',
             'other_side': '0',
             'date_of_client_care_sent': '',
             'date_of_toe_sent': '',
@@ -190,3 +191,78 @@ class OpenNewFileTests(TestCase):
         shown = [str(m) for m in resp.context['messages']]
         self.assertTrue(any('Matter description' in m for m in shown), shown)
         self.assertTrue(any('Fee earner' in m for m in shown), shown)
+    def _new_paying_party(self):
+        return {
+            'paying_party': '-1',
+            'APNameP': 'Penny Payer',
+            'APPRelationshipToC': 'Mother',
+            'APPAddressLine1': '3 Pay Road',
+            'APPAddressLine2': '',
+            'APPCounty': 'Essex',
+            'APPPostcode': 'SS7 3CD',
+            'APPEmail': 'penny@example.com',
+            'APPContactNumber': '01702 333444',
+            'APPIDCheck': 'on',
+            'APPIDCheckDate': '2026-10-01',
+            'APPAMLCheckDate': '2026-10-01',
+        }
+
+    def test_paying_party_can_be_added_inline_and_shows_on_the_file(self):
+        resp = self.client.post(reverse('new_file'), self._payload(**self._new_paying_party()))
+
+        self.assertRedirects(resp, reverse('index'))
+        matter = WIP.objects.get(file_number='LIN0020001')
+        payer = matter.paying_party
+        self.assertEqual(payer.name, 'Penny Payer')
+        self.assertEqual(payer.created_by, self.user)
+        self.assertEqual(str(payer.date_of_last_aml), '2026-10-01')
+        self.assertEqual([(p.name, role) for p, role in matter.third_parties],
+                         [('Penny Payer', 'Paying party')])
+
+        home = self.client.get(reverse('home', args=['LIN0020001']))
+        self.assertContains(home, 'Paying party')
+        self.assertContains(home, 'Penny Payer')
+        self.assertContains(home, 'Paying party (Penny Payer) Created.')
+
+    def test_existing_party_can_be_the_paying_party(self):
+        party = AuthorisedParties.objects.create(
+            name='Existing Payer', relationship_to_client='Father', address_line1='1 St',
+            address_line2='', county='Essex', postcode='SS7 1QT', email='e@example.com',
+            contact_number='0123456789',
+        )
+        resp = self.client.post(reverse('new_file'), self._payload(paying_party=str(party.id)))
+        self.assertRedirects(resp, reverse('index'))
+        self.assertEqual(WIP.objects.get(file_number='LIN0020001').paying_party, party)
+
+    def test_same_person_can_be_authorised_and_paying_party(self):
+        party = AuthorisedParties.objects.create(
+            name='Both Roles', relationship_to_client='Son', address_line1='1 St',
+            address_line2='', county='Essex', postcode='SS7 1QT', email='b@example.com',
+            contact_number='0123456789',
+        )
+        resp = self.client.post(reverse('new_file'), self._payload(
+            authorised_party1=str(party.id), paying_party=str(party.id)))
+        self.assertRedirects(resp, reverse('index'))
+        matter = WIP.objects.get(file_number='LIN0020001')
+        self.assertEqual(matter.third_parties, [(party, 'Authorised party & paying party')])
+
+        home = self.client.get(reverse('home', args=['LIN0020001']))
+        # One card for the person (the name also appears in the activity log).
+        self.assertContains(home, '<h4 class="font-semibold text-gray-900">Both Roles</h4>', count=1)
+        self.assertContains(home, 'Authorised party &amp; paying party')
+
+    def test_payload_without_paying_party_still_opens(self):
+        payload = self._payload()
+        payload.pop('paying_party')
+        resp = self.client.post(reverse('new_file'), payload)
+        self.assertRedirects(resp, reverse('index'))
+        self.assertIsNone(WIP.objects.get(file_number='LIN0020001').paying_party)
+
+    def test_edit_file_page_offers_the_paying_party_picker(self):
+        self.client.post(reverse('new_file'), self._payload(**self._new_paying_party()))
+        resp = self.client.get(reverse('edit_file', args=['LIN0020001']))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'name="paying_party"')
+        self.assertContains(resp, 'Penny Payer')
+        self.assertContains(resp, 'name="APNameP"')
+

@@ -207,7 +207,7 @@
       <div class="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
         <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-700 text-sm font-semibold">3</span>
         <div>
-          <h2 class="text-base font-semibold text-gray-900">Authorised parties</h2>
+          <h2 class="text-base font-semibold text-gray-900">Authorised and paying parties</h2>
           <p class="text-xs text-gray-500 mt-0.5">Optional — leave blank if the same as the client</p>
         </div>
       </div>
@@ -257,6 +257,32 @@
         <div class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 mt-3">
           <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">New authorised party 2 details</p>
           {% include 'forms/add_authorised_party_form.html' with authorised_party_number='2' %}
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4">
+        <div class="md:col-span-6">
+          <label class="form-label">Paying party</label>
+          <select
+            id="APPList"
+            onchange="toggleForm('APP');"
+            class="form-input"
+            name="paying_party"
+          >
+            <option {% if form.paying_party.value == '0' or not form.paying_party.value %}selected{% endif %} value="0">Client pays — no paying party</option>
+            <option value="-1">+ New</option>
+            {% for authorised_party in form_data.authorised_parties %}
+            <option value="{{ authorised_party.id}}"{% if form.paying_party.value|add:"0" == authorised_party.id %} selected{% endif %}>{{ authorised_party.name}} — {{ authorised_party.relationship_to_client }}</option>
+            {% endfor %}
+          </select>
+          <p class="text-xs text-gray-500 mt-1">Whoever pays the bills when it is not the client. A third party can be both the authorised and the paying party; they need the same AML / ID check either way.</p>
+        </div>
+      </div>
+
+      <div id="inputNewAPP" style="display: none">
+        <div class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 mt-3">
+          <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">New paying party details</p>
+          {% include 'forms/add_authorised_party_form.html' with authorised_party_number='P' %}
         </div>
       </div>
     </section>

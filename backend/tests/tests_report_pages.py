@@ -266,6 +266,24 @@ class AmlChecksDueReportTests(TestCase):
         self.assertEqual(sorted(entry['file_numbers']), ['AML0001', 'AML0002'])
         self.assertEqual(entry['fee_earners'], ['fea'])
 
+    def test_third_party_in_both_roles_is_one_check(self):
+        from ..models import AuthorisedParties
+        from ..views import get_aml_checks_due_from_wips
+
+        party = AuthorisedParties.objects.create(
+            name='Both Roles', relationship_to_client='Son', address_line1='1 St',
+            address_line2='', county='Essex', postcode='SS7 1QT', email='b@example.com',
+            contact_number='0123456789', date_of_last_aml=self.overdue,
+        )
+        matter = make_live_matter('AML0004', make_client('Client'), fee_earner=self.earner)
+        WIP.objects.filter(pk=matter.pk).update(authorised_party1=party, paying_party=party)
+
+        rows = get_aml_checks_due_from_wips(WIP.objects.all(), timezone.now(), sort_by='name')
+
+        self.assertEqual([r['entity_name'] for r in rows], ['Both Roles'])
+        self.assertEqual(rows[0]['entity_type'], 'Authorised party / Paying party')
+        self.assertEqual(rows[0]['file_numbers'], ['AML0004'])
+
     def test_csv_download_includes_matter_and_fee_earner_columns(self):
         client = make_client('Overdue Client')
         client.date_of_last_aml = self.overdue

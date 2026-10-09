@@ -347,7 +347,7 @@
       </div>
       {% if risk_assessments_awaiting_signoff %}
       <div class="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 shrink-0 max-h-96 overflow-y-auto">
-        <p class="text-sm font-semibold text-amber-900 mb-1">Awaiting sign-off ({{ risk_assessments_awaiting_signoff|length }})</p>
+        <p class="text-sm font-semibold text-amber-900 mb-1 flex items-center justify-between gap-2">Awaiting sign-off ({{ risk_assessments_awaiting_signoff|length }}) <a href="{% url 'signoff_queue' %}?type=risk_assessment" class="text-xs font-medium underline">Sign off in the queue &rarr;</a></p>
         <ul class="space-y-1">
           {% for ra in risk_assessments_awaiting_signoff %}
           <li class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-amber-900">
@@ -366,7 +366,7 @@
       {% endif %}
       {% if ongoing_monitorings_awaiting_signoff %}
       <div class="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 shrink-0 max-h-96 overflow-y-auto">
-        <p class="text-sm font-semibold text-amber-900 mb-1">Ongoing monitoring awaiting sign-off ({{ ongoing_monitorings_awaiting_signoff|length }})</p>
+        <p class="text-sm font-semibold text-amber-900 mb-1 flex items-center justify-between gap-2">Ongoing monitoring awaiting sign-off ({{ ongoing_monitorings_awaiting_signoff|length }}) <a href="{% url 'signoff_queue' %}?type=ongoing_monitoring" class="text-xs font-medium underline">Sign off in the queue &rarr;</a></p>
         <ul class="space-y-1">
           {% for om in ongoing_monitorings_awaiting_signoff %}
           <li class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-amber-900">

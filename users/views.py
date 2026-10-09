@@ -2031,16 +2031,32 @@ def access_document(request, uuid):
     return redirect('staff_document_download', uuid=uuid)
 
 
-@login_required
-def add_cpd_training_log(request):
-    if request.method == 'POST':
-        form = CPDTrainingLogForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'CPD Log successfully created.')
-            return redirect('profile_page')
+def _cpd_return_url(request):
+    """Where to go after saving CPD: the page that sent us (the CPD report or
+    a profile), or the profile page."""
+    candidate = request.POST.get('next') or request.GET.get('next') or ''
+    if candidate and url_has_allowed_host_and_scheme(
+            candidate, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return candidate
+    return reverse('profile_page')
 
-    return render(request, 'add_cpd_training_log.html', {'form': form})
+
+@login_required
+@require_POST
+def add_cpd_training_log(request):
+    """Record CPD for any member of staff; the form is embedded in the CPD
+    report and the profile page, so this only ever handles the POST."""
+    form = CPDTrainingLogForm(request.POST)
+    if form.is_valid():
+        log = form.save(commit=False)
+        log.added_by = request.user
+        log.save()
+        messages.success(request, f'CPD record added for {log.user.username}.')
+    else:
+        errors = '; '.join(
+            f"{form.fields[name].label or name}: {', '.join(errs)}" for name, errs in form.errors.items())
+        messages.error(request, f'CPD record not saved. {errors}')
+    return redirect(_cpd_return_url(request))
 
 
 @login_required
@@ -2050,8 +2066,10 @@ def edit_cpd_training_log(request, pk):
         form = CPDTrainingLogForm(request.POST, instance=cpd_training_log)
         if form.is_valid():
             form.save()
-            return redirect('profile_page')
+            messages.success(request, 'CPD record updated.')
+            return redirect(_cpd_return_url(request))
     else:
         form = CPDTrainingLogForm(instance=cpd_training_log)
 
-    return render(request, 'edit_cpd.html', {'form': form, 'cpd': cpd_training_log})
+    return render(request, 'edit_cpd.html', {
+        'form': form, 'cpd': cpd_training_log, 'back_url': _cpd_return_url(request)})

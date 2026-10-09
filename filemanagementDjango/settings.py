@@ -197,6 +197,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'backend.context_processors.matter_nav',
+                'backend.context_processors.signoff_pending',
             ],
         },
     },
@@ -370,10 +371,16 @@ BUNDLE_SHARE_LINK_EXPIRY_DAYS = int(os.getenv('BUNDLE_SHARE_LINK_EXPIRY_DAYS', '
 RESPONSIBLE_FEE_EARNER_ALIASES = os.getenv(
     'RESPONSIBLE_FEE_EARNER_ALIASES', '{"DC": "ND"}')
 
-# Compliance stats: archived files opened on/after this ISO date are checked for
-# client money still held. Older matters were not run through this system's
-# ledgers. Leave blank to check files opened in the last 12 months.
-COMPLIANCE_CLIENT_MONEY_FROM = os.getenv('COMPLIANCE_CLIENT_MONEY_FROM', '')
+# Where this app is reached from outside (used for links in emails).
+SITE_BASE_URL = os.getenv('SITE_BASE_URL', 'https://wip.anp.softwarised.com').rstrip('/')
+
+# Morning email to each fee earner listing what awaits their sign-off. Sent via
+# the same Graph mailbox as onboarding invites, and opt-in for the same reason:
+# development and test environments must never email staff.
+SIGNOFF_DIGEST_EMAILS = os.getenv(
+    'SIGNOFF_DIGEST_EMAILS', 'false').lower() in ('true', '1', 'yes')
+if sys.argv[1:2] == ['test']:
+    SIGNOFF_DIGEST_EMAILS = False
 BUNDLE_SHARE_LINK_USE_PASSWORD = os.getenv(
     'BUNDLE_SHARE_LINK_USE_PASSWORD', 'true'
 ).lower() in ('true', '1', 'yes')
@@ -420,6 +427,10 @@ CRONJOBS = [
     # catch-up scan for the overnight gap, so nothing is missed.
     ('*/15 7-18 * * *', 'backend.granola.cron.sync_granola_notes',
      '>>'+str(LOGS_DIR)+'/granola_job.log 2>&1'),
+    # Weekday morning digest: what is waiting for each fee earner's sign-off.
+    # Sends nothing unless SIGNOFF_DIGEST_EMAILS is on.
+    ('0 8 * * 1-5', 'backend.signoff_digest.send_signoff_digests',
+     '>>'+str(LOGS_DIR)+'/signoff_digest.log 2>&1'),
 ]
 
 # Central Granola API key. Prefer setting this via the environment; falls back

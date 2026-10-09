@@ -12,6 +12,13 @@
             </div>
             <div class="flex items-center gap-2 shrink-0">
                 <span class="badge-zinc">{{ result_count }} result{{ result_count|pluralize }}</span>
+                {% for action in actions %}
+                {% if action.modal %}
+                <button type="button" class="btn-primary text-sm" data-modal-target="{{ action.modal }}" data-modal-toggle="{{ action.modal }}">{{ action.label }}</button>
+                {% else %}
+                <a href="{{ action.href }}" class="btn-primary text-sm">{{ action.label }}</a>
+                {% endif %}
+                {% endfor %}
                 <a href="{{ export_url }}" class="btn-secondary text-sm">Export CSV</a>
             </div>
         </div>
@@ -32,6 +39,8 @@
                     </select>
                     {% elif f.type == 'number' %}
                     <input id="f_{{ f.name }}" type="number" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.placeholder }}" class="form-input">
+                    {% elif f.type == 'date' %}
+                    <input id="f_{{ f.name }}" type="date" name="{{ f.name }}" value="{{ f.value }}" class="form-input">
                     {% else %}
                     <input id="f_{{ f.name }}" type="text" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.placeholder }}" class="form-input">
                     {% endif %}
@@ -87,4 +96,5 @@
         </table>
     </div>
 </div>
+{% if extra_template %}{% include extra_template %}{% endif %}
 {% endblock %}

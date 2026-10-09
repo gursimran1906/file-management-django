@@ -11,6 +11,7 @@
       </div>
       <form method="POST" action="{% url 'add_cpd' %}" class="p-4 md:p-5 space-y-4">
         {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
         {{ cpd_form.as_p }}
         <button type="submit" class="btn-primary text-xs w-full">Submit</button>
       </form>

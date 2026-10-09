@@ -14,17 +14,13 @@ Rules reused from elsewhere in the app rather than re-stated:
 - four-monthly file review (from opening or the last review): ``get_file_reviews_due_queryset``
 - missing / expired proof of ID and address: ``get_live_matter_client_document_issues``
 - responsible fee earner aliases (DC -> ND): ``backend.fee_earners``
-- client account balance: the ledger sign rules of ``_finance_activity_ledger_deltas``
 """
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date
-from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
-from django.conf import settings
-from django.db.models import F, Max, Sum
+from django.db.models import Max
 from django.urls import reverse
 from django.utils import timezone
 
@@ -37,7 +33,6 @@ from .models import (
     ClientContactDetails,
     Invoices,
     LastWork,
-    LedgerAccountTransfers,
     MatterAttendanceNotes,
     MatterEmails,
     MatterLetters,
@@ -48,28 +43,9 @@ from .models import (
 )
 
 LIVE_STATUSES = ['Open', 'To Be Closed']
-ARCHIVED_STATUS = 'Archived'
 AML_MONTHS = 11       # matches the dashboard / management reports "AML checks due" threshold
+REVIEW_MONTHS = 12    # a risk assessment or monitoring record keeps a matter current for a year
 DORMANT_MONTHS = 3    # matches the file review question "matter progressing without dormancy"
-CLIENT_MONEY_RECENT_MONTHS = 12  # fallback window for the archived client-money check
-
-def client_money_cutoff(today):
-    """Archived files opened on or after this date are checked for client money.
-
-    Older matters were not run through this system's ledgers (client-to-office
-    transfers and payments in/out were recorded elsewhere), so a balance
-    computed for them would be wrong. ``COMPLIANCE_CLIENT_MONEY_FROM`` (an ISO
-    date in the environment) pins the start of reliable ledgers; without it
-    the check covers files opened in the last ``CLIENT_MONEY_RECENT_MONTHS``.
-    """
-    raw = str(getattr(settings, 'COMPLIANCE_CLIENT_MONEY_FROM', '') or '').strip()
-    if raw:
-        try:
-            return date.fromisoformat(raw)
-        except ValueError:
-            pass
-    return today - relativedelta(months=CLIENT_MONEY_RECENT_MONTHS)
-
 
 GREEN = '#16a34a'     # green-600, as the staff timeline donut
 RED = '#dc2626'       # red-600
@@ -82,10 +58,9 @@ UNASSIGNED = 'none'   # GET value / row id for matters with no fee earner
 NOT_TRACKED = [
     'Complaints log and response times',
     'Costs updates and estimate reviews',
-    'Conflict checks',
     'Practising certificates, insurance, DBS and training expiry',
     'Client account reconciliations',
-    'Data protection, retention and file destruction dates',
+    'Data protection and retention policy reviews',
 ]
 
 
@@ -93,13 +68,13 @@ NOT_TRACKED = [
 # Donut maths (same approach as backend/staff_timeline.py)
 # ---------------------------------------------------------------------------
 
-def donut_segments(done, not_done):
+def donut_segments(done, not_done, labels=('Done', 'Not done')):
     """Dash/offset values for a two-segment inline SVG ring.
 
     Returns ``{'na': True, 'segments': []}`` when there is nothing to count, so
     the template can draw a grey ring instead of a misleading 0% red one.
     The done percentage is floored so 100% is only ever shown when everything
-    is done.
+    is done. ``labels`` name the two segments for the ring's tooltips.
     """
     total = done + not_done
     if total <= 0:
@@ -111,8 +86,8 @@ def donut_segments(done, not_done):
     start = 0.0
     segments = []
     for key, label, count, pct, display, colour in (
-        ('done', 'Done', done, pct_done, display_done, GREEN),
-        ('not_done', 'Not done', not_done, pct_not_done, display_not_done, RED),
+        ('done', labels[0], done, pct_done, display_done, GREEN),
+        ('not_done', labels[1], not_done, pct_not_done, display_not_done, RED),
     ):
         segments.append({
             'key': key,
@@ -138,7 +113,7 @@ def donut_segments(done, not_done):
 
 @dataclass
 class Item:
-    """One counted thing: a matter, a client, an authorised party or a record."""
+    """One counted thing: a matter, a client, a third party or a record."""
     key: object
     fee_earner_ids: frozenset
     done: bool
@@ -161,6 +136,13 @@ class Metric:
     collect: object                       # callable(snapshot) -> list[Item]
     columns: list                         # [{'key', 'label', 'sortable', 'truncate'}]
     reasons: dict = field(default_factory=dict)   # reason key -> legend label (not-done split)
+    # How the two states read on the page: "done / not done" for most metrics,
+    # "active / not active" for dormancy and so on.
+    labels: tuple = ('done', 'not done')
+    # Reason keys whose legend link goes somewhere better than the generic
+    # drill-down, e.g. "awaiting sign-off" -> the sign-off queue. Values are
+    # callables so URLs are only reversed when the page is built.
+    reason_urls: dict = field(default_factory=dict)
 
     def help_for(self, snapshot):
         """Help text; a callable help receives the snapshot (for dates in the text)."""
@@ -169,6 +151,10 @@ class Metric:
     @property
     def detail_url(self):
         return reverse('compliance_stats_detail', args=[self.key])
+
+    def reason_url(self, reason_key):
+        builder = self.reason_urls.get(reason_key)
+        return builder() if builder else f'{self.detail_url}?reason={reason_key}'
 
 
 GROUPS = [
@@ -181,21 +167,15 @@ GROUPS = [
     {
         'key': 'client_dd',
         'title': 'Client due diligence',
-        'description': 'AML, identity and client care documents for every client and authorised party on a live matter.',
+        'description': 'Veriphy AML / ID checks, identity documents and client care declarations for every client and third party on a live matter.',
         'scope': 'client',
-        'footnote': 'A client or authorised party on files for two fee earners counts for both, so the rows add up to more than the firm figure.',
+        'footnote': 'A client or third party on files for two fee earners counts for both, so the rows add up to more than the firm figure.',
     },
     {
         'key': 'client_care',
         'title': 'Client care paperwork',
         'description': 'Engagement paperwork recorded on live matters, and undertakings given on them.',
         'scope': 'matter',
-    },
-    {
-        'key': 'closure',
-        'title': 'File closure',
-        'description': 'Archived files that still carry an undischarged undertaking, and recently opened archived files that still hold client money.',
-        'scope': 'archived',
     },
 ]
 
@@ -216,7 +196,8 @@ CLIENT_COLUMNS = [
     _col('fee_earners', 'Fee earners'),
 ]
 PARTY_COLUMNS = [
-    _col('party', 'Authorised party', truncate=True),
+    _col('party', 'Third party', truncate=True),
+    _col('role', 'Role'),
     _col('relationship', 'Relationship', truncate=True),
     _col('files', 'Files', truncate=True),
     _col('fee_earners', 'Fee earners'),
@@ -247,16 +228,19 @@ def _months_between(earlier, later):
     return delta.years * 12 + delta.months
 
 
+THIRD_PARTY_ID_FIELDS = tuple(f'{name}_id' for name, _role in WIP.THIRD_PARTY_FIELDS)
+
+
 class Snapshot:
-    """Live and archived matters, their clients/parties and fee earners."""
+    """Live matters, their clients / third parties and fee earners."""
 
     WIP_FIELDS = (
         'id', 'file_number', 'matter_description', 'timestamp',
         'fee_earner_id', 'fee_earner__username',
         'client1_id', 'client1__name',
-        'authorised_party1_id', 'authorised_party2_id',
+        *THIRD_PARTY_ID_FIELDS,
         'date_of_client_care_sent', 'date_of_toe_sent', 'date_of_toe_rcvd',
-        'date_of_ncba_sent', 'date_of_ncba_rcvd', 'file_status__status',
+        'date_of_ncba_sent', 'date_of_ncba_rcvd',
     )
 
     def __init__(self, today=None):
@@ -268,25 +252,13 @@ class Snapshot:
         self.users = {u['id']: u for u in users}
         users_by_code = {(u['username'] or '').upper(): u['id'] for u in users}
 
-        rows = WIP.objects.filter(
-            file_status__status__in=LIVE_STATUSES + [ARCHIVED_STATUS]
-        ).values(*self.WIP_FIELDS).order_by('file_number')
-        self.live, self.archived = [], []
-        self.matters = {}
-        self.matter_fee_earner = {}
-        for row in rows:
-            self.matters[row['id']] = row
-            (self.archived if row['file_status__status'] == ARCHIVED_STATUS
-             else self.live).append(row)
-            self.matter_fee_earner[row['id']] = self._responsible_id(row, users_by_code)
-        self.live_ids = [m['id'] for m in self.live]
-        self.archived_ids = [m['id'] for m in self.archived]
-        self.client_money_cutoff = client_money_cutoff(self.today)
-        self.recent_archived = [
-            m for m in self.archived
-            if _as_date(m['timestamp']) and _as_date(m['timestamp']) >= self.client_money_cutoff
-        ]
-        self.recent_archived_ids = [m['id'] for m in self.recent_archived]
+        self.live = list(WIP.objects.filter(
+            file_status__status__in=LIVE_STATUSES
+        ).values(*self.WIP_FIELDS).order_by('file_number'))
+        self.matters = {m['id']: m for m in self.live}
+        self.matter_fee_earner = {
+            m['id']: self._responsible_id(m, users_by_code) for m in self.live}
+        self.live_ids = list(self.matters)
 
         # Clients: client1 plus the additional_clients M2M, without WIP.all_clients
         # (which is a query per matter).
@@ -307,21 +279,26 @@ class Snapshot:
             c['id']: c for c in ClientContactDetails.objects.filter(
                 id__in=self.matters_of_client.keys()
             ).values(
-                'id', 'name', 'is_business', 'date_of_last_aml', 'id_verified',
+                'id', 'name', 'is_business', 'date_of_last_aml',
                 'terms_of_engagement_signed', 'pep_signed',
                 'source_of_funds_signed', 'ncba_signed',
             )
         } if self.matters_of_client else {}
 
+        # Third parties (authorised and paying) share one table; a party may
+        # play either role on different files, so remember every role it has.
         self.matters_of_party = defaultdict(set)
+        self.roles_of_party = defaultdict(set)
         for m in self.live:
-            for key in ('authorised_party1_id', 'authorised_party2_id'):
-                if m[key]:
-                    self.matters_of_party[m[key]].add(m['id'])
+            for name, role in WIP.THIRD_PARTY_FIELDS:
+                party_id = m[f'{name}_id']
+                if party_id:
+                    self.matters_of_party[party_id].add(m['id'])
+                    self.roles_of_party[party_id].add(role)
         self.parties = {
             p['id']: p for p in AuthorisedParties.objects.filter(
                 id__in=self.matters_of_party.keys()
-            ).values('id', 'name', 'relationship_to_client', 'id_check', 'date_of_last_aml')
+            ).values('id', 'name', 'relationship_to_client', 'date_of_last_aml')
         } if self.matters_of_party else {}
 
     # -- fee earners -------------------------------------------------------
@@ -377,12 +354,19 @@ class Snapshot:
             return latest
         return self.cached('latest_ra', load)
 
-    def risk_reviews_due(self):
-        from .views import get_risk_assessments_due_queryset
-        return self.cached('risk_due', lambda: {
-            r['id']: r for r in get_risk_assessments_due_queryset(WIP.objects.all()).values(
-                'id', 'latest_assessment_date', 'latest_monitoring_date')
-        })
+    def latest_ongoing_monitoring(self):
+        """Latest OngoingMonitoring row per live matter (by date, then id)."""
+        def load():
+            rows = OngoingMonitoring.objects.filter(
+                file_number_id__in=self.live_ids
+            ).values(
+                'id', 'file_number_id', 'signoff_status', 'date_due_diligence_conducted',
+            ).order_by('file_number_id', '-date_due_diligence_conducted', '-id')
+            latest = {}
+            for row in rows:
+                latest.setdefault(row['file_number_id'], row)
+            return latest
+        return self.cached('latest_om', load)
 
     def file_reviews_due(self):
         from .views import get_file_reviews_due_queryset
@@ -423,47 +407,6 @@ class Snapshot:
                         last[row['file_number_id']] = (when, label)
             return last
         return self.cached('last_activity', load)
-
-
-    def client_balances(self):
-        """Client account balance per recently opened archived matter.
-
-        Uses the ledger sign rules of the finances page
-        (``_finance_activity_ledger_deltas``): only client-ledger slips and
-        client-ledger transfers move it; invoices and credit notes never do.
-        """
-        def load():
-            balances = defaultdict(lambda: Decimal('0'))
-            slips = PmtsSlips.objects.filter(
-                ledger_account='C', file_number_id__in=self.recent_archived_ids,
-            ).values('file_number_id', 'is_money_out').annotate(total=Sum('amount'))
-            for row in slips:
-                sign = -1 if row['is_money_out'] else 1
-                balances[row['file_number_id']] += sign * (row['total'] or Decimal('0'))
-            archived = set(self.recent_archived_ids)
-            transfers = LedgerAccountTransfers.objects.filter(
-                from_ledger_account='C',
-            ).values('file_number_from_id', 'file_number_to_id').annotate(total=Sum('amount'))
-            for row in transfers:
-                amount = row['total'] or Decimal('0')
-                src, dst = row['file_number_from_id'], row['file_number_to_id']
-                if src == dst:
-                    # Same-matter client -> office transfer.
-                    if src in archived:
-                        balances[src] -= amount
-                    continue
-                if src in archived:
-                    balances[src] -= amount
-                if dst in archived:
-                    balances[dst] += amount
-            office_to_client = LedgerAccountTransfers.objects.filter(
-                from_ledger_account='O', file_number_from_id=F('file_number_to_id'),
-                file_number_from_id__in=self.archived_ids,
-            ).values('file_number_from_id').annotate(total=Sum('amount'))
-            for row in office_to_client:
-                balances[row['file_number_from_id']] += row['total'] or Decimal('0')
-            return {mid: round(bal, 2) for mid, bal in balances.items()}
-        return self.cached('client_balances', load)
 
 
 # ---------------------------------------------------------------------------
@@ -538,14 +481,16 @@ def _client_item(snap, client, done, reason='', cells=None, sort=None):
 def _party_item(snap, party, done, reason='', cells=None, sort=None):
     matter_ids = snap.matters_of_party.get(party['id'], set())
     files, codes = _files_and_fee_earners(snap, matter_ids)
+    roles = ' / '.join(sorted(snap.roles_of_party.get(party['id'], ())))
     all_cells = {
         'party': {'value': party['name'] or '', 'href': reverse('edit_authorised_party', args=[party['id']])},
+        'role': {'value': roles, 'href': None},
         'relationship': {'value': party['relationship_to_client'] or '', 'href': None},
         'files': {'value': files, 'href': None},
         'fee_earners': {'value': codes, 'href': None},
     }
     all_cells.update(cells or {})
-    all_sort = {'party': (party['name'] or '').lower(),
+    all_sort = {'party': (party['name'] or '').lower(), 'role': roles.lower(),
                 'relationship': (party['relationship_to_client'] or '').lower(),
                 'files': files, 'fee_earners': codes}
     all_sort.update(sort or {})
@@ -567,6 +512,10 @@ def _date_cell(value):
     return {'value': _fmt_date(value) or '—', 'href': None}
 
 
+def _link_cell(label, url_name, *args):
+    return {'value': label, 'href': reverse(url_name, args=args)}
+
+
 def _far_past():
     return timezone.localdate().replace(year=1900)
 
@@ -581,9 +530,9 @@ OM_STATUS_LABELS = dict(OngoingMonitoring.SIGNOFF_STATUS_CHOICES)
 
 def _risk_assessment_action(m, ra):
     if ra:
-        return {'value': 'Review', 'href': reverse('edit_risk_assessment', args=[ra['id']])}
+        return _link_cell('Review', 'edit_risk_assessment', ra['id'])
     if m['file_number']:
-        return {'value': 'Add', 'href': reverse('add_risk_assessment', args=[m['file_number']])}
+        return _link_cell('Add', 'add_risk_assessment', m['file_number'])
     return {'value': '', 'href': None}
 
 
@@ -616,55 +565,63 @@ def collect_risk_assessment(snap):
     return items
 
 
-def collect_risk_review_current(snap):
-    due = snap.risk_reviews_due()
+def _latest_review(ra, om):
+    """The review that counts for a matter: its most recent risk assessment or
+    ongoing monitoring record, as (kind, row, date, signoff_status)."""
+    ra_date = ra['due_diligence_date'] if ra else None
+    om_date = om['date_due_diligence_conducted'] if om else None
+    if om and (ra_date is None or (om_date and om_date >= ra_date)):
+        return 'Ongoing monitoring', om, om_date, om['signoff_status']
+    if ra:
+        return 'Risk assessment', ra, ra_date, ra['signoff_status']
+    return None, None, None, None
+
+
+def collect_ongoing_monitoring(snap):
+    """One item per live matter: is its risk review current and signed off?
+
+    Monitoring is due at least annually or whenever anything changes. A matter
+    is reviewed by its initial risk assessment and then by each ongoing
+    monitoring record; the most recent of those must be less than a year old
+    (the "Risk assessments due" rule) and signed off by a fee earner.
+    """
+    latest_ra = snap.latest_risk_assessments()
+    latest_om = snap.latest_ongoing_monitoring()
+    cutoff = snap.today - relativedelta(months=REVIEW_MONTHS)
     items = []
     for m in snap.live:
-        row = due.get(m['id'])
+        kind, row, reviewed, signoff = _latest_review(latest_ra.get(m['id']), latest_om.get(m['id']))
         if row is None:
+            done, reason, status = False, 'never', 'Never done'
+        elif reviewed is None or reviewed <= cutoff:
+            done, reason, status = False, 'overdue', 'Review overdue'
+        elif signoff == OngoingMonitoring.SIGNOFF_SIGNED:
             done, reason, status = True, '', 'Up to date'
-        elif row['latest_assessment_date'] is None:
-            done, reason, status = False, 'never', 'Never assessed'
         else:
-            done, reason, status = False, 'overdue', 'Annual review overdue'
-        last_ra = row['latest_assessment_date'] if row else None
-        last_om = row['latest_monitoring_date'] if row else None
+            done, reason = False, 'awaiting'
+            status = OM_STATUS_LABELS.get(signoff, signoff)
+
+        if m['file_number'] is None:
+            action = {'value': '', 'href': None}
+        elif reason == 'awaiting' and kind == 'Ongoing monitoring':
+            action = _link_cell('Review', 'edit_ongoing_monitoring', row['id'])
+        elif reason == 'awaiting':
+            action = _link_cell('Review', 'edit_risk_assessment', row['id'])
+        elif row is None:
+            action = _link_cell('Add assessment', 'add_risk_assessment', m['file_number'])
+        else:
+            action = _link_cell('Add monitoring', 'add_ongoing_monitoring', m['file_number'])
+
         items.append(_matter_item(
             snap, m, done, reason,
             cells={
                 'status': {'value': status, 'href': None},
-                'last_assessment': _date_cell(last_ra),
-                'last_monitoring': _date_cell(last_om),
-                'action': ({'value': 'Add monitoring', 'href': reverse('add_ongoing_monitoring', args=[m['file_number']])}
-                           if (m['file_number'] and last_ra) else
-                           {'value': 'Add assessment', 'href': reverse('add_risk_assessment', args=[m['file_number']])}
-                           if m['file_number'] else {'value': '', 'href': None}),
+                'last_review': _date_cell(reviewed),
+                'kind': {'value': kind or '', 'href': None},
+                'action': action,
             },
-            sort={'status': status, 'last_assessment': last_ra or _far_past(),
-                  'last_monitoring': last_om or _far_past(), 'action': ''},
-        ))
-    return items
-
-
-def collect_ongoing_monitoring_signoff(snap):
-    rows = OngoingMonitoring.objects.filter(
-        file_number_id__in=snap.live_ids
-    ).values('id', 'file_number_id', 'signoff_status', 'date_due_diligence_conducted')
-    items = []
-    for row in rows:
-        m = snap.matters[row['file_number_id']]
-        done = row['signoff_status'] == OngoingMonitoring.SIGNOFF_SIGNED
-        reason = '' if done else ('returned' if row['signoff_status'] == OngoingMonitoring.SIGNOFF_RETURNED else 'awaiting')
-        status = OM_STATUS_LABELS.get(row['signoff_status'], row['signoff_status'])
-        items.append(_record_item(
-            snap, m, row['id'], done, reason,
-            cells={
-                'conducted': _date_cell(row['date_due_diligence_conducted']),
-                'status': {'value': status, 'href': None},
-                'action': {'value': 'Review', 'href': reverse('edit_ongoing_monitoring', args=[row['id']])},
-            },
-            sort={'conducted': row['date_due_diligence_conducted'] or _far_past(),
-                  'status': status, 'action': ''},
+            sort={'status': status, 'last_review': reviewed or _far_past(),
+                  'kind': (kind or '').lower(), 'action': ''},
         ))
     return items
 
@@ -687,7 +644,7 @@ def collect_file_review_current(snap):
                 'status': {'value': status, 'href': None},
                 'last_review': _date_cell(last),
                 'reviewed_by': {'value': (row or {}).get('latest_review_by') or '', 'href': None},
-                'action': ({'value': 'Add review', 'href': reverse('add_matter_file_review', args=[m['file_number']])}
+                'action': (_link_cell('Add review', 'add_matter_file_review', m['file_number'])
                            if m['file_number'] else {'value': '', 'href': None}),
             },
             sort={'status': status, 'last_review': last or _far_past(),
@@ -770,29 +727,40 @@ def collect_not_dormant(snap):
 # Collectors: client due diligence
 # ---------------------------------------------------------------------------
 
-def _aml_state(snap, last_aml):
+def _aml_id_state(snap, last_check):
+    """(done, reason, status, months ago) for a Veriphy AML / ID check date."""
     threshold = snap.today - relativedelta(months=AML_MONTHS)
-    if last_aml is None:
+    if last_check is None:
         return False, 'never', 'Never checked', ''
-    if last_aml > threshold:
-        return True, '', 'Current', str(_months_between(last_aml, snap.today))
-    return False, 'overdue', 'Overdue', str(_months_between(last_aml, snap.today))
+    if last_check > threshold:
+        return True, '', 'Current', str(_months_between(last_check, snap.today))
+    return False, 'overdue', 'Overdue', str(_months_between(last_check, snap.today))
 
 
-def collect_aml_check(snap):
+def _aml_id_cells(snap, last_check):
+    done, reason, status, months = _aml_id_state(snap, last_check)
+    cells = {
+        'last_check': _date_cell(last_check),
+        'months': {'value': months, 'href': None},
+        'status': {'value': status, 'href': None},
+    }
+    sort = {'last_check': last_check or _far_past(), 'months': int(months or 0), 'status': status}
+    return done, reason, cells, sort
+
+
+def collect_aml_id_check(snap):
     items = []
     for client in snap.clients.values():
-        done, reason, status, months = _aml_state(snap, client['date_of_last_aml'])
-        items.append(_client_item(
-            snap, client, done, reason,
-            cells={
-                'last_aml': _date_cell(client['date_of_last_aml']),
-                'months': {'value': months, 'href': None},
-                'status': {'value': status, 'href': None},
-            },
-            sort={'last_aml': client['date_of_last_aml'] or _far_past(),
-                  'months': int(months or 0), 'status': status},
-        ))
+        done, reason, cells, sort = _aml_id_cells(snap, client['date_of_last_aml'])
+        items.append(_client_item(snap, client, done, reason, cells=cells, sort=sort))
+    return items
+
+
+def collect_party_aml_id_check(snap):
+    items = []
+    for party in snap.parties.values():
+        done, reason, cells, sort = _aml_id_cells(snap, party['date_of_last_aml'])
+        items.append(_party_item(snap, party, done, reason, cells=cells, sort=sort))
     return items
 
 
@@ -839,35 +807,6 @@ def _document_collector(category):
     return collect
 
 
-def collect_authorised_party_id(snap):
-    items = []
-    for party in snap.parties.values():
-        done = party['id_check'] is True
-        items.append(_party_item(
-            snap, party, done, 'missing',
-            cells={'status': {'value': 'Checked' if done else 'Not checked', 'href': None}},
-            sort={'status': done},
-        ))
-    return items
-
-
-def collect_authorised_party_aml(snap):
-    items = []
-    for party in snap.parties.values():
-        done, reason, status, months = _aml_state(snap, party['date_of_last_aml'])
-        items.append(_party_item(
-            snap, party, done, reason,
-            cells={
-                'last_aml': _date_cell(party['date_of_last_aml']),
-                'months': {'value': months, 'href': None},
-                'status': {'value': status, 'href': None},
-            },
-            sort={'last_aml': party['date_of_last_aml'] or _far_past(),
-                  'months': int(months or 0), 'status': status},
-        ))
-    return items
-
-
 # ---------------------------------------------------------------------------
 # Collectors: client care paperwork
 # ---------------------------------------------------------------------------
@@ -898,21 +837,6 @@ def collect_client_care_sent(snap):
     return items
 
 
-def _undertaking_cells(row):
-    return {
-        'given': _date_cell(row['date_given']),
-        'given_to': {'value': row['given_to'] or '', 'href': None},
-        'description': {'value': row['description'] or '', 'href': None},
-        'action': {'value': 'Open', 'href': reverse('edit_undertaking', args=[row['id']])},
-    }
-
-
-def _undertaking_sort(row):
-    return {'given': row['date_given'] or _far_past(),
-            'given_to': (row['given_to'] or '').lower(),
-            'description': (row['description'] or '').lower(), 'action': ''}
-
-
 def collect_undertakings_discharged(snap):
     rows = Undertaking.objects.filter(
         file_number_id__in=snap.live_ids
@@ -921,54 +845,20 @@ def collect_undertakings_discharged(snap):
     for row in rows:
         m = snap.matters[row['file_number_id']]
         done = row['date_discharged'] is not None
-        cells = _undertaking_cells(row)
-        cells['discharged'] = _date_cell(row['date_discharged'])
-        sort = _undertaking_sort(row)
-        sort['discharged'] = row['date_discharged'] or _far_past()
-        items.append(_record_item(snap, m, row['id'], done, 'outstanding', cells=cells, sort=sort))
-    return items
-
-
-# ---------------------------------------------------------------------------
-# Collectors: file closure (archived matters)
-# ---------------------------------------------------------------------------
-
-def collect_closed_no_client_money(snap):
-    balances = snap.client_balances()
-    items = []
-    for m in snap.recent_archived:
-        balance = balances.get(m['id'], Decimal('0'))
-        done = balance == 0
-        items.append(_matter_item(
-            snap, m, done, 'holding',
-            cells={'opened': _date_cell(_as_date(m['timestamp'])),
-                   'balance': {'value': f'£{balance:,.2f}', 'href': None}},
-            sort={'opened': _as_date(m['timestamp']) or _far_past(), 'balance': balance},
+        items.append(_record_item(
+            snap, m, row['id'], done, 'outstanding',
+            cells={
+                'given': _date_cell(row['date_given']),
+                'given_to': {'value': row['given_to'] or '', 'href': None},
+                'description': {'value': row['description'] or '', 'href': None},
+                'discharged': _date_cell(row['date_discharged']),
+                'action': _link_cell('Open', 'edit_undertaking', row['id']),
+            },
+            sort={'given': row['date_given'] or _far_past(),
+                  'given_to': (row['given_to'] or '').lower(),
+                  'description': (row['description'] or '').lower(),
+                  'discharged': row['date_discharged'] or _far_past(), 'action': ''},
         ))
-    return items
-
-
-def collect_closed_no_open_undertakings(snap):
-    rows = Undertaking.objects.filter(
-        file_number_id__in=snap.archived_ids, date_discharged__isnull=True,
-    ).values('id', 'file_number_id', 'date_given', 'given_to', 'description')
-    open_by_matter = defaultdict(list)
-    for row in rows:
-        open_by_matter[row['file_number_id']].append(row)
-    items = []
-    for m in snap.archived:
-        open_rows = sorted(open_by_matter.get(m['id'], []), key=lambda r: r['date_given'] or _far_past())
-        done = not open_rows
-        first = open_rows[0] if open_rows else None
-        cells = {'open_count': {'value': str(len(open_rows)) if open_rows else '0', 'href': None}}
-        sort = {'open_count': len(open_rows)}
-        if first:
-            cells.update(_undertaking_cells(first))
-            sort.update(_undertaking_sort(first))
-        else:
-            cells.update({k: {'value': '', 'href': None} for k in ('given', 'given_to', 'description', 'action')})
-            sort.update({'given': _far_past(), 'given_to': '', 'description': '', 'action': ''})
-        items.append(_matter_item(snap, m, done, 'outstanding', cells=cells, sort=sort))
     return items
 
 
@@ -976,10 +866,17 @@ def collect_closed_no_open_undertakings(snap):
 # The registry
 # ---------------------------------------------------------------------------
 
-def _metric(key, label, short_label, group, help, collect, columns, reasons=None):
+def _metric(key, label, short_label, group, help, collect, columns, reasons=None, **extra):
     return Metric(key=key, label=label, short_label=short_label, group=group,
-                  help=help, collect=collect, columns=columns, reasons=reasons or {})
+                  help=help, collect=collect, columns=columns, reasons=reasons or {}, **extra)
 
+
+def _signoff_queue_url(kind):
+    return lambda: f"{reverse('signoff_queue')}?type={kind}"
+
+
+ACTION_COLUMN = _col('action', '', sortable=False)
+AML_ID_COLUMNS = [_col('last_check', 'Last check'), _col('months', 'Months ago'), _col('status', 'Status')]
 
 METRICS = {m.key: m for m in [
     # -- Matter risk & reviews --------------------------------------------
@@ -988,30 +885,28 @@ METRICS = {m.key: m for m in [
         'Live matters whose latest risk assessment has been signed off by a fee earner.',
         collect_risk_assessment,
         MATTER_COLUMNS + [_col('status', 'Status'), _col('assessed', 'Assessed'),
-                          _col('days_open', 'Days open'), _col('action', '', sortable=False)],
+                          _col('days_open', 'Days open'), ACTION_COLUMN],
         reasons={'awaiting': 'awaiting sign-off', 'none': 'no assessment'},
+        reason_urls={'awaiting': _signoff_queue_url('risk_assessment')},
     ),
     _metric(
-        'risk_review_current', 'Annual risk review up to date', 'Annual review', 'matter_risk',
-        'Live matters with a risk assessment in the last year, or older ones with ongoing monitoring in the last year. Same rule as the "Risk assessments due" report.',
-        collect_risk_review_current,
-        MATTER_COLUMNS + [_col('status', 'Status'), _col('last_assessment', 'Last assessment'),
-                          _col('last_monitoring', 'Last monitoring'), _col('action', '', sortable=False)],
-        reasons={'never': 'never assessed', 'overdue': 'review overdue'},
-    ),
-    _metric(
-        'ongoing_monitoring_signoff', 'Ongoing monitoring signed off', 'Monitoring sign-off', 'matter_risk',
-        'Ongoing monitoring records on live matters that a fee earner has signed off. Counts records, so a matter with no monitoring is covered by the annual review figure instead.',
-        collect_ongoing_monitoring_signoff,
-        MATTER_COLUMNS + [_col('conducted', 'Conducted'), _col('status', 'Status'), _col('action', '', sortable=False)],
-        reasons={'awaiting': 'awaiting sign-off', 'returned': 'returned for changes'},
+        'ongoing_monitoring', 'Ongoing monitoring up to date', 'Ongoing monitoring', 'matter_risk',
+        'Live matters whose latest risk review - the initial risk assessment or a later ongoing monitoring '
+        'record - is less than a year old and signed off by a fee earner. Monitoring is due at least '
+        'annually, or whenever anything changes. Same yearly rule as the "Risk assessments due" report.',
+        collect_ongoing_monitoring,
+        MATTER_COLUMNS + [_col('status', 'Status'), _col('last_review', 'Last review'),
+                          _col('kind', 'Latest record'), ACTION_COLUMN],
+        reasons={'awaiting': 'awaiting sign-off', 'overdue': 'review overdue', 'never': 'never done'},
+        labels=('done', 'not completed'),
+        reason_urls={'awaiting': _signoff_queue_url('ongoing_monitoring')},
     ),
     _metric(
         'file_review_current', 'File review up to date', 'File review', 'matter_risk',
         'Live matters whose four-monthly supervisor file review (counted from opening or the last review) is not yet due. Same rule as the "File reviews due" report.',
         collect_file_review_current,
         MATTER_COLUMNS + [_col('status', 'Status'), _col('last_review', 'Last review'),
-                          _col('reviewed_by', 'Reviewed by'), _col('action', '', sortable=False)],
+                          _col('reviewed_by', 'Reviewed by'), ACTION_COLUMN],
         reasons={'never': 'never reviewed', 'overdue': 'review overdue'},
     ),
     _metric(
@@ -1019,27 +914,24 @@ METRICS = {m.key: m for m in [
         'Live matters whose latest assessment is high risk (High client or matter risk, Enhanced CDD, PEP or sanctions) and has fee earner sign-off. Enhanced due diligence needs senior approval under the Money Laundering Regulations.',
         collect_high_risk_signed_off,
         MATTER_COLUMNS + [_col('risk', 'Why high risk', truncate=True), _col('status', 'Status'),
-                          _col('assessed', 'Assessed'), _col('action', '', sortable=False)],
+                          _col('assessed', 'Assessed'), ACTION_COLUMN],
     ),
     _metric(
-        'not_dormant', 'Matters active in the last 3 months', 'Not dormant', 'matter_risk',
+        'not_dormant', 'Matters active in the last 3 months', 'Active', 'matter_risk',
         'Live matters with an attendance note, letter, email, completed task, payment slip or invoice in the last three months. Newly opened files always count as active.',
         collect_not_dormant,
         MATTER_COLUMNS + [_col('last_activity', 'Last activity'), _col('kind', 'What'), _col('days', 'Days ago')],
+        labels=('active', 'not active'),
     ),
     # -- Client due diligence ---------------------------------------------
     _metric(
-        'aml_check', 'AML check within 11 months', 'AML check', 'client_dd',
-        'Clients on live matters whose last AML / UK business check is less than 11 months old. Unlike the "AML checks due" export this counts To Be Closed matters and clients who have never been checked.',
-        collect_aml_check,
-        CLIENT_COLUMNS + [_col('last_aml', 'Last AML check'), _col('months', 'Months ago'), _col('status', 'Status')],
+        'aml_id_check', 'AML / ID check within 11 months', 'AML / ID check', 'client_dd',
+        'Clients on live matters whose last Veriphy AML / ID check (UK business check for a company) is less '
+        'than 11 months old. Veriphy verifies identity and screens for AML in one check, so the check date '
+        'covers both. Unlike the "AML checks due" export this counts To Be Closed matters and clients who have never been checked.',
+        collect_aml_id_check,
+        CLIENT_COLUMNS + AML_ID_COLUMNS,
         reasons={'never': 'never checked', 'overdue': 'overdue'},
-    ),
-    _metric(
-        'id_verified', 'ID verified', 'ID verified', 'client_dd',
-        'Clients on live matters marked as ID verified.',
-        _client_flag_collector('id_verified', 'Not verified'),
-        CLIENT_COLUMNS + [_col('status', 'Status')],
     ),
     _metric(
         'proof_of_id', 'Proof of ID valid', 'Proof of ID', 'client_dd',
@@ -1082,16 +974,10 @@ METRICS = {m.key: m for m in [
         CLIENT_COLUMNS + [_col('status', 'Status')],
     ),
     _metric(
-        'authorised_party_id', 'Authorised party ID checked', 'Auth. party ID', 'client_dd',
-        'Authorised parties on live matters whose identity has been checked.',
-        collect_authorised_party_id,
-        PARTY_COLUMNS + [_col('status', 'Status')],
-    ),
-    _metric(
-        'authorised_party_aml', 'Authorised party AML within 11 months', 'Auth. party AML', 'client_dd',
-        'Authorised parties on live matters whose last AML check is less than 11 months old.',
-        collect_authorised_party_aml,
-        PARTY_COLUMNS + [_col('last_aml', 'Last AML check'), _col('months', 'Months ago'), _col('status', 'Status')],
+        'party_aml_id_check', 'Third-party AML / ID check within 11 months', 'Third-party AML / ID', 'client_dd',
+        'Authorised and paying parties on live matters whose last Veriphy AML / ID check is less than 11 months old.',
+        collect_party_aml_id_check,
+        PARTY_COLUMNS + AML_ID_COLUMNS,
         reasons={'never': 'never checked', 'overdue': 'overdue'},
     ),
     # -- Client care paperwork --------------------------------------------
@@ -1119,28 +1005,7 @@ METRICS = {m.key: m for m in [
         collect_undertakings_discharged,
         MATTER_COLUMNS + [_col('given', 'Given'), _col('given_to', 'Given to', truncate=True),
                           _col('description', 'Undertaking', truncate=True),
-                          _col('discharged', 'Discharged'), _col('action', '', sortable=False)],
-    ),
-    # -- File closure -----------------------------------------------------
-    _metric(
-        'closed_no_client_money', 'Recent archived files with no client money held', 'No client money', 'closure',
-        lambda snap: (
-            f'Archived files opened on or after {_fmt_date(snap.client_money_cutoff)} whose client account '
-            'balance is nil. Client money must be returned promptly once a matter ends (SRA Accounts Rules 2.5). '
-            'Older files were not run through this system\'s ledgers, so they are left out; the balance follows '
-            'the ledger on the finances page.'
-        ),
-        collect_closed_no_client_money,
-        MATTER_COLUMNS + [_col('opened', 'Opened'), _col('balance', 'Client balance')],
-    ),
-    _metric(
-        'closed_no_open_undertakings', 'Archived files with no open undertakings', 'No open undertakings', 'closure',
-        'Archived files with every undertaking discharged.',
-        collect_closed_no_open_undertakings,
-        MATTER_COLUMNS + [_col('open_count', 'Open'), _col('given', 'Given'),
-                          _col('given_to', 'Given to', truncate=True),
-                          _col('description', 'Undertaking', truncate=True),
-                          _col('action', '', sortable=False)],
+                          _col('discharged', 'Discharged'), ACTION_COLUMN],
     ),
 ]}
 
@@ -1161,7 +1026,7 @@ def _metric_context(snap, metric, items):
     done = sum(1 for i in items if i.done)
     total = len(items)
     not_done = total - done
-    ring = donut_segments(done, not_done)
+    ring = donut_segments(done, not_done, labels=tuple(l.capitalize() for l in metric.labels))
     reasons = []
     if metric.reasons:
         counts = defaultdict(int)
@@ -1172,7 +1037,7 @@ def _metric_context(snap, metric, items):
             if counts.get(key):
                 reasons.append({
                     'key': key, 'label': label, 'count': counts[key],
-                    'url': f'{metric.detail_url}?reason={key}',
+                    'url': metric.reason_url(key),
                 })
     return {
         'key': metric.key,
@@ -1182,6 +1047,8 @@ def _metric_context(snap, metric, items):
         'done': done,
         'total': total,
         'not_done': not_done,
+        'done_label': metric.labels[0],
+        'not_done_label': metric.labels[1],
         'pct': ring['pct'],
         'na': ring['na'],
         'donut': ring['segments'],
@@ -1215,6 +1082,8 @@ def _fee_earner_rows(snap, group_metrics, items_by_metric):
                 'done': done,
                 'total': total,
                 'not_done': not_done,
+                # "3 outstanding" for most metrics; dormancy says "3 not active".
+                'not_done_label': 'outstanding' if metric.labels == Metric.labels else metric.labels[1],
                 'pct': _pct(done, total),
                 'ok': total > 0 and done == total,
                 'na': total == 0,
@@ -1235,9 +1104,7 @@ def build_compliance_stats(snapshot=None):
     scope_counts = {
         'matter': f'{len(snap.live)} live matter{"s" if len(snap.live) != 1 else ""}',
         'client': (f'{len(snap.clients)} client{"s" if len(snap.clients) != 1 else ""}'
-                   f' and {len(snap.parties)} authorised part{"ies" if len(snap.parties) != 1 else "y"} on live matters'),
-        'archived': (f'{len(snap.archived)} archived file{"s" if len(snap.archived) != 1 else ""}'
-                     f' ({len(snap.recent_archived)} opened since {_fmt_date(snap.client_money_cutoff)})'),
+                   f' and {len(snap.parties)} third part{"ies" if len(snap.parties) != 1 else "y"} on live matters'),
     }
     groups = []
     for group in GROUPS:
@@ -1255,7 +1122,6 @@ def build_compliance_stats(snapshot=None):
         'generated': snap.today,
         'live_matter_count': len(snap.live),
         'live_client_count': len(snap.clients),
-        'archived_matter_count': len(snap.archived),
         'groups': groups,
         'not_tracked': NOT_TRACKED,
     }

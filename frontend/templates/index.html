@@ -218,6 +218,7 @@
           <tr>
             <td class="col-file">
               <a class="link" href="{% url 'home' row.file_number %}">{{ row.file_number }}</a>
+              {% if row.file_status__status == 'Archived' %}<span class="badge-gray ml-1">Archived</span>{% if row.brought_down_on %} <span class="badge-yellow" title="Physical file brought down from archive on {{ row.brought_down_on|date:'d/m/Y' }}">File in office</span>{% endif %}{% endif %}
             </td>
             <td class="col-muted">{{ row.fee_earner__username|default:'—' }}</td>
             <td class="col-desc">{% if row.matter_description %}{{ row.matter_description }}{% else %}—{% endif %}</td>

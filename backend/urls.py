@@ -52,6 +52,9 @@ from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundl
 from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, download_user_key_documents_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review, internal_pricing
 from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, central_key_dates, download_central_key_dates
 from .compliance_stats_views import compliance_stats, compliance_stats_detail
+from .signoff_views import signoff_queue
+from .cpd_views import report_cpd
+from .archive_views import matter_archive_details
 from .granola.views import (
     granola_inbox, granola_assign_note, granola_ignore_note,
     granola_settings, granola_sync_now, granola_create_free30,
@@ -170,6 +173,8 @@ urlpatterns = [
          matter_upload_identity_doc, name='matter_upload_identity_doc'),
     path('home/<str:file_number>/compliance/ncba/',
          matter_save_ncba, name='matter_save_ncba'),
+    path('home/<str:file_number>/archive/',
+         matter_archive_details, name='matter_archive_details'),
     path('compliance/document/<int:doc_id>/',
          matter_preview_client_doc, name='matter_preview_client_doc'),
     path('home/<str:file_number>/key_document/<int:doc_id>/upload/',
@@ -365,6 +370,8 @@ urlpatterns = [
          name='report_expired_proof_of_address'),
     path('reports/file-reviews-due/', report_file_reviews_due,
          name='report_file_reviews_due'),
+    path('reports/sign-off/', signoff_queue, name='signoff_queue'),
+    path('reports/cpd/', report_cpd, name='report_cpd'),
     path('reports/compliance-stats/', compliance_stats, name='compliance_stats'),
     path('reports/compliance-stats/<slug:metric_key>/', compliance_stats_detail,
          name='compliance_stats_detail'),

@@ -61,6 +61,21 @@ class RunConflictCheckTests(TestCase):
         self.assertEqual(matches[0]['name'], 'John Smith')
         self.assertEqual(matches[0]['matters'], ['ABC1234567'])
 
+    def test_matches_paying_party(self):
+        client = make_client('Our Client')
+        payer = AuthorisedParties.objects.create(
+            name='Penny Payer', relationship_to_client='Mother', address_line1='1 St',
+            address_line2='', county='Essex', postcode='SS7 1QT', email='p@example.com',
+            contact_number='0123456789',
+        )
+        make_matter('ABC1234567', client, paying_party=payer)
+
+        matches = run_conflict_check('Penny Payer')
+
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]['source'], SOURCE_AUTHORISED)
+        self.assertEqual(matches[0]['matters'], ['ABC1234567'])
+
     def test_matches_opposing_party(self):
         client = make_client('Our Client')
         other = OthersideDetails.objects.create(name='Jane Doe')

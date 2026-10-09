@@ -171,28 +171,22 @@ def _html_body(client_name, link, required_items=None, expires_at=None):
     )
 
 
-def send_invite_email(client_name, to_email, link, required_items=None, expires_at=None):
-    """Send the branded invite email, listing what the portal will ask this
-    client for (``required_items`` — the invite's item keys; None means all)
-    and how long the link lasts (``expires_at``, the portal's ISO timestamp).
-    Returns True if sent, False if skipped (sending switched off, or not
-    configured). Raises on a Graph/transport error."""
-    if not is_enabled():
-        logger.info('Onboarding invite email suppressed (ONBOARDING_SEND_INVITE_EMAILS '
-                    'is off) — not sent to %s', to_email)
-        return False
-    if not is_configured():
-        logger.info('Onboarding invite email not configured — skipping send to %s', to_email)
-        return False
+def send_html_email(subject, to_email, html, attachments=None):
+    """Send one HTML email through Microsoft Graph from the ANP mailbox.
 
-    attachments = [a for a in [_logo_attachment()] if a]
+    Shared by the onboarding invite and the sign-off digest. Callers decide
+    whether sending is switched on for their feature; this only checks the
+    mailbox is configured (returns False if not) and raises on a Graph /
+    transport error."""
+    if not is_configured():
+        logger.info('Graph mail not configured — skipping "%s" to %s', subject, to_email)
+        return False
     message = {
         'message': {
-            'subject': 'ANP Solicitors — client onboarding',
-            'body': {'contentType': 'HTML', 'content': _html_body(
-                client_name, link, required_items, expires_at)},
+            'subject': subject,
+            'body': {'contentType': 'HTML', 'content': html},
             'toRecipients': [{'emailAddress': {'address': to_email}}],
-            'attachments': attachments,
+            'attachments': attachments or [],
         },
         'saveToSentItems': True,
     }
@@ -206,5 +200,22 @@ def send_invite_email(client_name, to_email, link, required_items=None, expires_
         timeout=_TIMEOUT,
     )
     response.raise_for_status()
-    logger.info('Onboarding invite email sent to %s', to_email)
+    logger.info('Email "%s" sent to %s', subject, to_email)
     return True
+
+
+def send_invite_email(client_name, to_email, link, required_items=None, expires_at=None):
+    """Send the branded invite email, listing what the portal will ask this
+    client for (``required_items`` — the invite's item keys; None means all)
+    and how long the link lasts (``expires_at``, the portal's ISO timestamp).
+    Returns True if sent, False if skipped (sending switched off, or not
+    configured). Raises on a Graph/transport error."""
+    if not is_enabled():
+        logger.info('Onboarding invite email suppressed (ONBOARDING_SEND_INVITE_EMAILS '
+                    'is off) — not sent to %s', to_email)
+        return False
+    return send_html_email(
+        'ANP Solicitors — client onboarding', to_email,
+        _html_body(client_name, link, required_items, expires_at),
+        attachments=[a for a in [_logo_attachment()] if a],
+    )

@@ -118,6 +118,11 @@ class CPDTrainingLogForm(forms.ModelForm):
         }
     def __init__(self, *args, **kwargs):
         super(CPDTrainingLogForm, self).__init__(*args, **kwargs)
+        # Anyone can record CPD for anyone: offer every active colleague.
+        self.fields['user'].label = 'Staff member'
+        self.fields['user'].required = True
+        self.fields['user'].queryset = CustomUser.objects.filter(
+            is_active=True).order_by('username')
         for field_name, field in self.fields.items():
             field.widget.attrs['class'] = 'form-input'
             if isinstance(field.widget, forms.CheckboxInput):
