@@ -364,8 +364,32 @@ class WIP(models.Model):
         AuthorisedParties, on_delete=models.SET_NULL, related_name='auth_party1_wip', null=True, blank=True)
     authorised_party2 = models.ForeignKey(
         AuthorisedParties, on_delete=models.SET_NULL, related_name='auth_party2_wip', null=True, blank=True)
+    # Whoever pays the bills when it is not the client (a relative funding a
+    # purchase, a company paying for its director). Held as a third-party record
+    # like the authorised parties so it gets the same AML / ID checks.
+    paying_party = models.ForeignKey(
+        AuthorisedParties, on_delete=models.SET_NULL, related_name='paying_party_wip', null=True, blank=True)
+
+    # (field, role shown to staff) for every third party a matter can carry.
+    # Loop over this rather than naming the fields wherever all of them matter:
+    # displays, AML exports, compliance stats, conflict checks and file logs.
+    THIRD_PARTY_FIELDS = (
+        ('authorised_party1', 'Authorised party'),
+        ('authorised_party2', 'Authorised party'),
+        ('paying_party', 'Paying party'),
+    )
 
     key_information = models.TextField(null=True, blank=True)
+
+    # Physical file retention, recorded once a matter is archived. Edited from
+    # the Archive card on the matter home rather than the edit-file form.
+    # earliest_destruction_date is the end of the retention period: the file
+    # may be destroyed on or after it.
+    earliest_destruction_date = models.DateField(null=True, blank=True)
+    actual_destruction_date = models.DateField(null=True, blank=True)
+    # Set while an archived file's paper folder is back in the office. The matter
+    # stays Archived but is listed amongst the open files until it goes back.
+    brought_down_on = models.DateField(null=True, blank=True)
 
     comments = models.TextField(null=True, blank=True)
     created_by = models.ForeignKey(
@@ -401,6 +425,28 @@ class WIP(models.Model):
     def responsible_fee_earner_id(self):
         fee_earner = self.responsible_fee_earner
         return fee_earner.id if fee_earner else None
+
+    @property
+    def third_parties(self):
+        """(party, roles) for every distinct third party on the matter, in
+        display order. The same person can be both an authorised and a paying
+        party; they then appear once, as "Authorised party & paying party"."""
+        found = {}
+        for field, role in self.THIRD_PARTY_FIELDS:
+            party_id = getattr(self, field + '_id')
+            if not party_id:
+                continue
+            if party_id in found:
+                if role not in found[party_id][1]:
+                    found[party_id][1].append(role)
+            else:
+                found[party_id] = (getattr(self, field), [role])
+        return [(party, ' & '.join([roles[0]] + [r.lower() for r in roles[1:]]))
+                for party, roles in found.values()]
+
+    @property
+    def is_archived(self):
+        return bool(self.file_status_id) and self.file_status.status == 'Archived'
 
     @property
     def all_client_emails(self):

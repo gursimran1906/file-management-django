@@ -105,6 +105,18 @@
           <span>Reports</span>
         </a>
       </li>
+      {% if request.user.is_matter_fee_earner %}
+      <li>
+        {% url 'signoff_queue' as url %}
+        <a href="{% url 'signoff_queue' %}" class="nav-link {% if request.path == url %}nav-link-active{% endif %}">
+          <svg class="nav-link-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 11.917 9.724 16.5 19 7.5"/></svg>
+          <span class="min-w-0 flex-1 flex items-center gap-2">
+            <span>Sign-off queue</span>
+            {% if signoff_pending_count %}<span class="ml-auto rounded-full bg-amber-100 text-amber-800 border border-amber-200 px-1.5 text-[11px] font-semibold tabular-nums" title="Awaiting your sign-off">{{ signoff_pending_count }}</span>{% endif %}
+          </span>
+        </a>
+      </li>
+      {% endif %}
       {% if file_number %}
       <li class="pt-2 mt-1 border-t border-gray-100">
         <a href="{% url 'home' file_number %}" class="nav-link {% if request.resolver_match.url_name == 'home' %}nav-link-active{% endif %}">

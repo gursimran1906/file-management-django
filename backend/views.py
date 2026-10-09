@@ -15,7 +15,7 @@ from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, Matte
 from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, BundleVersion, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
 from .forms import PmtsForm, PmtsHalfForm, PmtsSlipEditForm, GreenSlipEditForm, apply_pmts_slip_edit_locks, apply_green_slip_edit_locks, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
-from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm
+from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm, ArchiveDetailsForm
 from .utils import (
     create_modification,
     parse_bundle_filename,
@@ -40,6 +40,7 @@ from .audit_display import build_change_items, enrich_file_logs
 from .onboarding_views import link_group_to_matter
 from .matter_compliance import matter_compliance, ensure_matter_clients
 from .fee_earners import responsible_user_ids, responsible_user_ids_for_id, responsible_username
+from .signoff_queue import TYPE_MONITORING, TYPE_RISK, build_queue, pending_count
 from .staff_timeline import build_timeline, parse_timeline_params
 from django.utils import timezone
 from users.models import CPDTrainingLog, CustomUser, HolidayRecord, SicknessRecord
@@ -942,7 +943,12 @@ def get_index_search_filter(search_by, val_to_search, show_archived):
     elif search_by == 'ToBeClosed':
         filter_factor = Q(**{file_status_field_name: 'To Be Closed'})
     else:
-        filter_factor = Q(**{file_status_field_name: 'Open'})
+        # An archived file whose paper folder has been brought back down sits
+        # amongst the open files in the office, so it is listed with them.
+        filter_factor = (
+            Q(**{file_status_field_name: 'Open'})
+            | Q(**{file_status_field_name: 'Archived'}, brought_down_on__isnull=False)
+        )
 
     if search_by == 'ClientName':
         filter_factor &= Q(client1__name__icontains=val_to_search) | Q(
@@ -1100,6 +1106,8 @@ def get_index_search_data(search_by, val_to_search, show_archived):
         'matter_description',
         'client1__name',
         'comments',
+        'file_status__status',
+        'brought_down_on',
         'latest_last_work_date',
         'latest_last_work_person',
         'latest_last_work_task',
@@ -1206,40 +1214,13 @@ def user_dashboard(request):
         )
     ).filter(is_read=False).exists()
 
+    # Awaiting sign-off: the responsible fee earner's own first, others can cover.
     risk_assessments_awaiting_signoff = []
-    if user.is_matter_fee_earner:
-        risk_assessments_awaiting_signoff = list(
-            RiskAssessment.objects.filter(
-                signoff_status__in=[
-                    RiskAssessment.SIGNOFF_AWAITING,
-                    RiskAssessment.SIGNOFF_RETURNED,
-                ],
-                matter__isnull=False,
-            ).select_related('matter', 'matter__fee_earner', 'completed_by')
-            .order_by('-timestamp')
-        )
-        # The matter's responsible fee earner sees theirs first; others can cover.
-        for ra in risk_assessments_awaiting_signoff:
-            ra.yours_to_sign_off = _signoff_owner_id(ra.matter) == user.id
-        risk_assessments_awaiting_signoff.sort(
-            key=lambda ra: 0 if ra.yours_to_sign_off else 1)
-
     ongoing_monitorings_awaiting_signoff = []
     if user.is_matter_fee_earner:
-        ongoing_monitorings_awaiting_signoff = list(
-            OngoingMonitoring.objects.filter(
-                signoff_status__in=[
-                    OngoingMonitoring.SIGNOFF_AWAITING,
-                    OngoingMonitoring.SIGNOFF_RETURNED,
-                ],
-                file_number__isnull=False,
-            ).select_related('file_number', 'file_number__fee_earner', 'completed_by')
-            .order_by('-timestamp')
-        )
-        for om in ongoing_monitorings_awaiting_signoff:
-            om.yours_to_sign_off = _signoff_owner_id(om.file_number) == user.id
-        ongoing_monitorings_awaiting_signoff.sort(
-            key=lambda om: 0 if om.yours_to_sign_off else 1)
+        queue = build_queue(user)
+        risk_assessments_awaiting_signoff = [i.record for i in queue if i.type == TYPE_RISK]
+        ongoing_monitorings_awaiting_signoff = [i.record for i in queue if i.type == TYPE_MONITORING]
 
     context = {
         'now': now,
@@ -1822,6 +1803,7 @@ def display_data_home_page(request, file_number):
             'other_side',
             'authorised_party1',
             'authorised_party2',
+            'paying_party',
             'created_by',
         ).prefetch_related(
             'additional_clients',
@@ -1886,6 +1868,7 @@ def display_data_home_page(request, file_number):
             get_file_logs(file_number, limit=300))
         matter_compliance_rows = matter_compliance(matter)
         return render(request, 'home.html', {'matter': matter,
+                                             'archive_form': ArchiveDetailsForm(instance=matter),
                                              'bundles': bundles,
                                              'undertakings': undertakings,
                                              'file_number': file_number,
@@ -2162,6 +2145,7 @@ def _build_central_key_dates_context(request):
         'client1',
         'authorised_party1',
         'authorised_party2',
+        'paying_party',
     ).prefetch_related('additional_clients')
 
     if selected_fee_earner:
@@ -2273,13 +2257,8 @@ def _build_central_key_dates_context(request):
     if 'aml_due' in selected_sources:
         for matter in base_matters:
             parties = [(client, 'Client') for client in matter.all_clients]
-            parties += [
-                (matter.authorised_party1, 'Authorised party'),
-                (matter.authorised_party2, 'Authorised party'),
-            ]
+            parties += matter.third_parties
             for party, party_type in parties:
-                if not party:
-                    continue
                 due_date = (
                     party.date_of_last_aml + relativedelta(years=1)
                     if party.date_of_last_aml
@@ -2640,6 +2619,7 @@ def get_file_logs(file_number, limit=None):
         'client1__created_by',
         'authorised_party1__created_by',
         'authorised_party2__created_by',
+        'paying_party__created_by',
         'other_side__created_by',
     ).prefetch_related(
         'additional_clients__created_by',
@@ -2685,36 +2665,19 @@ def get_file_logs(file_number, limit=None):
                      'user': client.created_by,
                      'type': 'client_info'})
 
-    authorised_party_ids = [
-        party_id for party_id in [file.authorised_party1_id, file.authorised_party2_id]
-        if party_id
-    ]
-    authorised_party_modifications = get_modifications_by_object(
-        AuthorisedParties, authorised_party_ids)
+    third_parties = file.third_parties
+    party_modifications = get_modifications_by_object(
+        AuthorisedParties, [party.id for party, _role in third_parties])
 
-    if file.authorised_party1:
-        logs.append({'timestamp': file.authorised_party1.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                     'desc': f'Authorised Party {file.authorised_party1} Created.',
-                     'user': file.authorised_party1.created_by,
+    for party, role in third_parties:
+        logs.append({'timestamp': party.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
+                     'desc': f'{role} ({party.name}) Created.',
+                     'user': party.created_by,
                      'type': 'authorised_party_info'})
-        for modification in authorised_party_modifications.get(file.authorised_party1_id, []):
+        for modification in party_modifications.get(party.id, []):
             logs.append({
                 'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Authorised Party ({file.authorised_party1}) updated.',
-                'changes_list': build_change_items(modification.changes),
-                'user': modification.modified_by.username if modification.modified_by else None,
-                'type': 'authorised_party_info'
-            })
-
-    if file.authorised_party2:
-        logs.append({'timestamp': file.authorised_party2.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                     'desc': f'Authorised Party ({file.authorised_party2.name}) Created.',
-                     'user': file.authorised_party2.created_by,
-                     'type': 'authorised_party_info'})
-        for modification in authorised_party_modifications.get(file.authorised_party2_id, []):
-            logs.append({
-                'timestamp': modification.timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-                'desc': f'Authorised Party ({file.authorised_party2}) updated.',
+                'desc': f'{role} ({party.name}) updated.',
                 'changes_list': build_change_items(modification.changes),
                 'user': modification.modified_by.username if modification.modified_by else None,
                 'type': 'authorised_party_info'
@@ -3175,6 +3138,11 @@ def add_client_key_documents_from_post(request_post_copy, client_prefix, client,
         log_created(user, document, snapshot_key_document(document))
 
 
+# The inline "+ New" paying-party form posts its fields as APNameP, APPEmail...
+# (the same partial as authorised parties 1 and 2, with this prefix).
+PAYING_PARTY_PREFIX = 'P'
+
+
 def add_new_authorised_party(request_post_copy, ap_prefix, user):
     name = request_post_copy[f'APName{ap_prefix}']
     relationship_to_client = request_post_copy[f'AP{ap_prefix}RelationshipToC']
@@ -3251,9 +3219,9 @@ def add_new_otherside_details(request_post_copy, user):
 def preprocess_form_data(post_data):
     post_copy = post_data.copy()
 
-    post_copy['authorised_party1'] = None if post_copy['authorised_party1'] == '0' else post_copy['authorised_party1']
-    post_copy['authorised_party2'] = None if post_copy['authorised_party2'] == '0' else post_copy['authorised_party2']
-    post_copy['other_side'] = None if post_copy['other_side'] == '0' else post_copy['other_side']
+    for field in ('authorised_party1', 'authorised_party2', 'paying_party', 'other_side'):
+        if post_copy.get(field, '0') == '0':
+            post_copy[field] = None
 
     return post_copy
 
@@ -3273,10 +3241,10 @@ def get_aml_checks_due_from_wips(wips, threshold_date, user=None, sort_by='date'
     relation_configs = [
         ('client1', 'Client', 'edit_client'),
         ('additional_clients', 'Client', 'edit_client'),
-        ('authorised_party1', 'Authorised Party', 'edit_authorised_party'),
-        ('authorised_party2', 'Authorised Party', 'edit_authorised_party'),
-    ]
+    ] + [(field, role, 'edit_authorised_party') for field, role in WIP.THIRD_PARTY_FIELDS]
 
+    # Keyed by the record, not the role: one person who is both the authorised
+    # and the paying party is one AML check, listed once with both roles.
     results = {}
     for relation, entity_type, edit_url_name in relation_configs:
         relation_results = wips.filter(
@@ -3292,8 +3260,10 @@ def get_aml_checks_due_from_wips(wips, threshold_date, user=None, sort_by='date'
         ).order_by('file_number')
 
         for result in relation_results:
-            key = (entity_type, result['entity_id'])
+            key = (edit_url_name, result['entity_id'])
             entry = results.get(key)
+            if entry is not None and entity_type not in entry['entity_type']:
+                entry['entity_type'] += f' / {entity_type}'
             if entry is None:
                 entry = {
                     'entity_id': result['entity_id'],
@@ -3414,6 +3384,10 @@ def open_new_file_page(request):
                 request_post_copy['authorised_party2'] = add_new_authorised_party(
                     request_post_copy, 2, request.user)
 
+            if request_post_copy['paying_party'] == '-1':
+                request_post_copy['paying_party'] = add_new_authorised_party(
+                    request_post_copy, PAYING_PARTY_PREFIX, request.user)
+
             if request_post_copy['other_side'] == '-1':
                 request_post_copy['other_side'] = add_new_otherside_details(
                     request_post_copy, request.user)
@@ -3495,11 +3469,6 @@ def _apply_risk_assessment_completion(risk_assessment, user):
             f'{fee_earner.first_name} {fee_earner.last_name} for sign-off.'
         )
     return 'Risk Assessment saved and awaiting fee earner sign-off.'
-
-
-def _signoff_owner_id(matter):
-    """Id of the person expected to sign off work on `matter` (DC files -> ND)."""
-    return matter.responsible_fee_earner_id if matter else None
 
 
 def _apply_ongoing_monitoring_signoff(monitoring, user):
@@ -3909,7 +3878,7 @@ def edit_authorised_party(request, id):
                 changes=changes
             )
             messages.success(
-                request, 'Successfully updated Authorised Party. Please search for File Number.')
+                request, 'Successfully updated third party. Please search for File Number.')
             return redirect('index')
         else:
             error_message = 'Form is not valid. Please correct the errors:'
@@ -3918,7 +3887,8 @@ def edit_authorised_party(request, id):
             messages.error(request, error_message)
     else:
         form = AuthorisedPartyForm(instance=ap)
-    return render(request, 'edit_models.html', {'form': form, 'title': 'Authorised Party Information'})
+    return render(request, 'edit_models.html', {
+        'form': form, 'title': 'Third party information (authorised / paying party)'})
 
 
 @login_required
@@ -3996,6 +3966,10 @@ def edit_file(request, file_number):
                 request_post_copy['authorised_party2'] = add_new_authorised_party(
                     request_post_copy, 2, request.user)
 
+            if request_post_copy['paying_party'] == '-1':
+                request_post_copy['paying_party'] = add_new_authorised_party(
+                    request_post_copy, PAYING_PARTY_PREFIX, request.user)
+
             if request_post_copy['other_side'] == '-1':
                 request_post_copy['other_side'] = add_new_otherside_details(
                     request_post_copy, request.user)
@@ -4036,6 +4010,10 @@ def edit_file(request, file_number):
                     )
 
                 messages.success(request, 'File successfully updated.')
+                if 'file_status' in changes and file.is_archived and not file.earliest_destruction_date:
+                    messages.info(
+                        request, 'This file is now archived: record its earliest destruction '
+                        'date in the Archive card below.')
                 return redirect('home', file_number=file_number)
             else:
 
@@ -8874,32 +8852,63 @@ def _risk_assessment_signoff_redirect(risk_assessment):
     return redirect('index')
 
 
+def _wants_json(request):
+    """True for fetch() calls from the sign-off queue, which update in place."""
+    return (request.headers.get('X-Requested-With') == 'fetch'
+            or 'application/json' in request.headers.get('Accept', ''))
+
+
+def _signoff_response(request, fallback, message, *, level=messages.SUCCESS, status=200, record=None):
+    """Answer a sign-off / return action: JSON for the queue page, otherwise a
+    flash message plus the usual redirect (``fallback``)."""
+    if _wants_json(request):
+        payload = {'ok': status < 400, 'message': message}
+        if record is not None:
+            payload['status'] = record.signoff_status
+            payload['status_label'] = record.get_signoff_status_display()
+        return JsonResponse(payload, status=status)
+    messages.add_message(request, level, message)
+    return fallback
+
+
+def _log_signoff_change(user, record, old_status):
+    create_modification(
+        user=user,
+        modified_obj=record,
+        changes={'signoff_status': {
+            'old_value': old_status,
+            'new_value': record.get_signoff_status_display(),
+        }},
+    )
+
+
+def _return_for_changes(record, comments):
+    record.signoff_status = record.SIGNOFF_RETURNED
+    record.signed_off_by = None
+    record.signed_off_at = None
+    record.signoff_comments = comments
+
+
 @login_required
 @require_POST
 def sign_off_risk_assessment(request, id):
     """Fee earner signs off a completed risk assessment."""
     risk_assessment = get_object_or_404(RiskAssessment, pk=id)
+    back = _risk_assessment_signoff_redirect(risk_assessment)
     if not request.user.is_matter_fee_earner:
-        messages.error(
-            request, 'Only fee earners can sign off risk assessments.')
-        return _risk_assessment_signoff_redirect(risk_assessment)
+        return _signoff_response(
+            request, back, 'Only fee earners can sign off risk assessments.',
+            level=messages.ERROR, status=403)
     if risk_assessment.is_signed_off:
-        messages.info(request, 'This risk assessment is already signed off.')
-        return _risk_assessment_signoff_redirect(risk_assessment)
+        return _signoff_response(
+            request, back, 'This risk assessment is already signed off.',
+            level=messages.INFO, status=409, record=risk_assessment)
 
     old_status = risk_assessment.get_signoff_status_display()
     _apply_risk_assessment_signoff(risk_assessment, request.user)
     risk_assessment.save()
-    create_modification(
-        user=request.user,
-        modified_obj=risk_assessment,
-        changes={'signoff_status': {
-            'old_value': old_status,
-            'new_value': risk_assessment.get_signoff_status_display(),
-        }},
-    )
-    messages.success(request, 'Risk assessment signed off.')
-    return _risk_assessment_signoff_redirect(risk_assessment)
+    _log_signoff_change(request.user, risk_assessment, old_status)
+    return _signoff_response(request, back, 'Risk assessment signed off.', record=risk_assessment)
 
 
 @login_required
@@ -8907,33 +8916,24 @@ def sign_off_risk_assessment(request, id):
 def return_risk_assessment(request, id):
     """Fee earner sends a risk assessment back to the completer with comments."""
     risk_assessment = get_object_or_404(RiskAssessment, pk=id)
+    back = _risk_assessment_signoff_redirect(risk_assessment)
     if not request.user.is_matter_fee_earner:
-        messages.error(
-            request, 'Only fee earners can review risk assessments.')
-        return _risk_assessment_signoff_redirect(risk_assessment)
+        return _signoff_response(
+            request, back, 'Only fee earners can review risk assessments.',
+            level=messages.ERROR, status=403)
 
     comments = request.POST.get('comments', '').strip()
     if not comments:
-        messages.error(
-            request, 'Please say what needs changing before returning the assessment.')
-        return _risk_assessment_signoff_redirect(risk_assessment)
+        return _signoff_response(
+            request, back, 'Please say what needs changing before returning the assessment.',
+            level=messages.ERROR, status=400)
 
     old_status = risk_assessment.get_signoff_status_display()
-    risk_assessment.signoff_status = RiskAssessment.SIGNOFF_RETURNED
-    risk_assessment.signed_off_by = None
-    risk_assessment.signed_off_at = None
-    risk_assessment.signoff_comments = comments
+    _return_for_changes(risk_assessment, comments)
     risk_assessment.save()
-    create_modification(
-        user=request.user,
-        modified_obj=risk_assessment,
-        changes={'signoff_status': {
-            'old_value': old_status,
-            'new_value': risk_assessment.get_signoff_status_display(),
-        }},
-    )
-    messages.success(request, 'Risk assessment returned for changes.')
-    return _risk_assessment_signoff_redirect(risk_assessment)
+    _log_signoff_change(request.user, risk_assessment, old_status)
+    return _signoff_response(
+        request, back, 'Risk assessment returned for changes.', record=risk_assessment)
 
 
 @login_required
@@ -9001,27 +9001,21 @@ def _ongoing_monitoring_signoff_redirect(monitoring):
 def sign_off_ongoing_monitoring(request, id):
     """Fee earner signs off a completed ongoing monitoring record."""
     monitoring = get_object_or_404(OngoingMonitoring, pk=id)
+    back = _ongoing_monitoring_signoff_redirect(monitoring)
     if not request.user.is_matter_fee_earner:
-        messages.error(
-            request, 'Only fee earners can sign off ongoing monitoring.')
-        return _ongoing_monitoring_signoff_redirect(monitoring)
+        return _signoff_response(
+            request, back, 'Only fee earners can sign off ongoing monitoring.',
+            level=messages.ERROR, status=403)
     if monitoring.is_signed_off:
-        messages.info(request, 'This ongoing monitoring is already signed off.')
-        return _ongoing_monitoring_signoff_redirect(monitoring)
+        return _signoff_response(
+            request, back, 'This ongoing monitoring is already signed off.',
+            level=messages.INFO, status=409, record=monitoring)
 
     old_status = monitoring.get_signoff_status_display()
     _apply_ongoing_monitoring_signoff(monitoring, request.user)
     monitoring.save()
-    create_modification(
-        user=request.user,
-        modified_obj=monitoring,
-        changes={'signoff_status': {
-            'old_value': old_status,
-            'new_value': monitoring.get_signoff_status_display(),
-        }},
-    )
-    messages.success(request, 'Ongoing monitoring signed off.')
-    return _ongoing_monitoring_signoff_redirect(monitoring)
+    _log_signoff_change(request.user, monitoring, old_status)
+    return _signoff_response(request, back, 'Ongoing monitoring signed off.', record=monitoring)
 
 
 @login_required
@@ -9029,33 +9023,24 @@ def sign_off_ongoing_monitoring(request, id):
 def return_ongoing_monitoring(request, id):
     """Fee earner sends an ongoing monitoring record back with comments."""
     monitoring = get_object_or_404(OngoingMonitoring, pk=id)
+    back = _ongoing_monitoring_signoff_redirect(monitoring)
     if not request.user.is_matter_fee_earner:
-        messages.error(
-            request, 'Only fee earners can review ongoing monitoring.')
-        return _ongoing_monitoring_signoff_redirect(monitoring)
+        return _signoff_response(
+            request, back, 'Only fee earners can review ongoing monitoring.',
+            level=messages.ERROR, status=403)
 
     comments = request.POST.get('comments', '').strip()
     if not comments:
-        messages.error(
-            request, 'Please say what needs changing before returning the monitoring.')
-        return _ongoing_monitoring_signoff_redirect(monitoring)
+        return _signoff_response(
+            request, back, 'Please say what needs changing before returning the monitoring.',
+            level=messages.ERROR, status=400)
 
     old_status = monitoring.get_signoff_status_display()
-    monitoring.signoff_status = OngoingMonitoring.SIGNOFF_RETURNED
-    monitoring.signed_off_by = None
-    monitoring.signed_off_at = None
-    monitoring.signoff_comments = comments
+    _return_for_changes(monitoring, comments)
     monitoring.save()
-    create_modification(
-        user=request.user,
-        modified_obj=monitoring,
-        changes={'signoff_status': {
-            'old_value': old_status,
-            'new_value': monitoring.get_signoff_status_display(),
-        }},
-    )
-    messages.success(request, 'Ongoing monitoring returned for changes.')
-    return _ongoing_monitoring_signoff_redirect(monitoring)
+    _log_signoff_change(request.user, monitoring, old_status)
+    return _signoff_response(
+        request, back, 'Ongoing monitoring returned for changes.', record=monitoring)
 
 
 @login_required
@@ -9529,12 +9514,21 @@ def reports_hub(request):
         get_live_matter_client_document_issues('proof_of_address'))
     risk_due_count = get_risk_assessments_due_queryset(WIP.objects.all()).count()
     file_reviews_count = get_file_reviews_due_queryset(WIP.objects.all()).count()
+    # Fee earners see their own queue size; everyone else the firm's.
+    signoff_count = pending_count(request.user if request.user.is_matter_fee_earner else None)
 
     report_groups = [
         {
             'title': 'Compliance',
             'description': 'AML, risk and client due-diligence oversight.',
             'reports': [
+                {
+                    'name': 'Sign-off queue',
+                    'description': ('Risk assessments and ongoing monitoring waiting for a fee earner. '
+                                    'Sign off several in a row without leaving the page.'),
+                    'url_name': 'signoff_queue',
+                    'count': signoff_count,
+                },
                 {
                     'name': 'Proof of ID issues',
                     'description': 'Live-matter clients missing or with an expired Proof of ID.',
@@ -9578,8 +9572,13 @@ def reports_hub(request):
                 },
                 {
                     'name': 'Compliance stats',
-                    'description': 'Done vs not done for risk reviews, client due diligence, client care paperwork and file closure, firm-wide and by fee earner.',
+                    'description': 'Done vs not done for risk reviews, client due diligence and client care paperwork, firm-wide and by fee earner.',
                     'url_name': 'compliance_stats',
+                },
+                {
+                    'name': 'CPD records',
+                    'description': 'Training and continuing competence for every member of staff, with filters. Anyone can add a record for anyone.',
+                    'url_name': 'report_cpd',
                 },
             ],
         },
@@ -9648,16 +9647,21 @@ def _report_querystring(request, exclude=()):
 
 
 def render_report(request, *, slug, title, description, filters, columns, rows,
-                  back_url=None, back_label='Reports'):
+                  back_url=None, back_label='Reports', actions=None, extra_template=None,
+                  extra_context=None):
     """Sort, optionally export to CSV, and render a report preview page.
 
     rows: list of {'cells': {col_key: {'value': str, 'href': url|None}},
                    'sort': {col_key: comparable}}
     columns: list of {'key', 'label', 'sortable'(bool), 'align'('left'|'right')}
-    filters: list of {'name', 'label', 'type'('text'|'select'|'number'),
+    filters: list of {'name', 'label', 'type'('text'|'select'|'number'|'date'),
                       'value', 'options'(select only), 'placeholder'}
     back_url/back_label: where the "back" link at the top points (the reports
                          hub unless the report was opened from another page).
+    actions: extra header buttons, [{'label', 'href'} or {'label', 'modal'}]
+             (a modal action toggles the Flowbite modal with that id).
+    extra_template/extra_context: a template included at the end of the page,
+             e.g. the modal an action opens, rendered with extra_context.
     """
     sort_param = request.GET.get('sort', '')
     sort_key = sort_param.lstrip('-')
@@ -9727,6 +9731,9 @@ def render_report(request, *, slug, title, description, filters, columns, rows,
         'reset_url': request.path,
         'back_url': back_url or reverse('reports_hub'),
         'back_label': back_label,
+        'actions': actions or [],
+        'extra_template': extra_template,
+        **(extra_context or {}),
     })
 
 
