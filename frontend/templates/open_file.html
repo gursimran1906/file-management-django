@@ -48,8 +48,8 @@
         </div>
 
         <div class="md:col-span-3">
-          <label class="form-label">Fee Earner</label>
-          <select class="form-input" name="fee_earner">
+          <label class="form-label">Fee Earner <span class="text-red-500">*</span></label>
+          <select class="form-input" name="fee_earner" required>
             {% if form_data.fee_earners %}
               {% for fee_earner in form_data.fee_earners %}
                 <option value="{{fee_earner.id}}" {% if fee_earner.id == form.fee_earner.value|add:"0" %} selected {% endif %}>{{ fee_earner }}</option>
@@ -70,8 +70,8 @@
         </div>
 
         <div class="md:col-span-3">
-          <label class="form-label">Matter Type</label>
-          <select name="matter_type" class="form-input">
+          <label class="form-label">Matter Type <span class="text-red-500">*</span></label>
+          <select name="matter_type" class="form-input" required>
             {% for matter_type in form_data.matter_types %}
             <option {% if matter_type.id == form.matter_type.value|add:"0" %}selected{% endif %} value="{{matter_type.id}}">{{matter_type}}</option>
             {% endfor %}
@@ -79,8 +79,8 @@
         </div>
 
         <div class="md:col-span-3">
-          <label class="form-label">Funding</label>
-          <select name="funding" class="form-input">
+          <label class="form-label">Funding <span class="text-red-500">*</span></label>
+          <select name="funding" class="form-input" required>
             <option {% if form.funding.value == 'PF' %}selected{% endif %} value="PF">Private Funding</option>
             <option {% if form.funding.value == 'CFA' %}selected{% endif %} value="CFA">Conditional Fee Agreement</option>
           </select>
@@ -101,8 +101,8 @@
         </div>
 
         <div class="md:col-span-3">
-          <label class="form-label">Matter Description</label>
-          <input type="text" class="form-input" name="matter_description" value="{{form.matter_description.value}}" />
+          <label class="form-label">Matter Description <span class="text-red-500">*</span></label>
+          <input type="text" class="form-input" name="matter_description" value="{{form.matter_description.value}}" required />
         </div>
       </div>
     </section>

@@ -15,7 +15,9 @@ from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, Matte
 from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, BundleVersion, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
 from .forms import PmtsForm, PmtsHalfForm, PmtsSlipEditForm, GreenSlipEditForm, apply_pmts_slip_edit_locks, apply_green_slip_edit_locks, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
-from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm, ArchiveDetailsForm
+from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm
+# get_file_reviews_due_queryset is re-exported here: compliance_stats imports it from views.
+from .file_reviews import get_file_reviews_due_queryset  # noqa: F401
 from .utils import (
     create_modification,
     parse_bundle_filename,
@@ -165,11 +167,6 @@ MATTER_FILE_REVIEW_SECTIONS = [
         'title': 'Client Onboarding',
         'rows': [
             {
-                'question': 'File Opening Checklist completed?',
-                'answer_field': 'file_opening_checklist_completed',
-                'comments_field': 'file_opening_checklist_completed_comments',
-            },
-            {
                 'question': 'Engagement documents sent to the client and copies kept on file?',
                 'bullets': [
                     'Client care letter',
@@ -197,39 +194,9 @@ MATTER_FILE_REVIEW_SECTIONS = [
                 'comments_field': 'letter_of_authority_obtained_comments',
             },
             {
-                'question': 'Initial Risk Assessment completed?',
+                'question': 'Initial Risk Assessment completed & filed?',
                 'answer_field': 'initial_risk_assessment_completed',
                 'comments_field': 'initial_risk_assessment_completed_comments',
-            },
-        ],
-    },
-    {
-        'title': 'Matter Management',
-        'rows': [
-            {
-                'question': 'All key dates recorded in shared calendar and WIP?',
-                'answer_field': 'key_dates_recorded_in_calendar_and_wip',
-                'comments_field': 'key_dates_recorded_in_calendar_and_wip_comments',
-            },
-            {
-                'question': 'Key information and advice shared with the client?',
-                'answer_field': 'key_information_and_advice_shared',
-                'comments_field': 'key_information_and_advice_shared_comments',
-            },
-            {
-                'question': 'Costs estimates updated as necessary?',
-                'answer_field': 'costs_estimates_updated',
-                'comments_field': 'costs_estimates_updated_comments',
-            },
-            {
-                'question': 'Overall, the matter is progressing without any long unexplained periods of dormancy?',
-                'answer_field': 'matter_progressing_without_dormancy',
-                'comments_field': 'matter_progressing_without_dormancy_comments',
-            },
-            {
-                'question': 'Overall, the file appears to be maintained in good order?',
-                'answer_field': 'file_maintained_in_good_order',
-                'comments_field': 'file_maintained_in_good_order_comments',
             },
         ],
     },
@@ -237,12 +204,12 @@ MATTER_FILE_REVIEW_SECTIONS = [
         'title': 'Ongoing Monitoring',
         'rows': [
             {
-                'question': 'Ongoing AML, financial crime prevention and sanctions monitoring carried out at appropriate intervals or on appropriate triggers (if applicable)?',
+                'question': 'Ongoing AML, financial crime prevention and sanctions monitoring carried out in accordance with company policy and procedures?',
                 'answer_field': 'ongoing_aml_sanctions_monitoring_carried_out',
                 'comments_field': 'ongoing_aml_sanctions_monitoring_carried_out_comments',
             },
             {
-                'question': 'Copies of all documents obtained from ongoing monitoring activities kept and correctly filed?',
+                'question': 'Ongoing monitoring documents correctly filed?',
                 'answer_field': 'ongoing_monitoring_documents_kept_and_filed',
                 'comments_field': 'ongoing_monitoring_documents_kept_and_filed_comments',
             },
@@ -257,7 +224,7 @@ MATTER_FILE_REVIEW_SECTIONS = [
         'title': 'Finance, Costs And Accounting',
         'rows': [
             {
-                'question': 'Money on account (as appropriate to the matter) has been requested at appropriate times and received before significant work undertaken?',
+                'question': 'Has Money on Account been received as requested in the client care letter?',
                 'answer_field': 'money_on_account_requested_and_received',
                 'comments_field': 'money_on_account_requested_and_received_comments',
             },
@@ -272,24 +239,29 @@ MATTER_FILE_REVIEW_SECTIONS = [
                 'comments_field': 'costs_and_disbursements_billed_timely_comments',
             },
             {
-                'question': 'Overdue invoices?',
-                'answer_field': 'overdue_invoices',
-                'comments_field': 'overdue_invoices_comments',
+                'question': 'Are there any unpaid invoices?',
+                'answer_field': 'unpaid_invoices',
+                'comments_field': 'unpaid_invoices_comments',
             },
         ],
     },
     {
-        'title': 'Legal Advice And Instructions',
+        'title': 'Client Care, Legal Advice And Instructions',
         'rows': [
             {
-                'question': 'Appropriate advice given to the client on all substantive issues to date?',
-                'answer_field': 'appropriate_advice_given',
-                'comments_field': 'appropriate_advice_given_comments',
+                'question': 'Has the client been kept updated?',
+                'answer_field': 'client_kept_updated',
+                'comments_field': 'client_kept_updated_comments',
             },
             {
-                'question': 'Matter proceeding within the scope set out in the client care letter? If not, why?',
-                'answer_field': 'matter_within_client_care_scope',
-                'comments_field': 'matter_within_client_care_scope_comments',
+                'question': 'Is the matter proceeding in accordance with client instructions?',
+                'answer_field': 'matter_proceeding_per_client_instructions',
+                'comments_field': 'matter_proceeding_per_client_instructions_comments',
+            },
+            {
+                'question': 'Have cost estimates been updated as necessary?',
+                'answer_field': 'costs_estimates_updated',
+                'comments_field': 'costs_estimates_updated_comments',
             },
         ],
     },
@@ -297,9 +269,9 @@ MATTER_FILE_REVIEW_SECTIONS = [
         'title': 'Specific Risk Issues',
         'rows': [
             {
-                'question': 'Undertakings given by the firm have been discharged appropriately and on time, or released in writing (if not ongoing)?',
-                'answer_field': 'undertakings_discharged_or_released',
-                'comments_field': 'undertakings_discharged_or_released_comments',
+                'question': 'Undertakings given by the firm have been satisfied?',
+                'answer_field': 'undertakings_satisfied',
+                'comments_field': 'undertakings_satisfied_comments',
             },
             {
                 'question': 'Have any complaints been raised by the client? If so, has the firms complaints procedure been followed?',
@@ -319,7 +291,6 @@ MATTER_FILE_REVIEW_SECTIONS = [
         ],
     },
 ]
-
 
 def build_matter_file_review_display_data(reviews):
     output = []
@@ -838,29 +809,6 @@ def get_risk_assessments_due_queryset(wip_queryset):
                     Q(latest_monitoring_date__lte=one_year_ago)
                 )
             )
-        )
-    ).order_by('file_number')
-
-
-def get_file_reviews_due_queryset(wip_queryset):
-    three_months_ago = timezone.localdate() - relativedelta(months=3)
-
-    latest_review_subquery = MatterFileReview.objects.filter(
-        matter=OuterRef('pk')
-    ).order_by('-date_review_completed').values('date_review_completed')[:1]
-
-    latest_review_by_subquery = MatterFileReview.objects.filter(
-        matter=OuterRef('pk')
-    ).order_by('-date_review_completed').values('file_review_completed_by__first_name')[:1]
-
-    return wip_queryset.annotate(
-        latest_review_date=Subquery(latest_review_subquery),
-        latest_review_by=Subquery(latest_review_by_subquery),
-    ).filter(
-        Q(file_status__status__in=['Open', 'To Be Closed']) &
-        (
-            Q(latest_review_date__isnull=True) |
-            Q(latest_review_date__lte=three_months_ago)
         )
     ).order_by('file_number')
 
@@ -3394,7 +3342,7 @@ def open_new_file_page(request):
 
             request_post_copy['created_by'] = request.user
 
-            form = OpenFileForm(request_post_copy)
+            form = OpenFileForm(request_post_copy, require_critical=True)
             if not form.is_valid():
                 # Roll the new contacts back with the failed matter.
                 raise FileOpeningError()
@@ -9543,7 +9491,7 @@ def reports_hub(request):
                 },
                 {
                     'name': 'File reviews due',
-                    'description': 'Open matters with no file review or an overdue one.',
+                    'description': 'Open matters due a file review (every four months from opening or the last review).',
                     'url_name': 'report_file_reviews_due',
                     'count': file_reviews_count,
                 },
@@ -9871,6 +9819,7 @@ def report_file_reviews_due(request):
             'fee_earner_id': str(fee_earner.id) if fee_earner else '',
             'fee_earner': fe_name,
             'last_review': wip.latest_review_date,
+            'due': wip.next_file_review_due,
             'never_reviewed': wip.latest_review_date is None,
         })
 
@@ -9898,6 +9847,7 @@ def report_file_reviews_due(request):
                 'client': {'value': r['client'] or '—', 'href': None},
                 'fee_earner': {'value': r['fee_earner'] or '—', 'href': None},
                 'last_review': {'value': r['last_review'].strftime('%d/%m/%Y') if r['last_review'] else 'Never', 'href': None},
+                'due': {'value': r['due'].strftime('%d/%m/%Y') if r['due'] else '—', 'href': None},
                 'status': {'value': 'Never reviewed' if r['never_reviewed'] else 'Review overdue', 'href': None},
             },
             'sort': {
@@ -9907,6 +9857,7 @@ def report_file_reviews_due(request):
                 'fee_earner': r['fee_earner'].lower(),
                 # Never-reviewed sorts oldest; date(min) keeps them first asc.
                 'last_review': r['last_review'] or timezone.localdate().replace(year=1900),
+                'due': r['due'] or timezone.localdate().replace(year=1900),
                 'status': r['never_reviewed'],
             },
         })
@@ -9917,6 +9868,7 @@ def report_file_reviews_due(request):
         {'key': 'client', 'label': 'Client', 'sortable': True, 'truncate': True},
         {'key': 'fee_earner', 'label': 'Fee earner', 'sortable': True, 'truncate': True},
         {'key': 'last_review', 'label': 'Last review', 'sortable': True},
+        {'key': 'due', 'label': 'Due since', 'sortable': True},
         {'key': 'status', 'label': 'Status', 'sortable': True},
     ]
 
@@ -9937,7 +9889,7 @@ def report_file_reviews_due(request):
         request,
         slug='file_reviews_due',
         title='File reviews due',
-        description='Open matters with no file review, or whose last review was over three months ago.',
+        description='Open matters due a file review: one is due every four months from the date the file was opened or from its last completed review.',
         filters=filters, columns=columns, rows=rows,
     )
 

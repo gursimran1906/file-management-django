@@ -137,6 +137,8 @@ class ResponsibleFeeEarnerTests(TestCase):
         self.assertEqual(list(none_files), [self.unassigned])
 
     def test_file_reviews_report_groups_dc_files_under_nd(self):
+        # Never-reviewed files are only due four months after opening.
+        WIP.objects.update(timestamp=timezone.now() - timedelta(days=150))
         self.client.force_login(self.nd)
         response = self.client.get(reverse('report_file_reviews_due'))
         self.assertContains(response, 'DCM0000001')
