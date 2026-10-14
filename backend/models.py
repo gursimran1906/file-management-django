@@ -1297,6 +1297,15 @@ class MatterEmails(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
     # Indexed: the email sync de-dups by webLink (MatterEmails.link) on every insert.
     link = models.URLField(max_length=4096, null=True, blank=True, db_index=True)
+    # Identifiers so the original message (with attachments) can be fetched again
+    # from Microsoft 365, e.g. by the correspondence export. Populated by the
+    # ingester for new rows; older rows are resolved lazily from the web link.
+    mailbox = models.CharField(max_length=255, blank=True, default='')
+    graph_message_id = models.CharField(max_length=512, blank=True, default='', db_index=True)
+    internet_message_id = models.CharField(max_length=998, blank=True, default='')
+    folder_name = models.CharField(max_length=255, blank=True, default='')
+    message_class = models.CharField(max_length=255, blank=True, default='')
+    has_attachments = models.BooleanField(null=True, blank=True)
 
     def __str__(self):
         return (f'ID: {str(self.id)}, File Number: {self.file_number}')
@@ -2612,3 +2621,135 @@ class ConveyancingDetails(models.Model):
 
     def __str__(self):
         return f'{self.matter.file_number} conveyancing'
+
+
+class CorrespondenceExport(models.Model):
+    """One export of a matter's emails to memo-style PDFs + enclosures.
+
+    Lifecycle: discovering (searching mailboxes) -> preview (user ticks emails)
+    -> queued -> running (download, render, upload) -> done | failed. Cancelled
+    is terminal from preview/queued. Progress fields are updated by the worker
+    and polled by the matter page.
+    """
+    STATUS_DISCOVERING = 'discovering'
+    STATUS_PREVIEW = 'preview'
+    STATUS_QUEUED = 'queued'
+    STATUS_RUNNING = 'running'
+    STATUS_DONE = 'done'
+    STATUS_FAILED = 'failed'
+    STATUS_CANCELLED = 'cancelled'
+    STATUS_CHOICES = [
+        (STATUS_DISCOVERING, 'Searching mailboxes'),
+        (STATUS_PREVIEW, 'Ready to review'),
+        (STATUS_QUEUED, 'Queued'),
+        (STATUS_RUNNING, 'Building'),
+        (STATUS_DONE, 'Ready'),
+        (STATUS_FAILED, 'Failed'),
+        (STATUS_CANCELLED, 'Cancelled'),
+    ]
+    TRANSIENT_STATUSES = (STATUS_DISCOVERING, STATUS_QUEUED, STATUS_RUNNING)
+    WORK_STATUSES = (STATUS_DISCOVERING, STATUS_QUEUED)
+
+    matter = models.ForeignKey(
+        WIP, on_delete=models.CASCADE, related_name='correspondence_exports')
+    requested_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='correspondence_exports_requested')
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_DISCOVERING, db_index=True)
+    # Search parameters: addresses, mailboxes, date range, keywords, options.
+    params = models.JSONField(default=dict, blank=True)
+    # Preview rows found by discovery (one dict per email) and the keys ticked.
+    candidates = models.JSONField(default=list, blank=True)
+    selected_keys = models.JSONField(default=list, blank=True)
+    # Final index rows and counts for the in-app results view.
+    results = models.JSONField(default=list, blank=True)
+    excluded = models.JSONField(default=list, blank=True)
+    counts = models.JSONField(default=dict, blank=True)
+    progress_done = models.PositiveIntegerField(default=0)
+    progress_total = models.PositiveIntegerField(default=0)
+    progress_note = models.CharField(max_length=255, blank=True, default='')
+    worker_heartbeat = models.DateTimeField(null=True, blank=True)
+    error = models.TextField(blank=True, default='')
+    # Output location (storage path, e.g. BundleFinal/<file>/correspondence-exports/<id>).
+    storage_folder = models.CharField(max_length=512, blank=True, default='')
+    zip_name = models.CharField(max_length=255, blank=True, default='')
+    folder_web_url = models.URLField(max_length=2048, blank=True, default='')
+    zip_web_url = models.URLField(max_length=2048, blank=True, default='')
+    # Microsoft share link for the zip.
+    share_url = models.URLField(max_length=2048, blank=True, default='')
+    share_permission_id = models.CharField(max_length=255, blank=True, default='')
+    share_password = models.CharField(max_length=128, blank=True, default='')
+    share_use_password = models.BooleanField(default=False)
+    share_expires_at = models.DateTimeField(null=True, blank=True)
+    share_created_at = models.DateTimeField(null=True, blank=True)
+    share_created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='correspondence_export_share_links')
+    share_revoked_at = models.DateTimeField(null=True, blank=True)
+    # File transfer record (who received the correspondence and on what authority).
+    transfer_to = models.CharField(max_length=255, blank=True, default='')
+    transfer_contact = models.CharField(max_length=255, blank=True, default='')
+    client_authority_date = models.DateField(null=True, blank=True)
+    lien_checked = models.BooleanField(default=False)
+    retention_copy_kept = models.BooleanField(default=False)
+    transfer_notes = models.TextField(blank=True, default='')
+    transfer_recorded_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='correspondence_export_transfers')
+    transfer_recorded_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    discovered_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Email export {self.id} for {self.matter.file_number} ({self.status})'
+
+    @property
+    def is_transient(self):
+        return self.status in self.TRANSIENT_STATUSES
+
+    @property
+    def is_terminal(self):
+        return self.status in (self.STATUS_DONE, self.STATUS_FAILED, self.STATUS_CANCELLED)
+
+    @property
+    def percent(self):
+        if not self.progress_total:
+            return 0
+        return min(100, int(self.progress_done * 100 / self.progress_total))
+
+    @property
+    def share_is_active(self):
+        if not self.share_url or self.share_revoked_at:
+            return False
+        if self.share_expires_at and self.share_expires_at <= timezone.now():
+            return False
+        return True
+
+    @property
+    def transfer_recorded(self):
+        return bool(self.transfer_recorded_at)
+
+    @property
+    def selected_count(self):
+        return len(self.selected_keys or [])
+
+    @property
+    def stage(self):
+        """1 search, 2 review, 3 build, 4 ready (used by the page's stage strip)."""
+        return {
+            self.STATUS_DISCOVERING: 1,
+            self.STATUS_PREVIEW: 2,
+            self.STATUS_QUEUED: 3,
+            self.STATUS_RUNNING: 3,
+            self.STATUS_DONE: 4,
+            self.STATUS_FAILED: 3 if self.candidates else 1,
+            self.STATUS_CANCELLED: 2,
+        }.get(self.status, 1)

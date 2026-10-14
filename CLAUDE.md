@@ -67,6 +67,7 @@ gunicorn filemanagementDjango.wsgi:application --bind 0.0.0.0:8000 --workers 3 -
 - `pdf/bundle_builder.py` — assembles court bundles (sections, documents, page ordering) into PDFs.
 - `sharepoint/` (`client.py`, `paths.py`, `sharing.py`, `bundle_cache.py`) and `storage/sharepoint.py` — Microsoft Graph / SharePoint document storage and anonymous share links.
 - `granola/` — ingests external meeting/attendance notes; converts markdown → Quill, syncs on a cron.
+- `correspondence_export/` / `correspondence_export_views.py` — "Export emails" under a matter's correspondence: finds the matter's emails in Microsoft 365 (system-filed rows + strict client-address search, names are flag-only), the user reviews the list, then a job renders Outlook memo-style PDFs with enclosures, an index and the originals into `<CORRESPONDENCE_EXPORT_LIBRARY>/<file_number>/correspondence-exports/<id>/` plus a zip (`CorrespondenceExport` model). Jobs run via the `backend.correspondence_export.cron.run_pending` cron entry in production, a thread in development (`CORRESPONDENCE_EXPORT_RUNNER`). `python manage.py run_correspondence_exports` runs queued jobs by hand; `backfill_matter_email_ids` stores Graph ids on older `MatterEmails` rows (the export also does this lazily). Rendering happens in a child process because Pango/HarfBuzz can abort on font-map teardown.
 
 **Cross-cutting conventions:**
 - **Auth-by-default:** `LoginRequiredMiddleware` is enabled, so every view requires login. Opt a view out explicitly with `@login_not_required`.

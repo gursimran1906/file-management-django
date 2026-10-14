@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 from urllib.parse import quote
 
@@ -271,6 +272,35 @@ class SharePointClient:
             )
 
     def _upload_session(self, name, data):
+        self._upload_session_chunks(name, len(data), lambda offset, size: data[offset:offset + size])
+
+    def upload_file(self, name, file_path):
+        """Upload a file from disk in chunks, without reading it all into memory."""
+        total = os.path.getsize(file_path)
+        if total == 0:
+            self._upload_simple(name, b'')
+            return
+        with open(file_path, 'rb') as handle:
+            def read_chunk(offset, size):
+                handle.seek(offset)
+                return handle.read(size)
+            self._upload_session_chunks(name, total, read_chunk)
+
+    def download_url(self, name):
+        """Pre-authenticated, short-lived download URL for a file (no token needed)."""
+        response = self._request(
+            'GET',
+            self._item_url(name),
+            params={'select': 'id,@microsoft.graph.downloadUrl'},
+            headers=self._headers(),
+        )
+        if response.status_code != 200:
+            raise SharePointClientError(
+                f'Failed to get download URL for {name}: {response.status_code}'
+            )
+        return response.json().get('@microsoft.graph.downloadUrl', '')
+
+    def _upload_session_chunks(self, name, total, read_chunk):
         response = self._request(
             'POST',
             self._item_url(name, ':/createUploadSession'),
@@ -286,10 +316,11 @@ class SharePointClient:
                 f'Failed to create upload session for {name}: {response.status_code}'
             )
         upload_url = response.json()['uploadUrl']
-        total = len(data)
         offset = 0
         while offset < total:
-            chunk = data[offset:offset + CHUNK_SIZE]
+            chunk = read_chunk(offset, CHUNK_SIZE)
+            if not chunk:
+                raise SharePointClientError(f'Short read while uploading {name}')
             end = offset + len(chunk) - 1
             headers = {
                 'Content-Length': str(len(chunk)),

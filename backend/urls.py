@@ -76,6 +76,14 @@ from .matter_compliance_views import (
     matter_preview_client_doc, matter_save_conveyancing,
     client_key_document_upload, client_key_document_preview,
 )
+from .correspondence_export_views import (
+    correspondence_exports, correspondence_export_create,
+    correspondence_export_detail, correspondence_export_panel,
+    correspondence_export_generate, correspondence_export_cancel,
+    correspondence_export_retry, correspondence_export_download,
+    correspondence_export_file, correspondence_export_share_create,
+    correspondence_export_share_revoke, correspondence_export_transfer,
+)
 
 urlpatterns = [
     path('dashboard/', user_dashboard, name='user_dashboard'),
@@ -216,6 +224,31 @@ urlpatterns = [
 
     path('<str:file_number>/correspondence/',
          correspondence_view, name='correspondence_view'),
+    # Email export (matter correspondence to memo-style PDFs + enclosures).
+    path('<str:file_number>/correspondence/exports/',
+         correspondence_exports, name='correspondence_exports'),
+    path('<str:file_number>/correspondence/exports/new/',
+         correspondence_export_create, name='correspondence_export_create'),
+    path('<str:file_number>/correspondence/exports/<int:export_id>/',
+         correspondence_export_detail, name='correspondence_export_detail'),
+    path('<str:file_number>/correspondence/exports/<int:export_id>/panel/',
+         correspondence_export_panel, name='correspondence_export_panel'),
+    path('<str:file_number>/correspondence/exports/<int:export_id>/generate/',
+         correspondence_export_generate, name='correspondence_export_generate'),
+    path('<str:file_number>/correspondence/exports/<int:export_id>/cancel/',
+         correspondence_export_cancel, name='correspondence_export_cancel'),
+    path('<str:file_number>/correspondence/exports/<int:export_id>/retry/',
+         correspondence_export_retry, name='correspondence_export_retry'),
+    path('<str:file_number>/correspondence/exports/<int:export_id>/download/',
+         correspondence_export_download, name='correspondence_export_download'),
+    path('<str:file_number>/correspondence/exports/<int:export_id>/file/<path:relpath>',
+         correspondence_export_file, name='correspondence_export_file'),
+    path('<str:file_number>/correspondence/exports/<int:export_id>/share/create/',
+         correspondence_export_share_create, name='correspondence_export_share_create'),
+    path('<str:file_number>/correspondence/exports/<int:export_id>/share/revoke/',
+         correspondence_export_share_revoke, name='correspondence_export_share_revoke'),
+    path('<str:file_number>/correspondence/exports/<int:export_id>/transfer/',
+         correspondence_export_transfer, name='correspondence_export_transfer'),
     path('<str:file_number>/letter/add/', add_letter, name='add_letter'),
     path('letter/edit/<int:id>/', edit_letter, name='edit_letter'),
 

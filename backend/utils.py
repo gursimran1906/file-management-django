@@ -11,13 +11,15 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 
-def insert_data(file_number, sender, receiver, description, subject, body, link, is_sent, rcvd_time, units, fee_earner_code):
+def insert_data(file_number, sender, receiver, description, subject, body, link, is_sent, rcvd_time, units, fee_earner_code,
+                mailbox='', graph_message_id='', internet_message_id='', folder_name='',
+                message_class='', has_attachments=None):
     try:
         if file_number != None:
             file = WIP.objects.filter(file_number=file_number).first()
         else:
            file =  None
-        
+
         user = CustomUser.objects.filter(id=fee_earner_code).first()
         email = MatterEmails(
             file_number=file ,
@@ -30,7 +32,14 @@ def insert_data(file_number, sender, receiver, description, subject, body, link,
             is_sent=is_sent,
             time=rcvd_time,
             units=units,
-            fee_earner=user
+            fee_earner=user,
+            # Identifiers for fetching the original later (correspondence export).
+            mailbox=(mailbox or '')[:255],
+            graph_message_id=(graph_message_id or '')[:512],
+            internet_message_id=(internet_message_id or '')[:998],
+            folder_name=(folder_name or '')[:255],
+            message_class=(message_class or '')[:255],
+            has_attachments=has_attachments,
         )
         
         # Save the object to the database

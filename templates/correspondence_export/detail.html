@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+{% block title %}Email export{% endblock %}
+{% block container_class %}container{% endblock %}
+{% block container %}
+
+<style>
+  .cx-status { font-size:.75rem; font-weight:500; padding:.125rem .625rem; border-radius:9999px; border:1px solid transparent; white-space:nowrap; }
+  .cx-status-blue { background:rgb(239 246 255); color:rgb(29 78 216); border-color:rgb(191 219 254); }
+  .cx-status-green { background:rgb(240 253 244); color:rgb(21 128 61); border-color:rgb(187 247 208); }
+  .cx-status-red { background:rgb(254 242 242); color:rgb(185 28 28); border-color:rgb(254 202 202); }
+  .cx-status-gray { background:rgb(249 250 251); color:rgb(75 85 99); border-color:rgb(229 231 235); }
+  .cx-status-amber { background:rgb(255 251 235); color:rgb(180 83 9); border-color:rgb(253 230 138); }
+
+  /* Stage strip: four steps joined by a track; the Build segment fills with real progress. */
+  .cx-stages { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:0; }
+  .cx-stage { position:relative; padding-top:1.75rem; min-width:0; }
+  .cx-stage::before { content:""; position:absolute; top:.6875rem; left:0; right:0; height:2px; background:rgb(229 231 235); }
+  .cx-stage:first-child::before { left:50%; }
+  .cx-stage:last-child::before { right:50%; }
+  .cx-stage.is-done::before { background:rgb(37 99 235); }
+  /* The current step's left half is reached by the track; its right half fills with real progress. */
+  .cx-stage.is-current::before { background:linear-gradient(to right, rgb(37 99 235) 50%, rgb(229 231 235) 50%); }
+  .cx-stage:first-child.is-current::before { background:rgb(229 231 235); }
+  .cx-stage-fill { position:absolute; top:.6875rem; left:50%; height:2px; background:rgb(37 99 235); width:0; transition:width 250ms ease-out; }
+  .cx-dot { position:absolute; top:0; left:50%; transform:translateX(-50%); width:1.5rem; height:1.5rem; border-radius:9999px; display:flex; align-items:center; justify-content:center; font-size:.6875rem; font-weight:600; background:#fff; border:2px solid rgb(209 213 219); color:rgb(107 114 128); z-index:1; }
+  .cx-stage.is-done .cx-dot { background:rgb(37 99 235); border-color:rgb(37 99 235); color:#fff; }
+  .cx-stage.is-current .cx-dot { border-color:rgb(37 99 235); color:rgb(29 78 216); box-shadow:0 0 0 4px rgb(219 234 254); }
+  .cx-stage.is-current.is-busy .cx-dot::after { content:""; position:absolute; inset:-2px; border-radius:9999px; border:2px solid rgb(37 99 235); border-right-color:transparent; animation:cx-rotate 1s linear infinite; }
+  .cx-stage.is-failed .cx-dot { border-color:rgb(220 38 38); color:rgb(185 28 28); box-shadow:0 0 0 4px rgb(254 226 226); }
+  .cx-stage-label { text-align:center; font-size:.75rem; color:rgb(107 114 128); padding:0 .25rem; }
+  .cx-stage.is-current .cx-stage-label, .cx-stage.is-done .cx-stage-label { color:rgb(17 24 39); font-weight:500; }
+  .cx-stage-sub { text-align:center; font-size:.6875rem; color:rgb(107 114 128); margin-top:.125rem; padding:0 .25rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  @keyframes cx-rotate { to { transform:rotate(360deg); } }
+
+  .cx-skeleton { background:linear-gradient(90deg, rgb(243 244 246) 25%, rgb(229 231 235) 37%, rgb(243 244 246) 63%); background-size:400% 100%; animation:cx-shimmer 1.4s ease infinite; border-radius:.25rem; }
+  @keyframes cx-shimmer { 0% { background-position:100% 50%; } 100% { background-position:0 50%; } }
+  @media (prefers-reduced-motion: reduce) {
+    .cx-skeleton { animation:none; }
+    .cx-stage.is-current.is-busy .cx-dot::after { animation-duration:2s; }
+    .cx-stage-fill { transition:none; }
+  }
+  .cx-busy .cx-spin { display:inline-block; width:.875rem; height:.875rem; border:2px solid currentColor; border-right-color:transparent; border-radius:9999px; animation:cx-rotate .7s linear infinite; vertical-align:-2px; }
+  .cx-progress { height:.5rem; border-radius:9999px; background:rgb(229 231 235); overflow:hidden; }
+  .cx-progress > div { height:100%; background:rgb(37 99 235); transition:width 300ms ease-out; }
+  .cx-table th { position:sticky; top:0; background:#fff; z-index:1; font-weight:500; color:rgb(75 85 99); text-align:left; padding:.5rem .5rem; border-bottom:1px solid rgb(229 231 235); font-size:.75rem; }
+  .cx-table td { padding:.5rem .5rem; vertical-align:top; border-bottom:1px solid rgb(243 244 246); font-size:.8125rem; color:rgb(55 65 81); }
+  .cx-table tr.is-flagged td { background:rgb(255 251 235); }
+  .cx-table tr.is-off td { color:rgb(156 163 175); }
+  .cx-table tr:hover td { background:rgb(249 250 251); }
+  .cx-table tr.is-flagged:hover td { background:rgb(254 243 199); }
+  .cx-flag { display:inline-block; font-size:.6875rem; line-height:1rem; padding:0 .375rem; border-radius:.25rem; background:rgb(254 243 199); color:rgb(146 64 14); border:1px solid rgb(253 230 138); margin:.125rem .25rem .125rem 0; }
+  .cx-source { display:inline-block; font-size:.6875rem; line-height:1rem; padding:0 .375rem; border-radius:.25rem; background:rgb(243 244 246); color:rgb(55 65 81); margin:.125rem .25rem .125rem 0; white-space:nowrap; }
+  .cx-filter.is-active { background:#fff; color:rgb(17 24 39); box-shadow:0 1px 2px rgb(0 0 0 / .06); }
+  .cx-notice { font-size:.75rem; color:rgb(146 64 14); }
+  .cx-kv dt { font-size:.75rem; color:rgb(107 114 128); }
+  .cx-kv dd { font-size:.875rem; color:rgb(17 24 39); font-variant-numeric:tabular-nums; }
+</style>
+
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h1 class="text-2xl font-semibold text-gray-900">{{ file_number }}</h1>
+          <span class="badge-gray">{{ matter.file_status }}</span>
+        </div>
+        <p class="text-sm text-gray-600 mt-1">Email export · started {{ export.created_at|date:'d/m/Y H:i' }} by {{ export.requested_by|default:"—" }}</p>
+        <p class="text-xs text-gray-400 mt-0.5">{{ export.params.date_from }} to {{ export.params.date_to }} · {{ export.params.mailboxes|join:", " }}</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 shrink-0">
+        <a href="{% url 'correspondence_exports' file_number %}" class="btn-secondary text-xs">All exports</a>
+        <a href="{% url 'correspondence_view' file_number %}" class="btn-secondary text-xs">Back to correspondence</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="export-panel" data-poll-url="{% url 'correspondence_export_panel' file_number export.id %}" data-status="{{ export.status }}" data-poll-seconds="{{ poll_seconds }}" aria-live="polite">
+    {{ panel_html|safe }}
+  </div>
+  <p id="export-conn" class="hidden text-xs text-amber-700" role="status"></p>
+</div>
+
+<script>
+(function () {
+  var panel = document.getElementById('export-panel');
+  var conn = document.getElementById('export-conn');
+  var TRANSIENT = ['discovering', 'queued', 'running'];
+  var base = parseFloat(panel.dataset.pollSeconds || '2.5') * 1000;
+  var delay = base;
+  var timer = null;
+
+  function wireButtons(root) {
+    root.querySelectorAll('form[data-busy]').forEach(function (form) {
+      if (form.__wired) return;
+      form.__wired = true;
+      form.addEventListener('submit', function () {
+        var btn = form.querySelector('button[type=submit]');
+        if (!btn) return;
+        btn.disabled = true;
+        btn.classList.add('cx-busy');
+        btn.innerHTML = '<span class="cx-spin mr-2" aria-hidden="true"></span>' + (btn.dataset.loading || 'Working…');
+        form.setAttribute('aria-busy', 'true');
+      });
+    });
+    if (window.cxInitPanel) window.cxInitPanel(root);
+  }
+
+  function schedule(status) {
+    if (TRANSIENT.indexOf(status) === -1) return;
+    timer = setTimeout(poll, delay);
+  }
+
+  function poll() {
+    fetch(panel.dataset.pollUrl, { headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text().then(function (html) { return { html: html, status: r.headers.get('X-Export-Status') }; });
+      })
+      .then(function (res) {
+        conn.classList.add('hidden');
+        delay = base;
+        var previous = panel.dataset.status;
+        if (res.status !== previous || TRANSIENT.indexOf(res.status) !== -1) {
+          panel.innerHTML = res.html;
+          panel.dataset.status = res.status;
+          wireButtons(panel);
+        }
+        schedule(res.status);
+      })
+      .catch(function () {
+        delay = Math.min(delay * 2, 30000);
+        conn.textContent = 'Connection lost. Retrying in ' + Math.round(delay / 1000) + ' s…';
+        conn.classList.remove('hidden');
+        timer = setTimeout(poll, delay);
+      });
+  }
+
+  wireButtons(panel);
+  schedule(panel.dataset.status);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && TRANSIENT.indexOf(panel.dataset.status) !== -1) {
+      clearTimeout(timer); poll();
+    }
+  });
+})();
+</script>
+{% endblock %}

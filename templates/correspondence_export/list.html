@@ -1,0 +1,255 @@
+{% extends 'base.html' %}
+{% block title %}Email export{% endblock %}
+{% block container_class %}container{% endblock %}
+{% block container %}
+
+<style>
+  .cx-chip { display:inline-flex; align-items:center; gap:.375rem; max-width:100%; border:1px solid rgb(229 231 235); background:#fff; border-radius:9999px; padding:.125rem .25rem .125rem .625rem; font-size:.75rem; color:rgb(17 24 39); }
+  .cx-chip button { display:inline-flex; align-items:center; justify-content:center; width:1.125rem; height:1.125rem; border-radius:9999px; color:rgb(107 114 128); }
+  .cx-chip button:hover { background:rgb(243 244 246); color:rgb(17 24 39); }
+  .cx-chip button:focus-visible { outline:2px solid rgb(37 99 235); outline-offset:1px; }
+  .cx-field-error { font-size:.75rem; color:rgb(185 28 28); margin-top:.25rem; }
+  .cx-busy { position:relative; }
+  .cx-busy .cx-spin { display:inline-block; width:.875rem; height:.875rem; border:2px solid currentColor; border-right-color:transparent; border-radius:9999px; animation:cx-rotate .7s linear infinite; }
+  @keyframes cx-rotate { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .cx-busy .cx-spin { animation-duration:1.4s; } }
+  .cx-status { font-size:.75rem; font-weight:500; padding:.125rem .625rem; border-radius:9999px; border:1px solid transparent; white-space:nowrap; }
+  .cx-status-blue { background:rgb(239 246 255); color:rgb(29 78 216); border-color:rgb(191 219 254); }
+  .cx-status-green { background:rgb(240 253 244); color:rgb(21 128 61); border-color:rgb(187 247 208); }
+  .cx-status-red { background:rgb(254 242 242); color:rgb(185 28 28); border-color:rgb(254 202 202); }
+  .cx-status-gray { background:rgb(249 250 251); color:rgb(75 85 99); border-color:rgb(229 231 235); }
+  .cx-status-amber { background:rgb(255 251 235); color:rgb(180 83 9); border-color:rgb(253 230 138); }
+</style>
+
+<div class="space-y-5">
+  <div class="div-container py-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h1 class="text-2xl font-semibold text-gray-900">{{ file_number }}</h1>
+          <span class="badge-gray">{{ matter.file_status }}</span>
+        </div>
+        <p class="text-sm text-gray-600 mt-1">Email export</p>
+        <p class="text-xs text-gray-400 mt-0.5">{{ matter.matter_type }} · {{ matter.fee_earner|default:"Unassigned" }} · {{ matter.all_client_names }}</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 shrink-0">
+        <a href="{% url 'correspondence_view' file_number %}" class="btn-secondary text-xs">Back to correspondence</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+
+    <form method="post" action="{% url 'correspondence_export_create' file_number %}" id="export-form" class="div-container space-y-5" novalidate>
+      {% csrf_token %}
+      <div class="pb-3 border-b border-gray-100">
+        <h2 class="text-base font-semibold text-gray-900">New export</h2>
+        <p class="text-xs text-gray-500 mt-0.5">Searches the mailboxes you choose, then shows every email found for you to review before anything is built.</p>
+      </div>
+
+      <div>
+        <label class="form-label" for="address-input">Client email addresses</label>
+        <p class="text-xs text-gray-500 mb-2">An email is included only when one of these addresses is its sender or a recipient. Prefilled from the clients on this matter.</p>
+        <div id="address-chips" class="flex flex-wrap gap-1.5 min-h-[1.75rem]" aria-live="polite"></div>
+        <input type="hidden" name="addresses" id="addresses-hidden" value="{{ form.addresses|join:', ' }}">
+        <div class="mt-2 flex gap-2">
+          <input type="email" id="address-input" class="form-input" placeholder="Add another address and press Enter" autocomplete="off" aria-describedby="addresses-help">
+          <button type="button" id="address-add" class="btn-secondary text-xs shrink-0">Add</button>
+        </div>
+        {% if form.suggested_addresses %}
+        <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+          <span>Also on this matter:</span>
+          {% for s in form.suggested_addresses %}
+          <button type="button" class="cx-chip hover:border-gray-300" data-suggest="{{ s.address }}" title="{{ s.label }}">{{ s.address }}<span aria-hidden="true" class="text-gray-400">+</span></button>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if form.errors.addresses %}<p class="cx-field-error" id="addresses-help">{{ form.errors.addresses }}</p>{% else %}<p id="addresses-help" class="sr-only">Press Enter or Add after typing an address.</p>{% endif %}
+      </div>
+
+      <fieldset>
+        <legend class="form-label">Mailboxes to search</legend>
+        <p class="text-xs text-gray-500 mb-2">Every folder of each mailbox is searched, except Drafts and Junk. The matter's department mailbox and the fee earner's mailbox are ticked by default.</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
+          {% for m in form.shared_mailboxes %}
+          <label class="flex items-start gap-2 text-sm text-gray-800 cursor-pointer py-0.5">
+            <input type="checkbox" name="mailboxes" value="{{ m.address }}" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" {% if m.checked %}checked{% endif %}>
+            <span class="min-w-0"><span class="block">{{ m.label }}</span><span class="block text-xs text-gray-500 break-all">{{ m.address }}</span></span>
+          </label>
+          {% endfor %}
+        </div>
+        {% if form.staff_mailboxes %}
+        <details class="mt-3 group" {% for m in form.staff_mailboxes %}{% if m.checked %}open{% endif %}{% endfor %}>
+          <summary class="cursor-pointer text-sm text-gray-700 hover:text-gray-900 inline-flex items-center gap-1.5 select-none">
+            <svg class="w-4 h-4 text-gray-400 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            Staff mailboxes
+          </summary>
+          <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 pl-5">
+            {% for m in form.staff_mailboxes %}
+            <label class="flex items-start gap-2 text-sm text-gray-800 cursor-pointer py-0.5">
+              <input type="checkbox" name="mailboxes" value="{{ m.address }}" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" {% if m.checked %}checked{% endif %}>
+              <span class="min-w-0"><span class="block">{{ m.label }}</span><span class="block text-xs text-gray-500 break-all">{{ m.address }}</span></span>
+            </label>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
+        <div class="mt-3">
+          <label class="form-label" for="extra-mailboxes">Other mailboxes</label>
+          <input type="text" id="extra-mailboxes" name="extra_mailboxes" class="form-input" value="{{ form.extra_mailboxes }}" placeholder="someone@anpsolicitors.com, another@anpsolicitors.com" autocomplete="off">
+        </div>
+        {% if form.errors.mailboxes %}<p class="cx-field-error">{{ form.errors.mailboxes }}</p>{% endif %}
+      </fieldset>
+
+      <div>
+        <div class="grid grid-cols-2 gap-3 max-w-md">
+          <div>
+            <label class="form-label" for="date-from">From</label>
+            <input type="date" id="date-from" name="date_from" class="form-input" value="{{ form.date_from }}" required>
+          </div>
+          <div>
+            <label class="form-label" for="date-to">To</label>
+            <input type="date" id="date-to" name="date_to" class="form-input" value="{{ form.date_to }}" required>
+          </div>
+        </div>
+        <p class="text-xs text-gray-500 mt-1">Defaults to the day the matter was opened until today.</p>
+        {% if form.errors.dates %}<p class="cx-field-error">{{ form.errors.dates }}</p>{% endif %}
+      </div>
+
+      <fieldset class="space-y-2">
+        <legend class="form-label">What to include</legend>
+        <label class="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
+          <input type="checkbox" name="include_system_filed" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" {% if form.options.include_system_filed %}checked{% endif %}>
+          <span>Emails already filed under this matter<span class="block text-xs text-gray-500">The ones the system matched by the file number in the subject.</span></span>
+        </label>
+        <label class="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
+          <input type="checkbox" name="append_pdf_enclosures" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" {% if form.options.append_pdf_enclosures %}checked{% endif %}>
+          <span>Append PDF and image enclosures to each email's PDF<span class="block text-xs text-gray-500">Every enclosure is also saved as its original file.</span></span>
+        </label>
+        <label class="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
+          <input type="checkbox" name="include_originals" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" {% if form.options.include_originals %}checked{% endif %}>
+          <span>Include the original messages (.eml)<span class="block text-xs text-gray-500">The new solicitor can import these into their own mail system.</span></span>
+        </label>
+        <label class="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
+          <input type="checkbox" name="combined_pdf" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" {% if form.options.combined_pdf %}checked{% endif %}>
+          <span>Also build one combined PDF of every email in order</span>
+        </label>
+        <label class="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
+          <input type="checkbox" name="matter_search" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" {% if form.options.matter_search %}checked{% endif %}>
+          <span>Also search for the file number in subjects and bodies<span class="block text-xs text-gray-500">Finds emails with third parties that mention {{ file_number }} but have none of the addresses above. They are marked "matter code" in the list.</span></span>
+        </label>
+        <label class="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
+          <input type="checkbox" name="include_receipts" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" {% if form.options.include_receipts %}checked{% endif %}>
+          <span>Keep read and delivery receipts<span class="block text-xs text-gray-500">Normally left out and listed separately. Bounces are always kept and flagged.</span></span>
+        </label>
+      </fieldset>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="form-label" for="header-name">Name printed at the top of each PDF</label>
+          <input type="text" id="header-name" name="header_name" class="form-input" value="{{ form.header_name }}" maxlength="120" placeholder="Mailbox display name">
+        </div>
+        <div>
+          <span class="form-label">Flag keywords</span>
+          <p class="text-sm text-gray-700 leading-snug">{{ form.name_keywords|join:", " }}{% if form.name_keywords %}, {% endif %}{{ file_number }}</p>
+          <p class="text-xs text-gray-500 mt-0.5">Emails mentioning none of these are flagged for review. Keywords are never used to search.</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 pt-1">
+        <button type="submit" class="btn-primary text-sm" data-loading="Searching mailboxes…">Search mailboxes</button>
+        <span class="text-xs text-gray-500">Takes a minute or two. You will review the list before anything is built.</span>
+      </div>
+    </form>
+
+    <div class="div-container h-fit">
+      <div class="pb-3 mb-1 border-b border-gray-100">
+        <h2 class="text-base font-semibold text-gray-900">Previous exports</h2>
+        <p class="text-xs text-gray-500 mt-0.5">Everything built for this matter, newest first</p>
+      </div>
+      <ul class="divide-y divide-gray-100">
+        {% for e in exports %}
+        <li>
+          <a href="{% url 'correspondence_export_detail' file_number e.id %}" class="flex items-start justify-between gap-3 py-3 -mx-1 px-1 rounded-md hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-900">{{ e.created_at|date:'d/m/Y H:i' }} <span class="text-gray-400 font-normal">· {{ e.requested_by|default:"—" }}</span></p>
+              <p class="text-xs text-gray-500 mt-0.5">
+                {{ e.params.date_from }} to {{ e.params.date_to }} · {{ e.params.mailboxes|length }} mailbox{{ e.params.mailboxes|length|pluralize:"es" }}
+                {% if e.status == 'done' %} · {{ e.counts.exported }} email{{ e.counts.exported|pluralize }}{% elif e.status == 'preview' %} · {{ e.counts.candidates }} found{% endif %}
+              </p>
+            </div>
+            <span class="cx-status {% if e.status == 'done' %}cx-status-green{% elif e.status == 'failed' %}cx-status-red{% elif e.status == 'cancelled' %}cx-status-gray{% elif e.status == 'preview' %}cx-status-amber{% else %}cx-status-blue{% endif %}">{{ e.get_status_display }}</span>
+          </a>
+        </li>
+        {% empty %}
+        <li class="py-8 text-center text-sm text-gray-400">No exports yet. The first one is built from the form on the left.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var chips = document.getElementById('address-chips');
+  var hidden = document.getElementById('addresses-hidden');
+  var input = document.getElementById('address-input');
+  var addBtn = document.getElementById('address-add');
+  var addresses = hidden.value.split(/[\s,;]+/).map(function (a) { return a.trim().toLowerCase(); }).filter(Boolean);
+  var EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function render() {
+    chips.innerHTML = '';
+    addresses.forEach(function (addr) {
+      var chip = document.createElement('span');
+      chip.className = 'cx-chip';
+      chip.appendChild(document.createTextNode(addr));
+      var rm = document.createElement('button');
+      rm.type = 'button';
+      rm.setAttribute('aria-label', 'Remove ' + addr);
+      rm.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>';
+      rm.addEventListener('click', function () { addresses = addresses.filter(function (a) { return a !== addr; }); render(); });
+      chip.appendChild(rm);
+      chips.appendChild(chip);
+    });
+    if (!addresses.length) {
+      var empty = document.createElement('span');
+      empty.className = 'text-xs text-gray-400 self-center';
+      empty.textContent = 'No addresses yet.';
+      chips.appendChild(empty);
+    }
+    hidden.value = addresses.join(', ');
+    document.querySelectorAll('[data-suggest]').forEach(function (b) {
+      b.disabled = addresses.indexOf(b.dataset.suggest) !== -1;
+      b.classList.toggle('opacity-40', b.disabled);
+    });
+  }
+
+  function add(value) {
+    value = (value || '').trim().toLowerCase();
+    if (!value) return;
+    if (!EMAIL.test(value)) { input.setCustomValidity('Enter a full email address'); input.reportValidity(); return; }
+    input.setCustomValidity('');
+    if (addresses.indexOf(value) === -1) addresses.push(value);
+    input.value = '';
+    render();
+  }
+
+  addBtn.addEventListener('click', function () { add(input.value); });
+  input.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(input.value); } });
+  input.addEventListener('input', function () { input.setCustomValidity(''); });
+  document.querySelectorAll('[data-suggest]').forEach(function (b) { b.addEventListener('click', function () { add(b.dataset.suggest); }); });
+  render();
+
+  var form = document.getElementById('export-form');
+  form.addEventListener('submit', function () {
+    if (input.value.trim()) add(input.value);
+    var btn = form.querySelector('button[type=submit]');
+    btn.disabled = true;
+    btn.classList.add('cx-busy');
+    btn.innerHTML = '<span class="cx-spin mr-2" aria-hidden="true"></span>' + btn.dataset.loading;
+    form.setAttribute('aria-busy', 'true');
+  });
+})();
+</script>
+{% endblock %}

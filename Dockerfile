@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpng-dev \
     fontconfig \
     fonts-dejavu \
+    fonts-crosextra-carlito \
     libglib2.0-0 \
     libpangoft2-1.0-0 \
     gir1.2-harfbuzz-0.0 \

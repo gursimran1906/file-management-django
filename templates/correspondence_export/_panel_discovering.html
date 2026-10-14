@@ -1,0 +1,23 @@
+<div class="pt-2 border-t border-gray-100 space-y-4">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <h2 class="text-base font-semibold text-gray-900">Searching {{ export.params.mailboxes|length }} mailbox{{ export.params.mailboxes|length|pluralize:"es" }}</h2>
+      <p class="text-sm text-gray-600 mt-0.5">{{ export.progress_note|default:"Connecting to Microsoft 365" }}{% if export.progress_total %} · {{ export.progress_done }} of {{ export.progress_total }}{% endif %}</p>
+      <p class="text-xs text-gray-500 mt-1">Looking for emails filed under {{ file_number }} and for {{ export.params.addresses|length }} client address{{ export.params.addresses|length|pluralize:"es" }} between {{ export.params.date_from }} and {{ export.params.date_to }}. The list opens here for review when the search finishes.</p>
+    </div>
+    <form method="post" action="{% url 'correspondence_export_cancel' file_number export.id %}" data-busy class="shrink-0">
+      {% csrf_token %}
+      <button type="submit" class="btn-secondary text-xs" data-loading="Cancelling…">Cancel search</button>
+    </form>
+  </div>
+  {% if export.progress_total %}
+  <div class="cx-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ export.progress_total }}" aria-valuenow="{{ export.progress_done }}"><div style="width:{{ export.percent }}%"></div></div>
+  {% endif %}
+  <div class="space-y-2" aria-hidden="true">
+    <div class="flex gap-3"><span class="cx-skeleton h-4 w-24"></span><span class="cx-skeleton h-4 flex-1"></span><span class="cx-skeleton h-4 w-28"></span></div>
+    <div class="flex gap-3"><span class="cx-skeleton h-4 w-24"></span><span class="cx-skeleton h-4 flex-1 max-w-[70%]"></span><span class="cx-skeleton h-4 w-20"></span></div>
+    <div class="flex gap-3"><span class="cx-skeleton h-4 w-24"></span><span class="cx-skeleton h-4 flex-1 max-w-[85%]"></span><span class="cx-skeleton h-4 w-28"></span></div>
+    <div class="flex gap-3"><span class="cx-skeleton h-4 w-24"></span><span class="cx-skeleton h-4 flex-1 max-w-[60%]"></span><span class="cx-skeleton h-4 w-24"></span></div>
+    <div class="flex gap-3"><span class="cx-skeleton h-4 w-24"></span><span class="cx-skeleton h-4 flex-1 max-w-[78%]"></span><span class="cx-skeleton h-4 w-20"></span></div>
+  </div>
+</div>

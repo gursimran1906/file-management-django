@@ -27,6 +27,7 @@
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
                 <button type="button" id="toggle-letter-form" class="btn-primary text-xs">Add letter</button>
+                <a href="{% url 'correspondence_exports' file_number %}" class="btn-secondary text-xs">Export emails</a>
                 <a href="{% url 'home' file_number %}" class="btn-secondary text-xs">Back to file</a>
             </div>
         </div>

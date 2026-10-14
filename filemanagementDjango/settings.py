@@ -389,6 +389,33 @@ BUNDLE_SHARE_LINK_SCOPE = os.getenv('BUNDLE_SHARE_LINK_SCOPE', 'anonymous').stri
 # versions are pruned unless they are current, pinned/labelled, or still shared.
 BUNDLE_VERSION_KEEP_RECENT = int(os.getenv('BUNDLE_VERSION_KEEP_RECENT', '3'))
 
+# Correspondence export: a matter's emails from Microsoft 365 rendered as
+# memo-style PDFs with enclosures, stored per matter (see backend/correspondence_export).
+# Reads mail with the same app registration as the email ingester.
+MAIL_GRAPH_CLIENT_ID = os.getenv('AZURE_CLIENT_ID', '')
+MAIL_GRAPH_CLIENT_SECRET = os.getenv('AZURE_CLIENT_SECRET', '')
+MAIL_GRAPH_TENANT_ID = os.getenv('AZURE_TENANT_ID', '')
+CORRESPONDENCE_EXPORT_FIRM_DOMAIN = os.getenv('CORRESPONDENCE_EXPORT_FIRM_DOMAIN', 'anpsolicitors.com')
+# JSON list of {"address", "label", "matter_types": [keywords]}; empty = the six department mailboxes.
+CORRESPONDENCE_EXPORT_SHARED_MAILBOXES = os.getenv('CORRESPONDENCE_EXPORT_SHARED_MAILBOXES', '')
+# SharePoint library (a key of SHAREPOINT_DRIVE_IDS) that holds
+# <library>/<file number>/correspondence-exports/<export id>/.
+CORRESPONDENCE_EXPORT_LIBRARY = os.getenv('CORRESPONDENCE_EXPORT_LIBRARY', 'BundleFinal')
+# Name printed at the top of every memo-style PDF; empty = the mailbox's display name.
+CORRESPONDENCE_EXPORT_HEADER_NAME = os.getenv('CORRESPONDENCE_EXPORT_HEADER_NAME', 'ANP Solicitors')
+# Who runs the jobs: "cron" (the django-crontab entry below, production),
+# "thread" (a background thread in the web process, development) or "sync" (tests).
+CORRESPONDENCE_EXPORT_RUNNER = os.getenv(
+    'CORRESPONDENCE_EXPORT_RUNNER', 'thread' if DEBUG else 'cron').strip().lower()
+if sys.argv[1:2] == ['test']:
+    CORRESPONDENCE_EXPORT_RUNNER = 'sync'
+# Scratch space for the zip while it is being built (default: system temp dir).
+CORRESPONDENCE_EXPORT_TMP_DIR = os.getenv('CORRESPONDENCE_EXPORT_TMP_DIR', '')
+# Optional fontconfig file for the PDF renderer (macOS development only).
+CORRESPONDENCE_EXPORT_FONTCONFIG_FILE = os.getenv('CORRESPONDENCE_EXPORT_FONTCONFIG_FILE', '')
+# A running job with no heartbeat for this long is treated as dead.
+CORRESPONDENCE_EXPORT_STALE_MINUTES = int(os.getenv('CORRESPONDENCE_EXPORT_STALE_MINUTES', '20'))
+
 if USE_SHAREPOINT:
     STORAGES = {
         'default': {
@@ -421,6 +448,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CRONJOBS = [
     ('*/15 * * * *', 'email_sorting.utils.get_emails_and_store',
      '>>'+str(LOGS_DIR)+'/email_job.log 2>&1'),
+    # Correspondence exports queued from the matter page (discovery + build).
+    ('* * * * *', 'backend.correspondence_export.cron.run_pending',
+     '>>'+str(LOGS_DIR)+'/correspondence_export.log 2>&1'),
     ('* * 15 * *', 'email_sorting.utils.remove_log_file',
      '>>'+str(LOGS_DIR)+'/remove_log.log 2>&1'),
     # Office hours only (07:00–18:xx). The first run each morning does a full
