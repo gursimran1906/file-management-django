@@ -1,0 +1,43 @@
+{% comment %}Polled while the export is in progress: the stage strip plus the content for the current status.{% endcomment %}
+{% with s=export.status stage=export.stage %}
+<div class="div-container space-y-5">
+  <ol class="cx-stages" aria-label="Export progress">
+    <li class="cx-stage {% if stage > 1 %}is-done{% elif stage == 1 %}is-current{% if s == 'discovering' %} is-busy{% elif s == 'failed' %} is-failed{% endif %}{% endif %}">
+      <span class="cx-stage-fill"></span>
+      <span class="cx-dot" aria-hidden="true">{% if stage > 1 %}<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>{% else %}1{% endif %}</span>
+      <p class="cx-stage-label">Search mailboxes</p>
+      {% if s == 'discovering' %}<p class="cx-stage-sub">{{ export.progress_note|default:"Starting" }}</p>{% elif stage > 1 %}<p class="cx-stage-sub">{{ counts.candidates|default:0 }} found</p>{% endif %}
+    </li>
+    <li class="cx-stage {% if stage > 2 %}is-done{% elif stage == 2 %}is-current{% if s == 'cancelled' %} is-failed{% endif %}{% endif %}">
+      <span class="cx-stage-fill"></span>
+      <span class="cx-dot" aria-hidden="true">{% if stage > 2 %}<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>{% else %}2{% endif %}</span>
+      <p class="cx-stage-label">Review</p>
+      {% if stage > 2 %}<p class="cx-stage-sub">{{ export.selected_count }} ticked</p>{% elif s == 'preview' %}<p class="cx-stage-sub">Waiting for you</p>{% endif %}
+    </li>
+    <li class="cx-stage {% if stage > 3 %}is-done{% elif stage == 3 %}is-current{% if s == 'running' or s == 'queued' %} is-busy{% elif s == 'failed' %} is-failed{% endif %}{% endif %}">
+      <span class="cx-stage-fill" {% if s == 'running' %}style="width:{% widthratio export.percent 100 50 %}%"{% endif %}></span>
+      <span class="cx-dot" aria-hidden="true">{% if stage > 3 %}<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>{% else %}3{% endif %}</span>
+      <p class="cx-stage-label">Build</p>
+      {% if s == 'running' %}<p class="cx-stage-sub">{{ export.progress_done }} of {{ export.progress_total }}</p>{% elif s == 'queued' %}<p class="cx-stage-sub">Queued</p>{% elif stage > 3 %}<p class="cx-stage-sub">{{ counts.exported|default:0 }} emails</p>{% endif %}
+    </li>
+    <li class="cx-stage {% if stage == 4 %}is-done{% endif %}">
+      <span class="cx-stage-fill"></span>
+      <span class="cx-dot" aria-hidden="true">{% if stage == 4 %}<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>{% else %}4{% endif %}</span>
+      <p class="cx-stage-label">Ready</p>
+      {% if stage == 4 %}<p class="cx-stage-sub">{{ export.finished_at|date:'d/m/Y H:i' }}</p>{% endif %}
+    </li>
+  </ol>
+
+  {% if s == 'discovering' %}{% include 'correspondence_export/_panel_discovering.html' %}
+  {% elif s == 'preview' %}{% include 'correspondence_export/_panel_preview.html' %}
+  {% elif s == 'queued' or s == 'running' %}{% include 'correspondence_export/_panel_running.html' %}
+  {% elif s == 'done' %}{% include 'correspondence_export/_panel_done.html' %}
+  {% elif s == 'failed' %}{% include 'correspondence_export/_panel_failed.html' %}
+  {% else %}
+  <div class="pt-2 border-t border-gray-100">
+    <p class="text-sm text-gray-700">This export was cancelled{% if export.finished_at %} on {{ export.finished_at|date:'d/m/Y H:i' }}{% endif %}. Nothing was built.</p>
+    <a href="{% url 'correspondence_exports' file_number %}" class="btn-primary text-xs mt-3">Start a new export</a>
+  </div>
+  {% endif %}
+</div>
+{% endwith %}

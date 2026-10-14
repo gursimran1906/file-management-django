@@ -1,0 +1,29 @@
+<div class="pt-2 border-t border-gray-100 space-y-4">
+  {% if export.status == 'queued' %}
+  <div>
+    <h2 class="text-base font-semibold text-gray-900">Waiting to start</h2>
+    <p class="text-sm text-gray-600 mt-0.5">{{ export.selected_count }} email{{ export.selected_count|pluralize }} queued for building.{% if runner_mode == 'cron' %} The worker picks jobs up within a minute.{% endif %}</p>
+  </div>
+  <div class="space-y-2" aria-hidden="true">
+    <div class="cx-skeleton h-2 w-full"></div>
+    <div class="flex gap-3"><span class="cx-skeleton h-4 w-24"></span><span class="cx-skeleton h-4 flex-1 max-w-[60%]"></span></div>
+  </div>
+  <form method="post" action="{% url 'correspondence_export_cancel' file_number export.id %}" data-busy>
+    {% csrf_token %}
+    <button type="submit" class="btn-secondary text-xs" data-loading="Cancelling…">Cancel</button>
+  </form>
+  {% else %}
+  <div>
+    <h2 class="text-base font-semibold text-gray-900">Building the export</h2>
+    <p class="text-sm text-gray-600 mt-0.5">{{ export.progress_note|default:"Starting" }}{% if running_seconds %} · running for {% widthratio running_seconds 60 1 %} min{% endif %}</p>
+  </div>
+  <div>
+    <div class="flex items-baseline justify-between text-xs text-gray-500 mb-1">
+      <span>Downloading, rendering and storing each email</span>
+      <span class="tabular-nums">{{ export.progress_done }} / {{ export.progress_total }}</span>
+    </div>
+    <div class="cx-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ export.progress_total }}" aria-valuenow="{{ export.progress_done }}" aria-label="Emails processed"><div style="width:{{ export.percent }}%"></div></div>
+  </div>
+  <p class="text-xs text-gray-500">You can leave this page. The export carries on and the result appears under Previous exports.</p>
+  {% endif %}
+</div>

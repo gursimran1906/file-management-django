@@ -1,0 +1,20 @@
+<div class="pt-2 border-t border-gray-100 space-y-4">
+  <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+    <h2 class="text-sm font-semibold text-red-900">The export did not finish</h2>
+    <p class="text-sm text-red-800 mt-1 break-words">{{ export.error|default:"No details were recorded." }}</p>
+    <p class="text-xs text-red-700/80 mt-2">
+      {% if 'AADSTS7000222' in export.error or 'invalid_client' in export.error %}The Microsoft 365 app secret has expired. Renew it in the Azure portal and update AZURE_CLIENT_SECRET, then try again.
+      {% elif 'Unknown SharePoint library' in export.error %}The SharePoint library for exports is not configured. Check CORRESPONDENCE_EXPORT_LIBRARY and SHAREPOINT_DRIVE_IDS.
+      {% elif 'stopped before finishing' in export.error %}Nothing was lost; trying again restarts {% if export.selected_keys %}the build with the same emails ticked{% else %}the search{% endif %}.
+      {% else %}Trying again restarts {% if export.selected_keys %}the build with the same emails ticked{% else %}the search{% endif %}. If it fails the same way, the error above is what to pass on.
+      {% endif %}
+    </p>
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    <form method="post" action="{% url 'correspondence_export_retry' file_number export.id %}" data-busy>
+      {% csrf_token %}
+      <button type="submit" class="btn-primary text-sm" data-loading="Restarting…">Try again</button>
+    </form>
+    <a href="{% url 'correspondence_exports' file_number %}" class="btn-secondary text-sm">Start a new export</a>
+  </div>
+</div>

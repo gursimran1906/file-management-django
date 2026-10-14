@@ -41,6 +41,15 @@ OVERLAP_BUFFER = timedelta(minutes=5)
 DEFAULT_WINDOW = timedelta(minutes=15)   # used only when there is no watermark yet
 MAX_LOOKBACK = timedelta(days=14)        # safety cap on a single run's scan
 GRAPH_PAGE_SIZE = 100                    # $top per page; we follow @odata.nextLink
+# PR_MESSAGE_CLASS as a Graph extended property (REPORT.IPM.Note.IPNRN = read receipt, ...).
+MESSAGE_CLASS_EXPAND = "singleValueExtendedProperties($filter=id eq 'String 0x001A')"
+
+
+def _message_class(email):
+    for prop in email.get('singleValueExtendedProperties') or []:
+        if str(prop.get('id', '')).lower().replace(' ', '') in ('string0x001a', 'string0x1a'):
+            return str(prop.get('value') or '')
+    return ''
 
 # Hardcoded mailbox/folder map (Graph folder IDs). Shared by the live cron and
 # the backfill command so both cover the same six mailboxes x {Inbox, Sent Items}.
@@ -308,7 +317,12 @@ class Graph:
         """
         url = f"https://graph.microsoft.com/v1.0/users/{user_email}/mailFolders/{folder_id}/messages"
         params = {
-            '$select': 'subject,body,from,receivedDateTime,webLink,toRecipients',
+            # id / internetMessageId / hasAttachments and the message class let the
+            # correspondence export fetch the original (with attachments) later and
+            # tell read receipts apart from real emails.
+            '$select': ('subject,body,from,receivedDateTime,webLink,toRecipients,'
+                        'id,internetMessageId,hasAttachments'),
+            '$expand': MESSAGE_CLASS_EXPAND,
             '$top': GRAPH_PAGE_SIZE,
             '$orderby': 'receivedDateTime',
             '$filter': filter_str,
@@ -518,7 +532,7 @@ class Sorting:
 
         return local_rcvd_time_str
 
-    def process_email(self, email):
+    def process_email(self, email, mailbox='', folder=''):
         try:
             # subject/body can come back null from Graph (subject-less or empty
             # messages); toRecipients can be empty (e.g. bcc-only mail).
@@ -567,7 +581,13 @@ class Sorting:
                 return False
 
             insert_data(file_num, from_address_json, to_recipients_json, desc, subject, body,
-                        web_link, isSent, local_rcvd_time_str, calc_units_email(body), fee_earner)
+                        web_link, isSent, local_rcvd_time_str, calc_units_email(body), fee_earner,
+                        mailbox=mailbox or '',
+                        graph_message_id=email.get('id') or '',
+                        internet_message_id=email.get('internetMessageId') or '',
+                        folder_name=folder or '',
+                        message_class=_message_class(email),
+                        has_attachments=email.get('hasAttachments'))
             return True
 
         except (KeyError, IndexError, TypeError) as e:
@@ -627,7 +647,8 @@ class Sorting:
         for folder_result in results:
             for email in folder_result['messages']:
                 try:
-                    ok = await sync_to_async(self.process_email)(email)
+                    ok = await sync_to_async(self.process_email)(
+                        email, folder_result.get('user_email', ''), folder_result.get('folder', ''))
                     if ok:
                         added += 1
                     processed += 1

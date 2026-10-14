@@ -1,0 +1,111 @@
+<form method="post" action="{% url 'correspondence_export_generate' file_number export.id %}" id="preview-form" data-busy class="pt-2 border-t border-gray-100 space-y-4">
+  {% csrf_token %}
+  <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+    <div class="min-w-0">
+      <h2 class="text-base font-semibold text-gray-900">{{ counts.candidates }} email{{ counts.candidates|pluralize }} found</h2>
+      <p class="text-sm text-gray-600 mt-0.5">
+        {{ counts.by_system|default:0 }} filed under the matter{% if counts.by_address %}, {{ counts.by_address }} more by client address{% endif %}{% if counts.by_matter %}, {{ counts.by_matter }} more by matter code{% endif %}{% if counts.receipts %}, {{ counts.receipts }} receipt{{ counts.receipts|pluralize }} left unticked{% endif %}{% if counts.unresolved %}, {{ counts.unresolved }} could not be located{% endif %}.
+      </p>
+      <p class="text-xs text-gray-500 mt-1">Untick anything that should not go to the recipient. Highlighted rows mention none of the flag keywords in their subject, or need a second look for another reason shown in the row.</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 shrink-0">
+      <button type="submit" class="btn-primary text-sm" id="build-btn" data-loading="Queueing build…">Build export (<span id="selected-count">{{ selected_count }}</span>)</button>
+      <a href="{% url 'correspondence_exports' file_number %}" class="btn-secondary text-sm">Change search</a>
+    </div>
+  </div>
+
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div class="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 text-xs" role="group" aria-label="Show">
+      <button type="button" class="cx-filter is-active rounded-md px-3 py-1.5 font-medium text-gray-600 transition-colors" data-filter="all">All <span class="text-gray-400">{{ rows|length }}</span></button>
+      <button type="button" class="cx-filter rounded-md px-3 py-1.5 font-medium text-gray-600 transition-colors" data-filter="flagged">Needs a look <span class="text-gray-400">{{ flagged_count }}</span></button>
+      <button type="button" class="cx-filter rounded-md px-3 py-1.5 font-medium text-gray-600 transition-colors" data-filter="receipt">Receipts <span class="text-gray-400">{{ receipt_count }}</span></button>
+    </div>
+    <div class="flex items-center gap-3 text-xs">
+      <button type="button" class="link" data-select="all">Tick all shown</button>
+      <button type="button" class="link" data-select="none">Untick all shown</button>
+    </div>
+  </div>
+
+  <div class="overflow-x-auto max-h-[65vh] overflow-y-auto rounded-lg border border-gray-200">
+    <table class="cx-table w-full min-w-[960px]" id="preview-table">
+      <thead>
+        <tr>
+          <th class="w-8"><span class="sr-only">Include</span></th>
+          <th class="w-28">Received</th>
+          <th class="w-20">Direction</th>
+          <th class="w-56">From</th>
+          <th class="w-56">To</th>
+          <th>Subject</th>
+          <th class="w-40">Found by</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="{% if r.flags %}is-flagged{% endif %}{% if not r.selected %} is-off{% endif %}" data-flagged="{{ r.flags|yesno:'1,0' }}" data-receipt="{{ r.is_receipt|yesno:'1,0' }}">
+          <td>
+            {% if r.unavailable %}
+            <span class="inline-block w-4 h-4 rounded border border-dashed border-gray-300" title="Original could not be located" aria-label="Not available"></span>
+            {% else %}
+            <input type="checkbox" name="selected" value="{{ r.key }}" class="cx-pick rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" {% if r.selected %}checked{% endif %} aria-label="Include: {{ r.subject }}">
+            {% endif %}
+          </td>
+          <td class="whitespace-nowrap tabular-nums">{{ r.date }}<span class="text-gray-400"> {{ r.time }}</span></td>
+          <td>{{ r.direction }}</td>
+          <td class="break-words max-w-[14rem]">{{ r.from }}</td>
+          <td class="break-words max-w-[14rem]">{{ r.to }}</td>
+          <td class="break-words">
+            <span class="text-gray-900">{{ r.subject }}</span>{% if r.has_attachments %} <svg class="inline w-3.5 h-3.5 text-gray-400 -mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-label="Has attachments"><path stroke-linecap="round" stroke-linejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"/></svg>{% endif %}
+            {% if r.flags %}<div class="mt-1">{% for f in r.flags %}<span class="cx-flag">{{ f }}</span>{% endfor %}</div>{% endif %}
+          </td>
+          <td>{% for f in r.found_by %}<span class="cx-source">{{ f }}</span>{% endfor %}<span class="block text-[11px] text-gray-400 mt-0.5 break-all">{{ r.locations|join:"; " }}</span></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="py-10 text-center text-gray-500">Nothing matched. Widen the dates or add another address, then search again.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="text-xs text-gray-500">Building downloads each ticked email with its attachments, renders it as a PDF in Outlook's memo layout, and stores everything in the matter's folder. {% if counts.unresolved %}{{ counts.unresolved }} email{{ counts.unresolved|pluralize }} filed under the matter could not be located in the mailboxes searched and cannot be included; add the mailbox they live in and search again.{% endif %}</p>
+</form>
+
+<script>
+window.cxInitPanel = function (root) {
+  var table = root.querySelector('#preview-table');
+  if (!table) return;
+  var rows = Array.prototype.slice.call(table.querySelectorAll('tbody tr[data-flagged]'));
+  var counter = root.querySelector('#selected-count');
+  var buildBtn = root.querySelector('#build-btn');
+  function recount() {
+    var n = table.querySelectorAll('.cx-pick:checked').length;
+    counter.textContent = n;
+    buildBtn.disabled = n === 0;
+    rows.forEach(function (tr) {
+      var box = tr.querySelector('.cx-pick');
+      tr.classList.toggle('is-off', !!box && !box.checked);
+    });
+  }
+  table.addEventListener('change', function (e) { if (e.target.classList.contains('cx-pick')) recount(); });
+  root.querySelectorAll('.cx-filter').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      root.querySelectorAll('.cx-filter').forEach(function (b) { b.classList.toggle('is-active', b === btn); });
+      var mode = btn.dataset.filter;
+      rows.forEach(function (tr) {
+        var show = mode === 'all' || (mode === 'flagged' && tr.dataset.flagged === '1') || (mode === 'receipt' && tr.dataset.receipt === '1');
+        tr.style.display = show ? '' : 'none';
+      });
+    });
+  });
+  root.querySelectorAll('[data-select]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var on = btn.dataset.select === 'all';
+      rows.forEach(function (tr) {
+        if (tr.style.display === 'none') return;
+        var box = tr.querySelector('.cx-pick');
+        if (box) box.checked = on;
+      });
+      recount();
+    });
+  });
+  recount();
+};
+</script>

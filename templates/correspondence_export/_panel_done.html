@@ -1,0 +1,168 @@
+<div class="pt-2 border-t border-gray-100 space-y-6">
+  <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+    <div class="min-w-0">
+      <h2 class="text-base font-semibold text-gray-900">{{ counts.exported }} email{{ counts.exported|pluralize }} exported</h2>
+      <p class="text-sm text-gray-600 mt-0.5">
+        {{ counts.enclosures|default:0 }} enclosure{{ counts.enclosures|default:0|pluralize }}{% if counts.receipts_excluded %}, {{ counts.receipts_excluded }} receipt{{ counts.receipts_excluded|pluralize }} left out{% endif %}{% if counts.failed %}, <span class="text-red-700">{{ counts.failed }} could not be rendered</span>{% endif %}. Zip {{ zip_mb }} MB.
+      </p>
+      <p class="text-xs text-gray-500 mt-1">
+        {% if use_sharepoint %}Stored in the matter's SharePoint folder.{% else %}Stored on this server under the matter's media folder.{% endif %}
+        {% if counts.flagged %}{{ counts.flagged }} email{{ counts.flagged|pluralize }} {{ counts.flagged|pluralize:"is,are" }} flagged in the index for a second look before this goes anywhere.{% endif %}
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 shrink-0">
+      <a href="{% url 'correspondence_export_download' file_number export.id %}" class="btn-primary text-sm">Download zip</a>
+      {% if export.folder_web_url %}<a href="{{ export.folder_web_url }}" target="_blank" rel="noopener noreferrer" class="btn-secondary text-sm">Open folder in SharePoint</a>{% endif %}
+      <a href="{% url 'correspondence_export_file' file_number export.id '00_index.csv' %}" class="btn-secondary text-sm">Index (CSV)</a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <section class="rounded-lg border border-gray-200 p-4 space-y-3">
+      <div>
+        <h3 class="text-sm font-semibold text-gray-900">Share link</h3>
+        <p class="text-xs text-gray-500 mt-0.5">A Microsoft link to the zip for the receiving firm. Expires after {{ share_expiry_days }} days unless revoked earlier.</p>
+      </div>
+      {% if export.share_is_active %}
+      <dl class="cx-kv space-y-2">
+        <div><dt>Link</dt><dd class="break-all"><a class="link" href="{{ export.share_url }}" target="_blank" rel="noopener noreferrer">{{ export.share_url }}</a></dd></div>
+        {% if export.share_use_password %}<div><dt>Password (send separately)</dt><dd class="font-mono text-sm select-all">{{ export.share_password }}</dd></div>{% endif %}
+        <div><dt>Expires</dt><dd>{{ export.share_expires_at|date:'d/m/Y H:i' }} · created by {{ export.share_created_by|default:"—" }}</dd></div>
+      </dl>
+      <form method="post" action="{% url 'correspondence_export_share_revoke' file_number export.id %}" data-busy>
+        {% csrf_token %}
+        <button type="submit" class="btn-secondary text-xs" data-loading="Revoking…">Revoke link</button>
+      </form>
+      {% elif not use_sharepoint %}
+      <p class="text-sm text-gray-500">Share links need SharePoint storage, which is not enabled on this server. Download the zip and send it through the firm's usual channel.</p>
+      {% else %}
+      {% if export.share_revoked_at %}<p class="text-xs text-gray-500">Previous link revoked {{ export.share_revoked_at|date:'d/m/Y H:i' }}.</p>{% endif %}
+      <ul class="text-xs text-gray-600 space-y-1 list-disc pl-4">
+        <li>Anyone with the link{% if link_scope != 'organization' %} and the password{% endif %} can download the zip{% if link_scope != 'organization' %} without signing in{% endif %}. It can be forwarded.</li>
+        <li>Only this export's zip is shared, never the rest of the matter.</li>
+      </ul>
+      <form method="post" action="{% url 'correspondence_export_share_create' file_number export.id %}" data-busy class="flex flex-wrap items-center gap-3">
+        {% csrf_token %}
+        {% if link_scope != 'organization' %}
+        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input type="checkbox" name="use_password" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" checked> Password-protect</label>
+        {% endif %}
+        <button type="submit" class="btn-primary text-xs" data-loading="Creating link…">Create share link</button>
+      </form>
+      {% endif %}
+    </section>
+
+    <section class="rounded-lg border border-gray-200 p-4">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h3 class="text-sm font-semibold text-gray-900">File transfer record</h3>
+          <p class="text-xs text-gray-500 mt-0.5">Who received this correspondence and on what authority. Kept with the matter's audit trail.</p>
+        </div>
+        {% if export.transfer_recorded %}<span class="cx-status cx-status-green">Recorded {{ export.transfer_recorded_at|date:'d/m/Y' }}</span>{% endif %}
+      </div>
+      <form method="post" action="{% url 'correspondence_export_transfer' file_number export.id %}" data-busy class="mt-3 space-y-3">
+        {% csrf_token %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="form-label" for="transfer-to">Sent to (firm)</label>
+            <input type="text" id="transfer-to" name="transfer_to" class="form-input" value="{{ export.transfer_to }}" maxlength="255">
+          </div>
+          <div>
+            <label class="form-label" for="transfer-contact">Contact or reference</label>
+            <input type="text" id="transfer-contact" name="transfer_contact" class="form-input" value="{{ export.transfer_contact }}" maxlength="255">
+          </div>
+          <div>
+            <label class="form-label" for="authority-date">Client authority received</label>
+            <input type="date" id="authority-date" name="client_authority_date" class="form-input" value="{{ export.client_authority_date|date:'Y-m-d' }}">
+          </div>
+          <div class="space-y-1.5 pt-5">
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input type="checkbox" name="lien_checked" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" {% if export.lien_checked %}checked{% endif %}> Lien over unpaid costs considered</label>
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input type="checkbox" name="retention_copy_kept" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" {% if export.retention_copy_kept %}checked{% endif %}> Copy retained on the firm's file</label>
+          </div>
+        </div>
+        <div>
+          <label class="form-label" for="transfer-notes">Notes</label>
+          <textarea id="transfer-notes" name="transfer_notes" class="form-input" rows="2" maxlength="4000">{{ export.transfer_notes }}</textarea>
+        </div>
+        <button type="submit" class="btn-secondary text-xs" data-loading="Saving…">Save record</button>
+      </form>
+    </section>
+  </div>
+
+  <section class="space-y-3">
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <h3 class="text-sm font-semibold text-gray-900">What is in the export</h3>
+      <div class="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 text-xs" role="group" aria-label="Show">
+        <button type="button" class="cx-filter is-active rounded-md px-3 py-1.5 font-medium text-gray-600 transition-colors" data-filter="all">All <span class="text-gray-400">{{ rows|length }}</span></button>
+        <button type="button" class="cx-filter rounded-md px-3 py-1.5 font-medium text-gray-600 transition-colors" data-filter="flagged">Flagged <span class="text-gray-400">{{ flagged_rows|length }}</span></button>
+      </div>
+    </div>
+    <div class="overflow-x-auto max-h-[60vh] overflow-y-auto rounded-lg border border-gray-200">
+      <table class="cx-table w-full min-w-[960px]" id="results-table">
+        <thead>
+          <tr>
+            <th class="w-12">No</th>
+            <th class="w-28">Received</th>
+            <th class="w-20">Direction</th>
+            <th class="w-52">From</th>
+            <th class="w-52">To</th>
+            <th>Subject</th>
+            <th class="w-44">Files</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr class="{% if r.flag_list %}is-flagged{% endif %}" data-flagged="{{ r.flag_list|yesno:'1,0' }}">
+            <td class="tabular-nums">{{ r.no }}</td>
+            <td class="whitespace-nowrap tabular-nums">{{ r.date }}<span class="text-gray-400"> {{ r.time }}</span></td>
+            <td>{{ r.direction }}</td>
+            <td class="break-words max-w-[13rem]">{{ r.from }}</td>
+            <td class="break-words max-w-[13rem]">{{ r.to }}</td>
+            <td class="break-words">
+              <span class="text-gray-900">{{ r.subject }}</span>
+              {% if r.flag_list %}<div class="mt-1">{% for f in r.flag_list %}<span class="cx-flag">{{ f }}</span>{% endfor %}</div>{% endif %}
+              {% if r.found_by %}<div class="mt-0.5 text-[11px] text-gray-400">{{ r.found_by }}</div>{% endif %}
+            </td>
+            <td class="text-xs">
+              {% if r.pdf_name %}<a class="link block" href="{% url 'correspondence_export_file' file_number export.id r.pdf_name %}">Email PDF</a>{% else %}<span class="text-red-700">No PDF</span>{% endif %}
+              {% for enc in r.enclosure_links %}<a class="link block break-all" href="{% url 'correspondence_export_file' file_number export.id enc.path %}">{{ enc.name }}</a>{% endfor %}
+              {% if r.eml_path %}<a class="text-gray-500 hover:text-gray-900 block" href="{% url 'correspondence_export_file' file_number export.id r.eml_path %}">Original .eml</a>{% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="py-8 text-center text-gray-500">Nothing was exported.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if export.excluded %}
+    <details class="text-sm">
+      <summary class="cursor-pointer text-gray-700 hover:text-gray-900 select-none">{{ export.excluded|length }} receipt{{ export.excluded|length|pluralize }} left out</summary>
+      <div class="overflow-x-auto mt-2 rounded-lg border border-gray-200">
+        <table class="cx-table w-full min-w-[720px]">
+          <thead><tr><th class="w-28">Received</th><th class="w-20">Direction</th><th>From</th><th>Subject</th><th class="w-40">Type</th></tr></thead>
+          <tbody>
+            {% for x in export.excluded %}
+            <tr><td class="whitespace-nowrap tabular-nums">{{ x.date }}<span class="text-gray-400"> {{ x.time }}</span></td><td>{{ x.direction }}</td><td class="break-words">{{ x.from }}</td><td class="break-words">{{ x.subject }}</td><td>{{ x.type }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endif %}
+  </section>
+</div>
+
+<script>
+window.cxInitPanel = function (root) {
+  var table = root.querySelector('#results-table');
+  if (!table) return;
+  var rows = Array.prototype.slice.call(table.querySelectorAll('tbody tr[data-flagged]'));
+  root.querySelectorAll('.cx-filter').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      root.querySelectorAll('.cx-filter').forEach(function (b) { b.classList.toggle('is-active', b === btn); });
+      var mode = btn.dataset.filter;
+      rows.forEach(function (tr) { tr.style.display = (mode === 'all' || tr.dataset.flagged === '1') ? '' : 'none'; });
+    });
+  });
+};
+</script>
