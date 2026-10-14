@@ -15,7 +15,7 @@ from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, Matte
 from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, BundleVersion, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
 from .forms import PmtsForm, PmtsHalfForm, PmtsSlipEditForm, GreenSlipEditForm, apply_pmts_slip_edit_locks, apply_green_slip_edit_locks, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
-from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm
+from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm, ArchiveDetailsForm
 # get_file_reviews_due_queryset is re-exported here: compliance_stats imports it from views.
 from .file_reviews import get_file_reviews_due_queryset  # noqa: F401
 from .utils import (
