@@ -96,6 +96,16 @@ from backend.sharepoint.client import SharePointClientError
 logger = logging.getLogger('backend')
 CURRENT_VAT_RATE_PERCENT = int(CURRENT_VAT_RATE * 100)
 
+# Regulatory footer printed on downloaded invoices and credit notes.
+FIRM_DOCUMENT_FOOTER = """
+            ANP Solicitors is a trading name of ANP Solicitors Limited<br>
+            Registered in England and Wales – Company No: 6948759 | Registered office at 290 Kiln Road, Benfleet, Essex SS7 1QT<br>
+            T: 01702 556688 | F: 01702 556696 | E: info@anpsolicitors.com | www.anpsolicitors.com<br>
+            This firm is authorised and regulated by the Solicitors Regulation Authority<br>
+            A list of directors is open to inspection at the office<br>
+            VAT No. 977 542 767 | SRA No. 515388<br>
+            """
+
 
 def manager_required(view_func):
     """Hard-enforce manager access: non-managers get a 403, not a redirect."""
@@ -6123,14 +6133,7 @@ def download_invoice(request, id):
     else:
         state = ""
 
-    footer = """
-            ANP Solicitors is a trading name of ANP Solicitors Limited<br>
-            Registered in England and Wales – Company No: 6948759 | Registered office at 290 Kiln Road, Benfleet, Essex SS7 1QT<br>
-            T: 01702 556688 | F: 01702 556696 | E: info@anpsolicitors.com | www.anpsolicitors.com<br>
-            This firm is authorised and regulated by the Solicitors Regulatory Authority<br>
-            A list of directors is open to inspection at the office<br>
-            VAT No. 977 542 767 | SRA No. 515388<br>
-            """
+    footer = FIRM_DOCUMENT_FOOTER
     style = """
             @page :first {
                     size: A4;
@@ -6324,14 +6327,7 @@ def download_credit_note(request, id):
     else:
         state = ""
 
-    footer = """
-            ANP Solicitors is a trading name of ANP Solicitors Limited<br>
-            Registered in England and Wales - Company No: 6948759 | Registered office at 290 Kiln Road, Benfleet, Essex SS7 1QT<br>
-            T: 01702 556688 | F: 01702 556696 | E: info@anpsolicitors.com | www.anpsolicitors.com<br>
-            This firm is authorised and regulated by the Solicitors Regulation Authority<br>
-            A list of directors is open to inspection at the office<br>
-            VAT No. 977 542 767 | SRA No. 515388<br>
-            """
+    footer = FIRM_DOCUMENT_FOOTER
     style = """
             @page :first {
                     size: A4;
