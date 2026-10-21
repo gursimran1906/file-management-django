@@ -67,8 +67,10 @@ Office app:
 Portal (`backend/app`): `POST /invites` takes `client_name`, `email`, `client_ref`,
 `matter_ref?`, `required_documents?` (any of `proof_id`, `proof_address`, `selfie_id`,
 `source_of_funds`, `pep`, `terms_of_engagement`; omitted means all). The upload page
-shows one step per required item; the selfie is taken inside the terms step when terms
-are required, otherwise as its own step. `CapacityIn` records `acting_for`
+shows one card per required item, except the selfie: it is only ever taken inside the
+terms card, and requiring `selfie_id` without `terms_of_engagement` still shows the
+terms card with its agreement tick and signature. There is no selfie-only step today.
+`CapacityIn` records `acting_for`
 (self / company), `company_name`, `company_number`, `signatory_role` but **not the
 signatory's name**. Declarations are rendered to PDF with server-captured metadata.
 `GET /submissions/{id}` returns documents, declarations, terms, the typed address and the
@@ -222,9 +224,11 @@ Estimate: three days.
 > 4. Frontend copy keyed on kind and roles. Landing and checklist for third parties:
 >    "ANP Solicitors act for {for_client_name}. They have named you as the person paying
 >    for the matter / as authorised to deal with the matter on their behalf." The PEP intro
->    becomes "We have to ask everyone involved in a matter this". No terms step; the selfie
->    step shows on its own when required (already supported). The capacity step still
->    applies to third parties: a company can be the payer.
+>    becomes "We have to ask everyone involved in a matter this". No terms step. Add a
+>    selfie-only card (a photo holding the ID; no agreement, no signature) shown whenever
+>    `selfie_id` is required without `terms_of_engagement`; today the terms card is forced
+>    in that case. Reuse `SelfieInput` and the existing selfie document upload path. The
+>    capacity step still applies to third parties: a company can be the payer.
 > 5. Source of funds for paying third parties: a payer preamble before the existing
 >    source options: what you are providing (our fees only / a deposit / the purchase
 >    price / other, with the amount), whether it is a gift or repayable, and your
@@ -308,6 +312,26 @@ Estimate: three days.
 | `GET /submissions/{id}` extra fields | Phase C reads `party_kind` / `roles` to double-check the member | Phase B |
 | Declaration PDF metadata | unchanged read | Phase B adds kind, roles, signatory |
 | SharePoint paths, audit, `X-Internal-Api-Key` | unchanged | unchanged |
+
+## Portal state, checked 21 Oct 2026
+
+- Local checkout of `client_onboarding_portal` is on `main`, clean and level with
+  `origin/main` (last commit 15 Oct 2026); the backend unit suite passes (118 tests).
+- The office client and the portal agree on every call in use: `POST /invites` fields
+  and the `redeem_url` / `submission_id` / `invite_id` / `expires_at` response,
+  `POST /invites/{id}/expire`, `GET /submissions/{id}` (documents with `scan_state` and
+  SharePoint ids, declarations with `pdf_item_id`, terms with `acceptance_item_id` /
+  `signed_doc_item_id`, address, status, capacity) and `PATCH /submissions/{id}` with
+  `matter_ref`.
+- File names match what `backend/onboarding_storage.py` looks for:
+  `{doc_type}-{id}.{ext}`, `declaration-{type}-{id}.pdf`, `terms-acceptance-{id}.pdf`,
+  `terms-signed-{id}.{ext}`, under `[testing/]{root}/Onboarding/{client_ref}/{submission_id}/`.
+- `InviteCreate` ignores unknown fields (pydantic default), so the new invite fields can
+  be sent before Phase B is deployed.
+- Quirks: a re-sent invite creates a new submission (new folder); the office keeps the
+  SharePoint ids from earlier submissions, so nothing is lost. The portal's local `.env`
+  still carries `INVITE_TTL_MINUTES`, which the code no longer reads (`INVITE_TTL_DAYS`,
+  default 7); harmless, but worth deleting.
 
 ## Rollout
 
