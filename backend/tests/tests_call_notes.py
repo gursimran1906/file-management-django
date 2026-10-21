@@ -630,6 +630,16 @@ class CallNoteViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'telephony/_register_panel.html')
 
+    def test_settings_flags_staff_whose_calls_can_never_be_attributed(self):
+        self.user.is_manager = True
+        self.user.save()
+        CustomUser.objects.create_user(username='nom', email='', password='pw',
+                                       first_name='No', last_name='Mail',
+                                       max_holidays_in_year=0)
+        response = self.client.get(reverse('calls_settings'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'No Mail')
+
     def test_the_dashboard_offers_take_a_call(self):
         response = self.client.get(reverse('user_dashboard'))
         self.assertEqual(response.status_code, 200)

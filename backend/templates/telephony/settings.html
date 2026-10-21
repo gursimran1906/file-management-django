@@ -86,6 +86,17 @@
       </div>
     </div>
 
+    {% if staff_without_email %}
+    <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+      <p class="text-sm font-medium text-amber-900">Some staff have no email address</p>
+      <p class="mt-1 text-xs text-amber-800">
+        A call is tied to a person only by their email matching their Teams sign-in (UPN), so calls
+        made or taken by these people cannot be attributed to them:
+        {% for person in staff_without_email %}{{ person.get_full_name|default:person.username }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+      </p>
+    </div>
+    {% endif %}
+
     <h2 class="pt-2 text-base font-semibold text-gray-900">Matching calls to notes</h2>
     <p class="-mt-2 text-xs text-gray-500">
       A note typed during a call is matched to its call-log row by who took it and when.

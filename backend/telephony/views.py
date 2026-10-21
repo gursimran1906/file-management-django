@@ -3,6 +3,7 @@ manual assignment, and manager-only settings/sync."""
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -218,6 +219,12 @@ def calls_settings(request):
         'creds_configured': bool(settings.TEAMS_AZURE_CLIENT_ID
                                  and settings.TEAMS_AZURE_CLIENT_SECRET
                                  and settings.TEAMS_AZURE_TENANT_ID),
+        # A call is tied to a person only through their email matching their
+        # Teams sign-in, so anyone without one can never have a call attributed.
+        'staff_without_email': list(CustomUser.objects
+                                    .filter(is_active=True)
+                                    .filter(Q(email='') | Q(email__isnull=True))
+                                    .order_by('first_name', 'last_name')),
     }
     return render(request, 'telephony/settings.html', context)
 
