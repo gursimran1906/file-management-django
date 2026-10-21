@@ -11,7 +11,7 @@ from django.db.models import Q, F, OuterRef, Subquery, Max, CharField, TextField
 from django.db.models.functions import Cast, Coalesce, Greatest, Concat
 from .models import WIP, Memo, NextWork, LastWork, MatterKeyDate, FileStatus, FileLocation, MatterType, PricingItem, ClientContactDetails, ClientKeyDocument, AuthorisedParties, MatterClient, MatterClientDocument, ConveyancingDetails
 from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE
-from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
+from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees, CallRecord
 from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, BundleVersion, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
 from .forms import PmtsForm, PmtsHalfForm, PmtsSlipEditForm, GreenSlipEditForm, apply_pmts_slip_edit_locks, apply_green_slip_edit_locks, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
@@ -1156,6 +1156,9 @@ def user_dashboard(request):
         key_doc_scope_wips)
     last_100_emails = MatterEmails.objects.filter(
         fee_earner=user).order_by('-time')[:100]
+    recent_calls = CallRecord.objects.filter(
+        matched_fee_earner=user).select_related(
+        'matched_file').order_by('-start_datetime')[:25]
 
     latest_version_subquery = PolicyVersion.objects.filter(
         policy=OuterRef('pk')
@@ -1192,6 +1195,7 @@ def user_dashboard(request):
         'dashboard_files': dashboard_files,
         'overdue_invoice_file_count': overdue_invoice_file_count,
         'last_100_emails': last_100_emails,
+        'recent_calls': recent_calls,
         'files': unique_wips,
         'unread_policies_exist': unread_policies_exist,
         'has_pending_tasks': has_pending_tasks,
@@ -4158,7 +4162,8 @@ def attendance_note_view(request, file_number):
         messages.error(request, 'Matter file not found')
         return redirect('user_dashboard')
     attendance_notes = MatterAttendanceNotes.objects.filter(
-        file_number=matter.id).order_by('-date')
+        file_number=matter.id).select_related(
+        'call_source', 'granola_source').order_by('-date')
     return render(request, 'attendance_notes.html', {
         'form': form,
         'file_number': file_number,

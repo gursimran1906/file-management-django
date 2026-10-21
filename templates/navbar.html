@@ -187,7 +187,8 @@
       <li>
         {% url 'unallocated_emails' as url %}
         {% url 'granola_inbox' as granola_url %}
-        <a href="{% url 'unallocated_emails' %}" class="nav-link {% if request.path == url or request.path == granola_url %}nav-link-active{% endif %}">
+        {% url 'calls_inbox' as calls_url %}
+        <a href="{% url 'unallocated_emails' %}" class="nav-link {% if request.path == url or request.path == granola_url or request.path == calls_url %}nav-link-active{% endif %}">
           <svg class="nav-link-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 11.5V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6.5m18 0L18.4 5.6a2 2 0 0 0-1.8-1.1H7.4a2 2 0 0 0-1.8 1.1L3 11.5m18 0h-5a2 2 0 0 0-2 2v.5a2 2 0 0 1-2 2h-0a2 2 0 0 1-2-2v-.5a2 2 0 0 0-2-2H3"/></svg>
           <span>Allocate</span>
         </a>

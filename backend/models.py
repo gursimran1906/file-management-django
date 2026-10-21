@@ -2753,3 +2753,211 @@ class CorrespondenceExport(models.Model):
             self.STATUS_FAILED: 3 if self.candidates else 1,
             self.STATUS_CANCELLED: 2,
         }.get(self.status, 1)
+class CallLogConfig(models.Model):
+    """Central, team-wide configuration for the Teams call-log integration.
+
+    A single row holds the poll window/threshold knobs and sync state. Microsoft
+    Graph credentials come from settings/env (``TEAMS_AZURE_*``), not this row,
+    so there is no API key field here (see ``backend.telephony``).
+    """
+    id = models.AutoField(primary_key=True)
+    enabled = models.BooleanField(
+        default=False, help_text='Master switch for the scheduled Teams call poll.')
+    start_date = models.DateField(
+        null=True, blank=True,
+        help_text='The scheduled poll stays dormant until this date (manual '
+                  '"Sync now" still works). Leave blank to start immediately.')
+    lookback_hours = models.IntegerField(
+        default=48,
+        help_text='How far back each poll looks. PSTN call logs can lag by '
+                  'minutes to a day, so keep a generous window; id-based dedupe '
+                  'makes the overlap free.')
+    catchup_lookback_days = models.IntegerField(
+        default=3,
+        help_text='Wider look-back used on the first run of each day to catch '
+                  'call rows that were published late.')
+    min_duration_seconds = models.IntegerField(
+        default=0,
+        help_text='Skip calls shorter than this many seconds (0 = capture all, '
+                  'including missed/unanswered calls).')
+    poll_pstn = models.BooleanField(
+        default=True,
+        help_text='Poll Calling Plan / Operator Connect calls (getPstnCalls).')
+    poll_direct_routing = models.BooleanField(
+        default=True,
+        help_text='Poll Direct Routing calls (getDirectRoutingCalls).')
+    granola_link_window_minutes = models.IntegerField(
+        default=15,
+        help_text='A call and a Granola note are treated as the same '
+                  'conversation when the same fee earner has a note whose '
+                  'meeting time is within this many minutes of the call.')
+    auto_create_on_otherside_only = models.BooleanField(
+        default=False,
+        help_text='When a number matches only an "other side" contact (not a '
+                  'client), auto-create the attendance note anyway. Off by '
+                  'default so such calls go to the review inbox instead, which '
+                  'avoids mis-billing shared other-side numbers.')
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    last_full_scan_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the last wider catch-up scan ran.')
+    last_sync_status = models.TextField(
+        blank=True, default='', help_text='Outcome of the most recent poll run.')
+    updated_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='calllog_config_updated_by')
+    timestamp = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Call log configuration'
+        verbose_name_plural = 'Call log configuration'
+
+    def __str__(self):
+        return f'Call log config (enabled={self.enabled})'
+
+    @classmethod
+    def get_solo(cls):
+        """Return the single config row, creating it on first access."""
+        obj = cls.objects.first()
+        if obj is None:
+            obj = cls.objects.create()
+        return obj
+
+
+class CallRecord(models.Model):
+    """Ledger of phone calls pulled from Microsoft Teams (Graph PSTN call logs).
+
+    Doubles as the de-duplication table (one row per Graph call-log row id) and
+    the central review inbox: calls whose matter could not be auto-resolved sit
+    in ``STATUS_PENDING`` until a back-office user assigns them to a matter,
+    marks them a general enquiry, or dismisses them. A call matched to a matter
+    auto-creates a ``MatterAttendanceNotes`` (mirroring the Granola flow); when a
+    Granola note for the same conversation also exists, both records point at
+    that single attendance note (``call_source`` vs ``granola_source``).
+    """
+    STATUS_PENDING = 'pending'    # awaiting manual matter assignment
+    STATUS_CREATED = 'created'    # attendance note / Free 30 created (auto or manual)
+    STATUS_ENQUIRY = 'enquiry'    # marked a general enquiry — logged, no note
+    STATUS_IGNORED = 'ignored'    # dismissed by a reviewer
+    STATUS_ERROR = 'error'        # could not be processed
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending review'),
+        (STATUS_CREATED, 'Record created'),
+        (STATUS_ENQUIRY, 'General enquiry'),
+        (STATUS_IGNORED, 'Ignored'),
+        (STATUS_ERROR, 'Error'),
+    ]
+
+    SOURCE_PSTN = 'pstn'
+    SOURCE_DIRECT_ROUTING = 'directRouting'
+    SOURCE_CHOICES = [
+        (SOURCE_PSTN, 'Calling Plan / Operator Connect'),
+        (SOURCE_DIRECT_ROUTING, 'Direct Routing'),
+    ]
+
+    DIRECTION_INBOUND = 'inbound'
+    DIRECTION_OUTBOUND = 'outbound'
+    DIRECTION_UNKNOWN = 'unknown'
+    DIRECTION_CHOICES = [
+        (DIRECTION_INBOUND, 'Inbound'),
+        (DIRECTION_OUTBOUND, 'Outbound'),
+        (DIRECTION_UNKNOWN, 'Unknown'),
+    ]
+
+    ROLE_CLIENT = 'client'
+    ROLE_OTHERSIDE = 'otherside'
+    ROLE_AUTH_PARTY = 'authparty'
+    ROLE_CHOICES = [
+        (ROLE_CLIENT, 'Client'),
+        (ROLE_OTHERSIDE, 'Other side'),
+        (ROLE_AUTH_PARTY, 'Authorised party'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    source = models.CharField(
+        max_length=16, choices=SOURCE_CHOICES, default=SOURCE_PSTN)
+    # The Graph call-log row id — the de-duplication key across poll runs.
+    graph_row_id = models.CharField(max_length=255, unique=True)
+    # Graph ``callId`` groups the segment rows that make up one conversation.
+    call_id = models.CharField(max_length=255, blank=True, default='')
+    direction = models.CharField(
+        max_length=16, choices=DIRECTION_CHOICES, default=DIRECTION_UNKNOWN)
+    call_type = models.CharField(max_length=64, blank=True, default='')
+
+    internal_user_id = models.CharField(max_length=64, blank=True, default='')
+    internal_upn = models.CharField(max_length=255, blank=True, default='')
+    internal_display_name = models.CharField(max_length=255, blank=True, default='')
+
+    caller_number = models.CharField(max_length=64, blank=True, default='')
+    callee_number = models.CharField(max_length=64, blank=True, default='')
+    external_number = models.CharField(
+        max_length=64, blank=True, default='',
+        help_text='The external party leg (caller on inbound, callee on outbound).')
+    external_number_normalized = models.CharField(
+        max_length=32, blank=True, default='',
+        help_text='E.164 form of external_number used for matter matching.')
+
+    start_datetime = models.DateTimeField(null=True, blank=True)
+    end_datetime = models.DateTimeField(null=True, blank=True)
+    duration_seconds = models.IntegerField(default=0)
+    charge = models.DecimalField(
+        max_digits=10, decimal_places=4, null=True, blank=True)
+    currency = models.CharField(max_length=8, blank=True, default='')
+    raw = models.JSONField(
+        null=True, blank=True, help_text='The full Graph call-log row.')
+
+    matched_role = models.CharField(
+        max_length=16, choices=ROLE_CHOICES, blank=True, default='')
+    match_reason = models.CharField(max_length=255, blank=True, default='')
+    ambiguous_candidates = models.JSONField(
+        null=True, blank=True,
+        help_text='Candidate matters when the number matched more than one, '
+                  'as [{file_number, role, name}] for the review pick-list.')
+    matched_file = models.ForeignKey(
+        WIP, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='call_records')
+    matched_fee_earner = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='call_records')
+
+    status = models.CharField(
+        max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    error_message = models.TextField(blank=True, default='')
+    attendance_note = models.OneToOneField(
+        MatterAttendanceNotes, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='call_source')
+    free30_meeting = models.OneToOneField(
+        Free30Mins, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='call_source')
+    granola_note = models.ForeignKey(
+        GranolaImportedNote, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='call_records')
+
+    reviewed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='call_records_reviewed')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-start_datetime', '-timestamp']
+        indexes = [
+            models.Index(fields=['status'], name='callrecord_status_idx'),
+            models.Index(fields=['external_number_normalized'],
+                         name='callrecord_extnorm_idx'),
+            models.Index(fields=['call_id'], name='callrecord_callid_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.get_direction_display()} call '
+                f'{self.external_number or "?"} ({self.status})')
+
+    @property
+    def is_missed(self):
+        """A zero-duration call — unanswered/voicemail; logged but not billed."""
+        return (self.duration_seconds or 0) <= 0
+
+    @property
+    def duration_display(self):
+        secs = self.duration_seconds or 0
+        return f'{secs // 60}:{secs % 60:02d}'
