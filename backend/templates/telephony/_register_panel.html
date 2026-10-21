@@ -1,0 +1,129 @@
+{% comment %}Every call in and out, and whether it was written up anywhere.
+Rendered standalone and as the fetch-swapped Allocate panel.{% endcomment %}
+
+<div class="div-container">
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <h2 class="text-base font-semibold text-gray-900">Call register</h2>
+      <p class="text-xs text-gray-500 mt-0.5">
+        {{ counts.total }} call{{ counts.total|pluralize }} · {{ counts.inbound }} in · {{ counts.outbound }} out ·
+        <span class="{% if counts.unallocated %}text-red-700 font-medium{% endif %}">{{ counts.unallocated }} unallocated</span>
+        {% if counts.waiting %} · {{ counts.waiting }} inside the grace window{% endif %}
+      </p>
+    </div>
+    <form method="post" action="{% url 'call_note_start' %}" class="shrink-0">{% csrf_token %}
+      <input type="hidden" name="direction" value="outbound">
+      <button type="submit" class="btn-primary">Start a note for a call out</button>
+    </form>
+  </div>
+
+  <form method="get" class="mt-4 flex flex-wrap items-end gap-3" data-register-filter>
+    <div>
+      <label class="form-label" for="reg_from">From</label>
+      <input type="date" id="reg_from" name="from" value="{{ date_from|date:'Y-m-d' }}" class="form-input">
+    </div>
+    <div>
+      <label class="form-label" for="reg_to">To</label>
+      <input type="date" id="reg_to" name="to" value="{{ date_to|date:'Y-m-d' }}" class="form-input">
+    </div>
+    <div>
+      <label class="form-label" for="reg_dir">Direction</label>
+      <select id="reg_dir" name="direction" class="form-input">
+        <option value="">In and out</option>
+        <option value="inbound" {% if direction == 'inbound' %}selected{% endif %}>Inbound</option>
+        <option value="outbound" {% if direction == 'outbound' %}selected{% endif %}>Outbound</option>
+      </select>
+    </div>
+    <label class="flex items-center gap-2 text-sm text-gray-700 pb-2">
+      <input type="checkbox" name="unallocated" value="1" {% if only_unallocated %}checked{% endif %}>
+      Unallocated only
+    </label>
+    <label class="flex items-center gap-2 text-sm text-gray-700 pb-2">
+      <input type="checkbox" name="mine" value="1" {% if mine %}checked{% endif %}>
+      Mine only
+    </label>
+    <button type="submit" class="btn-secondary">Show</button>
+  </form>
+</div>
+
+<div class="div-container mt-4 !p-0 overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+        <tr>
+          <th class="px-3 py-2 text-left font-medium">When</th>
+          <th class="px-3 py-2 text-left font-medium">Number</th>
+          <th class="px-3 py-2 text-left font-medium">Direction</th>
+          <th class="px-3 py-2 text-left font-medium">Who</th>
+          <th class="px-3 py-2 text-left font-medium">Length</th>
+          <th class="px-3 py-2 text-left font-medium">Recorded as</th>
+          <th class="px-3 py-2 text-left font-medium"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for row in rows %}
+        <tr class="{% if row.unallocated %}bg-red-50/40{% endif %}">
+          <td class="px-3 py-2 whitespace-nowrap text-gray-900">{{ row.call.start_datetime|date:'d/m/Y H:i' }}</td>
+          <td class="px-3 py-2 whitespace-nowrap font-medium text-gray-900">{{ row.call.external_number|default:'withheld' }}</td>
+          <td class="px-3 py-2 whitespace-nowrap">
+            {% if row.call.direction == 'inbound' %}<span class="badge-green">In</span>
+            {% elif row.call.direction == 'outbound' %}<span class="badge-purple">Out</span>
+            {% else %}<span class="badge-gray">?</span>{% endif %}
+          </td>
+          <td class="px-3 py-2 whitespace-nowrap text-gray-700">
+            {% if row.call.matched_fee_earner %}{{ row.call.matched_fee_earner.get_full_name|default:row.call.matched_fee_earner.username }}
+            {% else %}<span class="text-gray-400">{{ row.call.internal_display_name|default:'—' }}</span>{% endif %}
+          </td>
+          <td class="px-3 py-2 whitespace-nowrap text-gray-700">
+            {{ row.call.duration_display }}{% if row.call.is_missed %} <span class="text-gray-400">(no answer)</span>{% endif %}
+          </td>
+          <td class="px-3 py-2">
+            {% if row.unallocated %}<span class="badge-red">Unallocated</span>
+            {% elif row.kind == 'waiting' %}<span class="badge-yellow">{{ row.label }}</span>
+            {% elif row.link %}<a class="link" href="{{ row.link }}">{{ row.label }}</a>
+            {% else %}<span class="text-gray-700">{{ row.label }}</span>{% endif %}
+            {% if row.detail %}<span class="block text-xs text-gray-400">{{ row.detail }}</span>{% endif %}
+          </td>
+          <td class="px-3 py-2 whitespace-nowrap text-right">
+            {% if row.unallocated or row.kind == 'waiting' %}
+            <form method="post" action="{% url 'call_note_start' %}">{% csrf_token %}
+              <input type="hidden" name="direction" value="{{ row.call.direction }}">
+              <input type="hidden" name="caller_number" value="{{ row.call.external_number }}">
+              <button type="submit" class="link text-xs">Write it up</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="px-3 py-8 text-center text-sm text-gray-400">
+          {% if only_unallocated %}Nothing unallocated in this period.{% else %}No calls in this period.{% endif %}
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if orphan_notes %}
+<div class="div-container mt-4">
+  <h3 class="text-base font-semibold text-gray-900">Notes with no call row</h3>
+  <p class="text-xs text-gray-500 mt-0.5">
+    The other half of the reconciliation. A mobile, a withheld number or someone at the front desk never
+    appears in the Teams log — these are still complete records.
+  </p>
+  <ul class="mt-3 divide-y divide-gray-100">
+    {% for note in orphan_notes %}
+    <li class="py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+      <a class="link" href="{% url 'call_note_detail' note.id %}">{{ note.started_at|date:'d/m/Y H:i' }}</a>
+      <span class="text-gray-900">{{ note.caller_name|default:note.caller_number|default:'unknown caller' }}</span>
+      <span class="text-gray-500">{{ note.get_direction_display|lower }} · {{ note.duration_display }}</span>
+      {% if note.matter %}<span class="text-gray-500">{{ note.matter.file_number }}</span>{% endif %}
+      {% if note.pairing_status == 'ambiguous' %}<span class="badge-yellow">Needs the author to pick a call</span>
+      {% elif note.pairing_status == 'waiting' %}<span class="badge-gray">Waiting for the call log</span>
+      {% else %}<span class="badge-gray">{{ note.get_outcome_display }}</span>{% endif %}
+      {% if note.taken_by %}<span class="text-xs text-gray-400">{{ note.taken_by.get_full_name|default:note.taken_by.username }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}

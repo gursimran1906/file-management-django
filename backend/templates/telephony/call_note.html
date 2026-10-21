@@ -1,0 +1,284 @@
+{% extends 'base.html' %}
+{% block title %}Call note{% endblock %}
+{% block container %}
+<div class="mx-auto max-w-4xl px-4 pb-10">
+
+  <div class="pt-6 pb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <h1 class="text-xl font-semibold text-gray-900">
+        {% if note.is_live %}Call in progress{% else %}Call note{% endif %}
+      </h1>
+      <p class="mt-0.5 text-sm text-gray-500">
+        Started {{ note.started_at|date:'d/m/Y @ H:i:s' }}
+        {% if note.taken_by %} · taken by {{ note.taken_by.get_full_name|default:note.taken_by.username }}{% endif %}
+      </p>
+    </div>
+    <div class="flex items-center gap-3 shrink-0">
+      {% if note.is_live %}
+      <span class="inline-flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm font-medium text-red-700">
+        <span class="h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>
+        <span data-call-timer data-started="{{ note.started_at|date:'c' }}">0:00</span>
+      </span>
+      <form method="post" action="{% url 'call_note_end' note.id %}" data-end-form>{% csrf_token %}
+        <button type="submit" class="btn-primary">End call</button>
+      </form>
+      {% else %}
+      <span class="badge-gray">{{ note.duration_display }} · {{ note.unit }} unit{{ note.unit|pluralize }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+    <div class="mb-4 rounded-lg border px-3 py-2 text-sm {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-800{% else %}border-green-200 bg-green-50 text-green-800{% endif %}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  {% comment %}How this note and the Teams call log found each other (or did not).{% endcomment %}
+  <div class="div-container mb-4">
+    {% if note.pairing_status == 'paired' and note.call_record %}
+      <p class="text-sm text-gray-900">
+        <span class="badge-green">Matched to a call</span>
+        <span class="ml-2 font-medium">{{ note.call_record.external_number|default:'number withheld' }}</span>
+        <span class="text-gray-500">· {{ note.call_record.get_direction_display|lower }} · {{ note.call_record.start_datetime|date:'H:i:s' }} · {{ note.call_record.duration_display }}</span>
+      </p>
+    {% elif note.pairing_status == 'ambiguous' %}
+      <p class="text-sm font-medium text-gray-900">More than one call fits this note — which was yours?</p>
+      <p class="mt-0.5 text-xs text-gray-500">
+        The call log names the sign-in, never the handset or the person, so we will not guess between these.
+      </p>
+      <form method="post" action="{% url 'call_note_choose_call' note.id %}" class="mt-3 space-y-2">{% csrf_token %}
+        {% for call in candidates %}
+        <label class="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50">
+          <input type="radio" name="call_record" value="{{ call.id }}" {% if forloop.first %}checked{% endif %}>
+          <span class="font-medium">{{ call.external_number|default:'number withheld' }}</span>
+          <span class="text-gray-500">{{ call.get_direction_display|lower }} · {{ call.start_datetime|date:'H:i:s' }} · {{ call.duration_display }}{% if call.matched_file %} · {{ call.matched_file.file_number }}{% endif %}</span>
+        </label>
+        {% endfor %}
+        <label class="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50">
+          <input type="radio" name="call_record" value="none">
+          <span class="text-gray-700">None of these — it was not a Teams call</span>
+        </label>
+        <button type="submit" class="btn-secondary">Confirm</button>
+      </form>
+    {% elif note.pairing_status == 'waiting' %}
+      <p class="text-sm text-gray-700">
+        <span class="badge-yellow">Waiting for the call log</span>
+        <span class="ml-2 text-gray-500">Microsoft publishes phone calls minutes to a day late. The number will attach itself; nothing here is waiting on you.</span>
+      </p>
+    {% else %}
+      <p class="text-sm text-gray-700">
+        <span class="badge-gray">No matching call</span>
+        <span class="ml-2 text-gray-500">Nothing in the Teams log matches — a mobile, a withheld number or a caller at the door. The note stands on its own.</span>
+      </p>
+    {% endif %}
+  </div>
+
+  <form method="post" action="{% url 'call_note_save' note.id %}" data-note-form
+    data-autosave-url="{% url 'call_note_autosave' note.id %}">
+    {% csrf_token %}
+
+    {% comment %}The note itself comes first: when the phone is live, typing is all that matters.{% endcomment %}
+    <div class="div-container">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <label class="form-label !mb-0" for="content_md">The note</label>
+        <span class="text-xs text-gray-400" data-save-state>{% if can_edit %}Saves as you type{% endif %}</span>
+      </div>
+      <textarea id="content_md" name="content_md" rows="14" class="form-input font-mono text-sm"
+        placeholder="Type while you talk. Plain text — bullet with - if you like."
+        {% if not can_edit %}readonly{% endif %}>{{ note.content_md }}</textarea>
+
+      <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="form-label" for="subject">Subject</label>
+          <input type="text" id="subject" name="subject" class="form-input"
+            value="{{ note.subject }}" placeholder="Left blank, we will write one for you">
+        </div>
+        <div>
+          <label class="form-label" for="direction">Direction</label>
+          <select id="direction" name="direction" class="form-input">
+            <option value="inbound" {% if note.direction == 'inbound' %}selected{% endif %}>Inbound — they rang us</option>
+            <option value="outbound" {% if note.direction == 'outbound' %}selected{% endif %}>Outbound — we rang them</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="div-container mt-4">
+      <h2 class="text-base font-semibold text-gray-900 mb-3">Who called</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="form-label" for="caller_name">Name</label>
+          <input type="text" id="caller_name" name="caller_name" class="form-input" value="{{ note.caller_name }}">
+        </div>
+        <div>
+          <label class="form-label" for="caller_number">Number</label>
+          <input type="text" id="caller_number" name="caller_number" class="form-input"
+            value="{{ note.caller_number }}" placeholder="Fills itself in from the call log">
+        </div>
+        <div>
+          <label class="form-label" for="caller_email">Email</label>
+          <input type="text" id="caller_email" name="caller_email" class="form-input" value="{{ note.caller_email }}">
+        </div>
+      </div>
+      <div class="mt-2 flex items-center gap-3">
+        <button type="button" class="btn-secondary !py-1.5 text-xs"
+          data-lookup-url="{% url 'call_note_lookup_number' note.id %}">Find the matter from this number</button>
+        <span class="text-xs text-gray-500" data-lookup-result></span>
+      </div>
+    </div>
+
+    <div class="div-container mt-4">
+      <h2 class="text-base font-semibold text-gray-900 mb-3">What to do with it</h2>
+
+      <div class="space-y-4">
+        <div class="rounded-lg border border-gray-200 p-3">
+          <label class="flex items-center gap-2 text-sm font-medium text-gray-900">
+            <input type="radio" name="outcome" value="attendance"
+              {% if note.outcome == 'attendance' or note.outcome == 'drafting' %}checked{% endif %}>
+            File it on a matter
+          </label>
+          <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="form-label" for="file_number">File number</label>
+              <input type="text" id="file_number" name="file_number" list="call_note_files" class="form-input"
+                value="{% if note.matter %}{{ note.matter.file_number }}{% endif %}">
+              <datalist id="call_note_files">
+                {% for fn in file_numbers %}<option value="{{ fn }}"></option>{% endfor %}
+              </datalist>
+            </div>
+            <div class="flex items-end">
+              <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" name="is_charged" {% if note.is_charged %}checked{% endif %}>
+                Charge the time ({{ note.unit }} unit{{ note.unit|pluralize }})
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-gray-200 p-3">
+          <label class="flex items-center gap-2 text-sm font-medium text-gray-900">
+            <input type="radio" name="outcome" value="free30" {% if note.outcome == 'free30' %}checked{% endif %}>
+            New enquiry — record a Free 30 minutes
+          </label>
+          <div class="mt-2">
+            <label class="form-label" for="matter_type">What it is about</label>
+            <select id="matter_type" name="matter_type" class="form-input">
+              <option value="">Not sure yet</option>
+              {% for mt in matter_types %}
+              <option value="{{ mt.id }}" {% if note.matter_type_id == mt.id %}selected{% endif %}>{{ mt }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-gray-200 p-3">
+          <label class="flex items-center gap-2 text-sm font-medium text-gray-900">
+            <input type="radio" name="outcome" value="enquiry" {% if note.outcome == 'enquiry' %}checked{% endif %}>
+            Enquiry only — keep the note, no matter and no Free 30
+          </label>
+          <p class="mt-1 text-xs text-gray-500">Still a full record: who called, their number, and what they wanted.</p>
+        </div>
+      </div>
+
+      <div class="mt-4">
+        <label class="form-label" for="follow_up">Follow up</label>
+        <input type="text" id="follow_up" name="follow_up" class="form-input"
+          value="{{ note.follow_up }}" placeholder="What happens next, if anything">
+      </div>
+
+      <div class="mt-5 flex flex-wrap items-center gap-3">
+        <button type="submit" class="btn-primary">Save the note</button>
+        <button type="submit" name="outcome" value="discarded" class="btn-secondary"
+          onclick="return confirm('Discard this call note? Nothing will be recorded.')">Discard</button>
+        <a href="{% url 'calls_register' %}" class="link text-sm">Call register</a>
+        {% if note.attendance_note and note.matter %}
+        <a href="{% url 'attendance_note_view' note.matter.file_number %}" class="link text-sm">View on the matter</a>
+        {% endif %}
+        {% if note.free30_meeting %}
+        <a href="{% url 'free30mins' %}" class="link text-sm">View the Free 30</a>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  // Live timer. Purely cosmetic — the authoritative times are server-side.
+  var el = document.querySelector('[data-call-timer]');
+  if (el) {
+    var started = new Date(el.getAttribute('data-started')).getTime();
+    setInterval(function () {
+      var s = Math.max(0, Math.floor((Date.now() - started) / 1000));
+      el.textContent = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+    }, 1000);
+  }
+
+  var form = document.querySelector('[data-note-form]');
+  if (!form) return;
+  var url = form.getAttribute('data-autosave-url');
+  var state = document.querySelector('[data-save-state]');
+  var token = form.querySelector('[name=csrfmiddlewaretoken]').value;
+  var dirty = false;
+  var FIELDS = ['content_md', 'subject', 'caller_name', 'caller_number', 'caller_email', 'direction'];
+
+  FIELDS.forEach(function (name) {
+    var input = form.querySelector('[name="' + name + '"]');
+    if (input) input.addEventListener('input', function () { dirty = true; });
+    if (input) input.addEventListener('change', function () { dirty = true; });
+  });
+
+  function save() {
+    if (!dirty) return;
+    dirty = false;
+    var body = new URLSearchParams();
+    FIELDS.forEach(function (name) {
+      var input = form.querySelector('[name="' + name + '"]');
+      if (input) body.append(name, input.value);
+    });
+    fetch(url, {
+      method: 'POST', body: body,
+      headers: { 'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest' },
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (state && d.saved_at) state.textContent = 'Saved ' + d.saved_at;
+    }).catch(function () {
+      dirty = true;                      // try again on the next tick
+      if (state) state.textContent = 'Not saved — still trying';
+    });
+  }
+  setInterval(save, 10000);
+  window.addEventListener('beforeunload', save);
+  // Ending the call should not lose the last few words.
+  var endForm = document.querySelector('[data-end-form]');
+  if (endForm) endForm.addEventListener('submit', save);
+
+  // "Find the matter from this number"
+  var lookup = form.querySelector('[data-lookup-url]');
+  var out = form.querySelector('[data-lookup-result]');
+  if (lookup) lookup.addEventListener('click', function () {
+    var number = form.querySelector('[name=caller_number]').value;
+    var body = new URLSearchParams(); body.append('caller_number', number);
+    out.textContent = 'Looking…';
+    fetch(lookup.getAttribute('data-lookup-url'), {
+      method: 'POST', body: body,
+      headers: { 'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest' },
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.results || !d.results.length) { out.textContent = d.message || 'No matter has that number.'; return; }
+      out.innerHTML = '';
+      d.results.forEach(function (r) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'link mr-3';
+        b.textContent = r.file_number + (r.name ? ' (' + r.name + ')' : '');
+        b.addEventListener('click', function () {
+          form.querySelector('[name=file_number]').value = r.file_number;
+          var radio = form.querySelector('[name=outcome][value=attendance]');
+          if (radio) radio.checked = true;
+        });
+        out.appendChild(b);
+      });
+    }).catch(function () { out.textContent = 'Lookup failed.'; });
+  });
+})();
+</script>
+{% endblock %}

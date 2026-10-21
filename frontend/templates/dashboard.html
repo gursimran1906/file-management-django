@@ -318,10 +318,26 @@
       <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between mb-3 pb-3 border-b border-gray-100 shrink-0">
         <div>
           <h3 class="text-base font-semibold text-gray-900">Recent calls</h3>
-          <p class="text-xs text-gray-500 mt-0.5">Your latest Teams phone calls</p>
+          <p class="text-xs text-gray-500 mt-0.5">Your latest Teams phone calls · <a class="link" href="{% url 'calls_register' %}">register</a></p>
         </div>
-        {% if recent_calls %}<span class="badge-zinc shrink-0">{{ recent_calls|length }}</span>{% endif %}
+        <form method="post" action="{% url 'call_note_start' %}" class="shrink-0">{% csrf_token %}
+          <button type="submit" class="btn-primary !py-1.5 text-xs">Take a call</button>
+        </form>
       </div>
+      {% if my_open_call_notes %}
+      <div class="mb-3 rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2">
+        <p class="text-xs font-medium text-amber-900">Your call notes needing a moment</p>
+        <ul class="mt-1 space-y-1">
+          {% for note in my_open_call_notes %}
+          <li class="text-xs text-gray-700">
+            <a class="link" href="{% url 'call_note_detail' note.id %}">{{ note.started_at|date:'d/m H:i' }}</a>
+            {{ note.caller_name|default:note.caller_number|default:'unknown caller' }} ·
+            {% if note.pairing_status == 'ambiguous' %}pick which call it was{% else %}not saved yet{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
       <div class="overflow-y-auto flex-1 min-h-0 -mx-1 px-1">
         {% for call in recent_calls %}
         <div class="py-3 border-b border-gray-100 last:border-0">

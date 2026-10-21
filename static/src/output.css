@@ -2424,6 +2424,10 @@ textarea.form-input {
   margin-bottom: 1rem;
 }
 
+.\!mb-0 {
+  margin-bottom: 0px !important;
+}
+
 .-mb-px {
   margin-bottom: -1px;
 }
@@ -2530,6 +2534,10 @@ textarea.form-input {
 
 .mr-2 {
   margin-right: 0.5rem;
+}
+
+.mr-3 {
+  margin-right: 0.75rem;
 }
 
 .ms-2 {
@@ -3229,6 +3237,16 @@ textarea.form-input {
 
 .animate-ping {
   animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: .5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 @keyframes spin {
@@ -4207,6 +4225,10 @@ textarea.form-input {
   background-color: rgb(254 242 242 / 0.3);
 }
 
+.bg-red-50\/40 {
+  background-color: rgb(254 242 242 / 0.4);
+}
+
 .bg-red-500 {
   --tw-bg-opacity: 1;
   background-color: rgb(239 68 68 / var(--tw-bg-opacity, 1));
@@ -4492,6 +4514,11 @@ textarea.form-input {
   padding-bottom: 0.25rem !important;
 }
 
+.\!py-1\.5 {
+  padding-top: 0.375rem !important;
+  padding-bottom: 0.375rem !important;
+}
+
 .px-1 {
   padding-left: 0.25rem;
   padding-right: 0.25rem;
@@ -4598,6 +4625,10 @@ textarea.form-input {
 
 .pb-1 {
   padding-bottom: 0.25rem;
+}
+
+.pb-10 {
+  padding-bottom: 2.5rem;
 }
 
 .pb-2 {
@@ -5800,6 +5831,10 @@ details.gr-disclose > summary::-webkit-details-marker {
 
 .focus\:ring-blue-500\/20:focus {
   --tw-ring-color: rgb(59 130 246 / 0.2);
+}
+
+.focus\:ring-blue-500\/30:focus {
+  --tw-ring-color: rgb(59 130 246 / 0.3);
 }
 
 .focus\:ring-gray-100:focus {

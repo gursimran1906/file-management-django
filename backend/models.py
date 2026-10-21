@@ -2791,6 +2791,27 @@ class CallLogConfig(models.Model):
         help_text='A call and a Granola note are treated as the same '
                   'conversation when the same fee earner has a note whose '
                   'meeting time is within this many minutes of the call.')
+    pair_window_minutes = models.IntegerField(
+        default=10,
+        help_text='How far either side of a live call note to look for the '
+                  'matching call-log row. Covers the gap between picking the '
+                  'phone up and clicking "Take a call".')
+    pair_margin_seconds = models.IntegerField(
+        default=60,
+        help_text='When two calls fit one note this closely (difference in '
+                  'overlap), neither is attached — the note asks the author '
+                  'which call it was instead of guessing.')
+    note_grace_hours = models.IntegerField(
+        default=48,
+        help_text='How long a note waits for its call row (and a call waits '
+                  'for its note) before it is treated as settled. Should '
+                  'exceed the worst Graph publishing lag.')
+    shared_line_upns = models.TextField(
+        blank=True, default='',
+        help_text='Teams sign-ins shared by more than one person (reception, a '
+                  'hot desk), one per line. The call log only ever names the '
+                  'account, never the device or the human, so calls on these '
+                  'accounts may pair with a note taken by any member of staff.')
     auto_create_on_otherside_only = models.BooleanField(
         default=False,
         help_text='When a number matches only an "other side" contact (not a '
@@ -2822,6 +2843,13 @@ class CallLogConfig(models.Model):
         if obj is None:
             obj = cls.objects.create()
         return obj
+
+    @property
+    def shared_upn_set(self):
+        """Lower-cased set of the shared sign-ins, from the newline list."""
+        return {line.strip().lower()
+                for line in (self.shared_line_upns or '').replace(',', '\n').split('\n')
+                if line.strip()}
 
 
 class CallRecord(models.Model):
@@ -2961,3 +2989,158 @@ class CallRecord(models.Model):
     def duration_display(self):
         secs = self.duration_seconds or 0
         return f'{secs // 60}:{secs % 60:02d}'
+
+
+class CallNote(models.Model):
+    """A note typed while a call is actually happening.
+
+    Nothing tells us about a phone call in real time — Microsoft publishes the
+    PSTN call log minutes to a day after the event — so the running order is
+    reversed: whoever answers starts a note straight away, writes it during the
+    call, and the call-log row is stapled on afterwards by
+    ``backend.telephony.pairing`` (which fills in the number, direction and
+    exact times).
+
+    A note is a complete record on its own. If no call row ever arrives — a
+    mobile, a withheld number, a client at the front desk — it just settles as
+    ``PAIR_NONE``; nothing is ever blocked waiting for Microsoft. Conversely a
+    call with no note is what the register reports as unallocated.
+
+    The note is also the enquiry record: a caller who has no matter yet gets
+    their name, number and what they want captured here, which is what the old
+    "general enquiry" tick box could not do.
+    """
+    DIRECTION_INBOUND = 'inbound'
+    DIRECTION_OUTBOUND = 'outbound'
+    DIRECTION_CHOICES = [
+        (DIRECTION_INBOUND, 'Inbound'),
+        (DIRECTION_OUTBOUND, 'Outbound'),
+    ]
+
+    OUTCOME_DRAFTING = 'drafting'      # still being written (call may be live)
+    OUTCOME_ATTENDANCE = 'attendance'  # saved to a matter as an attendance note
+    OUTCOME_FREE30 = 'free30'          # saved as a Free 30 minute enquiry
+    OUTCOME_ENQUIRY = 'enquiry'        # kept as an enquiry record, no matter yet
+    OUTCOME_DISCARDED = 'discarded'    # wrong number / nothing to record
+    OUTCOME_CHOICES = [
+        (OUTCOME_DRAFTING, 'Being written'),
+        (OUTCOME_ATTENDANCE, 'Attendance note'),
+        (OUTCOME_FREE30, 'Free 30 minutes'),
+        (OUTCOME_ENQUIRY, 'Enquiry'),
+        (OUTCOME_DISCARDED, 'Discarded'),
+    ]
+    # Outcomes that count as "this call is recorded" in the register.
+    RECORDED_OUTCOMES = (OUTCOME_ATTENDANCE, OUTCOME_FREE30, OUTCOME_ENQUIRY)
+
+    PAIR_WAITING = 'waiting'      # expecting a call-log row to turn up
+    PAIR_PAIRED = 'paired'        # matched to exactly one call
+    PAIR_AMBIGUOUS = 'ambiguous'  # two calls fit — the author must choose
+    PAIR_NONE = 'none'            # grace period passed, or not a Teams call
+    PAIR_CHOICES = [
+        (PAIR_WAITING, 'Waiting for the call log'),
+        (PAIR_PAIRED, 'Matched to a call'),
+        (PAIR_AMBIGUOUS, 'More than one call fits'),
+        (PAIR_NONE, 'No matching call'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    taken_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True,
+        related_name='call_notes',
+        help_text='Who took the call — the person typing, which is the only '
+                  'reliable record of that when a sign-in is shared.')
+    direction = models.CharField(
+        max_length=16, choices=DIRECTION_CHOICES, default=DIRECTION_INBOUND)
+    started_at = models.DateTimeField(
+        help_text='When the note was started, i.e. roughly when the call was '
+                  'answered or dialled.')
+    ended_at = models.DateTimeField(
+        null=True, blank=True, help_text='Set when the author ends the call.')
+
+    # What the author types. Plain text/markdown while live (a textarea survives
+    # autosave far better than an editor); converted to Quill on save.
+    subject = models.CharField(max_length=255, blank=True, default='')
+    content_md = models.TextField(blank=True, default='')
+
+    caller_name = models.CharField(max_length=255, blank=True, default='')
+    caller_number = models.CharField(
+        max_length=64, blank=True, default='',
+        help_text='Typed by the author if they have it; otherwise filled in '
+                  'from the call log once the row arrives.')
+    caller_email = models.CharField(max_length=255, blank=True, default='')
+
+    matter = models.ForeignKey(
+        WIP, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='call_notes')
+    matter_type = models.ForeignKey(
+        MatterType, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='call_notes',
+        help_text='What the enquiry is about, when there is no matter yet.')
+    outcome = models.CharField(
+        max_length=16, choices=OUTCOME_CHOICES, default=OUTCOME_DRAFTING)
+    is_charged = models.BooleanField(default=True)
+    follow_up = models.TextField(
+        blank=True, default='', help_text='What happens next, if anything.')
+
+    attendance_note = models.OneToOneField(
+        MatterAttendanceNotes, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='call_note')
+    free30_meeting = models.OneToOneField(
+        Free30Mins, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='call_note')
+
+    call_record = models.OneToOneField(
+        CallRecord, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='call_note')
+    pairing_status = models.CharField(
+        max_length=16, choices=PAIR_CHOICES, default=PAIR_WAITING)
+    candidate_calls = models.JSONField(
+        null=True, blank=True,
+        help_text='Call ids that fit this note equally well, as '
+                  '[{id, number, direction, start, duration}] for the chooser.')
+    paired_at = models.DateTimeField(null=True, blank=True)
+
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='call_notes_created_by')
+    timestamp = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-started_at', '-id']
+        indexes = [
+            models.Index(fields=['outcome'], name='callnote_outcome_idx'),
+            models.Index(fields=['pairing_status'], name='callnote_pairing_idx'),
+            models.Index(fields=['-started_at'], name='callnote_started_idx'),
+        ]
+
+    def __str__(self):
+        who = self.caller_name or self.caller_number or 'unknown caller'
+        return f'{self.get_direction_display()} call note — {who}'
+
+    @property
+    def is_live(self):
+        """Still on the call: started, not ended, nothing saved yet."""
+        return self.ended_at is None and self.outcome == self.OUTCOME_DRAFTING
+
+    @property
+    def duration_seconds(self):
+        if not self.ended_at:
+            return 0
+        return max(0, int((self.ended_at - self.started_at).total_seconds()))
+
+    @property
+    def duration_display(self):
+        secs = self.duration_seconds
+        return f'{secs // 60}:{secs % 60:02d}'
+
+    @property
+    def unit(self):
+        """6 minutes to a unit, minimum one — the firm's attendance-note rule."""
+        return max(1, ceil(self.duration_seconds / 360)) if self.duration_seconds else 1
+
+    @property
+    def display_number(self):
+        return (self.caller_number
+                or (self.call_record.external_number if self.call_record_id else '')
+                or '')

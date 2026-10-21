@@ -27,6 +27,7 @@ from users.models import CustomUser
 
 from backend.granola.markdown_to_quill import markdown_to_quill_json
 
+from . import pairing
 from .client import TeamsGraphClient, TelephonyError
 from .match import build_matter_phone_index, match_call, normalize_phone
 
@@ -282,6 +283,19 @@ def merge_call_and_granola(call, note, created_by=None):
 
 # --- ingest -------------------------------------------------------------------
 
+def _live_note_for_call(call, config):
+    """The note someone typed during this call, if there is one.
+
+    Only an unambiguous single candidate counts here: where more than one note
+    could be the call's (a shared sign-in, overlapping notes), the pairing pass
+    asks the authors instead, and in the meantime the call is left for review.
+    """
+    eligible = pairing.eligible_notes_for_call(call, config)
+    if len(eligible) != 1:
+        return None
+    return eligible[0]
+
+
 def _existing_note_for_call(call, matter):
     """Segment de-dup: reuse the note already made for another row of this call."""
     if not call.call_id:
@@ -315,6 +329,19 @@ def _ingest_row(row, source, index, config, created_by=None):
 
     matter = (WIP.objects.filter(file_number__iexact=result.file_number).first()
               if result.file_number else None)
+
+    live_note = _live_note_for_call(call, config)
+    if live_note is not None:
+        # Somebody was typing while this call happened. Their note is the record
+        # of it — pair the two rather than generating a second, emptier note.
+        if matter:
+            call.matched_file = matter
+            call.matched_role = result.role
+        call.status = CallRecord.STATUS_CREATED
+        call.match_reason = 'recorded by a live call note'
+        call.save()
+        pairing.pair_note(live_note, config)
+        return call
 
     if matter:
         call.matched_file = matter
@@ -428,6 +455,7 @@ def sync_calls(force=False):
         return msg
 
     linked = reconcile_granola_links(config)
+    paired, ambiguous, settled = pairing.pair_waiting_notes(config)
 
     config.last_synced_at = started
     update_fields = ['last_synced_at', 'last_sync_status']
@@ -437,7 +465,10 @@ def sync_calls(force=False):
     config.last_sync_status = (
         f'{timezone.localtime(started):%d/%m/%Y %H:%M} — '
         f'{created} created, {pending} pending review, {linked} linked to notes, '
-        f'{errors} errors ({"catch-up" if catchup else "incremental"}).')
+        f'{paired} matched to call notes'
+        + (f', {ambiguous} need the author to pick' if ambiguous else '')
+        + (f', {settled} with no call row' if settled else '')
+        + f', {errors} errors ({"catch-up" if catchup else "incremental"}).')
     config.save(update_fields=update_fields)
     logger.info(config.last_sync_status)
     return config.last_sync_status

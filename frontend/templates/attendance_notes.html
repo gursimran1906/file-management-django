@@ -215,7 +215,15 @@
                                 {% if not attendance_note.is_charged %}
                                 <span class="badge-gray">N/C</span>
                                 {% endif %}
-                                {% if attendance_note.call_source %}
+                                {% if attendance_note.call_note %}
+                                {% comment %}Typed live during the call; the number
+                                arrives with the call log afterwards.{% endcomment %}
+                                {% with note=attendance_note.call_note %}
+                                <span class="badge-purple">{% if note.direction == 'inbound' %}Inbound call{% else %}Outbound call{% endif %}</span>
+                                {% if note.display_number %}<span class="font-mono">{{ note.display_number }}</span>{% endif %}
+                                <span>{{ note.duration_display }}</span>
+                                {% endwith %}
+                                {% elif attendance_note.call_source %}
                                 {% with call=attendance_note.call_source %}
                                 <span class="badge-purple">{% if call.direction == 'inbound' %}Inbound call{% elif call.direction == 'outbound' %}Outbound call{% else %}Call{% endif %}</span>
                                 {% if call.external_number %}<span class="font-mono">{{ call.external_number }}</span>{% endif %}

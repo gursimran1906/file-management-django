@@ -201,6 +201,13 @@ def calls_settings(request):
         config.poll_direct_routing = request.POST.get('poll_direct_routing') == 'on'
         config.auto_create_on_otherside_only = (
             request.POST.get('auto_create_on_otherside_only') == 'on')
+        config.pair_window_minutes = _int_field(
+            request.POST.get('pair_window_minutes'), config.pair_window_minutes)
+        config.pair_margin_seconds = _int_field(
+            request.POST.get('pair_margin_seconds'), config.pair_margin_seconds)
+        config.note_grace_hours = _int_field(
+            request.POST.get('note_grace_hours'), config.note_grace_hours)
+        config.shared_line_upns = (request.POST.get('shared_line_upns') or '').strip()
         config.updated_by = request.user
         config.save()
         messages.success(request, 'Call log settings saved.')

@@ -86,6 +86,44 @@
       </div>
     </div>
 
+    <h2 class="pt-2 text-base font-semibold text-gray-900">Matching calls to notes</h2>
+    <p class="-mt-2 text-xs text-gray-500">
+      A note typed during a call is matched to its call-log row by who took it and when.
+      The log names the sign-in only — never the handset or the person — so these settings
+      decide how close a fit has to be before we attach it rather than ask.
+    </p>
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div>
+        <label class="block text-sm font-medium text-gray-800">Pairing window (minutes)</label>
+        <input type="number" name="pair_window_minutes" min="1" value="{{ config.pair_window_minutes }}"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <p class="mt-1 text-xs text-gray-500">How far either side of the note to look for the call. Covers the gap between answering and clicking "Take a call".</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-800">Too-close-to-call margin (seconds)</label>
+        <input type="number" name="pair_margin_seconds" min="0" value="{{ config.pair_margin_seconds }}"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <p class="mt-1 text-xs text-gray-500">When two calls fit one note this similarly, neither is attached — the author picks instead.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-800">Grace period (hours)</label>
+        <input type="number" name="note_grace_hours" min="1" value="{{ config.note_grace_hours }}"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <p class="mt-1 text-xs text-gray-500">How long a call waits for a note (and a note for its call) before the register calls it unallocated. Keep it above the worst Graph lag.</p>
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-800">Shared sign-ins</label>
+      <textarea name="shared_line_upns" rows="3" placeholder="reception@example.co.uk"
+        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono">{{ config.shared_line_upns }}</textarea>
+      <p class="mt-1 text-xs text-gray-500">
+        One sign-in per line. The call log records no device or endpoint, so when several people share
+        a login nothing can tell their handsets apart — calls on these accounts may be matched to a note
+        taken by any member of staff, and anything close is put to the authors rather than guessed.
+      </p>
+    </div>
+
     <div>
       <label class="flex items-center gap-2 text-sm text-gray-700">
         <input type="checkbox" name="auto_create_on_otherside_only" {% if config.auto_create_on_otherside_only %}checked{% endif %}

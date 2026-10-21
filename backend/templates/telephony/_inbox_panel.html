@@ -137,6 +137,17 @@ and included by the full telephony/inbox.html shell.{% endcomment %}
     <!-- Not a matter -->
     <div class="flex flex-wrap items-end gap-3 border-t border-gray-100 px-5 py-3">
       <span class="text-xs text-gray-400">Not a matter?</span>
+      {% comment %}Writing it up properly beats a bare "enquiry" flag: the note
+      keeps who rang, their number and what they wanted.{% endcomment %}
+      <form method="post" action="{% url 'call_note_start' %}">
+        {% csrf_token %}
+        <input type="hidden" name="direction" value="{{ call.direction }}">
+        <input type="hidden" name="caller_number" value="{{ call.external_number }}">
+        <button type="submit"
+          class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">
+          Write it up
+        </button>
+      </form>
       <button type="submit" form="enquiry-{{ call.id }}"
         class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">
         General enquiry
