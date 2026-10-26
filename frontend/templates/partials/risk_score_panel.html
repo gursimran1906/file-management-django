@@ -6,8 +6,9 @@ comes from backend/risk_scoring.py: the template does no judging of its own.
 {% endcomment %}
 <div class="space-y-3">
 
-    <!-- The conclusion for the file, which is what the fee earner signs off. -->
-    <div class="rounded-lg border {% if breakdown.overall_level == 'High' %}border-red-300 bg-red-50{% elif breakdown.overall_level == 'Medium' %}border-amber-300 bg-amber-50{% else %}border-green-300 bg-green-50{% endif %} p-3">
+    <!-- The conclusion for the file, which is what the fee earner signs off.
+         Pinned to the top of the scrolling column so it is always in view. -->
+    <div class="sticky top-0 z-10 rounded-lg border {% if breakdown.overall_level == 'High' %}border-red-300 bg-red-50{% elif breakdown.overall_level == 'Medium' %}border-amber-300 bg-amber-50{% else %}border-green-300 bg-green-50{% endif %} p-3">
         <p class="text-xs uppercase tracking-wide text-gray-500">Overall risk</p>
         <div class="flex items-baseline gap-2">
             <p class="text-2xl font-semibold {% if breakdown.overall_level == 'High' %}text-red-800{% elif breakdown.overall_level == 'Medium' %}text-amber-800{% else %}text-green-800{% endif %}">

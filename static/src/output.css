@@ -6372,6 +6372,10 @@ details.gr-disclose > summary::-webkit-details-marker {
     max-height: calc(100vh - 7rem);
   }
 
+  .xl\:max-h-\[calc\(100vh_-_5rem\)\] {
+    max-height: calc(100vh - 5rem);
+  }
+
   .xl\:grid-cols-12 {
     grid-template-columns: repeat(12, minmax(0, 1fr));
   }
@@ -6386,6 +6390,10 @@ details.gr-disclose > summary::-webkit-details-marker {
 
   .xl\:overflow-y-auto {
     overflow-y: auto;
+  }
+
+  .xl\:pr-1 {
+    padding-right: 0.25rem;
   }
 }
 

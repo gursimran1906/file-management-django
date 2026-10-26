@@ -3465,6 +3465,16 @@ def _apply_ongoing_monitoring_completion(monitoring, user):
     return 'Ongoing monitoring saved and awaiting fee earner sign-off.'
 
 
+def _has_entity_client(matter):
+    """True where any client on the matter is a business.
+
+    Beneficial ownership only has to be recorded for an entity, so the form
+    asks for it on that basis rather than of everyone.
+    """
+    return bool(matter) and any(
+        getattr(client, 'is_business', False) for client in matter.all_clients)
+
+
 def _form_breakdown(form, fallback):
     """The scoring to show beside the form.
 
@@ -3549,6 +3559,7 @@ def add_risk_assessment(request, file_number):
         'file_number': file_number,
         'matter': matter,
         'title': 'Add',
+        'entity_client': _has_entity_client(matter),
         # An unanswered assessment scores only the inherent risk of the work.
         # A blank RiskAssessment() would not: several of its field defaults are
         # the answer that carries risk, which would open the form on a score
@@ -8878,6 +8889,7 @@ def edit_risk_assessment(request, id):
         'file_number': risk_assesssment.matter.file_number,
         'matter': risk_assesssment.matter,
         'title': 'Edit',
+        'entity_client': _has_entity_client(risk_assesssment.matter),
         'risk_assessment': risk_assesssment,
         'breakdown': _form_breakdown(form, risk_assesssment),
     })

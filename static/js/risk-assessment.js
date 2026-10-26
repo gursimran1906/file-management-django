@@ -72,6 +72,19 @@
         });
     }
 
+    /* The "issues identified" box for a section is only required once
+       something in that section is flagged, so its hint says so. */
+    function markNeededDetails() {
+        form.querySelectorAll('[data-flag-hint]').forEach(function (hint) {
+            const section = hint.closest('.div-container');
+            const flagged = Boolean(section
+                && section.querySelector('.risk-question-risky'));
+            hint.classList.toggle('text-amber-800', flagged);
+            hint.classList.toggle('font-medium', flagged);
+            hint.classList.toggle('text-gray-500', !flagged);
+        });
+    }
+
     /* Questions that only make sense given an earlier answer. */
     function applyConditionalSections() {
         form.querySelectorAll('[data-show-when]').forEach(function (block) {
@@ -161,6 +174,7 @@
 
     function scheduleRefresh() {
         markRiskyAnswers();
+        markNeededDetails();
         applyConditionalSections();
         window.clearTimeout(pending);
         pending = window.setTimeout(refreshScore, 250);
@@ -175,6 +189,7 @@
     });
 
     markRiskyAnswers();
+    markNeededDetails();
     applyConditionalSections();
     applyEddVisibility();
 })();

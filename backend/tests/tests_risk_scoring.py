@@ -261,6 +261,25 @@ class RiskAssessmentFormTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors.as_data())
         self.assertEqual(form.breakdown['overall_level'], 'Low')
 
+    def test_a_new_assessment_starts_with_every_question_blank(self):
+        """A model default is not an answer, and must not be scored as one."""
+        form = RiskAssessmentForm()
+        self.assertEqual(form.fields['meeting_in_person'].initial, '')
+        self.assertEqual(form.fields['usual_work'].initial, '')
+        self.assertIn('', [choice[0] for choice in form.fields['usual_work'].choices])
+        # The rating is not a question, so it keeps following the score.
+        self.assertNotEqual(form.fields['client_risk_level'].initial, '')
+
+    def test_an_unanswered_question_is_rejected(self):
+        form = RiskAssessmentForm(data=self.post(meeting_in_person=''))
+        self.assertFalse(form.is_valid())
+        self.assertIn('meeting_in_person', form.errors)
+
+    def test_an_existing_assessment_keeps_its_answers(self):
+        ra = make_risk_assessment(self.matter, meeting_in_person='No')
+        form = RiskAssessmentForm(instance=ra)
+        self.assertEqual(form['meeting_in_person'].value(), 'No')
+
     def test_the_duplicated_questions_are_no_longer_asked(self):
         form = RiskAssessmentForm()
         for name in ('makes_sense_for_client', 'higher_risk_sector',
@@ -319,6 +338,77 @@ class RiskAssessmentFormTests(TestCase):
             evidence_of_source_of_wealth='True',
             edd_senior_approval_by=self.user.id,
             edd_senior_approval_date='2026-10-01'))
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+
+
+class DetailBoxTests(TestCase):
+    """The free-text boxes are required when the answers call for them."""
+
+    def setUp(self):
+        self.matter = make_matter('RS0005')
+
+    def post(self, **overrides):
+        return build_risk_assessment_post(self.matter.id, **overrides)
+
+    def blank(self, *fields, **overrides):
+        data = self.post(**overrides)
+        for field in fields:
+            data[field] = ''
+        return RiskAssessmentForm(data=data)
+
+    def test_a_clean_assessment_needs_no_free_text(self):
+        """Nothing is flagged, so there is nothing to write in the boxes."""
+        form = self.blank(
+            'issues_identified_client_risks_sec',
+            'issues_identified_jurisdiction_risks_sec',
+            'issues_identified_matter_risks_sec',
+            'issues_identified_enhanced_due_dilligence',
+            'who_they_are',
+            'product_service_risk_details',
+            'beneficial_owners_details',
+            'ultimate_beneficial_owners',
+            'matter_description',
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+
+    def test_a_flagged_section_has_to_be_written_up(self):
+        form = self.blank('issues_identified_client_risks_sec',
+                          adverse_media='Yes', client_concerns='Yes',
+                          risk_override_reason='')
+        self.assertFalse(form.is_valid())
+        self.assertIn('issues_identified_client_risks_sec', form.errors)
+
+    def test_a_flagged_section_does_not_demand_the_other_sections(self):
+        form = self.blank('issues_identified_jurisdiction_risks_sec',
+                          'issues_identified_matter_risks_sec',
+                          client_concerns='Yes',
+                          issues_identified_client_risks_sec='Known to us for years.')
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+
+    def test_not_meeting_the_client_needs_an_explanation(self):
+        form = self.blank('who_they_are', meeting_in_person='No',
+                          id_verified_reliable_source='Yes')
+        self.assertFalse(form.is_valid())
+        self.assertIn('who_they_are', form.errors)
+
+    def test_an_instruction_that_does_not_fit_needs_details(self):
+        form = self.blank('product_service_risk_details',
+                          consistent_with_client_profile='No',
+                          issues_identified_matter_risks_sec='Queried with the client.',
+                          client_risk_level='Low', matter_risk_level='High')
+        self.assertFalse(form.is_valid())
+        self.assertIn('product_service_risk_details', form.errors)
+
+    def test_an_entity_client_needs_its_beneficial_ownership(self):
+        self.matter.client1.is_business = True
+        self.matter.client1.save()
+        form = self.blank('beneficial_owners_details', 'ultimate_beneficial_owners')
+        self.assertFalse(form.is_valid())
+        self.assertIn('beneficial_owners_details', form.errors)
+        self.assertIn('ultimate_beneficial_owners', form.errors)
+
+    def test_an_individual_client_does_not(self):
+        form = self.blank('beneficial_owners_details', 'ultimate_beneficial_owners')
         self.assertTrue(form.is_valid(), form.errors.as_data())
 
 

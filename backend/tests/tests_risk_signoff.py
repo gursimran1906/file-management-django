@@ -48,6 +48,19 @@ def make_risk_assessment(matter, **overrides):
 #: helper cannot drift from the scoring.
 RISKY_ANSWERS = {field: answer for field, answer, _label in RiskAssessment.RISK_FLAG_RULES}
 
+#: Filled in by the workflow or only when the answers call for them, so a
+#: plain post leaves them out.
+WORKFLOW_FIELDS = {
+    'escalated_date',
+    'risk_override_reason',
+    'edd_measures_taken',
+    'edd_enhanced_monitoring',
+    'edd_senior_approval_by',
+    'edd_senior_approval_date',
+    'evidence_of_source_of_wealth',
+    'source_of_wealth_correspondence',
+}
+
 #: The rating fields are not answers: they are what the answers score, so a
 #: clean post records the rating a clean assessment produces.
 CLEAN_RATINGS = {
@@ -67,9 +80,7 @@ def build_risk_assessment_post(matter_id, **overrides):
     form = RiskAssessmentForm()
     data = {}
     for name, field in form.fields.items():
-        if not field.required:
-            # The override reason and the enhanced due diligence fields are
-            # only needed when the assessment calls for them.
+        if name in WORKFLOW_FIELDS:
             continue
         if name == 'matter':
             data[name] = matter_id

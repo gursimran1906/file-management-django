@@ -61,6 +61,7 @@ which needs a reason.
             {% include 'partials/risk_question_row.html' with field=form.designated_person_entity text="Is the client, or any party, a designated person or entity?" help="A designated person makes the matter high risk whatever the rest of the answers say." risky="Yes" %}
             <div class="mt-3">
                 <label for="{{ form.issues_identified_client_risks_sec.id_for_label }}">Issues identified in this section</label>
+                <p class="text-xs text-gray-500" data-flag-hint>Required if anything in this section is flagged.</p>
                 {{ form.issues_identified_client_risks_sec }}
                 {% for error in form.issues_identified_client_risks_sec.errors %}<p class="text-xs font-medium text-red-700">{{ error }}</p>{% endfor %}
             </div>
@@ -78,6 +79,7 @@ which needs a reason.
             {% include 'partials/risk_question_row.html' with field=form.overseas_elements text="Are there any overseas elements?" help="For example an overseas beneficiary, or contracts for overseas entities." risky="Yes" %}
             <div class="mt-3">
                 <label for="{{ form.issues_identified_jurisdiction_risks_sec.id_for_label }}">Issues identified in this section</label>
+                <p class="text-xs text-gray-500" data-flag-hint>Required if anything in this section is flagged.</p>
                 {{ form.issues_identified_jurisdiction_risks_sec }}
                 {% for error in form.issues_identified_jurisdiction_risks_sec.errors %}<p class="text-xs font-medium text-red-700">{{ error }}</p>{% endfor %}
             </div>
@@ -95,7 +97,7 @@ which needs a reason.
             <div data-show-when="meeting_in_person" data-show-values="No" class="hidden">
                 {% include 'partials/risk_question_row.html' with field=form.id_verified_reliable_source text="Was identity verified from a certified or verified electronic source?" help="Rather than from photographs or video the client supplied. The SRA now treats AI-generated documents and deepfakes as the main technology risk." risky="No" %}
             </div>
-            <div class="mt-3">
+            <div class="mt-3" data-show-when="meeting_in_person" data-show-values="No">
                 <label for="{{ form.who_they_are.id_for_label }}">If no, how are we satisfied that the client is who they say they are?</label>
                 {{ form.who_they_are }}
                 {% for error in form.who_they_are.errors %}<p class="text-xs font-medium text-red-700">{{ error }}</p>{% endfor %}
@@ -120,7 +122,15 @@ which needs a reason.
 
         <div class="div-container" id="section-entities">
             <h3 class="text-lg font-medium mb-1">2e. For entities</h3>
-            <p class="text-sm text-gray-600 mb-1">Answer N/A where the client is an individual.</p>
+            <p class="text-sm {% if entity_client %}text-amber-800{% else %}text-gray-600{% endif %} mb-1">
+                {% if entity_client %}
+                The client is recorded as a business, so the beneficial ownership
+                below has to be completed.
+                {% else %}
+                The client is recorded as an individual, so answer N/A and leave
+                the ownership boxes blank unless an entity is involved.
+                {% endif %}
+            </p>
             {% include 'partials/risk_question_row.html' with field=form.reportable_discrepancies text="Have you identified any reportable discrepancies?" risky="Yes" %}
             {% comment %}
             Both new in the SRA's August 2026 sectoral risk assessment:
@@ -177,11 +187,12 @@ which needs a reason.
             <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                     <label for="{{ form.issues_identified_matter_risks_sec.id_for_label }}">Issues identified in this section</label>
+                <p class="text-xs text-gray-500" data-flag-hint>Required if anything in this section is flagged.</p>
                     {{ form.issues_identified_matter_risks_sec }}
                     {% for error in form.issues_identified_matter_risks_sec.errors %}<p class="text-xs font-medium text-red-700">{{ error }}</p>{% endfor %}
                 </div>
-                <div>
-                    <label for="{{ form.product_service_risk_details.id_for_label }}">If the instruction is unusual for this client, please provide details</label>
+                <div data-show-when="consistent_with_client_profile" data-show-values="No">
+                    <label for="{{ form.product_service_risk_details.id_for_label }}">The instruction is unusual for this client &mdash; please provide details</label>
                     {{ form.product_service_risk_details }}
                     {% for error in form.product_service_risk_details.errors %}<p class="text-xs font-medium text-red-700">{{ error }}</p>{% endfor %}
                 </div>
@@ -221,6 +232,7 @@ which needs a reason.
             {% include 'partials/risk_question_row.html' with field=form.other_high_risk_factors text="Are there any other factors that could indicate a higher risk of money laundering or terrorist financing?" risky="Yes" %}
             <div class="mt-3">
                 <label for="{{ form.issues_identified_enhanced_due_dilligence.id_for_label }}">Issues identified in this section</label>
+                <p class="text-xs text-gray-500" data-flag-hint>Required if anything in this section is flagged.</p>
                 {{ form.issues_identified_enhanced_due_dilligence }}
                 {% for error in form.issues_identified_enhanced_due_dilligence.errors %}<p class="text-xs font-medium text-red-700">{{ error }}</p>{% endfor %}
             </div>

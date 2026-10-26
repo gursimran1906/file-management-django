@@ -27,7 +27,12 @@
     {% endcomment %}
     <div class="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <aside class="xl:col-span-4 xl:order-last">
-            <div class="space-y-3 xl:sticky xl:top-16">
+            {% comment %}
+            The column is pinned and scrolls on its own, so the rating stays on
+            screen next to whichever question is being answered rather than
+            scrolling away after the first section.
+            {% endcomment %}
+            <div class="space-y-3 xl:sticky xl:top-16 xl:max-h-[calc(100vh_-_5rem)] xl:overflow-y-auto xl:pr-1">
                 <div id="risk-score-panel">
                     {% include 'partials/risk_score_panel.html' %}
                 </div>
