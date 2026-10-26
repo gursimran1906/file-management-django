@@ -1,3 +1,4 @@
+{% load utils %}
 {% comment %}
 One question on the risk assessment.
 
@@ -6,8 +7,11 @@ One question on the risk assessment.
 
 ``risky`` is the answer that counts towards the score; the row is tinted when
 it is given (static/js/risk-assessment.js) so a part-filled form shows at a
-glance where the risk is. ``help`` adds a line of explanation, and ``points``
-notes what the answer is worth.
+glance where the risk is. ``help`` adds a line of explanation.
+
+What the question is worth is not passed in: it is read from the weighting
+itself (backend/risk_scoring.py) so the form cannot tell you one thing while
+the scoring does another. Questions that carry no weight say nothing.
 {% endcomment %}
 <div class="risk-question grid grid-cols-12 items-start gap-2 border-b border-gray-100 py-2 last:border-0 -mx-2 px-2 rounded"
      data-risky="{{ risky }}">
@@ -20,6 +24,10 @@ notes what the answer is worth.
     </div>
     <div class="col-span-12 md:col-span-3">
         {{ field }}
-        {% if points %}<p class="mt-0.5 text-xs text-gray-400">{{ points }}</p>{% endif %}
+        {% with weight=field.name|question_weight %}
+        {% if weight %}
+        <p class="mt-0.5 text-xs text-gray-400" title="{{ field.name|question_weight_detail }}">{{ weight }}</p>
+        {% endif %}
+        {% endwith %}
     </div>
 </div>

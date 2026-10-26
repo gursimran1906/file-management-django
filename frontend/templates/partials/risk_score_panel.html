@@ -96,22 +96,67 @@ comes from backend/risk_scoring.py: the template does no judging of its own.
 
     <details class="rounded-lg border border-gray-200 bg-white p-3">
         <summary class="cursor-pointer text-xs font-medium text-gray-700">How this is scored</summary>
-        <div class="mt-2 space-y-1 text-xs text-gray-600">
+        <div class="mt-2 space-y-2 text-xs text-gray-600">
             <p>
-                Each answer carries a weight. A section's total is capped so no one
-                answer can dominate, and a section that is serious on its own sets the
-                rating on its own, whatever the total comes to.
+                <span class="font-medium text-gray-800">Each answer carries a weight,</span>
+                shown in grey beside the question. The weight reflects how much
+                that answer tells you: adverse media about the client scores 12,
+                an unusual client 8, so the two count in proportion rather than
+                simply being tallied.
             </p>
             <p>
-                Totals: under {{ breakdown.bands.medium_at }} is low,
-                {{ breakdown.bands.medium_at }} to {{ breakdown.bands.high_at|add:"-1" }} is medium,
-                {{ breakdown.bands.high_at }} or more is high.
+                <span class="font-medium text-gray-800">Each section is capped,</span>
+                so no single run of answers can carry the whole rating.
             </p>
             <p>
-                Sanctions, a non-domestic PEP, proliferation financing and a transaction
-                with no apparent purpose are high risk whatever the total.
+                <span class="font-medium text-gray-800">A section that is serious on its own
+                sets the rating on its own,</span> at the points in the table
+                below, whatever the total comes to. This is what stops a real
+                risk being averaged away by a page of clean answers.
             </p>
-            <p class="text-gray-400">Weighting version {{ breakdown.version }}.</p>
+            <p>
+                <span class="font-medium text-gray-800">Some answers do not wait for a score.</span>
+                Sanctions, a designated person, a high-risk third country, a
+                non-domestic PEP, proliferation financing and a transaction with
+                no apparent purpose are high risk outright.
+            </p>
+            <p>
+                <span class="font-medium text-gray-800">Totals</span> then set the
+                floor: under {{ breakdown.bands.medium_at }} is low,
+                {{ breakdown.bands.medium_at }} to {{ breakdown.bands.high_at|add:"-1" }} medium,
+                {{ breakdown.bands.high_at }} or more high. The overall rating is
+                the higher of the client and matter sides.
+            </p>
+
+            <table class="w-full border-t border-gray-200 pt-1">
+                <thead>
+                    <tr class="text-left text-gray-500">
+                        <th class="py-1 font-medium">Section</th>
+                        <th class="py-1 font-medium text-right">Cap</th>
+                        <th class="py-1 font-medium text-right">Medium</th>
+                        <th class="py-1 font-medium text-right">High</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for side in breakdown|risk_sides %}
+                    <tr><td colspan="4" class="pt-1.5 font-medium text-gray-700">{{ side.label }} risk</td></tr>
+                    {% for category in side.data.categories %}
+                    <tr class="border-t border-gray-100">
+                        <td class="py-1">{{ category.label }}</td>
+                        <td class="py-1 text-right tabular-nums">{{ category.cap }}</td>
+                        <td class="py-1 text-right tabular-nums">{{ category.medium_at }}</td>
+                        <td class="py-1 text-right tabular-nums">{{ category.high_at }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <p class="text-gray-400">
+                Weighting version {{ breakdown.version }}. The reasoning behind
+                each weight, and the guidance it follows, is in the firm's risk
+                scoring methodology note.
+            </p>
         </div>
     </details>
 </div>

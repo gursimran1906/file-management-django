@@ -20,6 +20,7 @@ from ..risk_scoring import (
     apply_scores,
     score_risk_assessment,
 )
+from frontend.templatetags.utils import question_weight
 from .tests_risk_signoff import (
     build_risk_assessment_post,
     make_matter,
@@ -410,6 +411,50 @@ class DetailBoxTests(TestCase):
     def test_an_individual_client_does_not(self):
         form = self.blank('beneficial_owners_details', 'ultimate_beneficial_owners')
         self.assertTrue(form.is_valid(), form.errors.as_data())
+
+
+class QuestionWeightTests(TestCase):
+    """The form tells you what a question is worth, from the weights it scores by."""
+
+    def test_every_scored_question_has_a_weight_to_show(self):
+        from ..risk_scoring import QUESTION_WEIGHTS
+        for field, weights in QUESTION_WEIGHTS.items():
+            self.assertTrue(weights, field)
+            for weight in weights:
+                self.assertGreater(weight['points'], 0, field)
+                self.assertTrue(weight['answer'], field)
+
+    def test_the_weight_shown_is_the_weight_scored(self):
+        """The displayed figure comes from the scoring, so it cannot drift."""
+        self.assertEqual(question_weight('adverse_media'), 'Yes adds 12')
+        self.assertEqual(question_weight('meeting_in_person'), 'No adds 8')
+
+    def test_an_automatic_trigger_says_so_rather_than_showing_points(self):
+        self.assertEqual(question_weight('financial_sanctions'),
+                         'Yes \u2192 high risk outright')
+
+    def test_a_question_weighted_two_ways_shows_both(self):
+        shown = question_weight('pep_type')
+        self.assertIn('Non-domestic \u2192 high risk outright', shown)
+        self.assertIn('Domestic adds 20', shown)
+
+    def test_an_unscored_question_says_nothing(self):
+        self.assertEqual(question_weight('transactional_matter'), '')
+
+    def test_the_form_shows_the_weights_beside_the_questions(self):
+        matter = make_matter('RS0006')
+        user = CustomUser.objects.create_user(
+            username='qwt', email='qwt@example.com', first_name='Q', last_name='W',
+            password='password', max_holidays_in_year=20)
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse('add_risk_assessment', args=[matter.file_number]))
+        body = response.content.decode()
+        self.assertIn('Yes adds 12', body)
+        self.assertIn('high risk outright', body)
+        # ...and the panel explains the section ceilings and floors.
+        self.assertIn('Each section is capped', body)
+        self.assertIn('sets the rating on its own', body)
 
 
 class RiskAssessmentViewTests(TestCase):

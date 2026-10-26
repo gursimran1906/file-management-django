@@ -106,3 +106,42 @@ def risk_sides(breakdown):
         {'key': 'client', 'label': 'Client', 'data': breakdown.get('client') or {}},
         {'key': 'matter', 'label': 'Matter', 'data': breakdown.get('matter') or {}},
     ]
+
+
+@register.filter(name='question_weight')
+def question_weight(field_name):
+    """What answering this question is worth, as a short phrase.
+
+    Shown beside the question on the risk assessment, so the weighting is
+    visible where the answer is given. Returns '' for the questions that are
+    context rather than score (the matter description, say), so the form stays
+    quiet about them.
+    """
+    from backend.risk_scoring import QUESTION_WEIGHTS
+
+    parts = []
+    for weight in QUESTION_WEIGHTS.get(field_name, []):
+        if weight['auto_high']:
+            parts.append('%s \u2192 high risk outright' % weight['answer'])
+        else:
+            parts.append('%s adds %d' % (weight['answer'], weight['points']))
+    return ' \u00b7 '.join(parts)
+
+
+@register.filter(name='question_weight_detail')
+def question_weight_detail(field_name):
+    """The section a question scores into, and that section's ceiling."""
+    from backend.risk_scoring import QUESTION_WEIGHTS
+
+    weights = QUESTION_WEIGHTS.get(field_name)
+    if not weights:
+        return ''
+    first = weights[0]
+    return '%s risk \u00b7 %s, capped at %d' % (
+        first['side'].title(), first['category'], first['cap'])
+
+
+@register.simple_tag(name='value_band_weights')
+def value_band_weights_tag():
+    from backend.risk_scoring import value_band_weights
+    return value_band_weights()

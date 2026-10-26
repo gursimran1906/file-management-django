@@ -338,6 +338,46 @@ MANDATORY_EDD_RULES = (
 )
 
 
+def question_weights():
+    """What each question is worth, keyed by field name.
+
+    The form shows this beside the question it asks, so that "how is this
+    scored" is answerable at the point of answering rather than only from the
+    methodology note. Built from the categories above, so it cannot drift from
+    what actually scores.
+
+    A field can appear more than once (a domestic and a non-domestic PEP are
+    weighted differently), so each entry is a list.
+    """
+    weights = {}
+    for side, categories in (('client', CLIENT_CATEGORIES),
+                             ('matter', MATTER_CATEGORIES)):
+        for category in categories:
+            for factor in category.factors:
+                for name in factor.fields():
+                    weights.setdefault(name, []).append({
+                        'points': factor.points,
+                        'answer': factor.answer,
+                        'auto_high': factor.auto_high,
+                        'label': factor.label,
+                        'side': side,
+                        'category': category.label,
+                        'cap': category.cap,
+                        'high_at': category.high_at,
+                    })
+    return weights
+
+
+#: Built once: the categories are constants.
+QUESTION_WEIGHTS = question_weights()
+
+
+def value_band_weights():
+    """The transaction value steps, for the form to show beside the field."""
+    return [{'points': points, 'label': label, 'threshold': str(threshold)}
+            for threshold, points, label in VALUE_BANDS]
+
+
 def _band(score):
     if score >= HIGH_BAND:
         return HIGH

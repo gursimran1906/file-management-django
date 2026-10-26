@@ -48,7 +48,10 @@ overall risk of the matter as high risk."
 **Answers are weighted, not counted.** Each answer that indicates risk carries
 points in proportion to how much it tells you. LSAG's own illustration is that
 a client's personal links to a higher-risk jurisdiction might add 7 points
-where the high-risk nature of the service sought adds 5.
+where the high-risk nature of the service sought adds 5. The weight is printed
+beside each question on the form, and the panel alongside sets out the section
+ceilings and the points at which a section sets the rating on its own — both
+read from the scoring itself, so what the form shows is what it applies.
 
 **Each section is capped.** No single section can dominate the total, so the
 weighting is not "unduly influenced by one factor".

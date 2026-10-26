@@ -1,3 +1,4 @@
+{% load utils %}
 {% comment %}
 The client and matter risk assessment.
 
@@ -167,7 +168,10 @@ which needs a reason.
                 <div class="md:col-span-4">
                     <label for="{{ form.matter_transaction_value.id_for_label }}">Transaction value</label>
                     {{ form.matter_transaction_value }}
-                    <p class="mt-0.5 text-xs text-gray-500">Value counts towards the score, at &pound;500k and at &pound;1m.</p>
+                    {% value_band_weights as value_bands %}
+                    <p class="mt-0.5 text-xs text-gray-400">
+                        {% for band in value_bands %}{{ band.label }} adds {{ band.points }}{% if not forloop.last %} &middot; {% endif %}{% endfor %}
+                    </p>
                     {% for error in form.matter_transaction_value.errors %}<p class="text-xs font-medium text-red-700">{{ error }}</p>{% endfor %}
                 </div>
             </div>
