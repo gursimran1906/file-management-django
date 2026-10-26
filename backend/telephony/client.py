@@ -10,7 +10,7 @@ App-only (client-credentials) auth against Microsoft Graph, mirroring
 
 Both accept a date range (max 90 days), return tabular rows under ``value``, and
 page via an ``@odata.nextLink``. Requires the application permission
-``CallRecord-PstnCalls.Read.All`` (admin consent).
+``CallRecords.Read.All`` (admin consent).
 """
 import logging
 import time
@@ -85,6 +85,16 @@ class TeamsGraphClient:
             response = self._request(url)
             if response.status_code == 404:
                 return  # function not available on this endpoint, or no data
+            if response.status_code in (401, 403):
+                # Graph answers a missing application permission with a bare
+                # "UnknownError" and an empty message, which tells a reader
+                # nothing. Say what it actually means.
+                raise TelephonyError(
+                    f'Microsoft refused the call log ({response.status_code}). '
+                    f'The app registration {settings.TEAMS_AZURE_CLIENT_ID[:8]}… '
+                    'needs the application permission CallRecords.Read.All, '
+                    'granted with admin consent — a token without it is '
+                    'rejected exactly like this.')
             if not response.is_success:
                 raise TelephonyError(
                     f'Teams Graph {response.status_code} on {function_name}: '

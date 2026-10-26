@@ -473,7 +473,7 @@ GRANOLA_API_KEY = os.environ.get('GRANOLA_API_KEY', '')
 
 # Microsoft Graph app-only credentials for the Teams call-log poll
 # (backend.telephony). Needs the application permission
-# ``CallRecord-PstnCalls.Read.All`` with admin consent. Prefer a dedicated
+# ``CallRecords.Read.All`` with admin consent. Prefer a dedicated
 # TEAMS_* app registration; otherwise falls back to the mail app (AZURE_*) and
 # finally the SharePoint app (SHAREPOINT_AZURE_*).
 TEAMS_AZURE_CLIENT_ID = os.getenv(

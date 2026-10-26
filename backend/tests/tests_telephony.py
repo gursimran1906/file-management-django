@@ -479,3 +479,24 @@ class InboxActionTests(TestCase):
         self.client.force_login(other)
         resp = self.client.get(reverse('calls_settings'))
         self.assertEqual(resp.status_code, 302)  # redirected away
+
+
+class GraphPermissionErrorTests(TestCase):
+    """A refused call log should say what is actually wrong."""
+
+    def test_403_names_the_permission_that_is_missing(self):
+        from unittest.mock import MagicMock
+        from ..telephony.client import TeamsGraphClient, TelephonyError
+
+        client = TeamsGraphClient.__new__(TeamsGraphClient)   # skip credentials
+        client.base = 'https://graph.microsoft.com/v1.0'
+        refused = MagicMock(status_code=403, is_success=False, text='UnknownError')
+        client._request = lambda url: refused
+
+        with self.assertRaises(TelephonyError) as caught:
+            list(client.get_pstn_calls(timezone.now(), timezone.now()))
+        message = str(caught.exception)
+        self.assertIn('CallRecords.Read.All', message)
+        self.assertIn('admin consent', message)
+        # The bare Graph wording tells a reader nothing, so it is not repeated.
+        self.assertNotIn('UnknownError', message)
