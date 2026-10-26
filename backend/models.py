@@ -235,8 +235,24 @@ class FileStatus(models.Model):
 
 
 class MatterType(models.Model):
+    # Inherent ML/TF risk of this type of work, before anything about the
+    # particular client or matter is considered. It gives the matter score its
+    # starting point (see backend/risk_scoring.py). LSAG 5.12 endorses this
+    # category-based approach, and the SRA's sectoral risk assessment keeps
+    # conveyancing as the highest inherent risk area of law. Retune per type
+    # here rather than in code.
+    INHERENT_RISK_CHOICES = [
+        ('Low', 'Low'),
+        ('Medium', 'Medium'),
+        ('High', 'High'),
+    ]
+
     id = models.AutoField(primary_key=True)
     type = models.CharField(max_length=255)
+    inherent_risk = models.CharField(
+        max_length=10, choices=INHERENT_RISK_CHOICES, default='Medium',
+        help_text='Inherent risk of this type of work, used as the starting '
+                  'point for the matter risk score.')
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
                                    related_name='matter_type_created_by', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
@@ -776,6 +792,16 @@ class RiskAssessment(models.Model):
         ('No', 'No')
     ]
 
+    # Since 10 January 2024 the MLRs (reg 35(3A)) require a domestic PEP to be
+    # treated as presenting a lower level of risk than a non-domestic one, with
+    # enhanced measures applied to a lesser extent, so the two are recorded
+    # separately rather than as one Yes/No.
+    PEP_TYPE_CHOICES = [
+        ('N/A', 'Not a PEP'),
+        ('Domestic', 'Domestic (UK) PEP'),
+        ('Non-domestic', 'Non-domestic PEP'),
+    ]
+
     matter = models.ForeignKey(WIP, on_delete=models.SET_NULL, null=True)
     """ We already have some of these fields in Client and can add few others like dob, occupation
     client_name = models.CharField(max_length=255)
@@ -813,6 +839,11 @@ class RiskAssessment(models.Model):
     # Will we meet the client in person?
     meeting_in_person = models.CharField(
         max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    # The SRA's August 2026 sectoral risk assessment recast technology risk
+    # around AI-enabled fraud and deepfakes, so how a remote identity was
+    # verified now matters as much as whether it was.
+    id_verified_reliable_source = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES_WITH_NA, default="N/A")
     who_they_are = models.TextField()
 
     due_diligence_review = models.TextField()
@@ -826,6 +857,13 @@ class RiskAssessment(models.Model):
     # Have you identified any reportable discrepancies?
     reportable_discrepancies = models.CharField(
         max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    # Both added for the SRA's August 2026 sectoral risk assessment: criminals
+    # using paperwork from dissolved companies to establish false credentials,
+    # and cash-intensive businesses fronted by nominee or "ghost" directors.
+    companies_house_checked = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES_WITH_NA, default="N/A")
+    nominee_or_unconnected_directors = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES_WITH_NA, default="N/A")
 
     # Matter risks
     """
@@ -878,6 +916,11 @@ class RiskAssessment(models.Model):
         max_length=10, choices=BOOLEAN_CHOICES, default="No")
     is_source_of_funds_questionnaire_completed = models.CharField(
         max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    # "Passporting", new in the SRA's August 2026 sectoral risk assessment:
+    # leaning on due diligence done for another office or an earlier
+    # instruction without asking whether it is still right for this matter.
+    relying_on_previous_due_diligence = models.CharField(
+        max_length=10, choices=BOOLEAN_CHOICES, default="No")
     """
     Product/ service risk 
     Based on the client’s profile, does it make sense for the client to instruct us             
@@ -917,6 +960,8 @@ class RiskAssessment(models.Model):
         max_length=10, choices=BOOLEAN_CHOICES, default="No")
     politically_exposed_person = models.CharField(
         max_length=10, choices=BOOLEAN_CHOICES, default="No")
+    pep_type = models.CharField(
+        max_length=15, choices=PEP_TYPE_CHOICES, default='N/A')
     financial_sanctions = models.CharField(
         max_length=10, choices=BOOLEAN_CHOICES, default="No")
     country_subject_to_sanctions = models.CharField(
@@ -932,16 +977,56 @@ class RiskAssessment(models.Model):
     escalated_date = models.DateField(null=True, blank=True)
     issues_identified_enhanced_due_dilligence = models.TextField()
 
-    # Risk level and justification
+    # Risk level and justification.
+    #
+    # The levels used to be picked by hand. They are now scored from the
+    # answers by backend/risk_scoring.py: ``computed_*`` is what the scoring
+    # produced and the plain fields are what the firm recorded, which are the
+    # same thing unless someone overrode the rating and said why. Keeping both
+    # is what makes an override visible on the file and in the reports.
     client_risk_level = models.CharField(
         max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
     matter_risk_level = models.CharField(
         max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
+    # The conclusion for the file as a whole. LSAG 5.13: where either the
+    # client or the service carries a higher risk, it may be appropriate to
+    # treat the overall risk of the matter as high.
+    overall_risk_level = models.CharField(
+        max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
+
+    client_risk_score = models.PositiveIntegerField(default=0)
+    matter_risk_score = models.PositiveIntegerField(default=0)
+    computed_client_risk_level = models.CharField(
+        max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
+    computed_matter_risk_level = models.CharField(
+        max_length=10, choices=RISK_LEVEL_CHOICES, default='Low')
+    computed_due_diligence_level = models.CharField(
+        max_length=10, choices=DUE_DILIGENCE_LEVEL_CHOICES, default='Standard')
+    # LSAG 5.13 requires that a practice can override an automatically
+    # generated score, with the rationale documented. The form only accepts a
+    # recorded level that differs from the computed one if this is filled in.
+    risk_override_reason = models.TextField(blank=True, default='')
+    # Weights change over time; storing the version and the full breakdown
+    # means an old rating can still be explained with the weights that
+    # produced it, rather than re-scored under today's.
+    scoring_version = models.CharField(max_length=20, blank=True, default='')
+    risk_score_breakdown = models.JSONField(null=True, blank=True, default=dict)
 
     evidence_of_source_of_wealth = models.BooleanField(
         default=False, null=True, blank=True)
     source_of_wealth_correspondence = models.BooleanField(
         default=False,  null=True, blank=True)
+
+    # Enhanced due diligence measures. The questions above decide *whether*
+    # EDD applies; these record what was actually done about it, and the form
+    # only asks for them when enhanced due diligence applies. Senior
+    # management approval is required for a PEP relationship (MLRs reg 35(1)).
+    edd_measures_taken = models.TextField(blank=True, default='')
+    edd_enhanced_monitoring = models.TextField(blank=True, default='')
+    edd_senior_approval_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='risk_assessments_edd_approved')
+    edd_senior_approval_date = models.DateField(null=True, blank=True)
 
     # Due Diligence
     customer_due_diligence_level = models.CharField(
@@ -1000,11 +1085,20 @@ class RiskAssessment(models.Model):
         ('is_pep_questionnaire_completed', 'No', 'PEP questionnaire not completed'),
         ('is_source_of_funds_questionnaire_completed', 'No',
          'Source of funds questionnaire not completed'),
+        ('relying_on_previous_due_diligence', 'Yes',
+         'Relying on due diligence from an earlier matter or another office'),
+        ('id_verified_reliable_source', 'No',
+         'Identity not verified from a certified or verified source'),
+        ('companies_house_checked', 'No',
+         'Companies House not checked, or filed details do not match'),
+        ('nominee_or_unconnected_directors', 'Yes',
+         'Owners or directors appear unconnected, or to be nominees'),
         ('complex_structure_or_unusual', 'Yes', 'EDD: complex or unusual structure'),
         ('higher_risk_sector', 'Yes', 'EDD: higher-risk sector'),
         ('cash_intensive_business_activity', 'Yes', 'EDD: cash-intensive business activity'),
         ('high_risk_third_country_or_jurisdiction', 'Yes', 'EDD: high-risk third country/jurisdiction'),
         ('politically_exposed_person', 'Yes', 'EDD: PEP, family member or close associate'),
+        ('pep_type', 'Non-domestic', 'EDD: non-domestic PEP'),
         ('financial_sanctions', 'Yes', 'EDD: financial sanctions concerns'),
         ('country_subject_to_sanctions', 'Yes', 'EDD: country subject to sanctions'),
         ('unusual_complex_transaction', 'Yes', 'EDD: unusually complex or large transaction'),
@@ -1027,6 +1121,7 @@ class RiskAssessment(models.Model):
         return (
             self.client_risk_level == 'High'
             or self.matter_risk_level == 'High'
+            or self.overall_risk_level == 'High'
             or self.customer_due_diligence_level == 'Enhanced'
             or self.politically_exposed_person == 'Yes'
             or self.financial_sanctions == 'Yes'
@@ -1036,6 +1131,83 @@ class RiskAssessment(models.Model):
     @property
     def is_signed_off(self):
         return self.signoff_status == self.SIGNOFF_SIGNED
+
+    def save(self, *args, **kwargs):
+        # The PEP question and the PEP type are two views of one fact, so keep
+        # them in step however the record was edited (form, admin or import).
+        # An assessment that says a PEP is involved without saying which kind
+        # is treated as the higher risk of the two.
+        if self.pep_type and self.pep_type != 'N/A':
+            self.politically_exposed_person = 'Yes'
+        elif self.politically_exposed_person == 'Yes':
+            self.pep_type = 'Non-domestic'
+        super().save(*args, **kwargs)
+
+    # -- scoring -----------------------------------------------------------
+    # The rating is produced by backend/risk_scoring.py; these read it back.
+
+    @property
+    def risk_overrides(self):
+        """Ratings the firm recorded that differ from the computed ones.
+
+        Each entry is (what, computed, recorded). Empty when the assessment
+        stands as scored, which is the normal case.
+        """
+        pairs = [
+            ('Client risk', self.computed_client_risk_level, self.client_risk_level),
+            ('Matter risk', self.computed_matter_risk_level, self.matter_risk_level),
+            ('Due diligence', self.computed_due_diligence_level,
+             self.customer_due_diligence_level),
+        ]
+        return [(label, computed, recorded) for label, computed, recorded in pairs
+                if computed and recorded and computed != recorded]
+
+    @property
+    def is_risk_overridden(self):
+        return bool(self.risk_overrides)
+
+    @property
+    def is_rated_below_computed(self):
+        """True where the firm recorded a *lower* rating than the answers scored.
+
+        This is the override worth looking at: rating down is what the SRA
+        looks for, rating up is caution.
+        """
+        from .risk_scoring import LEVEL_ORDER
+        for label, computed, recorded in self.risk_overrides:
+            if label == 'Due diligence':
+                if computed == 'Enhanced' and recorded != 'Enhanced':
+                    return True
+            elif LEVEL_ORDER.get(recorded, 0) < LEVEL_ORDER.get(computed, 0):
+                return True
+        return False
+
+    @property
+    def mandatory_edd_reasons(self):
+        """Why the MLRs require enhanced due diligence here, if they do."""
+        from .risk_scoring import mandatory_edd_reasons
+        return mandatory_edd_reasons(self)
+
+    @property
+    def edd_applies(self):
+        return self.customer_due_diligence_level == 'Enhanced'
+
+    @property
+    def outstanding_edd_measures(self):
+        """Enhanced due diligence steps that EDD requires but the file lacks."""
+        if not self.edd_applies:
+            return []
+        missing = []
+        if not (self.edd_measures_taken or '').strip():
+            missing.append('Enhanced measures taken not recorded')
+        if not (self.edd_enhanced_monitoring or '').strip():
+            missing.append('Enhanced ongoing monitoring not recorded')
+        if not self.evidence_of_source_of_wealth:
+            missing.append('Source of wealth not evidenced')
+        if self.pep_type and self.pep_type != 'N/A' and not self.edd_senior_approval_by_id:
+            missing.append('Senior management approval for a PEP not recorded '
+                           '(MLRs reg 35(1))')
+        return missing
 
 
 class OngoingMonitoring(models.Model):

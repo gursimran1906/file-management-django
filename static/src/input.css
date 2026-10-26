@@ -109,6 +109,24 @@
     @apply bg-zinc-100 text-zinc-700 text-xs font-medium px-2.5 py-0.5 rounded-full border border-zinc-200;
   }
 
+  /* Risk scoring: the bar fill is chosen by a template filter and the row
+     highlight by static/js/risk-assessment.js, so both live here. */
+  .risk-bar-low {
+    @apply bg-green-500;
+  }
+  .risk-bar-medium {
+    @apply bg-amber-500;
+  }
+  .risk-bar-high {
+    @apply bg-red-500;
+  }
+  .risk-bar-none {
+    @apply bg-gray-400;
+  }
+  .risk-question-risky {
+    @apply bg-amber-50 ring-1 ring-amber-200;
+  }
+
   .nav-link {
     @apply flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50;
   }

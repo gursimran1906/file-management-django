@@ -117,7 +117,11 @@ class FileStatusAdmin(admin.ModelAdmin):
 
 @admin.register(MatterType)
 class MatterTypeAdmin(admin.ModelAdmin):
-    list_display = ['id', 'type', 'created_by', 'timestamp']
+    # inherent_risk is editable in the list: it is the starting point for every
+    # matter risk score, so the firm needs to be able to retune it directly.
+    list_display = ['id', 'type', 'inherent_risk', 'created_by', 'timestamp']
+    list_editable = ['inherent_risk']
+    list_filter = ['inherent_risk']
 
 
 @admin.register(PricingItem)

@@ -44,24 +44,55 @@ def make_risk_assessment(matter, **overrides):
     return RiskAssessment.objects.create(**defaults)
 
 
-def build_risk_assessment_post(matter_id):
-    """A valid POST for RiskAssessmentForm built from the form's own fields."""
+#: The answer that carries risk, per question, taken from the model so this
+#: helper cannot drift from the scoring.
+RISKY_ANSWERS = {field: answer for field, answer, _label in RiskAssessment.RISK_FLAG_RULES}
+
+#: The rating fields are not answers: they are what the answers score, so a
+#: clean post records the rating a clean assessment produces.
+CLEAN_RATINGS = {
+    'client_risk_level': 'Low',
+    'matter_risk_level': 'Low',
+    'customer_due_diligence_level': 'Standard',
+}
+
+
+def build_risk_assessment_post(matter_id, **overrides):
+    """A valid POST for RiskAssessmentForm, answered the low-risk way.
+
+    Every question is answered away from the answer that scores, so the
+    assessment comes out Low/Low with standard due diligence and the rating
+    needs no override. Pass ``overrides`` to make one answer risky.
+    """
     form = RiskAssessmentForm()
     data = {}
     for name, field in form.fields.items():
+        if not field.required:
+            # The override reason and the enhanced due diligence fields are
+            # only needed when the assessment calls for them.
+            continue
         if name == 'matter':
             data[name] = matter_id
+        elif name in CLEAN_RATINGS:
+            data[name] = CLEAN_RATINGS[name]
         elif isinstance(field, forms.BooleanField):
             data[name] = 'True'
         elif getattr(field, 'choices', None):
             choices = [choice[0] for choice in field.choices if choice[0]]
-            data[name] = 'No' if 'No' in choices else choices[0]
+            safe = [choice for choice in choices if choice != RISKY_ANSWERS.get(name)]
+            if 'No' in safe:
+                data[name] = 'No'
+            elif 'N/A' in safe:
+                data[name] = 'N/A'
+            else:
+                data[name] = safe[0]
         elif isinstance(field, forms.DecimalField):
             data[name] = '100'
         elif isinstance(field, forms.DateField):
             data[name] = '2026-09-01'
         else:
             data[name] = 'Test answer'
+    data.update(overrides)
     return data
 
 

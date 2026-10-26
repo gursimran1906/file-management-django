@@ -1,0 +1,116 @@
+{% load utils %}
+{% comment %}
+The rating, and the reasoning behind it, shown beside the assessment form and
+re-rendered by static/js/risk-assessment.js as answers change. Everything here
+comes from backend/risk_scoring.py: the template does no judging of its own.
+{% endcomment %}
+<div class="space-y-3">
+
+    <!-- The conclusion for the file, which is what the fee earner signs off. -->
+    <div class="rounded-lg border {% if breakdown.overall_level == 'High' %}border-red-300 bg-red-50{% elif breakdown.overall_level == 'Medium' %}border-amber-300 bg-amber-50{% else %}border-green-300 bg-green-50{% endif %} p-3">
+        <p class="text-xs uppercase tracking-wide text-gray-500">Overall risk</p>
+        <div class="flex items-baseline gap-2">
+            <p class="text-2xl font-semibold {% if breakdown.overall_level == 'High' %}text-red-800{% elif breakdown.overall_level == 'Medium' %}text-amber-800{% else %}text-green-800{% endif %}">
+                {{ breakdown.overall_level }}
+            </p>
+            <span class="badge-gray">{{ breakdown.due_diligence_level }} due diligence</span>
+        </div>
+        <p class="mt-1 text-xs text-gray-600">Scored from the answers below, not chosen.</p>
+    </div>
+
+    {% if breakdown.auto_high %}
+    <!-- LSAG 5.13 automatic high-risk triggers: these set the rating on their own. -->
+    <div class="rounded-lg border border-red-300 bg-red-50 p-3">
+        <p class="text-sm font-semibold text-red-900">High risk regardless of score</p>
+        <ul class="mt-1 space-y-1 text-xs text-red-900 list-disc list-inside">
+            {% for trigger in breakdown.auto_high %}<li>{{ trigger }}</li>{% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if breakdown.edd_reasons %}
+    <div class="rounded-lg border border-red-200 bg-white p-3">
+        <p class="text-sm font-semibold text-red-900">Enhanced due diligence is required</p>
+        <ul class="mt-1 space-y-1 text-xs text-gray-700 list-disc list-inside">
+            {% for reason in breakdown.edd_reasons %}<li>{{ reason }}</li>{% endfor %}
+        </ul>
+        <p class="mt-2 text-xs text-gray-600">
+            This cannot be reduced on the form &mdash; complete the enhanced due
+            diligence section.
+        </p>
+    </div>
+    {% endif %}
+
+    {% for side in breakdown|risk_sides %}
+    <div class="rounded-lg border border-gray-200 bg-white p-3">
+        <div class="flex items-center justify-between gap-2">
+            <p class="text-sm font-semibold text-gray-900">{{ side.label }} risk</p>
+            <span class="{{ side.data.level|risk_badge }}">{{ side.data.level }}</span>
+        </div>
+
+        <div class="mt-2 flex items-center gap-2">
+            <div class="h-2 flex-1 rounded-full bg-gray-100 overflow-hidden">
+                <div class="h-full {{ side.data.level|risk_bar }}" style="width: {{ side.data.pct }}%"></div>
+            </div>
+            <span class="text-xs font-medium text-gray-700 tabular-nums">{{ side.data.score }}</span>
+        </div>
+
+        <!-- Per category, so a serious risk can be seen even when the total is low. -->
+        <ul class="mt-3 space-y-2">
+            {% for category in side.data.categories %}
+            <li>
+                <div class="flex items-center justify-between gap-2 text-xs">
+                    <span class="{% if category.floor == 'High' %}font-semibold text-red-800{% elif category.floor == 'Medium' %}font-medium text-amber-800{% else %}text-gray-600{% endif %}">
+                        {{ category.label }}
+                    </span>
+                    <span class="tabular-nums text-gray-500">{{ category.score }}/{{ category.cap }}</span>
+                </div>
+                <div class="mt-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                    <div class="h-full {{ category.floor|risk_bar }}" style="width: {{ category.pct }}%"></div>
+                </div>
+                {% if category.factors %}
+                <ul class="mt-1 space-y-0.5">
+                    {% for factor in category.factors %}
+                    <li class="flex items-start justify-between gap-2 text-xs text-gray-600">
+                        <span>{{ factor.label }}</span>
+                        <span class="tabular-nums text-gray-400">+{{ factor.points }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                {% if category.floor != 'Low' %}
+                <p class="mt-0.5 text-xs {% if category.floor == 'High' %}text-red-700{% else %}text-amber-700{% endif %}">
+                    This section alone makes the {{ side.label|lower }} risk at least {{ category.floor|lower }}.
+                </p>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endfor %}
+
+    {% for note in breakdown.notes %}
+    <p class="rounded-lg border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">{{ note }}</p>
+    {% endfor %}
+
+    <details class="rounded-lg border border-gray-200 bg-white p-3">
+        <summary class="cursor-pointer text-xs font-medium text-gray-700">How this is scored</summary>
+        <div class="mt-2 space-y-1 text-xs text-gray-600">
+            <p>
+                Each answer carries a weight. A section's total is capped so no one
+                answer can dominate, and a section that is serious on its own sets the
+                rating on its own, whatever the total comes to.
+            </p>
+            <p>
+                Totals: under {{ breakdown.bands.medium_at }} is low,
+                {{ breakdown.bands.medium_at }} to {{ breakdown.bands.high_at|add:"-1" }} is medium,
+                {{ breakdown.bands.high_at }} or more is high.
+            </p>
+            <p>
+                Sanctions, a non-domestic PEP, proliferation financing and a transaction
+                with no apparent purpose are high risk whatever the total.
+            </p>
+            <p class="text-gray-400">Weighting version {{ breakdown.version }}.</p>
+        </div>
+    </details>
+</div>

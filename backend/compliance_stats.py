@@ -344,9 +344,16 @@ class Snapshot:
                 matter_id__in=self.live_ids
             ).values(
                 'id', 'matter_id', 'signoff_status', 'due_diligence_date',
-                'client_risk_level', 'matter_risk_level',
+                'client_risk_level', 'matter_risk_level', 'overall_risk_level',
                 'customer_due_diligence_level', 'politically_exposed_person',
                 'financial_sanctions', 'country_subject_to_sanctions',
+                # The computed rating and the override, so the reports can show
+                # where the firm recorded something other than the score.
+                'computed_client_risk_level', 'computed_matter_risk_level',
+                'computed_due_diligence_level', 'risk_override_reason',
+                # Enough to tell whether enhanced due diligence was finished.
+                'pep_type', 'edd_measures_taken', 'edd_enhanced_monitoring',
+                'edd_senior_approval_by_id', 'evidence_of_source_of_wealth',
             ).order_by('matter_id', '-due_diligence_date', '-id')
             latest = {}
             for row in rows:
@@ -657,7 +664,8 @@ def _high_risk_factors(ra):
     """Why the latest assessment counts as high risk (same rule as
     RiskAssessment.has_high_risk_outcome, evaluated on the values() row)."""
     probe = RiskAssessment(**{k: ra[k] for k in (
-        'client_risk_level', 'matter_risk_level', 'customer_due_diligence_level',
+        'client_risk_level', 'matter_risk_level', 'overall_risk_level',
+        'customer_due_diligence_level',
         'politically_exposed_person', 'financial_sanctions', 'country_subject_to_sanctions')})
     if not probe.has_high_risk_outcome:
         return []
@@ -698,6 +706,82 @@ def collect_high_risk_signed_off(snap):
                 'action': _risk_assessment_action(m, ra),
             },
             sort={'risk': ', '.join(factors).lower(), 'status': status,
+                  'assessed': ra['due_diligence_date'] or _far_past(), 'action': ''},
+        ))
+    return items
+
+
+def _probe(ra, fields):
+    """A throwaway RiskAssessment so the model's own rules apply to a values() row."""
+    return RiskAssessment(**{field: ra[field] for field in fields})
+
+
+RATING_PROBE_FIELDS = (
+    'client_risk_level', 'matter_risk_level', 'customer_due_diligence_level',
+    'computed_client_risk_level', 'computed_matter_risk_level',
+    'computed_due_diligence_level',
+)
+
+EDD_PROBE_FIELDS = (
+    'customer_due_diligence_level', 'pep_type', 'edd_measures_taken',
+    'edd_enhanced_monitoring', 'evidence_of_source_of_wealth',
+    'edd_senior_approval_by_id',
+)
+
+
+def collect_rating_as_scored(snap):
+    """Matters rated below what their answers scored.
+
+    LSAG 5.13 allows a practice to override an automatic score with a
+    documented rationale. Rating *down* is the one a supervisor and the SRA
+    will want to look at, so it is counted.
+    """
+    latest = snap.latest_risk_assessments()
+    items = []
+    for m in snap.live:
+        ra = latest.get(m['id'])
+        if ra is None:
+            continue
+        probe = _probe(ra, RATING_PROBE_FIELDS)
+        lowered = probe.is_rated_below_computed
+        changes = '; '.join(f'{label}: scored {computed}, recorded {recorded}'
+                            for label, computed, recorded in probe.risk_overrides)
+        items.append(_matter_item(
+            snap, m, not lowered, 'lowered',
+            cells={
+                'change': {'value': changes or 'As scored', 'href': None},
+                'reason': {'value': ra['risk_override_reason'] or '', 'href': None},
+                'assessed': _date_cell(ra['due_diligence_date']),
+                'action': _risk_assessment_action(m, ra),
+            },
+            sort={'change': changes.lower(), 'reason': (ra['risk_override_reason'] or '').lower(),
+                  'assessed': ra['due_diligence_date'] or _far_past(), 'action': ''},
+        ))
+    return items
+
+
+def collect_edd_complete(snap):
+    """Matters on enhanced due diligence where the measures were recorded.
+
+    A quarter of the files in the SRA's 2025-26 review lacked adequate source
+    of funds evidence, and enhanced due diligence that is decided but never
+    carried out is the gap behind that.
+    """
+    latest = snap.latest_risk_assessments()
+    items = []
+    for m in snap.live:
+        ra = latest.get(m['id'])
+        if ra is None or ra['customer_due_diligence_level'] != 'Enhanced':
+            continue
+        outstanding = _probe(ra, EDD_PROBE_FIELDS).outstanding_edd_measures
+        items.append(_matter_item(
+            snap, m, not outstanding, 'outstanding',
+            cells={
+                'outstanding': {'value': '; '.join(outstanding) or 'Complete', 'href': None},
+                'assessed': _date_cell(ra['due_diligence_date']),
+                'action': _risk_assessment_action(m, ra),
+            },
+            sort={'outstanding': '; '.join(outstanding).lower(),
                   'assessed': ra['due_diligence_date'] or _far_past(), 'action': ''},
         ))
     return items
@@ -915,6 +999,29 @@ METRICS = {m.key: m for m in [
         collect_high_risk_signed_off,
         MATTER_COLUMNS + [_col('risk', 'Why high risk', truncate=True), _col('status', 'Status'),
                           _col('assessed', 'Assessed'), ACTION_COLUMN],
+    ),
+    _metric(
+        'risk_rating_as_scored', 'Risk rating as scored', 'Rating as scored', 'matter_risk',
+        'Live matters whose latest assessment records the rating its answers scored, or a higher one. '
+        'A rating recorded below the score is allowed where the reason is documented (LSAG 5.13), but it '
+        'is the thing a supervisor should look at.',
+        collect_rating_as_scored,
+        MATTER_COLUMNS + [_col('change', 'Changed from', truncate=True),
+                          _col('reason', 'Reason given', truncate=True),
+                          _col('assessed', 'Assessed'), ACTION_COLUMN],
+        reasons={'lowered': 'rated below the score'},
+        labels=('as scored', 'rated down'),
+    ),
+    _metric(
+        'edd_complete', 'Enhanced due diligence completed', 'EDD complete', 'matter_risk',
+        'Live matters on enhanced due diligence where the extra measures, the closer monitoring, the source '
+        'of wealth and (for a PEP) senior management approval are all recorded. Deciding that enhanced due '
+        'diligence applies is not the same as having carried it out.',
+        collect_edd_complete,
+        MATTER_COLUMNS + [_col('outstanding', 'Outstanding', truncate=True),
+                          _col('assessed', 'Assessed'), ACTION_COLUMN],
+        reasons={'outstanding': 'measures not recorded'},
+        labels=('complete', 'incomplete'),
     ),
     _metric(
         'not_dormant', 'Matters active in the last 3 months', 'Active', 'matter_risk',

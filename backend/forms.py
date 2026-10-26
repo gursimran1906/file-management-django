@@ -9,6 +9,8 @@ from django.core.validators import RegexValidator
 from django.utils.safestring import mark_safe
 from django.utils.html import format_html, format_html_join
 from django_quill.forms import QuillFormField
+from types import SimpleNamespace
+from .risk_scoring import score_risk_assessment
 
 class ArchiveDetailsForm(forms.ModelForm):
     """Retention and physical-file facts recorded once a matter is archived."""
@@ -536,12 +538,52 @@ class OtherSideForm(forms.ModelForm):
             else:
                 field.widget.attrs['class'] = 'form-input'
 
+#: Risk assessment questions the form used to ask twice. They are asked once
+#: now; the fields stay on the model so assessments that answered them still
+#: render and score on what they said (backend.risk_scoring reads both).
+SUPERSEDED_RISK_FIELDS = [
+    'makes_sense_for_client',
+    'higher_risk_sector',
+    'cash_intensive_business_activity',
+]
+
+
 class RiskAssessmentForm(forms.ModelForm):
+    """The client and matter risk assessment.
+
+    The risk levels and the due diligence level are scored from the answers by
+    ``backend.risk_scoring`` and arrive pre-filled. They stay editable because
+    LSAG 5.13 requires a practice to be able to override an automatically
+    generated score — but changing one without saying why is rejected, and no
+    override may take the due diligence below enhanced where the MLRs make
+    enhanced due diligence mandatory.
+
+    Questions the old form asked twice (cash intensity, high-risk sector,
+    whether the instruction makes sense for the client) are now asked once.
+    The retired fields are still on the model so existing assessments render
+    and score as they always did; they are simply not put to staff again.
+    """
+
+    #: Everything else on this form is required (it is a compliance record).
+    #: These are the exceptions: the enhanced due diligence fields are only
+    #: required when enhanced due diligence actually applies, and the override
+    #: reason only when a rating has been overridden — both enforced in clean().
+    OPTIONAL_FIELDS = [
+        'escalated_date',
+        'risk_override_reason',
+        'edd_measures_taken',
+        'edd_enhanced_monitoring',
+        'edd_senior_approval_by',
+        'edd_senior_approval_date',
+        'evidence_of_source_of_wealth',
+        'source_of_wealth_correspondence',
+    ]
 
     class Meta:
         model = RiskAssessment
         # Sign-off fields are set by the workflow (a fee earner signs off from
-        # the matter page), never picked on the form itself.
+        # the matter page) and the scores are computed from the answers, so
+        # neither is picked on the form itself.
         exclude = [
             'due_diligence_signed_by',
             'signoff_status',
@@ -550,20 +592,42 @@ class RiskAssessmentForm(forms.ModelForm):
             'signed_off_by',
             'signed_off_at',
             'signoff_comments',
-        ]
+            'client_risk_score',
+            'matter_risk_score',
+            'computed_client_risk_level',
+            'computed_matter_risk_level',
+            'computed_due_diligence_level',
+            'overall_risk_level',
+            'scoring_version',
+            'risk_score_breakdown',
+            'politically_exposed_person',
+        ] + SUPERSEDED_RISK_FIELDS
 
         widgets = {
             'due_diligence_date': forms.DateInput(attrs={'type': 'date'}),
-            'escalated_date':forms.DateInput(attrs={'type': 'date'}),
+            'escalated_date': forms.DateInput(attrs={'type': 'date'}),
+            'edd_senior_approval_date': forms.DateInput(attrs={'type': 'date'}),
         }
-    def __init__(self, *args, **kwargs):
-        super(RiskAssessmentForm, self).__init__(*args, **kwargs)   
-        self.fields['due_diligence_date'].initial = timezone.localdate()
-        # self.fields['third_party_authority'].widget = forms.CheckboxInput()
-        for field_name, field in self.fields.items():
 
-            if field_name != 'escalated_date':
-                
+    def __init__(self, *args, **kwargs):
+        super(RiskAssessmentForm, self).__init__(*args, **kwargs)
+        self.fields['due_diligence_date'].initial = timezone.localdate()
+        self.fields['edd_senior_approval_by'].label = 'Approved by'
+        self.fields['edd_senior_approval_by'].empty_label = 'Not yet approved'
+        self.fields['risk_override_reason'].label = (
+            'Reason for recording a different rating')
+        # The scoring is the source of the rating, so the dropdowns start on
+        # what the answers produce and only move if someone overrides them.
+        for field_name, computed in (
+            ('client_risk_level', 'computed_client_risk_level'),
+            ('matter_risk_level', 'computed_matter_risk_level'),
+            ('customer_due_diligence_level', 'computed_due_diligence_level'),
+        ):
+            if self.instance.pk and getattr(self.instance, computed, None):
+                self.fields[field_name].initial = getattr(self.instance, computed)
+
+        for field_name, field in self.fields.items():
+            if field_name not in self.OPTIONAL_FIELDS:
                 field.required = True
             if isinstance(field, forms.BooleanField):
                 field.widget = forms.Select(choices=[(True, 'Yes'), (False, 'No')])
@@ -575,6 +639,91 @@ class RiskAssessmentForm(forms.ModelForm):
             if isinstance(field.widget, forms.Textarea):
                 field.widget.attrs['class'] = 'h-16 shadow-sm mb-2 mt-1 border border-gray-300 text-gray-900 text-sm rounded focus:ring-blue-100 focus:border-blue-100 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500'
                 field.widget.attrs['rows'] = 4
+
+    def answers(self):
+        """The answers as they stand, for scoring.
+
+        Falls back to the saved assessment for anything not on the form, so an
+        older record keeps scoring on the superseded questions it actually
+        answered. A new assessment answered none of them, and their model
+        defaults happen to be the answer that scores, so they are left empty
+        rather than inherited.
+        """
+        is_new = self.instance.pk is None
+        data = {}
+        for name in (f.name for f in RiskAssessment._meta.get_fields()
+                     if hasattr(f, 'attname')):
+            if name in self.cleaned_data:
+                data[name] = self.cleaned_data[name]
+            elif is_new and name in SUPERSEDED_RISK_FIELDS:
+                data[name] = None
+            else:
+                data[name] = getattr(self.instance, name, None)
+        return SimpleNamespace(**data)
+
+    def clean(self):
+        cleaned = super().clean()
+        # Score what has been answered, then hold the recorded rating against
+        # it. ``self.breakdown`` is handed to the template so the form can show
+        # the working.
+        self.breakdown = score_risk_assessment(self.answers())
+
+        recorded = {
+            'client_risk_level': cleaned.get('client_risk_level'),
+            'matter_risk_level': cleaned.get('matter_risk_level'),
+            'customer_due_diligence_level': cleaned.get('customer_due_diligence_level'),
+        }
+        computed = {
+            'client_risk_level': self.breakdown['client']['level'],
+            'matter_risk_level': self.breakdown['matter']['level'],
+            'customer_due_diligence_level': self.breakdown['due_diligence_level'],
+        }
+        overridden = [name for name, value in recorded.items()
+                      if value and value != computed[name]]
+
+        if overridden and not (cleaned.get('risk_override_reason') or '').strip():
+            self.add_error('risk_override_reason', forms.ValidationError(
+                'The rating recorded differs from the rating these answers '
+                'score. Say why, or put the rating back to the computed one.'))
+
+        # A risk rating is a judgement and can be overridden. Enhanced due
+        # diligence, where the MLRs require it, is not a judgement.
+        mandatory = self.breakdown['edd_reasons']
+        if mandatory and recorded['customer_due_diligence_level'] != 'Enhanced':
+            self.add_error('customer_due_diligence_level', forms.ValidationError(
+                'Enhanced due diligence is required here and cannot be '
+                'reduced: %(reasons)s.',
+                params={'reasons': '; '.join(mandatory)}))
+
+        if recorded['customer_due_diligence_level'] == 'Enhanced':
+            self._require_edd_measures(cleaned)
+
+        return cleaned
+
+    def _require_edd_measures(self, cleaned):
+        """Enhanced due diligence has to say what was actually done."""
+        if not (cleaned.get('edd_measures_taken') or '').strip():
+            self.add_error('edd_measures_taken', forms.ValidationError(
+                'Record the additional measures taken, now that enhanced due '
+                'diligence applies.'))
+        if not (cleaned.get('edd_enhanced_monitoring') or '').strip():
+            self.add_error('edd_enhanced_monitoring', forms.ValidationError(
+                'Record how this matter will be monitored more closely.'))
+        if not cleaned.get('evidence_of_source_of_wealth'):
+            self.add_error('evidence_of_source_of_wealth', forms.ValidationError(
+                'Enhanced due diligence requires the source of wealth to be '
+                'evidenced on the file.'))
+        # MLRs reg 35(1)(a): a PEP relationship needs senior management
+        # approval before it is entered into or continued.
+        if cleaned.get('pep_type') and cleaned.get('pep_type') != 'N/A':
+            if not cleaned.get('edd_senior_approval_by'):
+                self.add_error('edd_senior_approval_by', forms.ValidationError(
+                    'A PEP relationship needs senior management approval '
+                    '(MLRs reg 35(1)).'))
+            if not cleaned.get('edd_senior_approval_date'):
+                self.add_error('edd_senior_approval_date', forms.ValidationError(
+                    'Record the date senior management approved this.'))
+
 
 class OngoingMonitoringForm(forms.ModelForm):
 

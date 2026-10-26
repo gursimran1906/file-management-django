@@ -1144,6 +1144,39 @@ textarea.form-input {
   color: rgb(63 63 70 / var(--tw-text-opacity, 1));
 }
 
+/* Risk scoring: the bar fill is chosen by a template filter and the row
+     highlight by static/js/risk-assessment.js, so both live here. */
+
+.risk-bar-low {
+  --tw-bg-opacity: 1;
+  background-color: rgb(34 197 94 / var(--tw-bg-opacity, 1));
+}
+
+.risk-bar-medium {
+  --tw-bg-opacity: 1;
+  background-color: rgb(245 158 11 / var(--tw-bg-opacity, 1));
+}
+
+.risk-bar-high {
+  --tw-bg-opacity: 1;
+  background-color: rgb(239 68 68 / var(--tw-bg-opacity, 1));
+}
+
+.risk-bar-none {
+  --tw-bg-opacity: 1;
+  background-color: rgb(156 163 175 / var(--tw-bg-opacity, 1));
+}
+
+.risk-question-risky {
+  --tw-bg-opacity: 1;
+  background-color: rgb(255 251 235 / var(--tw-bg-opacity, 1));
+  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+  --tw-ring-opacity: 1;
+  --tw-ring-color: rgb(253 230 138 / var(--tw-ring-opacity, 1));
+}
+
 .nav-link {
   display: flex;
   align-items: center;
@@ -3281,6 +3314,10 @@ textarea.form-input {
   scroll-margin-top: 6rem;
 }
 
+.list-inside {
+  list-style-position: inside;
+}
+
 .list-disc {
   list-style-type: disc;
 }
@@ -3779,6 +3816,11 @@ textarea.form-input {
   border-color: rgb(252 211 77 / var(--tw-border-opacity, 1));
 }
 
+.border-amber-400 {
+  --tw-border-opacity: 1;
+  border-color: rgb(251 191 36 / var(--tw-border-opacity, 1));
+}
+
 .border-blue-100 {
   --tw-border-opacity: 1;
   border-color: rgb(219 234 254 / var(--tw-border-opacity, 1));
@@ -3861,6 +3903,11 @@ textarea.form-input {
   border-color: rgb(187 247 208 / 0.8);
 }
 
+.border-green-300 {
+  --tw-border-opacity: 1;
+  border-color: rgb(134 239 172 / var(--tw-border-opacity, 1));
+}
+
 .border-indigo-100 {
   --tw-border-opacity: 1;
   border-color: rgb(224 231 255 / var(--tw-border-opacity, 1));
@@ -3901,6 +3948,11 @@ textarea.form-input {
 .border-red-200 {
   --tw-border-opacity: 1;
   border-color: rgb(254 202 202 / var(--tw-border-opacity, 1));
+}
+
+.border-red-300 {
+  --tw-border-opacity: 1;
+  border-color: rgb(252 165 165 / var(--tw-border-opacity, 1));
 }
 
 .border-red-400 {
@@ -4658,10 +4710,6 @@ textarea.form-input {
 
 .ps-2 {
   padding-inline-start: 0.5rem;
-}
-
-.ps-4 {
-  padding-inline-start: 1rem;
 }
 
 .pt-1 {
@@ -6080,18 +6128,6 @@ details.gr-disclose > summary::-webkit-details-marker {
     inset: 0px;
   }
 
-  .md\:col-span-1 {
-    grid-column: span 1 / span 1;
-  }
-
-  .md\:col-span-10 {
-    grid-column: span 10 / span 10;
-  }
-
-  .md\:col-span-11 {
-    grid-column: span 11 / span 11;
-  }
-
   .md\:col-span-12 {
     grid-column: span 12 / span 12;
   }
@@ -6120,8 +6156,16 @@ details.gr-disclose > summary::-webkit-details-marker {
     grid-column: span 8 / span 8;
   }
 
+  .md\:col-span-9 {
+    grid-column: span 9 / span 9;
+  }
+
   .md\:me-24 {
     margin-inline-end: 6rem;
+  }
+
+  .md\:w-1\/2 {
+    width: 50%;
   }
 
   .md\:w-5\/6 {
@@ -6296,8 +6340,16 @@ details.gr-disclose > summary::-webkit-details-marker {
     position: sticky;
   }
 
+  .xl\:top-16 {
+    top: 4rem;
+  }
+
   .xl\:top-24 {
     top: 6rem;
+  }
+
+  .xl\:order-last {
+    order: 9999;
   }
 
   .xl\:col-span-2 {
@@ -6310,6 +6362,10 @@ details.gr-disclose > summary::-webkit-details-marker {
 
   .xl\:col-span-8 {
     grid-column: span 8 / span 8;
+  }
+
+  .xl\:block {
+    display: block;
   }
 
   .xl\:max-h-\[calc\(100vh-7rem\)\] {

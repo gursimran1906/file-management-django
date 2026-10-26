@@ -74,3 +74,35 @@ def get_item(value, key):
         return value[key]
     except Exception:
         return None
+
+
+#: Risk ratings read as a traffic light everywhere they appear.
+RISK_BADGES = {'Low': 'badge-green', 'Medium': 'badge-yellow', 'High': 'badge-red'}
+RISK_BARS = {'Low': 'risk-bar-low', 'Medium': 'risk-bar-medium', 'High': 'risk-bar-high'}
+
+
+@register.filter(name='risk_badge')
+def risk_badge(level):
+    """Badge class for a Low/Medium/High risk rating."""
+    return RISK_BADGES.get(level, 'badge-gray')
+
+
+@register.filter(name='risk_bar')
+def risk_bar(level):
+    """Fill colour for a risk score bar."""
+    return RISK_BARS.get(level, 'risk-bar-none')
+
+
+@register.filter(name='risk_sides')
+def risk_sides(breakdown):
+    """The two sides of a risk score, in the order they are shown.
+
+    Saves the panel template from having to be handed the pair separately by
+    every view that renders it.
+    """
+    if not breakdown:
+        return []
+    return [
+        {'key': 'client', 'label': 'Client', 'data': breakdown.get('client') or {}},
+        {'key': 'matter', 'label': 'Matter', 'data': breakdown.get('matter') or {}},
+    ]

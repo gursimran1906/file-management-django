@@ -31,6 +31,21 @@
                 <tr>
                     <td  colspan='2'>{{form.details_of_changes}}</td>
                 </tr>
+                {% if latest_risk_assessment %}
+                <tr>
+                    <td colspan='2' class='py-2'>
+                        <div class="rounded-lg border border-gray-200 bg-gray-50 p-2 text-sm">
+                            The risk assessment of
+                            {{ latest_risk_assessment.due_diligence_date|date:"d/m/Y" }} scored this matter
+                            <span class="font-medium">{{ latest_risk_assessment.client_risk_level }}</span> client risk and
+                            <span class="font-medium">{{ latest_risk_assessment.matter_risk_level }}</span> matter risk, on
+                            {{ latest_risk_assessment.customer_due_diligence_level|lower }} due diligence. The levels below
+                            start from that. Raising either means the risk assessment itself should be redone, not just
+                            noted here.
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
                 <tr class='grid grid-cols-12 gap-4'>
                     <td class=' col-span-8'>What is the updated risk level for this client?</td>
                     <td class=' col-span-4'>{{form.updated_risk_level_client}}</td>
