@@ -237,3 +237,28 @@ def notes_without_calls(start_date, end_date, *, config=None):
                         call_record__isnull=True)
                 .exclude(outcome=CallNote.OUTCOME_DISCARDED)
                 .select_related('taken_by', 'matter'))
+
+
+def group_by_day(rows):
+    """Rows as [{date, label, rows, unallocated}] — a day at a time reads far
+    better than one long list with the date repeated on every line."""
+    today = timezone.localdate()
+    groups = []
+    for row in rows:
+        start = row['call'].start_datetime
+        day = timezone.localtime(start).date() if start else None
+        if not groups or groups[-1]['date'] != day:
+            if day == today:
+                label = 'Today'
+            elif day == today - timedelta(days=1):
+                label = 'Yesterday'
+            elif day is None:
+                label = 'Undated'
+            else:
+                label = day.strftime('%A %d %B')
+            groups.append({'date': day, 'label': label, 'rows': [],
+                           'unallocated': 0})
+        groups[-1]['rows'].append(row)
+        if row['unallocated']:
+            groups[-1]['unallocated'] += 1
+    return groups

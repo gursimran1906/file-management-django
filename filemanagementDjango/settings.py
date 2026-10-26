@@ -198,6 +198,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'backend.context_processors.matter_nav',
                 'backend.context_processors.signoff_pending',
+                'backend.context_processors.call_in_progress',
             ],
         },
     },

@@ -1,129 +1,208 @@
 {% comment %}Every call in and out, and whether it was written up anywhere.
 Rendered standalone and as the fetch-swapped Allocate panel.{% endcomment %}
 
-<div class="div-container">
-  <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-    <div>
-      <h2 class="text-base font-semibold text-gray-900">Call register</h2>
-      <p class="text-xs text-gray-500 mt-0.5">
-        {{ counts.total }} call{{ counts.total|pluralize }} · {{ counts.inbound }} in · {{ counts.outbound }} out ·
-        <span class="{% if counts.unallocated %}text-red-700 font-medium{% endif %}">{{ counts.unallocated }} unallocated</span>
-        {% if counts.waiting %} · {{ counts.waiting }} inside the grace window{% endif %}
+{% comment %}What needs doing, before anything else on the page.{% endcomment %}
+<div class="div-container {% if counts.unallocated %}border-red-200 bg-red-50/40{% endif %}">
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="min-w-0">
+      {% if counts.unallocated %}
+      <h2 class="text-base font-semibold text-gray-900">
+        {{ counts.unallocated }} call{{ counts.unallocated|pluralize }} with nothing written up
+      </h2>
+      <p class="mt-0.5 text-xs text-gray-600">
+        Out of {{ counts.total }} in this period · {{ counts.inbound }} in, {{ counts.outbound }} out{% if counts.waiting %} · {{ counts.waiting }} too recent to chase{% endif %}
       </p>
+      {% else %}
+      <h2 class="text-base font-semibold text-gray-900">Every call is accounted for</h2>
+      <p class="mt-0.5 text-xs text-gray-600">
+        {{ counts.total }} call{{ counts.total|pluralize }} in this period · {{ counts.inbound }} in, {{ counts.outbound }} out
+      </p>
+      {% endif %}
     </div>
-    <form method="post" action="{% url 'call_note_start' %}" class="shrink-0">{% csrf_token %}
-      <input type="hidden" name="direction" value="outbound">
-      <button type="submit" class="btn-primary">Start a note for a call out</button>
+    <div class="flex shrink-0 flex-wrap gap-2">
+      {% if counts.unallocated and not only_unallocated %}
+      <a href="?unallocated=1{% if preset %}&preset={{ preset }}{% else %}&from={{ date_from|date:'Y-m-d' }}&to={{ date_to|date:'Y-m-d' }}{% endif %}"
+        data-register-link class="btn-secondary">Show me just those</a>
+      {% endif %}
+      <form method="post" action="{% url 'call_note_start' %}">{% csrf_token %}
+        <input type="hidden" name="direction" value="outbound">
+        <button type="submit" class="btn-primary">Note a call I am making</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% comment %}Filters. Presets first — they are what people actually use.{% endcomment %}
+<div class="div-container mt-4">
+  <div class="flex flex-wrap items-center gap-2">
+    {% for key, label in presets %}
+    <a href="?preset={{ key }}{% if direction %}&direction={{ direction }}{% endif %}{% if only_unallocated %}&unallocated=1{% endif %}{% if mine %}&mine=1{% endif %}"
+      data-register-link
+      class="rounded-full border px-3 py-1 text-xs font-medium transition-colors {% if preset == key %}border-blue-600 bg-blue-50 text-blue-700{% else %}border-gray-200 bg-white text-gray-600 hover:bg-gray-50{% endif %}">
+      {{ label }}
+    </a>
+    {% endfor %}
+    <span class="mx-1 h-4 w-px bg-gray-200"></span>
+    <a href="?{% if preset %}preset={{ preset }}&{% endif %}{% if only_unallocated %}unallocated=1&{% endif %}{% if mine %}mine=1&{% endif %}"
+      data-register-link
+      class="rounded-full border px-3 py-1 text-xs font-medium transition-colors {% if not direction %}border-blue-600 bg-blue-50 text-blue-700{% else %}border-gray-200 bg-white text-gray-600 hover:bg-gray-50{% endif %}">In and out</a>
+    <a href="?direction=inbound{% if preset %}&preset={{ preset }}{% endif %}{% if only_unallocated %}&unallocated=1{% endif %}{% if mine %}&mine=1{% endif %}"
+      data-register-link
+      class="rounded-full border px-3 py-1 text-xs font-medium transition-colors {% if direction == 'inbound' %}border-blue-600 bg-blue-50 text-blue-700{% else %}border-gray-200 bg-white text-gray-600 hover:bg-gray-50{% endif %}">Inbound</a>
+    <a href="?direction=outbound{% if preset %}&preset={{ preset }}{% endif %}{% if only_unallocated %}&unallocated=1{% endif %}{% if mine %}&mine=1{% endif %}"
+      data-register-link
+      class="rounded-full border px-3 py-1 text-xs font-medium transition-colors {% if direction == 'outbound' %}border-blue-600 bg-blue-50 text-blue-700{% else %}border-gray-200 bg-white text-gray-600 hover:bg-gray-50{% endif %}">Outbound</a>
+    <span class="mx-1 h-4 w-px bg-gray-200"></span>
+    <a href="?{% if preset %}preset={{ preset }}&{% endif %}{% if direction %}direction={{ direction }}&{% endif %}{% if not only_unallocated %}unallocated=1&{% endif %}{% if mine %}mine=1{% endif %}"
+      data-register-link
+      class="rounded-full border px-3 py-1 text-xs font-medium transition-colors {% if only_unallocated %}border-red-300 bg-red-50 text-red-700{% else %}border-gray-200 bg-white text-gray-600 hover:bg-gray-50{% endif %}">Unallocated only</a>
+    <a href="?{% if preset %}preset={{ preset }}&{% endif %}{% if direction %}direction={{ direction }}&{% endif %}{% if only_unallocated %}unallocated=1&{% endif %}{% if not mine %}mine=1{% endif %}"
+      data-register-link
+      class="rounded-full border px-3 py-1 text-xs font-medium transition-colors {% if mine %}border-blue-600 bg-blue-50 text-blue-700{% else %}border-gray-200 bg-white text-gray-600 hover:bg-gray-50{% endif %}">Mine only</a>
+
+    <form method="get" class="ml-auto flex items-end gap-2">
+      {% if direction %}<input type="hidden" name="direction" value="{{ direction }}">{% endif %}
+      {% if only_unallocated %}<input type="hidden" name="unallocated" value="1">{% endif %}
+      {% if mine %}<input type="hidden" name="mine" value="1">{% endif %}
+      <input type="date" name="from" value="{{ date_from|date:'Y-m-d' }}" class="form-input !py-1 text-xs" aria-label="From">
+      <span class="pb-1.5 text-xs text-gray-400">to</span>
+      <input type="date" name="to" value="{{ date_to|date:'Y-m-d' }}" class="form-input !py-1 text-xs" aria-label="To">
+      <button type="submit" class="btn-secondary !py-1 text-xs">Go</button>
     </form>
   </div>
-
-  <form method="get" class="mt-4 flex flex-wrap items-end gap-3" data-register-filter>
-    <div>
-      <label class="form-label" for="reg_from">From</label>
-      <input type="date" id="reg_from" name="from" value="{{ date_from|date:'Y-m-d' }}" class="form-input">
-    </div>
-    <div>
-      <label class="form-label" for="reg_to">To</label>
-      <input type="date" id="reg_to" name="to" value="{{ date_to|date:'Y-m-d' }}" class="form-input">
-    </div>
-    <div>
-      <label class="form-label" for="reg_dir">Direction</label>
-      <select id="reg_dir" name="direction" class="form-input">
-        <option value="">In and out</option>
-        <option value="inbound" {% if direction == 'inbound' %}selected{% endif %}>Inbound</option>
-        <option value="outbound" {% if direction == 'outbound' %}selected{% endif %}>Outbound</option>
-      </select>
-    </div>
-    <label class="flex items-center gap-2 text-sm text-gray-700 pb-2">
-      <input type="checkbox" name="unallocated" value="1" {% if only_unallocated %}checked{% endif %}>
-      Unallocated only
-    </label>
-    <label class="flex items-center gap-2 text-sm text-gray-700 pb-2">
-      <input type="checkbox" name="mine" value="1" {% if mine %}checked{% endif %}>
-      Mine only
-    </label>
-    <button type="submit" class="btn-secondary">Show</button>
-  </form>
 </div>
 
+{% for group in day_groups %}
 <div class="div-container mt-4 !p-0 overflow-hidden">
-  <div class="overflow-x-auto">
-    <table class="min-w-full text-sm">
-      <thead class="bg-gray-50 text-xs uppercase text-gray-500">
-        <tr>
-          <th class="px-3 py-2 text-left font-medium">When</th>
-          <th class="px-3 py-2 text-left font-medium">Number</th>
-          <th class="px-3 py-2 text-left font-medium">Direction</th>
-          <th class="px-3 py-2 text-left font-medium">Who</th>
-          <th class="px-3 py-2 text-left font-medium">Length</th>
-          <th class="px-3 py-2 text-left font-medium">Recorded as</th>
-          <th class="px-3 py-2 text-left font-medium"></th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-gray-100">
-        {% for row in rows %}
-        <tr class="{% if row.unallocated %}bg-red-50/40{% endif %}">
-          <td class="px-3 py-2 whitespace-nowrap text-gray-900">{{ row.call.start_datetime|date:'d/m/Y H:i' }}</td>
-          <td class="px-3 py-2 whitespace-nowrap font-medium text-gray-900">{{ row.call.external_number|default:'withheld' }}</td>
-          <td class="px-3 py-2 whitespace-nowrap">
-            {% if row.call.direction == 'inbound' %}<span class="badge-green">In</span>
-            {% elif row.call.direction == 'outbound' %}<span class="badge-purple">Out</span>
-            {% else %}<span class="badge-gray">?</span>{% endif %}
-          </td>
-          <td class="px-3 py-2 whitespace-nowrap text-gray-700">
-            {% if row.call.matched_fee_earner %}{{ row.call.matched_fee_earner.get_full_name|default:row.call.matched_fee_earner.username }}
-            {% else %}<span class="text-gray-400">{{ row.call.internal_display_name|default:'—' }}</span>{% endif %}
-          </td>
-          <td class="px-3 py-2 whitespace-nowrap text-gray-700">
-            {{ row.call.duration_display }}{% if row.call.is_missed %} <span class="text-gray-400">(no answer)</span>{% endif %}
-          </td>
-          <td class="px-3 py-2">
-            {% if row.unallocated %}<span class="badge-red">Unallocated</span>
-            {% elif row.kind == 'waiting' %}<span class="badge-yellow">{{ row.label }}</span>
-            {% elif row.link %}<a class="link" href="{{ row.link }}">{{ row.label }}</a>
-            {% else %}<span class="text-gray-700">{{ row.label }}</span>{% endif %}
-            {% if row.detail %}<span class="block text-xs text-gray-400">{{ row.detail }}</span>{% endif %}
-          </td>
-          <td class="px-3 py-2 whitespace-nowrap text-right">
-            {% if row.unallocated or row.kind == 'waiting' %}
-            <form method="post" action="{% url 'call_note_start' %}">{% csrf_token %}
-              <input type="hidden" name="direction" value="{{ row.call.direction }}">
-              <input type="hidden" name="caller_number" value="{{ row.call.external_number }}">
-              <button type="submit" class="link text-xs">Write it up</button>
-            </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="7" class="px-3 py-8 text-center text-sm text-gray-400">
-          {% if only_unallocated %}Nothing unallocated in this period.{% else %}No calls in this period.{% endif %}
-        </td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-4 py-2">
+    <h3 class="text-sm font-semibold text-gray-900">{{ group.label }}</h3>
+    <span class="text-xs text-gray-500">
+      {{ group.rows|length }} call{{ group.rows|length|pluralize }}{% if group.unallocated %} · <span class="font-medium text-red-700">{{ group.unallocated }} unallocated</span>{% endif %}
+    </span>
   </div>
+
+  <ul class="divide-y divide-gray-100">
+    {% for row in group.rows %}
+    <li class="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4 {% if row.unallocated %}bg-red-50/50{% endif %}">
+
+      {% comment %}Direction as an arrow: readable at a glance, no legend needed.{% endcomment %}
+      <span class="flex shrink-0 items-center gap-2">
+        {% if row.call.direction == 'inbound' %}
+        <span class="flex h-7 w-7 items-center justify-center rounded-full bg-green-50 text-green-700" title="Inbound">
+          <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 5 5 19m0 0h9m-9 0v-9"/></svg>
+        </span>
+        {% else %}
+        <span class="flex h-7 w-7 items-center justify-center rounded-full bg-purple-50 text-purple-700" title="Outbound">
+          <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19 19 5m0 0h-9m9 0v9"/></svg>
+        </span>
+        {% endif %}
+        <span class="tabular-nums text-sm text-gray-500">{{ row.call.start_datetime|date:'H:i' }}</span>
+      </span>
+
+      <span class="min-w-0 flex-1">
+        <span class="block truncate text-sm font-medium text-gray-900">
+          {{ row.call.external_number|default:'Number withheld' }}
+        </span>
+        <span class="block truncate text-xs text-gray-500">
+          {% if row.call.matched_fee_earner %}{{ row.call.matched_fee_earner.get_full_name|default:row.call.matched_fee_earner.username }}{% else %}{{ row.call.internal_display_name|default:'—' }}{% endif %}
+          · {{ row.call.duration_display }}{% if row.call.is_missed %} · rang out{% endif %}
+        </span>
+      </span>
+
+      <span class="flex shrink-0 flex-wrap items-center gap-3 sm:justify-end">
+        <span class="min-w-0">
+          {% if row.unallocated %}
+            <span class="badge-red">Nothing written up</span>
+          {% elif row.kind == 'waiting' %}
+            <span class="badge-yellow">Not yet written up</span>
+          {% elif row.kind == 'missed' %}
+            <span class="badge-gray">No answer</span>
+          {% elif row.kind == 'enquiry' %}
+            <span class="badge-gray">Enquiry</span>
+            <span class="block text-xs text-gray-400">Flagged only — nothing recorded</span>
+          {% elif row.link %}
+            <a class="link text-sm" href="{{ row.link }}">{{ row.label }}</a>
+            {% if row.detail %}<span class="block text-xs text-gray-400">{{ row.detail }}</span>{% endif %}
+          {% else %}
+            <span class="text-sm text-gray-700">{{ row.label }}</span>
+            {% if row.detail %}<span class="block text-xs text-gray-400">{{ row.detail }}</span>{% endif %}
+          {% endif %}
+        </span>
+        {% comment %}A bare "enquiry" flag keeps no record of what was wanted,
+        so offer to turn it into a real note as well.{% endcomment %}
+        {% if row.unallocated or row.kind == 'waiting' or row.kind == 'enquiry' %}
+        <form method="post" action="{% url 'call_note_start' %}" class="shrink-0">{% csrf_token %}
+          <input type="hidden" name="direction" value="{{ row.call.direction }}">
+          <input type="hidden" name="caller_number" value="{{ row.call.external_number }}">
+          <button type="submit" class="btn-secondary !py-1 text-xs">Write it up</button>
+        </form>
+        {% endif %}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
 </div>
+{% empty %}
+<div class="div-container mt-4 py-12 text-center">
+  <p class="text-sm font-medium text-gray-700">
+    {% if only_unallocated %}Nothing unallocated in this period.{% else %}No calls in this period.{% endif %}
+  </p>
+  <p class="mt-1 text-xs text-gray-400">
+    {% if only_unallocated %}Everyone has written up their calls.
+    {% else %}Calls appear here once the phone system publishes them, which can take up to a day.{% endif %}
+  </p>
+</div>
+{% endfor %}
 
 {% if orphan_notes %}
 <div class="div-container mt-4">
-  <h3 class="text-base font-semibold text-gray-900">Notes with no call row</h3>
-  <p class="text-xs text-gray-500 mt-0.5">
-    The other half of the reconciliation. A mobile, a withheld number or someone at the front desk never
-    appears in the Teams log — these are still complete records.
+  <h3 class="text-base font-semibold text-gray-900">Notes with no call against them</h3>
+  <p class="mt-0.5 text-xs text-gray-500">
+    The other half of the reconciliation. A mobile, a withheld number or someone at the front desk
+    never reaches the phone log — these are still complete records.
   </p>
   <ul class="mt-3 divide-y divide-gray-100">
     {% for note in orphan_notes %}
-    <li class="py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-      <a class="link" href="{% url 'call_note_detail' note.id %}">{{ note.started_at|date:'d/m/Y H:i' }}</a>
+    <li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+      <a class="link tabular-nums" href="{% url 'call_note_detail' note.id %}">{{ note.started_at|date:'d/m H:i' }}</a>
       <span class="text-gray-900">{{ note.caller_name|default:note.caller_number|default:'unknown caller' }}</span>
       <span class="text-gray-500">{{ note.get_direction_display|lower }} · {{ note.duration_display }}</span>
-      {% if note.matter %}<span class="text-gray-500">{{ note.matter.file_number }}</span>{% endif %}
+      {% if note.matter %}<span class="font-mono text-xs text-gray-500">{{ note.matter.file_number }}</span>{% endif %}
       {% if note.pairing_status == 'ambiguous' %}<span class="badge-yellow">Needs the author to pick a call</span>
-      {% elif note.pairing_status == 'waiting' %}<span class="badge-gray">Waiting for the call log</span>
+      {% elif note.pairing_status == 'waiting' %}<span class="badge-gray">Waiting for the number</span>
       {% else %}<span class="badge-gray">{{ note.get_outcome_display }}</span>{% endif %}
-      {% if note.taken_by %}<span class="text-xs text-gray-400">{{ note.taken_by.get_full_name|default:note.taken_by.username }}</span>{% endif %}
+      <span class="ml-auto text-xs text-gray-400">{% if note.taken_by %}{{ note.taken_by.get_full_name|default:note.taken_by.username }}{% endif %}</span>
     </li>
     {% endfor %}
   </ul>
 </div>
 {% endif %}
+
+<script>
+(function () {
+  // Filter chips swap the panel in place, like the Allocate tabs do, so the
+  // page does not jump about while you narrow things down.
+  if (window.__registerFiltersInit) return;
+  window.__registerFiltersInit = true;
+  document.addEventListener('click', function (e) {
+    var link = e.target.closest && e.target.closest('[data-register-link]');
+    if (!link) return;
+    var panel = document.getElementById('allocate-panel');
+    if (!panel) return;                  // standalone page: let it navigate
+    e.preventDefault();
+    var url = link.getAttribute('href');
+    var base = window.location.pathname;
+    var full = url.charAt(0) === '?' ? base + url : url;
+    panel.style.opacity = '0.4';
+    fetch(full + (full.indexOf('?') === -1 ? '?' : '&') + 'partial=1',
+          { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        panel.innerHTML = html;
+        panel.style.opacity = '';
+        history.pushState({}, '', full);
+      })
+      .catch(function () { window.location.href = full; });
+  });
+})();
+</script>

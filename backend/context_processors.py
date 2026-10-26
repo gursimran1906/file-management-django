@@ -31,3 +31,23 @@ def signoff_pending(request):
         return {'signoff_pending_count': 0}
     from .signoff_queue import pending_count
     return {'signoff_pending_count': pending_count(user)}
+
+
+def call_in_progress(request):
+    """The signed-in user's unfinished call note, for the navbar.
+
+    Somebody who starts a note and then wanders off to look something up must
+    be able to get back to it from anywhere, so the "Take a call" button turns
+    into a way back in. One indexed lookup, and none at all for anonymous
+    requests.
+    """
+    user = getattr(request, 'user', None)
+    if user is None or not user.is_authenticated:
+        return {'live_call_note': None}
+    from .models import CallNote
+    note = (CallNote.objects
+            .filter(taken_by=user, ended_at__isnull=True,
+                    outcome=CallNote.OUTCOME_DRAFTING)
+            .only('id', 'started_at')
+            .first())
+    return {'live_call_note': note}

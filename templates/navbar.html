@@ -46,8 +46,19 @@
         </form>
       </div>
       <div class="flex items-center">
-        {% comment %}The phone rings and you type — no page to find first.{% endcomment %}
-        <form method="post" action="{% url 'call_note_start' %}" class="hidden sm:block">
+        {% comment %}The phone rings and you type — no page to find first. If a
+        note is already open, this becomes the way back to it from anywhere, so
+        wandering off to look something up cannot lose it.{% endcomment %}
+        {% if live_call_note %}
+        <a href="{% url 'call_note_detail' live_call_note.id %}"
+          class="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 shadow-sm transition-colors hover:bg-red-100"
+          title="You have a call note open — click to go back to it">
+          <span class="h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>
+          <span class="hidden sm:inline">Call in progress</span>
+          <span data-call-timer data-started="{{ live_call_note.started_at|date:'c' }}">0:00</span>
+        </a>
+        {% else %}
+        <form method="post" action="{% url 'call_note_start' %}">
           {% csrf_token %}
           <button type="submit"
             class="inline-flex items-center gap-2 rounded-lg border border-transparent bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
@@ -56,9 +67,10 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M3 5a2 2 0 0 1 2-2h1.6a1 1 0 0 1 .97.76l.9 3.6a1 1 0 0 1-.28.95L6.8 9.8a12 12 0 0 0 5.4 5.4l1.5-1.4a1 1 0 0 1 .95-.28l3.6.9a1 1 0 0 1 .76.97V17a2 2 0 0 1-2 2h-1A14 14 0 0 1 3 6V5Z"/>
             </svg>
-            Take a call
+            <span class="hidden sm:inline">Take a call</span>
           </button>
         </form>
+        {% endif %}
         <div class="flex items-center ms-3">
           <div>
             <button type="button"
@@ -90,6 +102,25 @@
       </div>
     </div>
   </div>
+
+<script>
+(function () {
+  // Any element with data-call-timer counts up from data-started. Used by the
+  // navbar's "call in progress" chip and by the call note page itself.
+  function tick() {
+    document.querySelectorAll('[data-call-timer]').forEach(function (el) {
+      var started = new Date(el.getAttribute('data-started')).getTime();
+      if (isNaN(started)) return;
+      var s = Math.max(0, Math.floor((Date.now() - started) / 1000));
+      var m = Math.floor(s / 60);
+      el.textContent = (m >= 60 ? Math.floor(m / 60) + ':' + ('0' + (m % 60)).slice(-2)
+                                : m) + ':' + ('0' + (s % 60)).slice(-2);
+    });
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
 </nav>
 
 <aside id="logo-sidebar"

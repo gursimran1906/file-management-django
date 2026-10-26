@@ -17,7 +17,8 @@ from ..models import (CallLogConfig, CallNote, CallRecord, Free30Mins,
 from ..granola.markdown_to_quill import markdown_to_quill_json
 from ..telephony import ingest, pairing
 from ..telephony.match import build_matter_phone_index
-from ..telephony.register import build_register, notes_without_calls
+from ..telephony.register import (build_register, group_by_day,
+                                  notes_without_calls)
 from .tests_telephony import call_row, make_client, make_matter, make_user
 
 
@@ -409,6 +410,16 @@ class RegisterTests(TestCase):
         self.assertEqual(len(rows), 1)
         self.assertTrue(rows[0]['unallocated'])
 
+    def test_the_register_groups_calls_by_day(self):
+        make_call(self.long_ago, fee_earner=self.user, row_id='a', call_id='ca')
+        make_call(self.long_ago - timedelta(days=1), fee_earner=self.user,
+                  row_id='b', call_id='cb')
+        rows, _ = self._register()
+        groups = group_by_day(rows)
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(sum(len(g['rows']) for g in groups), 2)
+        self.assertEqual(groups[0]['unallocated'], 1)
+
     def test_notes_with_no_call_are_listed_for_reconciliation(self):
         make_note(self.user, timezone.now() - timedelta(hours=2))
         orphans = notes_without_calls(self.today - timedelta(days=7), self.today)
@@ -433,6 +444,31 @@ class CallNoteViewTests(TestCase):
         self.assertEqual(note.direction, CallNote.DIRECTION_INBOUND)
         self.assertTrue(note.is_live)
         self.assertIsNone(note.ended_at)
+
+    def test_clicking_take_a_call_twice_returns_to_the_same_note(self):
+        self.client.post(reverse('call_note_start'))
+        first = CallNote.objects.get()
+        response = self.client.post(reverse('call_note_start'))
+        self.assertEqual(CallNote.objects.count(), 1)
+        self.assertRedirects(response,
+                             reverse('call_note_detail', args=[first.id]))
+
+    def test_a_genuinely_new_call_later_gets_its_own_note(self):
+        stale = make_note(self.user, timezone.now() - timedelta(hours=2))
+        stale.ended_at = None
+        stale.save()
+        self.client.post(reverse('call_note_start'))
+        self.assertEqual(CallNote.objects.count(), 2)
+
+    def test_a_note_left_open_elsewhere_is_surfaced_not_abandoned(self):
+        stale = make_note(self.user, timezone.now() - timedelta(hours=2))
+        stale.ended_at = None
+        stale.save()
+        self.client.post(reverse('call_note_start'))
+        fresh = CallNote.objects.exclude(pk=stale.pk).get()
+        response = self.client.get(reverse('call_note_detail', args=[fresh.id]))
+        self.assertEqual(response.context['other_open'].pk, stale.pk)
+        self.assertContains(response, 'another note still open')
 
     def test_writing_up_an_unallocated_call_prefills_the_number(self):
         self.client.post(reverse('call_note_start'),

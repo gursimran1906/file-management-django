@@ -25,7 +25,7 @@ from users.models import CustomUser
 
 from . import pairing
 from .match import build_matter_phone_index, match_call, normalize_phone
-from .register import build_register, notes_without_calls
+from .register import build_register, group_by_day, notes_without_calls
 
 # How long the register looks back by default.
 REGISTER_DEFAULT_DAYS = 14
@@ -46,6 +46,11 @@ def _file_numbers():
 
 # --- taking the call ----------------------------------------------------------
 
+# A second click on "Take a call" within this many seconds means the button was
+# pressed twice, not that a second call started.
+DOUBLE_CLICK_SECONDS = 120
+
+
 @login_required
 @require_POST
 def call_note_start(request):
@@ -53,6 +58,18 @@ def call_note_start(request):
     direction = (request.POST.get('direction') or '').strip()
     if direction not in (CallNote.DIRECTION_INBOUND, CallNote.DIRECTION_OUTBOUND):
         direction = CallNote.DIRECTION_INBOUND
+
+    # Someone clicking twice should land back in the note they just opened,
+    # not start a rival one that then has to be tidied up.
+    just_opened = (CallNote.objects
+                   .filter(taken_by=request.user, ended_at__isnull=True,
+                           outcome=CallNote.OUTCOME_DRAFTING,
+                           started_at__gte=timezone.now() - timedelta(
+                               seconds=DOUBLE_CLICK_SECONDS))
+                   .first())
+    if just_opened is not None:
+        return redirect('call_note_detail', note_id=just_opened.id)
+
     note = CallNote.objects.create(
         taken_by=request.user, created_by=request.user,
         direction=direction, started_at=timezone.now(),
@@ -77,8 +94,14 @@ def call_note_detail(request, note_id):
         # the latest call first, which is not the same as the best fit, and the
         # first one offered is the one that comes pre-selected.
         candidates = [found[i] for i in ids if i in found]
+    other_open = (CallNote.objects
+                  .filter(taken_by=note.taken_by_id, ended_at__isnull=True,
+                          outcome=CallNote.OUTCOME_DRAFTING)
+                  .exclude(pk=note.pk)
+                  .first())
     return render(request, 'telephony/call_note.html', {
         'note': note,
+        'other_open': other_open,
         'config': config,
         'can_edit': _may_edit(request, note),
         'candidates': candidates,
@@ -348,9 +371,14 @@ def calls_register(request):
     """Every call in and out, and whether it has been written up."""
     config = CallLogConfig.get_solo()
     today = timezone.localdate()
-    date_from = parse_date(request.GET.get('from') or '') or (
-        today - timedelta(days=REGISTER_DEFAULT_DAYS))
-    date_to = parse_date(request.GET.get('to') or '') or today
+    preset = request.GET.get('preset', '')
+    presets = {'today': 0, 'week': 7, 'month': 30}
+    if preset in presets:
+        date_from, date_to = today - timedelta(days=presets[preset]), today
+    else:
+        date_from = parse_date(request.GET.get('from') or '') or (
+            today - timedelta(days=REGISTER_DEFAULT_DAYS))
+        date_to = parse_date(request.GET.get('to') or '') or today
     if date_from > date_to:
         date_from, date_to = date_to, date_from
     direction = request.GET.get('direction') or ''
@@ -364,6 +392,7 @@ def calls_register(request):
     context = {
         'config': config,
         'rows': rows,
+        'day_groups': group_by_day(rows),
         'counts': counts,
         'orphan_notes': notes_without_calls(date_from, date_to, config=config),
         'date_from': date_from,
@@ -371,6 +400,9 @@ def calls_register(request):
         'direction': direction,
         'only_unallocated': only_unallocated,
         'mine': mine,
+        'preset': preset,
+        'presets': [('today', 'Today'), ('week', 'Last 7 days'),
+                    ('month', 'Last 30 days')],
         'file_numbers': _file_numbers(),
     }
     template = ('telephony/_register_panel.html' if request.GET.get('partial')
