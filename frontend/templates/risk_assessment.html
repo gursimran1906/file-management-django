@@ -2,6 +2,20 @@
 {% load static %}
 {% load utils %}
 {% block title %} Risk Assessment {% endblock %}
+
+{% block styles %}
+<style>
+  /*
+   * position: sticky only works within the nearest scrolling ancestor. The
+   * #content wrapper in base.html declares overflow-y-auto but, having only a
+   * min-height, never scrolls - so it captures sticky elements and stops them
+   * sticking. Overriding it here lets the window be the scroll container, so
+   * the scoring column can pin. Scoped to this page: dropping it in base.html
+   * would switch on the dormant sticky classes across the rest of the app.
+   */
+  #content { overflow: visible; }
+</style>
+{% endblock %}
 {% block container %}
 
 <div class="mt-4 space-y-4">
@@ -25,19 +39,19 @@
     on a narrow one, so the rating is visible while the answers are given
     rather than only at the end.
     {% endcomment %}
-    <div class="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <aside class="xl:col-span-4 xl:order-last">
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <aside class="lg:col-span-4 lg:order-last">
             {% comment %}
             The column is pinned and scrolls on its own, so the rating stays on
             screen next to whichever question is being answered rather than
             scrolling away after the first section.
             {% endcomment %}
-            <div class="space-y-3 xl:sticky xl:top-16 xl:max-h-[calc(100vh_-_5rem)] xl:overflow-y-auto xl:pr-1">
+            <div class="space-y-3 lg:sticky lg:top-16 lg:max-h-[calc(100vh_-_5rem)] lg:overflow-y-auto lg:pr-1">
                 <div id="risk-score-panel">
                     {% include 'partials/risk_score_panel.html' %}
                 </div>
 
-                <nav class="rounded-lg border border-gray-200 bg-white p-3 hidden xl:block">
+                <nav class="rounded-lg border border-gray-200 bg-white p-3 hidden lg:block">
                     <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Sections</p>
                     <ol class="mt-2 space-y-1 text-xs text-gray-700">
                         <li><a class="hover:underline" href="#section-client-details">1. Client details</a></li>
@@ -52,7 +66,7 @@
             </div>
         </aside>
 
-        <div class="xl:col-span-8">
+        <div class="lg:col-span-8">
             {% include 'forms/risk_assessment_form.html' %}
         </div>
     </div>

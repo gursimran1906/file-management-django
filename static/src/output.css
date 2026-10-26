@@ -6248,6 +6248,18 @@ details.gr-disclose > summary::-webkit-details-marker {
 }
 
 @media (min-width: 1024px) {
+  .lg\:sticky {
+    position: sticky;
+  }
+
+  .lg\:top-16 {
+    top: 4rem;
+  }
+
+  .lg\:order-last {
+    order: 9999;
+  }
+
   .lg\:col-span-1 {
     grid-column: span 1 / span 1;
   }
@@ -6260,6 +6272,22 @@ details.gr-disclose > summary::-webkit-details-marker {
     grid-column: span 3 / span 3;
   }
 
+  .lg\:col-span-4 {
+    grid-column: span 4 / span 4;
+  }
+
+  .lg\:col-span-8 {
+    grid-column: span 8 / span 8;
+  }
+
+  .lg\:block {
+    display: block;
+  }
+
+  .lg\:max-h-\[calc\(100vh_-_5rem\)\] {
+    max-height: calc(100vh - 5rem);
+  }
+
   .lg\:w-fit {
     width: -moz-fit-content;
     width: fit-content;
@@ -6267,6 +6295,10 @@ details.gr-disclose > summary::-webkit-details-marker {
 
   .lg\:max-w-none {
     max-width: none;
+  }
+
+  .lg\:grid-cols-12 {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
   }
 
   .lg\:grid-cols-2 {
@@ -6325,6 +6357,10 @@ details.gr-disclose > summary::-webkit-details-marker {
     align-self: flex-end;
   }
 
+  .lg\:overflow-y-auto {
+    overflow-y: auto;
+  }
+
   .lg\:px-5 {
     padding-left: 1.25rem;
     padding-right: 1.25rem;
@@ -6333,6 +6369,10 @@ details.gr-disclose > summary::-webkit-details-marker {
   .lg\:pl-3 {
     padding-left: 0.75rem;
   }
+
+  .lg\:pr-1 {
+    padding-right: 0.25rem;
+  }
 }
 
 @media (min-width: 1280px) {
@@ -6340,16 +6380,8 @@ details.gr-disclose > summary::-webkit-details-marker {
     position: sticky;
   }
 
-  .xl\:top-16 {
-    top: 4rem;
-  }
-
   .xl\:top-24 {
     top: 6rem;
-  }
-
-  .xl\:order-last {
-    order: 9999;
   }
 
   .xl\:col-span-2 {
@@ -6364,16 +6396,8 @@ details.gr-disclose > summary::-webkit-details-marker {
     grid-column: span 8 / span 8;
   }
 
-  .xl\:block {
-    display: block;
-  }
-
   .xl\:max-h-\[calc\(100vh-7rem\)\] {
     max-height: calc(100vh - 7rem);
-  }
-
-  .xl\:max-h-\[calc\(100vh_-_5rem\)\] {
-    max-height: calc(100vh - 5rem);
   }
 
   .xl\:grid-cols-12 {
@@ -6390,10 +6414,6 @@ details.gr-disclose > summary::-webkit-details-marker {
 
   .xl\:overflow-y-auto {
     overflow-y: auto;
-  }
-
-  .xl\:pr-1 {
-    padding-right: 0.25rem;
   }
 }
 
