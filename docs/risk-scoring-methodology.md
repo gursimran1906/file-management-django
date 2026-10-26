@@ -9,7 +9,12 @@ national or sectoral risk assessments, to be documented.
 The weightings themselves are in
 [`risk-weightings.md`](risk-weightings.md), which is generated from the code
 that applies them (`python manage.py risk_weightings`) so the two cannot drift
-apart.
+apart. Every weight there is given with the reason it is set where it is, as
+LSAG 5.13 suggests ("short complementary notes explaining the rationale for
+each weighting may be a useful addition to the risk assessment"), and the same
+reasons appear in the assessment form itself under "why each question carries
+the weight it does" — so a fee earner can see why an answer counts for what it
+does at the moment they give it.
 
 ## What changed, and why
 

@@ -71,11 +71,28 @@ HIGH_BAND = 30
 #: them in admin without a code change.
 MATTER_TYPE_POINTS = {HIGH: 15, MEDIUM: 8, LOW: 0}
 
+MATTER_TYPE_WHY = (
+    'Every matter starts from the inherent risk of the work, before anything '
+    'about this client is known. 15 points puts high-risk work at medium '
+    'before any answer is given, which is what the SRA means by conveyancing '
+    'carrying the highest inherent risk; low-risk work starts at nothing so '
+    'the rating is driven entirely by the answers.'
+)
+
 #: Transaction value bands, in pounds. The £1m step is LSAG's own example.
 VALUE_BANDS = [
     (Decimal('1000000'), 12, 'Transaction value £1m or more'),
     (Decimal('500000'), 6, 'Transaction value £500k or more'),
 ]
+
+VALUE_BAND_WHY = (
+    'Value is a proxy for how much can be moved through the firm in one '
+    'transaction. The £1m step is LSAG 5.12\u2019s own example of a category-based '
+    'rating, and 12 points is set so that high-risk work at £1m reaches the '
+    'section ceiling and so high risk, as that example intends. £500k scores '
+    'half, reaching medium on high-risk work without claiming the transaction '
+    'is itself exceptional.'
+)
 
 
 @dataclass(frozen=True)
@@ -93,6 +110,11 @@ class Factor:
     answer: str = 'Yes'
     any_of: tuple = ()
     auto_high: bool = False
+    #: Why this answer is worth this much. LSAG 5.13: "Short complementary
+    #: notes explaining the rationale for each weighting may be a useful
+    #: addition to the risk assessment." Shown on the form and printed in
+    #: docs/risk-weightings.md, so the weighting can be defended as given.
+    why: str = ''
 
     def fields(self):
         return self.any_of or (self.field,)
@@ -116,6 +138,8 @@ class Category:
     medium_at: int
     high_at: int
     factors: tuple = field(default_factory=tuple)
+    #: Why the ceiling and the two floors sit where they do.
+    why: str = ''
 
 
 # --------------------------------------------------------------------------
@@ -129,128 +153,200 @@ CLIENT_CATEGORIES = (
         key='client_party',
         label='Client and parties',
         cap=30, medium_at=10, high_at=24,
+        why='The ceiling is 30 because one answer here - a designated person - '
+            'is decisive on its own. High at 24 means two substantial concerns '
+            'about the client reach high risk without a third.',
         factors=(
             Factor('Client or a party is a designated person/entity',
-                   30, field='designated_person_entity', auto_high=True),
+                   30, field='designated_person_entity', auto_high=True,
+                   why='Acting for a designated person risks breaching financial '
+                       'sanctions, which carries criminal liability and does not '
+                       'depend on what we knew. No score threshold is appropriate.'),
             Factor('Adverse media about the client or a beneficial owner',
-                   12, field='adverse_media'),
+                   12, field='adverse_media',
+                   why='Information about the client from outside our own file, '
+                       'which usually points at something they have not told us. '
+                       'The heaviest of the judgement-based client factors.'),
             Factor('Concerns about the client, agent or third parties',
-                   10, field='concerns_about_parties'),
-            Factor('Concerns about the client', 8, field='client_concerns'),
-            Factor('Unusual client for this type of work', 8, field='unusual_client'),
-            Factor('No evidence of a third party’s authority to act',
-                   8, field='third_party_authority', answer='No'),
+                   10, field='concerns_about_parties',
+                   why='A fee earner\u2019s concern about anyone involved. Just below '
+                       'adverse media: a professional impression rather than an '
+                       'independent source, but it reaches medium on its own.'),
+            Factor('Concerns about the client', 8, field='client_concerns',
+                   why='Capacity, undue influence or vulnerability. A real risk to '
+                       'the retainer, and sometimes a sign the client is fronting '
+                       'for someone, but not by itself a laundering indicator.'),
+            Factor('Unusual client for this type of work', 8, field='unusual_client',
+                   why='Our own baseline being broken. The SRA\u2019s sectoral risk '
+                       'assessment treats work outside a firm\u2019s normal profile as '
+                       'a warning sign, which matters more at a local firm with a '
+                       'narrow client base.'),
+            Factor('No evidence of a third party\u2019s authority to act',
+                   8, field='third_party_authority', answer='No',
+                   why='Acting on an instruction we cannot show was authorised. '
+                       'Weighted with the other 8s because it is a gap in our own '
+                       'evidence rather than a fact about the client.'),
         ),
     ),
     Category(
         key='geographic',
         label='Geographic risk',
         cap=25, medium_at=8, high_at=20,
+        why='Medium at 8 so a single overseas element registers, because for a '
+            'local firm that is already outside the normal pattern. High at 20 '
+            'is reachable only by the mandatory triggers or by both judgement '
+            'answers together.',
         factors=(
-            # Both of these make enhanced due diligence mandatory (MLRs
-            # reg 33(1)(b) for a high-risk third country), so neither waits on
-            # a score threshold.
             Factor('A party is established in a high-risk third country or jurisdiction',
-                   25, field='high_risk_third_country_or_jurisdiction', auto_high=True),
+                   25, field='high_risk_third_country_or_jurisdiction', auto_high=True,
+                   why='MLRs reg 33(1)(b) makes enhanced due diligence mandatory. '
+                       'The listing is an external determination, not our judgement, '
+                       'so it does not wait on a score.'),
             Factor('Matter involves a country subject to sanctions',
-                   25, field='country_subject_to_sanctions', auto_high=True),
-            Factor('Concerns about the client’s location',
-                   10, field='location_of_instruction_concerns'),
+                   25, field='country_subject_to_sanctions', auto_high=True,
+                   why='Sanctions exposure is a criminal-liability question rather '
+                       'than a risk-appetite one, so it is treated like a '
+                       'designated person.'),
+            Factor('Concerns about the client\u2019s location',
+                   10, field='location_of_instruction_concerns',
+                   why='Weighted to reach medium on its own: an unexplained '
+                       'location is one of the oldest laundering signals.'),
             Factor('Location of the instruction does not make sense',
-                   10, field='make_sense_location_of_instructions', answer='No'),
-            # A local high-street firm sees few overseas elements, so when one
-            # appears it is further outside the firm's normal pattern of work
-            # than it would be at a national firm.
-            Factor('Overseas elements involved', 8, field='overseas_elements'),
+                   10, field='make_sense_location_of_instructions', answer='No',
+                   why='The other side of the same judgement - why is a client '
+                       'there instructing a high-street firm here - so it carries '
+                       'the same weight.'),
+            Factor('Overseas elements involved', 8, field='overseas_elements',
+                   why='Below the two concerns above, because an overseas '
+                       'beneficiary or asset is common in probate and conveyancing '
+                       'without being suspicious. It still scores: this firm sees '
+                       'few of them.'),
         ),
     ),
     Category(
         key='delivery_channel',
         label='Delivery channel',
         cap=15, medium_at=10, high_at=15,
+        why='The ceiling is low because remote working is normal. High at 15 '
+            'needs both answers, which is deliberate: a client never met, whose '
+            'identity was never properly verified, has not really been '
+            'identified at all.',
         factors=(
-            Factor('Client will not be met in person', 8, field='meeting_in_person', answer='No'),
-            # The SRA's August 2026 sectoral risk assessment recast technology
-            # risk around AI-enabled fraud and deepfakes: images a client sends
-            # in are no longer a safe basis for remote verification.
+            Factor('Client will not be met in person', 8, field='meeting_in_person', answer='No',
+                   why='MLRs reg 33(2) lists non-face-to-face among the factors to '
+                       'consider. On its own it is routine now, so it scores below '
+                       'medium.'),
             Factor('Identity not verified from a certified or verified electronic source',
-                   10, field='id_verified_reliable_source', answer='No'),
+                   10, field='id_verified_reliable_source', answer='No',
+                   why='Heavier than not meeting the client, because it is a '
+                       'failure of verification rather than of channel. The SRA\u2019s '
+                       'August 2026 sectoral risk assessment makes AI-generated '
+                       'documents and deepfakes the technology risk, so images the '
+                       'client supplies are no longer evidence.'),
         ),
     ),
     Category(
         key='structure',
         label='Structure and ownership',
         cap=20, medium_at=10, high_at=20,
+        why='Only relevant to entity clients, so the ceiling is moderate; high '
+            'needs two of these together, which would describe an entity whose '
+            'ownership we cannot actually see.',
         factors=(
-            # Cash-intensive businesses fronted by nominee or "ghost"
-            # directors is a new August 2026 sectoral heading, tied to
-            # organised crime and modern slavery.
             Factor('Owners or directors appear unconnected to the business, or to be nominees',
-                   12, field='nominee_or_unconnected_directors'),
-            Factor('Complex or unusual structure', 10, field='complex_structure_or_unusual'),
-            Factor('Reportable discrepancies identified', 8, field='reportable_discrepancies'),
-            # Also new in August 2026: paperwork from a dissolved company used
-            # to establish false credentials.
+                   12, field='nominee_or_unconnected_directors',
+                   why='The heaviest here because it goes to who is really behind '
+                       'the client. New in the SRA\u2019s August 2026 assessment, which '
+                       'links nominee and "ghost director" arrangements to '
+                       'organised crime and modern slavery.'),
+            Factor('Complex or unusual structure', 10, field='complex_structure_or_unusual',
+                   why='Complexity is not wrongdoing, but it is the usual means of '
+                       'obscuring ownership, so it reaches medium alone.'),
+            Factor('Reportable discrepancies identified', 8, field='reportable_discrepancies',
+                   why='A discrepancy is a fact rather than a judgement, but it is '
+                       'often administrative, so it is weighted below the two '
+                       'above.'),
             Factor('Companies House not checked, or filed details do not match',
-                   8, field='companies_house_checked', answer='No'),
+                   8, field='companies_house_checked', answer='No',
+                   why='New in August 2026: original documentation from dissolved '
+                       'companies is used to establish false credentials. Weighted '
+                       'as a gap in our checking rather than as evidence of risk.'),
         ),
     ),
     Category(
         key='pep_sanctions',
         label='PEP and sanctions',
         cap=30, medium_at=15, high_at=28,
+        why='High at 28 is reachable only by the two automatic triggers, so a '
+            'domestic PEP lands at medium as the Regulations intend rather than '
+            'being pushed to high by this section alone.',
         factors=(
-            Factor('Financial sanctions concerns', 30, field='financial_sanctions', auto_high=True),
-            # Since 10 January 2024 the MLRs (reg 35(3A)) require a domestic
-            # PEP to be treated as presenting a lower level of risk than a
-            # non-domestic PEP, with enhanced measures applied to a lesser
-            # extent. So a non-domestic PEP triggers high risk outright, while
-            # a domestic PEP scores into Medium and still requires EDD.
+            Factor('Financial sanctions concerns', 30, field='financial_sanctions', auto_high=True,
+                   why='Same reasoning as a designated person: criminal liability, '
+                       'not risk appetite.'),
             Factor('Non-domestic PEP, family member or close associate',
-                   30, field='pep_type', answer='Non-domestic', auto_high=True),
+                   30, field='pep_type', answer='Non-domestic', auto_high=True,
+                   why='Reg 35 makes enhanced due diligence and senior management '
+                       'approval mandatory, and the foreign-official risk is what '
+                       'the PEP regime was written for.'),
             Factor('Domestic (UK) PEP, family member or close associate',
-                   20, field='pep_type', answer='Domestic'),
+                   20, field='pep_type', answer='Domestic',
+                   why='Since 10 January 2024 reg 35(3A) requires a domestic PEP to '
+                       'start from a lower level of risk than a non-domestic one, '
+                       'with enhanced measures applied to a lesser extent. 20 puts '
+                       'it in medium while still requiring enhanced due diligence.'),
         ),
     ),
     Category(
         key='cdd_completeness',
         label='Due diligence completeness',
         cap=20, medium_at=8, high_at=20,
+        why='These are things we have not done rather than facts about the '
+            'client, so each reaches medium but it takes all three to reach '
+            'high - at which point the file has no real due diligence on it.',
         factors=(
-            # A quarter of the files the SRA reviewed in 2025-26 lacked
-            # adequate source of funds evidence.
             Factor('Source of funds questionnaire not completed',
-                   8, field='is_source_of_funds_questionnaire_completed', answer='No'),
-            # "Passporting", new in August 2026: leaning on due diligence done
-            # for another office or an earlier instruction without asking
-            # whether it is still appropriate for this matter.
+                   8, field='is_source_of_funds_questionnaire_completed', answer='No',
+                   why='The SRA found a quarter of the files it reviewed in 2025-26 '
+                       'lacked adequate source of funds evidence, and nine per cent '
+                       'of files needing checks had none. Weighted to reach medium '
+                       'on its own for that reason.'),
             Factor('Relying on due diligence from an earlier matter or another office',
-                   8, field='relying_on_previous_due_diligence'),
+                   8, field='relying_on_previous_due_diligence',
+                   why='"Passporting", new in August 2026: checks carried over '
+                       'without asking whether they are still appropriate for this '
+                       'matter. Same weight as missing source of funds, because the '
+                       'effect is the same - no current due diligence.'),
             Factor('PEP questionnaire not completed',
-                   6, field='is_pep_questionnaire_completed', answer='No'),
+                   6, field='is_pep_questionnaire_completed', answer='No',
+                   why='Below source of funds: PEP status is also screened '
+                       'elsewhere, so the questionnaire is corroboration rather '
+                       'than the only evidence.'),
         ),
     ),
 )
 
-
-# --------------------------------------------------------------------------
-# Matter risk
-# --------------------------------------------------------------------------
-# LSAG product/service and transaction risk headings, plus the inherent risk of
-# the work type and the value of the transaction.
 
 MATTER_CATEGORIES = (
     Category(
         key='type_and_value',
         label='Type of work and value',
         cap=25, medium_at=12, high_at=25,
+        why='High at 25 is exactly high-risk work at £1m or more, which is '
+            'LSAG 5.12\u2019s own worked example of a category-based rating. Medium '
+            'at 12 means high-risk work is at least medium before anything '
+            'else is known about it, which is what "inherent" means.',
         # Scored from the matter type and transaction value, not from Yes/No
-        # answers — see _score_type_and_value.
+        # answers - see _score_type_and_value.
     ),
     Category(
         key='nature_of_work',
         label='Nature of the instruction',
         cap=25, medium_at=12, high_at=15,
+        why='High at 15 is the lowest floor anywhere here, so the single '
+            'answer below reaches it alone. An instruction that does not fit '
+            'the client is the classic laundering pattern, and it should be '
+            'considered for a report rather than averaged into a total.',
         factors=(
             # LSAG 5.11 lists a matter that does not fit the client's profile
             # among the higher-risk matter factors. If a fee earner has
@@ -264,55 +360,110 @@ MATTER_CATEGORIES = (
             # assessment completed before the two were merged there is no way to
             # tell a deliberate 'No' from a question nobody answered. It is
             # still shown on those assessments where it was answered 'No'.
-            Factor('Transaction inconsistent with the client’s profile or does not make sense',
-                   15, field='consistent_with_client_profile', answer='No'),
-            Factor('Not our usual type of work', 12, field='usual_work', answer='No'),
-            Factor('Matter involves a complex structure', 8, field='complex_structure'),
+            Factor('Transaction inconsistent with the client\u2019s profile or does not make sense',
+                   15, field='consistent_with_client_profile', answer='No',
+                   why='The heaviest single matter answer, and enough for high risk '
+                       'by itself. LSAG 5.11 lists a matter that does not fit the '
+                       'client\u2019s profile among the higher-risk factors; a fee '
+                       'earner answering No here is describing the thing the '
+                       'regime exists to catch.'),
+            Factor('Not our usual type of work', 12, field='usual_work', answer='No',
+                   why='Work we do not normally take is work we are least able to '
+                       'judge, and the firm\u2019s own controls are built around its '
+                       'usual files. Reaches medium alone.'),
+            Factor('Matter involves a complex structure', 8, field='complex_structure',
+                   why='Weighted below the client\u2019s own structure being complex: '
+                       'building a structure is ordinary transactional work, where '
+                       'an already-opaque client is a question about who we are '
+                       'acting for.'),
         ),
     ),
     Category(
         key='sector',
         label='Sector risk',
         cap=20, medium_at=10, high_at=20,
+        why='Two factors of 12 against a ceiling of 20: either reaches medium, '
+            'both reach high. A cash-intensive business in a high-risk sector '
+            'is the combination the 2026 sectoral assessment describes.',
         factors=(
             # The form asks about high-risk sectors and cash intensity in both
             # the matter and the EDD sections. Each underlying fact scores
             # once, so answering the same thing twice cannot inflate the score.
             Factor('High-risk industry or sector', 12,
-                   any_of=('high_risk_industry', 'higher_risk_sector')),
+                   any_of=('high_risk_industry', 'higher_risk_sector'),
+                   why='Sector is an inherent property of the work rather than a '
+                       'judgement about this client, so it is weighted to reach '
+                       'medium without tipping to high on its own.'),
             Factor('Cash-intensive industry or business activity', 12,
-                   any_of=('cash_intensive_industry', 'cash_intensive_business_activity')),
+                   any_of=('cash_intensive_industry', 'cash_intensive_business_activity'),
+                   why='Cash intensity is the classic placement route and is one of '
+                       'the three headings the SRA added in August 2026. Weighted '
+                       'level with sector risk because the two usually travel '
+                       'together.'),
         ),
     ),
     Category(
         key='funds_flow',
         label='Movement of funds',
         cap=25, medium_at=10, high_at=25,
+        why='Any one of these reaches medium; high needs all three, which '
+            'describes money arriving from several directions at once with no '
+            'clear reason - the pattern, rather than any single leg of it.',
         factors=(
-            Factor('Receiving funds from overseas', 12, field='receiving_funds_from_overseas'),
+            Factor('Receiving funds from overseas', 12, field='receiving_funds_from_overseas',
+                   why='The heaviest of the three: it puts the origin of the money '
+                       'beyond what we can check, and beyond UK supervision.'),
             Factor('Receiving funds from third parties',
-                   10, field='receiving_funds_from_third_parties'),
+                   10, field='receiving_funds_from_third_parties',
+                   why='Money from someone who is not our client breaks the link '
+                       'between the client\u2019s means and the transaction. Common and '
+                       'often innocent - family gifts in conveyancing - so it sits '
+                       'below overseas funds.'),
             Factor('Non-transactional matter that still moves funds or assets',
-                   10, field='movement_of_funds_assets'),
+                   10, field='movement_of_funds_assets',
+                   why='Advisory work that nonetheless moves money is outside the '
+                       'pattern the file appears to be, which is why it is asked '
+                       'at all.'),
         ),
     ),
     Category(
         key='transaction_flags',
         label='Transaction red flags',
         cap=35, medium_at=10, high_at=28,
+        why='The largest ceiling, because this is where the serious answers '
+            'live. High at 28 takes two of the reg 33(1)(f) answers together, '
+            'while the two automatic triggers do not wait for a total at all.',
         factors=(
             Factor('Proliferation financing risk', 35,
-                   field='proliferation_financing', auto_high=True),
+                   field='proliferation_financing', auto_high=True,
+                   why='Proliferation financing is a national-security matter with '
+                       'its own reporting expectations; a scored threshold would '
+                       'be inappropriate.'),
             Factor('No apparent economic or legal purpose', 35,
-                   field='lack_of_economic_or_legal_purpose', auto_high=True),
+                   field='lack_of_economic_or_legal_purpose', auto_high=True,
+                   why='A transaction with no purpose we can identify is, on its '
+                       'face, a transaction whose purpose is something else. This '
+                       'is the point at which a report should be considered, so it '
+                       'is high risk outright.'),
             # reg 33(1)(f): an unusually large transaction or an unusual
             # pattern of transactions requires enhanced due diligence.
             Factor('Unusually complex or large transaction', 15,
-                   field='unusual_complex_transaction'),
+                   field='unusual_complex_transaction',
+                   why='Reg 33(1)(f) already makes enhanced due diligence mandatory '
+                       'here, so the weight only has to carry the rating: 15 '
+                       'reaches medium, and with the pattern answer, high.'),
             Factor('Unusual pattern of transactions', 15,
-                   field='unusual_pattern_of_transactions'),
-            Factor('Other AML/CTF risks', 10, field='other_risks'),
-            Factor('Other high-risk factors', 10, field='other_high_risk_factors'),
+                   field='unusual_pattern_of_transactions',
+                   why='The other half of reg 33(1)(f) and weighted identically: a '
+                       'single odd transaction and a pattern of them are the same '
+                       'provision.'),
+            Factor('Other AML/CTF risks', 10, field='other_risks',
+                   why='A catch-all, weighted to reach medium so that a fee '
+                       'earner\u2019s concern is never scored as nothing, but not '
+                       'higher, because what it describes is unknown.'),
+            Factor('Other high-risk factors', 10, field='other_high_risk_factors',
+                   why='The same catch-all on the enhanced due diligence side, '
+                       'weighted the same way and for the same reason.'),
         ),
     ),
 )
@@ -360,6 +511,7 @@ def question_weights():
                         'answer': factor.answer,
                         'auto_high': factor.auto_high,
                         'label': factor.label,
+                        'why': factor.why,
                         'side': side,
                         'category': category.label,
                         'cap': category.cap,
@@ -370,6 +522,62 @@ def question_weights():
 
 #: Built once: the categories are constants.
 QUESTION_WEIGHTS = question_weights()
+
+
+def weighting_reference():
+    """Every weight with the reasoning behind it, grouped as it is scored.
+
+    This is the whole weighting as a readable structure: the form prints it
+    under the questions, and ``manage.py risk_weightings`` prints it into the
+    note the firm keeps with its firm-wide risk assessment. LSAG 5.13 expects a
+    practice to be able to explain its weightings; keeping the reasons beside
+    the numbers is how they stay explainable after the person who chose them
+    has moved on.
+    """
+    sides = []
+    for key, label, categories in (('client', 'Client risk', CLIENT_CATEGORIES),
+                                   ('matter', 'Matter risk', MATTER_CATEGORIES)):
+        rows = []
+        for category in categories:
+            factors = [{
+                'label': factor.label,
+                'points': factor.points,
+                'answer': factor.answer,
+                'auto_high': factor.auto_high,
+                'why': factor.why,
+            } for factor in category.factors]
+            if category.key == 'type_and_value':
+                factors = _type_and_value_reference()
+            rows.append({
+                'key': category.key,
+                'label': category.label,
+                'cap': category.cap,
+                'medium_at': category.medium_at,
+                'high_at': category.high_at,
+                'why': category.why,
+                'factors': factors,
+            })
+        sides.append({'key': key, 'label': label, 'categories': rows})
+    return sides
+
+
+def _type_and_value_reference():
+    """The type-of-work and value steps, in the same shape as a factor."""
+    rows = [{
+        'label': f'{level} inherent risk work',
+        'points': points,
+        'answer': 'Matter type',
+        'auto_high': False,
+        'why': MATTER_TYPE_WHY,
+    } for level, points in MATTER_TYPE_POINTS.items() if points]
+    rows += [{
+        'label': label,
+        'points': points,
+        'answer': 'Transaction value',
+        'auto_high': False,
+        'why': VALUE_BAND_WHY,
+    } for threshold, points, label in VALUE_BANDS]
+    return rows
 
 
 def value_band_weights():

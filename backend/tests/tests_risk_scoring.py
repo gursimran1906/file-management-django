@@ -20,7 +20,7 @@ from ..risk_scoring import (
     apply_scores,
     score_risk_assessment,
 )
-from frontend.templatetags.utils import question_weight
+from frontend.templatetags.utils import question_weight, question_weight_detail
 from .tests_risk_signoff import (
     build_risk_assessment_post,
     make_matter,
@@ -441,6 +441,21 @@ class QuestionWeightTests(TestCase):
     def test_an_unscored_question_says_nothing(self):
         self.assertEqual(question_weight('transactional_matter'), '')
 
+    def test_every_weight_carries_its_reasoning(self):
+        """LSAG 5.13: a practice has to be able to explain its weightings."""
+        from ..risk_scoring import weighting_reference
+        for side in weighting_reference():
+            for category in side['categories']:
+                self.assertTrue(category['why'], category['label'])
+                for factor in category['factors']:
+                    self.assertTrue(factor['why'],
+                                    f"{category['label']}: {factor['label']}")
+
+    def test_the_reasoning_is_offered_beside_the_question(self):
+        detail = question_weight_detail('id_verified_reliable_source')
+        self.assertIn('Delivery channel', detail)
+        self.assertIn('deepfakes', detail)
+
     def test_the_form_shows_the_weights_beside_the_questions(self):
         matter = make_matter('RS0006')
         user = CustomUser.objects.create_user(
@@ -455,6 +470,10 @@ class QuestionWeightTests(TestCase):
         # ...and the panel explains the section ceilings and floors.
         self.assertIn('Each section is capped', body)
         self.assertIn('sets the rating on its own', body)
+        # ...and the full weighting, with the reason for each number, is on
+        # the page rather than only in the methodology note.
+        self.assertIn('Why each question carries the weight it does', body)
+        self.assertIn('criminal liability', body)
 
 
 class RiskAssessmentViewTests(TestCase):

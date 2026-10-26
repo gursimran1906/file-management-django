@@ -27,6 +27,11 @@ class Command(BaseCommand):
         out.append('Generated from `backend/risk_scoring.py` by '
                    '`python manage.py risk_weightings`. Do not edit by hand.')
         out.append('')
+        out.append('Each weight is given with the reason it is set where it is. '
+                   'LSAG 5.13 expects a practice to be able to explain its '
+                   'weightings, and suggests short notes on the rationale for '
+                   'each as a useful addition to the risk assessment.')
+        out.append('')
         out.append('A side scores the sum of its sections, each section capped. '
                    f'A total under {rs.MEDIUM_BAND} is low, '
                    f'{rs.MEDIUM_BAND} to {rs.HIGH_BAND - 1} medium, '
@@ -46,16 +51,20 @@ class Command(BaseCommand):
                            f'Alone makes the rating medium at {category.medium_at} '
                            f'and high at {category.high_at}.')
                 out.append('')
+                if category.why:
+                    out.append(f'*{category.why}*')
+                    out.append('')
                 if not category.factors:
                     out.extend(self._type_and_value_rows())
                     continue
-                out.append('| Answer | Points | Automatic high risk |')
-                out.append('| --- | --- | --- |')
                 for factor in category.factors:
                     fields = ', '.join(factor.fields())
-                    auto = 'Yes' if factor.auto_high else ''
-                    out.append(f'| {factor.label} ({fields} = {factor.answer}) '
-                               f'| {factor.points} | {auto} |')
+                    weight = ('**high risk outright**' if factor.auto_high
+                              else f'**adds {factor.points}**')
+                    out.append(f'- {factor.label} &mdash; `{fields}` = '
+                               f'{factor.answer}, {weight}')
+                    if factor.why:
+                        out.append(f'  - {factor.why}')
                 out.append('')
 
         out.append('## Automatic enhanced due diligence')
@@ -70,11 +79,13 @@ class Command(BaseCommand):
         self.stdout.write('\n'.join(out))
 
     def _type_and_value_rows(self):
-        rows = ['| Starting point | Points |', '| --- | --- |']
+        rows = []
         for level, points in rs.MATTER_TYPE_POINTS.items():
-            rows.append(f'| {level} inherent risk work | {points} |')
+            rows.append(f'- {level} inherent risk work &mdash; **adds {points}**')
+        rows.append(f'  - {rs.MATTER_TYPE_WHY}')
         for threshold, points, label in rs.VALUE_BANDS:
-            rows.append(f'| {label} | {points} |')
+            rows.append(f'- {label} &mdash; **adds {points}**')
+        rows.append(f'  - {rs.VALUE_BAND_WHY}')
         rows.append('')
         rows.append('Inherent risk is set per matter type in admin. Currently:')
         rows.append('')

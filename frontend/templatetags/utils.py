@@ -130,15 +130,24 @@ def question_weight(field_name):
 
 @register.filter(name='question_weight_detail')
 def question_weight_detail(field_name):
-    """The section a question scores into, and that section's ceiling."""
+    """Why this question is worth what it is, for the hover on the weight."""
     from backend.risk_scoring import QUESTION_WEIGHTS
 
     weights = QUESTION_WEIGHTS.get(field_name)
     if not weights:
         return ''
     first = weights[0]
-    return '%s risk \u00b7 %s, capped at %d' % (
+    where = '%s risk \u00b7 %s, capped at %d' % (
         first['side'].title(), first['category'], first['cap'])
+    reasons = [weight['why'] for weight in weights if weight['why']]
+    return where + ('\n\n' + '\n\n'.join(reasons) if reasons else '')
+
+
+@register.simple_tag(name='weighting_reference')
+def weighting_reference_tag():
+    """The whole weighting, with reasons, for the explainer on the form."""
+    from backend.risk_scoring import weighting_reference
+    return weighting_reference()
 
 
 @register.simple_tag(name='value_band_weights')

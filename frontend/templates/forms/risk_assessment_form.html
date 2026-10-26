@@ -392,5 +392,7 @@ which needs a reason.
             <button type="submit" class="btn-primary text-xs">Save</button>
             <a href="{% url 'home' file_number %}" class="text-xs text-gray-600 hover:underline">Cancel</a>
         </div>
+
+        {% include 'partials/risk_weighting_reference.html' with version=breakdown.version %}
     </div>
 </form>
