@@ -46,7 +46,7 @@
             screen next to whichever question is being answered rather than
             scrolling away after the first section.
             {% endcomment %}
-            <div class="space-y-3 lg:sticky lg:top-16 lg:max-h-[calc(100vh_-_5rem)] lg:overflow-y-auto lg:pr-1">
+            <div class="space-y-3 lg:sticky lg:top-[calc(var(--navbar-height)_+_0.5rem)] lg:max-h-[calc(100vh_-_var(--navbar-height)_-_1.5rem)] lg:overflow-y-auto lg:pr-1">
                 <div id="risk-score-panel">
                     {% include 'partials/risk_score_panel.html' %}
                 </div>

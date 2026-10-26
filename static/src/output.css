@@ -6252,8 +6252,8 @@ details.gr-disclose > summary::-webkit-details-marker {
     position: sticky;
   }
 
-  .lg\:top-16 {
-    top: 4rem;
+  .lg\:top-\[calc\(var\(--navbar-height\)_\+_0\.5rem\)\] {
+    top: calc(var(--navbar-height) + 0.5rem);
   }
 
   .lg\:order-last {
@@ -6284,8 +6284,8 @@ details.gr-disclose > summary::-webkit-details-marker {
     display: block;
   }
 
-  .lg\:max-h-\[calc\(100vh_-_5rem\)\] {
-    max-height: calc(100vh - 5rem);
+  .lg\:max-h-\[calc\(100vh_-_var\(--navbar-height\)_-_1\.5rem\)\] {
+    max-height: calc(100vh - var(--navbar-height) - 1.5rem);
   }
 
   .lg\:w-fit {
