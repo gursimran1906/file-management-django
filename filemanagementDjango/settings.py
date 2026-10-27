@@ -198,6 +198,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'backend.context_processors.matter_nav',
                 'backend.context_processors.signoff_pending',
+                'backend.context_processors.call_in_progress',
             ],
         },
     },
@@ -461,11 +462,34 @@ CRONJOBS = [
     # Sends nothing unless SIGNOFF_DIGEST_EMAILS is on.
     ('0 8 * * 1-5', 'backend.signoff_digest.send_signoff_digests',
      '>>'+str(LOGS_DIR)+'/signoff_digest.log 2>&1'),
+    # Teams PSTN call logs lag by minutes to ~a day, so a 30-minute cadence with
+    # a rolling look-back window (+ id-based dedupe) is ample. Office hours only.
+    ('*/30 6-20 * * *', 'backend.telephony.cron.sync_teams_calls',
+     '>>'+str(LOGS_DIR)+'/telephony_job.log 2>&1'),
 ]
 
 # Central Granola API key. Prefer setting this via the environment; falls back
 # to the GranolaConfig row in the database when unset.
 GRANOLA_API_KEY = os.environ.get('GRANOLA_API_KEY', '')
+
+# Microsoft Graph app-only credentials for the Teams call-log poll
+# (backend.telephony). Needs the application permission
+# ``CallRecords.Read.All`` with admin consent. Prefer a dedicated
+# TEAMS_* app registration; otherwise falls back to the mail app (AZURE_*) and
+# finally the SharePoint app (SHAREPOINT_AZURE_*).
+TEAMS_AZURE_CLIENT_ID = os.getenv(
+    'TEAMS_AZURE_CLIENT_ID',
+    os.getenv('AZURE_CLIENT_ID', SHAREPOINT_AZURE_CLIENT_ID))
+TEAMS_AZURE_CLIENT_SECRET = os.getenv(
+    'TEAMS_AZURE_CLIENT_SECRET',
+    os.getenv('AZURE_CLIENT_SECRET', SHAREPOINT_AZURE_CLIENT_SECRET))
+TEAMS_AZURE_TENANT_ID = os.getenv(
+    'TEAMS_AZURE_TENANT_ID',
+    os.getenv('AZURE_TENANT_ID', SHAREPOINT_AZURE_TENANT_ID))
+# Point at the Graph ``beta`` endpoint if getPstnCalls/getDirectRoutingCalls
+# aren't yet GA on v1.0 for the tenant.
+TEAMS_GRAPH_BASE = os.getenv(
+    'TEAMS_GRAPH_BASE', 'https://graph.microsoft.com/v1.0')
 
 QUILL_CONFIGS = {
     'default': {

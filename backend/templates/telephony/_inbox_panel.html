@@ -1,0 +1,249 @@
+{% comment %}Calls tab body. Rendered standalone for AJAX tab swaps (partial=1)
+and included by the full telephony/inbox.html shell.{% endcomment %}
+<!-- Calls actions -->
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+  <p class="text-sm text-gray-500">Assign Teams phone calls to a matter to create telephone attendance notes.</p>
+  <div class="flex items-center gap-2">
+    {% if request.user.is_manager %}
+    <form method="post" action="{% url 'calls_sync_now' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn-secondary">
+        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 0 0 4.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 0 1-15.357-2m15.357 2H15"/></svg>
+        Sync now
+      </button>
+    </form>
+    <a href="{% url 'calls_settings' %}" class="btn-secondary">
+      <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065Z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+      Settings
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+{% if config.last_sync_status %}
+<div class="mb-6 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-400">
+  <svg class="h-3.5 w-3.5 shrink-0 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+  <span class="min-w-0 flex-1 truncate"><span class="font-medium text-gray-700">Last sync</span> · {{ config.last_sync_status }}</span>
+  {% if not config.enabled %}<span class="badge-yellow shrink-0">Scheduled sync off</span>{% endif %}
+</div>
+{% endif %}
+
+{% comment %}Shared typeahead of every matter file number for the assign inputs.{% endcomment %}
+<datalist id="call_file_options">
+  {% for fn in file_numbers %}<option value="{{ fn }}"></option>{% endfor %}
+</datalist>
+
+<!-- Pending -->
+<div class="mb-3 flex items-center gap-2">
+  <h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Pending review</h2>
+  <span class="badge-gray">{{ pending_calls|length }}</span>
+</div>
+
+{% if pending_calls %}
+<div class="space-y-4">
+  {% for call in pending_calls %}
+  <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-colors hover:border-gray-300">
+
+    <div class="flex items-start justify-between gap-3 px-5 pt-5 pb-4">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h3 class="truncate text-[15px] font-semibold text-gray-900">{{ call.external_number|default:"Unknown number" }}</h3>
+          {% if call.direction == 'inbound' %}<span class="badge-green">Inbound</span>
+          {% elif call.direction == 'outbound' %}<span class="badge-purple">Outbound</span>
+          {% else %}<span class="badge-gray">Call</span>{% endif %}
+          {% if call.is_missed %}<span class="badge-yellow">Missed</span>{% endif %}
+        </div>
+        <div class="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-gray-400">
+          {% if call.start_datetime %}
+          <span class="inline-flex items-center gap-1">
+            <svg class="h-3.5 w-3.5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/></svg>
+            {{ call.start_datetime|date:"d/m/Y H:i" }}
+          </span>
+          {% endif %}
+          <span class="text-gray-200">•</span><span>{{ call.duration_display }}</span>
+          {% if call.internal_display_name %}<span class="text-gray-200">•</span><span class="truncate">{{ call.internal_display_name }}</span>{% endif %}
+        </div>
+        {% if call.match_reason %}<p class="mt-2 text-xs text-amber-600">{{ call.match_reason }}</p>{% endif %}
+      </div>
+      <button type="submit" form="ignore-{{ call.id }}" title="Dismiss"
+        onclick="return confirm('Dismiss this call? It will move to the dismissed list, where you can restore it later.');"
+        class="shrink-0 rounded-md p-1 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    {% if call.granola_note %}
+    <details class="gr-disclose group border-t border-gray-100">
+      <summary class="flex cursor-pointer select-none items-center gap-1.5 px-5 py-3 text-xs font-medium text-gray-400 hover:text-gray-600">
+        <svg class="h-3.5 w-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        Linked meeting note
+      </summary>
+      <div class="border-t border-gray-100 px-5 py-4 text-sm text-gray-600">
+        <div class="prose prose-sm max-w-none">{{ call.granola_note.summary_html|safe }}</div>
+      </div>
+    </details>
+    {% endif %}
+
+    <!-- Assign to a matter -->
+    <form method="post" action="{% url 'call_assign_matter' call.id %}"
+      class="flex flex-wrap items-end gap-5 border-t border-gray-100 bg-gray-50/50 px-5 py-4">
+      {% csrf_token %}
+      {% if call.ambiguous_candidates %}
+      <div class="w-full">
+        <label class="form-label">Suggested matters</label>
+        <div class="flex flex-wrap gap-1.5">
+          {% for c in call.ambiguous_candidates %}
+          <button type="button"
+            onclick="this.closest('form').querySelector('[name=file_number]').value='{{ c.file_number }}';"
+            class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">
+            <span class="font-mono">{{ c.file_number }}</span>
+            {% if c.name %}<span class="text-gray-400">· {{ c.name }} ({{ c.role }})</span>{% endif %}
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      <div class="w-36">
+        <label class="form-label">File number</label>
+        <input type="text" name="file_number" list="call_file_options"
+          value="{% if call.ambiguous_candidates|length == 1 %}{{ call.ambiguous_candidates.0.file_number }}{% endif %}"
+          class="form-input font-mono uppercase" placeholder="ABC0010001" required autocomplete="off">
+      </div>
+      <div class="w-52">
+        <label class="form-label">Fee earner</label>
+        <select name="person_attended" class="form-input">
+          <option value="">Auto (matter / call owner)</option>
+          {% for fe in fee_earners %}
+          <option value="{{ fe.id }}" {% if call.matched_fee_earner_id == fe.id %}selected{% endif %}>
+            {{ fe.first_name }} {{ fe.last_name }} ({{ fe.username }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Chargeable</label>
+        <label class="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700">
+          <input type="checkbox" name="is_charged" {% if not call.is_missed %}checked{% endif %}
+            class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500/20">
+          Charge time
+        </label>
+      </div>
+      <button type="submit" class="btn-primary ml-auto">
+        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Create attendance note
+      </button>
+    </form>
+
+    <!-- Not a matter -->
+    <div class="flex flex-wrap items-end gap-3 border-t border-gray-100 px-5 py-3">
+      <span class="text-xs text-gray-400">Not a matter?</span>
+      {% comment %}Writing it up properly beats a bare "enquiry" flag: the note
+      keeps who rang, their number and what they wanted.{% endcomment %}
+      <form method="post" action="{% url 'call_note_start' %}">
+        {% csrf_token %}
+        <input type="hidden" name="direction" value="{{ call.direction }}">
+        <input type="hidden" name="caller_number" value="{{ call.external_number }}">
+        <button type="submit"
+          class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">
+          Write it up
+        </button>
+      </form>
+      <button type="submit" form="enquiry-{{ call.id }}"
+        class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">
+        General enquiry
+      </button>
+      <form method="post" action="{% url 'call_route_free30' call.id %}" class="flex items-end gap-2">
+        {% csrf_token %}
+        <input type="text" name="caller_name" placeholder="Caller name (optional)"
+          class="form-input h-8 w-48 text-xs" autocomplete="off">
+        <button type="submit"
+          class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">
+          Route to Free 30
+        </button>
+      </form>
+    </div>
+  </div>
+  <form id="ignore-{{ call.id }}" method="post" action="{% url 'call_ignore' call.id %}" class="hidden">{% csrf_token %}</form>
+  <form id="enquiry-{{ call.id }}" method="post" action="{% url 'call_mark_enquiry' call.id %}" class="hidden">{% csrf_token %}</form>
+  {% endfor %}
+</div>
+{% else %}
+<div class="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50/50 px-4 py-12 text-center">
+  <svg class="h-7 w-7 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 13l4 4L19 7"/></svg>
+  <p class="text-sm font-medium text-gray-700">Nothing waiting for review</p>
+  <p class="text-xs text-gray-400">Calls that need allocating will appear here after the next sync.</p>
+</div>
+{% endif %}
+
+{% if recent_calls %}
+<div class="mb-3 mt-10">
+  <h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Recently processed</h2>
+</div>
+<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+  <div class="divide-y divide-gray-100">
+    {% for call in recent_calls %}
+    <div class="flex items-center gap-3 px-4 py-3 text-sm">
+      <p class="min-w-0 flex-1 truncate font-medium text-gray-900">{{ call.external_number|default:"Unknown number" }}</p>
+      {% if call.direction == 'inbound' %}<span class="badge-green shrink-0">Inbound</span>
+      {% elif call.direction == 'outbound' %}<span class="badge-purple shrink-0">Outbound</span>
+      {% else %}<span class="badge-gray shrink-0">Call</span>{% endif %}
+      {% if call.granola_note %}<span class="badge-zinc shrink-0">Note</span>{% endif %}
+      <span class="w-24 shrink-0 font-mono text-xs text-gray-400">{% if call.matched_file %}{{ call.matched_file.file_number }}{% elif call.free30_meeting %}Free 30{% endif %}</span>
+      <span class="w-24 shrink-0 text-right"><span class="badge-green">Created</span></span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if enquiry_calls %}
+<details class="gr-disclose group mt-10">
+  <summary class="mb-3 flex cursor-pointer select-none items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400 hover:text-gray-600">
+    <svg class="h-3.5 w-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    General enquiries
+    <span class="badge-gray">{{ enquiry_calls|length }}</span>
+  </summary>
+  <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div class="divide-y divide-gray-100">
+      {% for call in enquiry_calls %}
+      <div class="flex items-center gap-3 px-4 py-3 text-sm">
+        <p class="min-w-0 flex-1 truncate text-gray-500">{{ call.external_number|default:"Unknown number" }}</p>
+        <span class="w-28 shrink-0 text-xs text-gray-400">{{ call.start_datetime|date:"d/m/Y H:i" }}</span>
+        <form method="post" action="{% url 'call_restore' call.id %}" class="shrink-0">
+          {% csrf_token %}
+          <button type="submit" class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900">
+            Allocate
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</details>
+{% endif %}
+
+{% if dismissed_calls %}
+<details class="gr-disclose group mt-10">
+  <summary class="mb-3 flex cursor-pointer select-none items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400 hover:text-gray-600">
+    <svg class="h-3.5 w-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    Dismissed
+    <span class="badge-gray">{{ dismissed_calls|length }}</span>
+  </summary>
+  <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div class="divide-y divide-gray-100">
+      {% for call in dismissed_calls %}
+      <div class="flex items-center gap-3 px-4 py-3 text-sm">
+        <p class="min-w-0 flex-1 truncate text-gray-400">{{ call.external_number|default:"Unknown number" }}</p>
+        <form method="post" action="{% url 'call_restore' call.id %}" class="shrink-0">
+          {% csrf_token %}
+          <button type="submit" class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900">
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 0 0 4.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 0 1-15.357-2m15.357 2H15"/></svg>
+            Restore
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</details>
+{% endif %}

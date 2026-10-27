@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% block title %}Call log settings{% endblock %}
+{% block container %}
+<div class="mx-auto max-w-2xl px-4 py-6">
+
+  <div class="mb-6 flex items-center justify-between">
+    <h1 class="text-xl font-semibold text-gray-900">Teams call log settings</h1>
+    <a href="{% url 'calls_inbox' %}" class="text-sm text-blue-600 hover:underline">← Back to inbox</a>
+  </div>
+
+  {% if creds_configured %}
+  <p class="mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+    Microsoft Graph credentials are configured. Use <strong>Test connection</strong> to
+    confirm the app can read the call logs (needs the <code>CallRecords.Read.All</code>
+    application permission with admin consent).
+  </p>
+  {% else %}
+  <p class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+    No Microsoft Graph credentials found. Set <code>TEAMS_AZURE_CLIENT_ID</code>,
+    <code>TEAMS_AZURE_CLIENT_SECRET</code> and <code>TEAMS_AZURE_TENANT_ID</code> (or the
+    fallback <code>AZURE_*</code> / <code>SHAREPOINT_AZURE_*</code>) before enabling the sync.
+  </p>
+  {% endif %}
+
+  <form method="post" class="space-y-5 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    {% csrf_token %}
+
+    <div>
+      <label class="flex items-center gap-2 text-sm font-medium text-gray-800">
+        <input type="checkbox" name="enabled" {% if config.enabled %}checked{% endif %}
+          class="h-4 w-4 rounded border-gray-300">
+        Enable scheduled sync (every 30 minutes, 06:00–20:00)
+      </label>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-800">Start date</label>
+      <input type="date" name="start_date" value="{{ config.start_date|date:'Y-m-d' }}"
+        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+      <p class="mt-1 text-xs text-gray-500">
+        The scheduled sync stays dormant until this date. Leave blank to start immediately.
+        “Test connection” and “Sync now” work regardless of this date.
+      </p>
+    </div>
+
+    <fieldset>
+      <legend class="text-sm font-medium text-gray-800">Which calls to poll</legend>
+      <div class="mt-2 space-y-2">
+        <label class="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" name="poll_pstn" {% if config.poll_pstn %}checked{% endif %}
+            class="h-4 w-4 rounded border-gray-300">
+          Calling Plan / Operator Connect calls (getPstnCalls)
+        </label>
+        <label class="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" name="poll_direct_routing" {% if config.poll_direct_routing %}checked{% endif %}
+            class="h-4 w-4 rounded border-gray-300">
+          Direct Routing calls (getDirectRoutingCalls)
+        </label>
+      </div>
+    </fieldset>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label class="block text-sm font-medium text-gray-800">Look-back hours</label>
+        <input type="number" name="lookback_hours" min="1" value="{{ config.lookback_hours }}"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <p class="mt-1 text-xs text-gray-500">Rolling poll window. PSTN logs can lag, so keep this generous (dedupe makes overlap free).</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-800">Daily catch-up days</label>
+        <input type="number" name="catchup_lookback_days" min="1" value="{{ config.catchup_lookback_days }}"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <p class="mt-1 text-xs text-gray-500">Wider window used on the first run each day to catch late rows.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-800">Minimum duration (seconds)</label>
+        <input type="number" name="min_duration_seconds" min="0" value="{{ config.min_duration_seconds }}"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <p class="mt-1 text-xs text-gray-500">Skip calls shorter than this. 0 captures everything, including missed calls.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-800">Note link window (minutes)</label>
+        <input type="number" name="granola_link_window_minutes" min="0" value="{{ config.granola_link_window_minutes }}"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <p class="mt-1 text-xs text-gray-500">How close in time a Granola note must be to a call to be treated as the same conversation.</p>
+      </div>
+    </div>
+
+    {% if staff_without_email %}
+    <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+      <p class="text-sm font-medium text-amber-900">Some staff have no email address</p>
+      <p class="mt-1 text-xs text-amber-800">
+        A call is tied to a person only by their email matching their Teams sign-in (UPN), so calls
+        made or taken by these people cannot be attributed to them:
+        {% for person in staff_without_email %}{{ person.get_full_name|default:person.username }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+      </p>
+    </div>
+    {% endif %}
+
+    <h2 class="pt-2 text-base font-semibold text-gray-900">Matching calls to notes</h2>
+    <p class="-mt-2 text-xs text-gray-500">
+      A note typed during a call is matched to its call-log row by who took it and when.
+      The log names the sign-in only — never the handset or the person — so these settings
+      decide how close a fit has to be before we attach it rather than ask.
+    </p>
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div>
+        <label class="block text-sm font-medium text-gray-800">Pairing window (minutes)</label>
+        <input type="number" name="pair_window_minutes" min="1" value="{{ config.pair_window_minutes }}"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <p class="mt-1 text-xs text-gray-500">How far either side of the note to look for the call. Covers the gap between answering and clicking "Take a call".</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-800">Too-close-to-call margin (seconds)</label>
+        <input type="number" name="pair_margin_seconds" min="0" value="{{ config.pair_margin_seconds }}"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <p class="mt-1 text-xs text-gray-500">When two calls fit one note this similarly, neither is attached — the author picks instead.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-800">Grace period (hours)</label>
+        <input type="number" name="note_grace_hours" min="1" value="{{ config.note_grace_hours }}"
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <p class="mt-1 text-xs text-gray-500">How long a call waits for a note (and a note for its call) before the register calls it unallocated. Keep it above the worst Graph lag.</p>
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-800">Shared sign-ins</label>
+      <textarea name="shared_line_upns" rows="3" placeholder="reception@example.co.uk"
+        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono">{{ config.shared_line_upns }}</textarea>
+      <p class="mt-1 text-xs text-gray-500">
+        One sign-in per line. The call log records no device or endpoint, so when several people share
+        a login nothing can tell their handsets apart — calls on these accounts may be matched to a note
+        taken by any member of staff, and anything close is put to the authors rather than guessed.
+      </p>
+    </div>
+
+    <div>
+      <label class="flex items-center gap-2 text-sm text-gray-700">
+        <input type="checkbox" name="auto_create_on_otherside_only" {% if config.auto_create_on_otherside_only %}checked{% endif %}
+          class="h-4 w-4 rounded border-gray-300">
+        Auto-create a note when a number matches only an other-side contact
+      </label>
+      <p class="mt-1 text-xs text-gray-500">Off by default — such calls go to the review inbox instead, avoiding mis-billing shared other-side numbers.</p>
+    </div>
+
+    <div class="flex items-center justify-between gap-3">
+      <button type="submit" form="calls-test-form" class="btn-secondary">
+        <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7Z"/></svg>
+        Test connection
+      </button>
+      <button type="submit"
+        class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+        Save settings
+      </button>
+    </div>
+  </form>
+  <form id="calls-test-form" method="post" action="{% url 'calls_test_connection' %}" class="hidden">{% csrf_token %}</form>
+
+  {% if config.last_sync_status %}
+  <p class="mt-4 text-xs text-gray-500"><span class="font-medium text-gray-700">Last sync</span> · {{ config.last_sync_status }}</p>
+  {% endif %}
+
+</div>
+{% endblock %}

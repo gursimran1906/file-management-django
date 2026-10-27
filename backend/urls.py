@@ -84,6 +84,16 @@ from .correspondence_export_views import (
     correspondence_export_file, correspondence_export_share_create,
     correspondence_export_share_revoke, correspondence_export_transfer,
 )
+from .telephony.views import (
+    calls_inbox, call_assign_matter, call_mark_enquiry, call_route_free30,
+    call_ignore, call_restore, calls_settings, calls_sync_now,
+    calls_test_connection,
+)
+from .telephony.note_views import (
+    call_note_start, call_note_detail, call_note_autosave, call_note_end,
+    call_note_lookup_number, call_note_save, call_note_choose_call,
+    calls_register,
+)
 
 urlpatterns = [
     path('dashboard/', user_dashboard, name='user_dashboard'),
@@ -532,4 +542,31 @@ urlpatterns = [
          name='granola_restore_note'),
     path('granola/note/<int:note_id>/create-free30/', granola_create_free30,
          name='granola_create_free30'),
+
+    # Teams call log (central back-office)
+    path('calls/', calls_inbox, name='calls_inbox'),
+    path('calls/settings/', calls_settings, name='calls_settings'),
+    path('calls/sync/', calls_sync_now, name='calls_sync_now'),
+    path('calls/test/', calls_test_connection, name='calls_test_connection'),
+    path('calls/<int:call_id>/assign/', call_assign_matter,
+         name='call_assign_matter'),
+    path('calls/<int:call_id>/enquiry/', call_mark_enquiry,
+         name='call_mark_enquiry'),
+    path('calls/<int:call_id>/free30/', call_route_free30,
+         name='call_route_free30'),
+    path('calls/<int:call_id>/ignore/', call_ignore, name='call_ignore'),
+    path('calls/<int:call_id>/restore/', call_restore, name='call_restore'),
+
+    # Notes taken while the call is happening, and the in/out register.
+    path('calls/register/', calls_register, name='calls_register'),
+    path('calls/note/start/', call_note_start, name='call_note_start'),
+    path('calls/note/<int:note_id>/', call_note_detail, name='call_note_detail'),
+    path('calls/note/<int:note_id>/autosave/', call_note_autosave,
+         name='call_note_autosave'),
+    path('calls/note/<int:note_id>/end/', call_note_end, name='call_note_end'),
+    path('calls/note/<int:note_id>/lookup/', call_note_lookup_number,
+         name='call_note_lookup_number'),
+    path('calls/note/<int:note_id>/save/', call_note_save, name='call_note_save'),
+    path('calls/note/<int:note_id>/choose-call/', call_note_choose_call,
+         name='call_note_choose_call'),
 ]
