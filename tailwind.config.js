@@ -5,16 +5,9 @@ module.exports = {
   './users/**/*.html',
   './backend/**/*.html',
   './node_modules/flowbite/**/*.js'],
-  // Risk scoring classes are chosen by a template filter and by
-  // static/js/risk-assessment.js, so they never appear in a scanned template.
-  // They are defined in static/src/input.css.
-  safelist: [
-    'risk-bar-low',
-    'risk-bar-medium',
-    'risk-bar-high',
-    'risk-bar-none',
-    'risk-question-risky',
-  ],
+  // Toggled by static/js/risk-assessment.js, so it never appears in a scanned
+  // template. Defined in static/src/input.css.
+  safelist: ['risk-question-risky'],
   theme: {
     extend: {
       width: {

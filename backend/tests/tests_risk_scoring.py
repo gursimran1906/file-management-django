@@ -511,7 +511,8 @@ class RiskAssessmentViewTests(TestCase):
         payload = response.json()
         self.assertTrue(payload['ok'])
         self.assertEqual(payload['breakdown']['overall_level'], 'High')
-        self.assertIn('High risk regardless of score', payload['html'])
+        self.assertIn('High risk whatever the total', payload['html'])
+        self.assertIn('Financial sanctions concerns', payload['html'])
 
     def test_the_score_preview_saves_nothing(self):
         self.client.post(reverse('score_risk_assessment_preview'),

@@ -109,20 +109,8 @@
     @apply bg-zinc-100 text-zinc-700 text-xs font-medium px-2.5 py-0.5 rounded-full border border-zinc-200;
   }
 
-  /* Risk scoring: the bar fill is chosen by a template filter and the row
-     highlight by static/js/risk-assessment.js, so both live here. */
-  .risk-bar-low {
-    @apply bg-green-500;
-  }
-  .risk-bar-medium {
-    @apply bg-amber-500;
-  }
-  .risk-bar-high {
-    @apply bg-red-500;
-  }
-  .risk-bar-none {
-    @apply bg-gray-400;
-  }
+  /* Chosen by static/js/risk-assessment.js, so Tailwind never sees it in a
+     template - hence the safelist entry in tailwind.config.js. */
   .risk-question-risky {
     @apply bg-amber-50 ring-1 ring-amber-200;
   }

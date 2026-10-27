@@ -169,7 +169,7 @@ which needs a reason.
                     <label for="{{ form.matter_transaction_value.id_for_label }}">Transaction value</label>
                     {{ form.matter_transaction_value }}
                     {% value_band_weights as value_bands %}
-                    <p class="mt-0.5 text-xs text-gray-400">
+                    <p class="mt-0.5 text-xs text-gray-500">
                         {% for band in value_bands %}{{ band.label }} adds {{ band.points }}{% if not forloop.last %} &middot; {% endif %}{% endfor %}
                     </p>
                     {% for error in form.matter_transaction_value.errors %}<p class="text-xs font-medium text-red-700">{{ error }}</p>{% endfor %}

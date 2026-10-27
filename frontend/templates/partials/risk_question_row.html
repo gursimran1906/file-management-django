@@ -26,7 +26,7 @@ the scoring does another. Questions that carry no weight say nothing.
         {{ field }}
         {% with weight=field.name|question_weight %}
         {% if weight %}
-        <p class="mt-0.5 text-xs text-gray-400" title="{{ field.name|question_weight_detail }}">{{ weight }}</p>
+        <p class="mt-0.5 text-xs text-gray-500" title="{{ field.name|question_weight_detail }}">{{ weight }}</p>
         {% endif %}
         {% endwith %}
     </div>
