@@ -311,12 +311,14 @@ CLIENT_CATEGORIES = (
                        'lacked adequate source of funds evidence, and nine per cent '
                        'of files needing checks had none. Weighted to reach medium '
                        'on its own for that reason.'),
-            Factor('Relying on due diligence from an earlier matter or another office',
+            Factor('Relying on due diligence from an earlier matter',
                    8, field='relying_on_previous_due_diligence',
                    why='"Passporting", new in August 2026: checks carried over '
-                       'without asking whether they are still appropriate for this '
-                       'matter. Same weight as missing source of funds, because the '
-                       'effect is the same - no current due diligence.'),
+                       'from an earlier instruction without asking whether they are '
+                       'still appropriate for this matter. The SRA\u2019s heading also '
+                       'covers reliance on another office; ANP has one. Same weight '
+                       'as missing source of funds, because the effect is the same - '
+                       'no current due diligence.'),
             Factor('PEP questionnaire not completed',
                    6, field='is_pep_questionnaire_completed', answer='No',
                    why='Below source of funds: PEP status is also screened '

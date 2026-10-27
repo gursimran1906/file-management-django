@@ -172,7 +172,8 @@ firms must take the new headings into account under reg 18(2)(a). Four
 questions were added to the assessment to cover them:
 
 - **Passporting** — whether we are relying on due diligence from an earlier
-  matter or another office rather than carrying out fresh checks.
+  matter rather than carrying out fresh checks. (The SRA's heading also
+  covers reliance on another office; the firm has one.)
 - **Companies House** — whether a corporate client has been checked as still
   live, with the filed details matching what we have been told. Criminals use
   original documentation from dissolved companies to establish false

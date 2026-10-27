@@ -917,8 +917,9 @@ class RiskAssessment(models.Model):
     is_source_of_funds_questionnaire_completed = models.CharField(
         max_length=10, choices=BOOLEAN_CHOICES, default="No")
     # "Passporting", new in the SRA's August 2026 sectoral risk assessment:
-    # leaning on due diligence done for another office or an earlier
-    # instruction without asking whether it is still right for this matter.
+    # leaning on due diligence done for an earlier instruction without
+    # asking whether it is still right for this matter. The SRA's heading also
+    # covers other offices; ANP has one, so the question does not mention them.
     relying_on_previous_due_diligence = models.CharField(
         max_length=10, choices=BOOLEAN_CHOICES, default="No")
     """
@@ -1086,7 +1087,7 @@ class RiskAssessment(models.Model):
         ('is_source_of_funds_questionnaire_completed', 'No',
          'Source of funds questionnaire not completed'),
         ('relying_on_previous_due_diligence', 'Yes',
-         'Relying on due diligence from an earlier matter or another office'),
+         'Relying on due diligence from an earlier matter'),
         ('id_verified_reliable_source', 'No',
          'Identity not verified from a certified or verified source'),
         ('companies_house_checked', 'No',

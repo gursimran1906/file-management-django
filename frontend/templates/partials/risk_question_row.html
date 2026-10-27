@@ -13,7 +13,7 @@ What the question is worth is not passed in: it is read from the weighting
 itself (backend/risk_scoring.py) so the form cannot tell you one thing while
 the scoring does another. Questions that carry no weight say nothing.
 {% endcomment %}
-<div class="risk-question grid grid-cols-12 items-start gap-2 border-b border-gray-100 py-2 last:border-0 -mx-2 px-2 rounded"
+<div class="risk-question -mx-2 grid grid-cols-12 items-start gap-3 rounded border-b border-gray-100 px-2 py-2.5 last:border-0"
      data-risky="{{ risky }}">
     <div class="col-span-12 md:col-span-9">
         <label for="{{ field.id_for_label }}" class="text-sm text-gray-800">{{ text }}</label>
@@ -26,7 +26,7 @@ the scoring does another. Questions that carry no weight say nothing.
         {{ field }}
         {% with weight=field.name|question_weight %}
         {% if weight %}
-        <p class="mt-0.5 text-xs text-gray-500" title="{{ field.name|question_weight_detail }}">{{ weight }}</p>
+        <p class="mt-1 text-xs text-gray-500" title="{{ field.name|question_weight_detail }}">{{ weight }}</p>
         {% endif %}
         {% endwith %}
     </div>

@@ -91,8 +91,8 @@ Capped at 20. Alone makes the rating medium at 8 and high at 20.
 
 - Source of funds questionnaire not completed &mdash; `is_source_of_funds_questionnaire_completed` = No, **adds 8**
   - The SRA found a quarter of the files it reviewed in 2025-26 lacked adequate source of funds evidence, and nine per cent of files needing checks had none. Weighted to reach medium on its own for that reason.
-- Relying on due diligence from an earlier matter or another office &mdash; `relying_on_previous_due_diligence` = Yes, **adds 8**
-  - "Passporting", new in August 2026: checks carried over without asking whether they are still appropriate for this matter. Same weight as missing source of funds, because the effect is the same - no current due diligence.
+- Relying on due diligence from an earlier matter &mdash; `relying_on_previous_due_diligence` = Yes, **adds 8**
+  - "Passporting", new in August 2026: checks carried over from an earlier instruction without asking whether they are still appropriate for this matter. The SRA’s heading also covers reliance on another office; ANP has one. Same weight as missing source of funds, because the effect is the same - no current due diligence.
 - PEP questionnaire not completed &mdash; `is_pep_questionnaire_completed` = No, **adds 6**
   - Below source of funds: PEP status is also screened elsewhere, so the questionnaire is corroboration rather than the only evidence.
 

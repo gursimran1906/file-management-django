@@ -112,7 +112,7 @@
   /* Chosen by static/js/risk-assessment.js, so Tailwind never sees it in a
      template - hence the safelist entry in tailwind.config.js. */
   .risk-question-risky {
-    @apply bg-amber-50 ring-1 ring-amber-200;
+    @apply bg-amber-50/70;
   }
 
   .nav-link {

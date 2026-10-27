@@ -79,8 +79,10 @@
             const section = hint.closest('.div-container');
             const flagged = Boolean(section
                 && section.querySelector('.risk-question-risky'));
-            hint.classList.toggle('text-amber-800', flagged);
+            // Weight, not colour: the flagged rows above are already tinted,
+            // and amber here would read as a third state beside the red errors.
             hint.classList.toggle('font-medium', flagged);
+            hint.classList.toggle('text-gray-700', flagged);
             hint.classList.toggle('text-gray-500', !flagged);
         });
     }

@@ -694,14 +694,17 @@ class RiskAssessmentForm(forms.ModelForm):
             field.required = field_name not in self.OPTIONAL_FIELDS
             if isinstance(field, forms.BooleanField):
                 field.widget = forms.Select(choices=[(True, 'Yes'), (False, 'No')])
-                field.widget.attrs['class'] = 'form-input'
-            elif isinstance(field.widget, forms.CheckboxInput):
-                field.widget.attrs['class'] = 'mb-1 text-gray-900 rounded focus:ring-blue-100 focus:border-blue-100 dark:bg-gray-700 dark:border-gray-600 dark:focus:ring-blue-500 dark:focus:border-blue-500'
+            # .form-input already styles inputs, selects and textareas for this
+            # app's light interface. The hand-rolled class this used to carry
+            # brought dark: variants with it, so on a machine set to dark mode
+            # the text boxes rendered as dark panels in an otherwise light page.
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs['class'] = (
+                    'h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500')
             else:
                 field.widget.attrs['class'] = 'form-input'
             if isinstance(field.widget, forms.Textarea):
-                field.widget.attrs['class'] = 'h-16 shadow-sm mb-2 mt-1 border border-gray-300 text-gray-900 text-sm rounded focus:ring-blue-100 focus:border-blue-100 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500'
-                field.widget.attrs['rows'] = 4
+                field.widget.attrs['rows'] = 3
 
     def _start_questions_unanswered(self):
         """A new assessment opens with every question blank.
