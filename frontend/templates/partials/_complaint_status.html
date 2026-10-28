@@ -1,0 +1,2 @@
+{# Status pill for a complaint; colour only where it carries meaning. #}
+{% with s=complaint.status %}<span class="{% if s == 'resolved' %}badge-green{% elif s == 'escalated_leo' or s == 'escalated_sra' %}badge-yellow{% elif s == 'final_response_sent' %}badge-zinc{% else %}badge-gray{% endif %} whitespace-nowrap">{{ complaint.get_status_display }}</span>{% endwith %}

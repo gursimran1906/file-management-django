@@ -371,6 +371,14 @@ BUNDLE_SHARE_LINK_EXPIRY_DAYS = int(os.getenv('BUNDLE_SHARE_LINK_EXPIRY_DAYS', '
 RESPONSIBLE_FEE_EARNER_ALIASES = os.getenv(
     'RESPONSIBLE_FEE_EARNER_ALIASES', '{"DC": "ND"}')
 
+# Complaints register. COMPLAINTS_OFFICER is the staff code of the person with
+# overall responsibility for complaints handling: they see every complaint and
+# are the default handler. Managers see everything too. The retention period is
+# the firm's own choice (no rule fixes one); six years after closure is the
+# usual limitation-period anchor.
+COMPLAINTS_OFFICER = os.getenv('COMPLAINTS_OFFICER', '').strip()
+COMPLAINT_RETENTION_YEARS = int(os.getenv('COMPLAINT_RETENTION_YEARS', '6'))
+
 # Where this app is reached from outside (used for links in emails).
 SITE_BASE_URL = os.getenv('SITE_BASE_URL', 'https://wip.anp.softwarised.com').rstrip('/')
 

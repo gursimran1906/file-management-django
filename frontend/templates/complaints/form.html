@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block title %}Log a complaint{% endblock %}
+{% block container_class %}container {% endblock %}
+{% block container %}
+<div class="space-y-5">
+    <div class="div-container py-3">
+        <a href="{% url 'complaints_register' %}" class="text-xs text-gray-500 hover:text-gray-900">&larr; Complaints</a>
+        <h1 class="text-2xl font-semibold text-gray-900 mt-1">Log a complaint</h1>
+        <p class="text-sm text-gray-600 mt-1">
+            Any expression of dissatisfaction counts. Only the complainant, the date and what they say are needed now; the rest can follow on the complaint page.
+            {% if prefill_matter %}Pre-filled from file {{ prefill_matter.file_number }}.{% endif %}
+        </p>
+    </div>
+
+    <form method="post" action="{% url 'complaint_add' %}" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="div-container border-red-200 text-sm text-red-800 mb-5">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <section class="div-container space-y-3">
+                <h2 class="text-base font-semibold text-gray-900 pb-2 border-b border-gray-100">Who is complaining</h2>
+                {% include 'complaints/_field.html' with f=form.complainant_name %}
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {% include 'complaints/_field.html' with f=form.complainant_type %}
+                    {% include 'complaints/_field.html' with f=form.complainant_client %}
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {% include 'complaints/_field.html' with f=form.complainant_email %}
+                    {% include 'complaints/_field.html' with f=form.complainant_phone %}
+                </div>
+                {% include 'complaints/_field.html' with f=form.complainant_address %}
+                {% include 'complaints/_field.html' with f=form.on_behalf_of %}
+                {% include 'complaints/_field.html' with f=form.reasonable_adjustments %}
+            </section>
+
+            <section class="div-container space-y-3">
+                <h2 class="text-base font-semibold text-gray-900 pb-2 border-b border-gray-100">The complaint</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {% include 'complaints/_field.html' with f=form.received_on %}
+                    {% include 'complaints/_field.html' with f=form.received_via %}
+                </div>
+                {% include 'complaints/_field.html' with f=form.matter_numbers %}
+                <datalist id="complaint_file_numbers">{% for fn in file_numbers %}<option value="{{ fn }}">{% endfor %}</datalist>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {% include 'complaints/_field.html' with f=form.received_by %}
+                    {% include 'complaints/_field.html' with f=form.about_fee_earner %}
+                    {% include 'complaints/_field.html' with f=form.handled_by %}
+                </div>
+                {% include 'complaints/_field.html' with f=form.summary %}
+                <div>
+                    <span class="form-label">{{ form.categories.label }} <span class="font-normal text-gray-400">(SRA categories)</span></span>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm text-gray-800">
+                        {% for choice in form.categories %}
+                        <label class="inline-flex items-start gap-2 cursor-pointer">{{ choice.tag }}<span>{{ choice.choice_label }}</span></label>
+                        {% endfor %}
+                    </div>
+                    {% if form.categories.errors %}<p class="text-xs text-red-700 mt-1">{{ form.categories.errors|join:' ' }}</p>{% endif %}
+                </div>
+                {% include 'complaints/_field.html' with f=form.act_or_omission_on %}
+                <div class="space-y-2 pt-1">
+                    <label class="inline-flex items-start gap-2 text-sm text-gray-800 cursor-pointer">{{ form.is_informal }}<span>{{ form.is_informal.label }}</span></label>
+                    <label class="inline-flex items-start gap-2 text-sm text-gray-800 cursor-pointer">{{ form.potential_claim }}<span>{{ form.potential_claim.label }}</span></label>
+                </div>
+            </section>
+        </div>
+        <div class="flex items-center gap-2 mt-5">
+            <button type="submit" class="btn-primary text-sm">Log complaint</button>
+            <a href="{% url 'complaints_register' %}" class="btn-secondary text-sm">Cancel</a>
+            <span class="text-xs text-gray-500 ml-2">The eight-week clock starts from the date received.</span>
+        </div>
+    </form>
+</div>
+{% endblock %}

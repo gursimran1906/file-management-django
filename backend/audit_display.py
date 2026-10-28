@@ -48,6 +48,7 @@ LOG_TYPE_META = {
     'client_info': {'label': 'Client', 'group': 'matter'},
     'authorised_party_info': {'label': 'Third party', 'group': 'matter'},
     'other_side_info': {'label': 'Other side', 'group': 'matter'},
+    'complaint': {'label': 'Complaint', 'group': 'matter'},
     'next_work': {'label': 'Next work', 'group': 'matter'},
     'last_work': {'label': 'Last work', 'group': 'matter'},
     'key_date': {'label': 'Key date', 'group': 'compliance'},

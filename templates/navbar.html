@@ -206,6 +206,12 @@
           <span>Undertakings</span>
         </a>
       </li>
+      <li>
+        <a href="{% url 'complaints_register' %}" class="nav-link {% if request.path|slice:':12' == '/complaints/' %}nav-link-active{% endif %}">
+          <svg class="nav-link-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M4.5 19.5h15a1.5 1.5 0 0 0 1.3-2.25l-7.5-13a1.5 1.5 0 0 0-2.6 0l-7.5 13a1.5 1.5 0 0 0 1.3 2.25Z"/></svg>
+          <span>Complaints</span>
+        </a>
+      </li>
       {% if request.user.is_manager %}
       <li class="my-2 border-t border-gray-100"></li>
       <li>

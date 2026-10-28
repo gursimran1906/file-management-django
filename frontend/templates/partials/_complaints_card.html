@@ -1,0 +1,34 @@
+{# Open complaints card for the dashboard (staff) and management reports (managers). Expects `complaints_summary` from backend.complaints.summary(). #}
+<div class="div-container flex flex-col max-h-96 !overflow-hidden">
+  <div class="flex items-start justify-between gap-3 mb-3 pb-3 border-b border-gray-100 shrink-0">
+    <div>
+      <div class="flex items-center gap-2">
+        <h3 class="text-base font-semibold text-gray-900">Complaints</h3>
+        <span class="badge-zinc tabular-nums">{{ complaints_summary.open }}</span>
+      </div>
+      <p class="text-xs text-gray-500 mt-0.5">
+        {% if complaints_summary.overdue %}<span class="text-red-700">{{ complaints_summary.overdue }} past eight weeks</span>{% if complaints_summary.warning %} &middot; {% endif %}{% endif %}{% if complaints_summary.warning %}<span class="text-amber-700">{{ complaints_summary.warning }} due within two weeks</span>{% endif %}{% if not complaints_summary.overdue and not complaints_summary.warning %}Open complaints and their eight-week clocks{% endif %}
+      </p>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <a href="{% url 'complaint_add' %}" class="btn-secondary text-xs">Log</a>
+      <a href="{% url 'complaints_register' %}" class="link text-xs">Register</a>
+    </div>
+  </div>
+  <ul class="overflow-y-auto flex-1 min-h-0 -mx-1 px-1 divide-y divide-gray-100">
+    {% for row in complaints_summary.rows %}{% with c=row.complaint %}
+    <li class="py-2.5">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <a class="link text-sm font-medium tabular-nums" href="{% url 'complaint_detail' c.reference %}">{{ c.reference }}</a>
+          <span class="text-sm text-gray-900"> {{ c.complainant_name }}</span>
+          <p class="text-xs text-gray-500 truncate">{% for m in c.matters.all %}{{ m.file_number }}{% if not forloop.last %}, {% endif %}{% empty %}No file{% endfor %} &middot; {{ c.handled_by.username|default:'unassigned' }}{% if row.attention %} &middot; {{ row.attention.0 }}{% endif %}</p>
+        </div>
+        <div class="w-44 shrink-0">{% include 'partials/_complaint_clock.html' with clock=row.clock size='row' %}</div>
+      </div>
+    </li>
+    {% endwith %}{% empty %}
+    <li class="py-6 text-center text-sm text-gray-400">No open complaints.</li>
+    {% endfor %}
+  </ul>
+</div>

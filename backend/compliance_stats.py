@@ -27,10 +27,12 @@ from django.utils import timezone
 from users.models import CustomUser
 
 from .fee_earners import responsible_username
+from . import complaints as complaints_rules
 from .models import (
     WIP,
     AuthorisedParties,
     ClientContactDetails,
+    Complaint,
     Invoices,
     LastWork,
     MatterAttendanceNotes,
@@ -56,7 +58,6 @@ UNASSIGNED = 'none'   # GET value / row id for matters with no fee earner
 # What the SRA expects that this system has no data for yet. Shown on the page
 # so a screen of green never reads as "fully compliant".
 NOT_TRACKED = [
-    'Complaints log and response times',
     'Costs updates and estimate reviews',
     'Practising certificates, insurance, DBS and training expiry',
     'Client account reconciliations',
@@ -176,6 +177,15 @@ GROUPS = [
         'title': 'Client care paperwork',
         'description': 'Engagement paperwork recorded on live matters, and undertakings given on them.',
         'scope': 'matter',
+    },
+    {
+        'key': 'complaints',
+        'title': 'Complaints',
+        'description': ('Complaints received in the last twelve months: acknowledged promptly, answered '
+                        'within eight weeks, final response carrying the ombudsman wording, and a root '
+                        'cause recorded once closed. Counted against the fee earner complained about.'),
+        'scope': 'complaint',
+        'footnote': 'Informal expressions of dissatisfaction are included: the SRA expects them logged and handled the same way.',
     },
 ]
 
@@ -863,6 +873,134 @@ def collect_undertakings_discharged(snap):
 
 
 # ---------------------------------------------------------------------------
+# Collectors: complaints (backend/complaints.py holds the rules)
+# ---------------------------------------------------------------------------
+
+COMPLAINT_MONTHS = 12
+
+COMPLAINT_COLUMNS = [
+    _col('reference', 'Complaint'),
+    _col('complainant', 'Complainant', truncate=True),
+    _col('files', 'Files', truncate=True),
+    _col('fee_earner', 'Fee earner', truncate=True),
+    _col('received', 'Received'),
+]
+
+
+def _recent_complaints(snap):
+    """Complaints received in the last COMPLAINT_MONTHS, with their matters and
+    the responsible fee earner for the person complained about, loaded once."""
+    if 'complaints' in snap._cache:
+        return snap._cache['complaints']
+    since = snap.today - relativedelta(months=COMPLAINT_MONTHS)
+    rows = list(Complaint.objects.filter(received_on__gte=since)
+                .select_related('about_fee_earner').prefetch_related('matters')
+                .order_by('received_on'))
+    users_by_code = {(u['username'] or '').upper(): uid for uid, u in snap.users.items()}
+    out = []
+    for c in rows:
+        fee_earner_id = None
+        if c.about_fee_earner_id:
+            target = responsible_username(c.about_fee_earner.username or '')
+            fee_earner_id = users_by_code.get((target or '').upper(), c.about_fee_earner_id)
+        out.append((c, fee_earner_id, list(c.matters.all())))
+    snap._cache['complaints'] = out
+    return out
+
+
+def _complaint_item(snap, c, fee_earner_id, matters, done, reason='', cells=None, sort=None):
+    base_cells = {
+        'reference': _link_cell(c.reference, 'complaint_detail', c.reference),
+        'complainant': {'value': c.complainant_name, 'href': None},
+        'files': {'value': ', '.join(m.file_number for m in matters) or '—',
+                  'href': reverse('home', args=[matters[0].file_number]) if matters else None},
+        'fee_earner': {'value': snap.fee_earner_label(fee_earner_id), 'href': None},
+        'received': _date_cell(c.received_on),
+    }
+    base_cells.update(cells or {})
+    base_sort = {
+        'reference': c.reference, 'complainant': c.complainant_name.lower(),
+        'files': ' '.join(m.file_number for m in matters),
+        'fee_earner': snap.fee_earner_label(fee_earner_id).lower(), 'received': c.received_on,
+    }
+    base_sort.update(sort or {})
+    return Item(key=c.id, fee_earner_ids=frozenset({fee_earner_id}), done=done,
+                reason=reason, cells=base_cells, sort=base_sort)
+
+
+def collect_complaints_acknowledged(snap):
+    """Acknowledged within two working days of receipt (ombudsman best practice).
+    A complaint received in the last two working days is not yet counted."""
+    items = []
+    for c, fe, matters in _recent_complaints(snap):
+        target = complaints_rules.add_working_days(
+            c.received_on, complaints_rules.ACKNOWLEDGE_TARGET_WORKING_DAYS)
+        if not c.acknowledged_on and snap.today <= target:
+            continue
+        done = bool(c.acknowledged_on and c.acknowledged_on <= target)
+        reason = '' if done else ('late' if c.acknowledged_on else 'never')
+        items.append(_complaint_item(
+            snap, c, fe, matters, done, reason,
+            cells={'acknowledged': _date_cell(c.acknowledged_on), 'target': _date_cell(target)},
+            sort={'acknowledged': c.acknowledged_on or _far_past(), 'target': target}))
+    return items
+
+
+def collect_complaints_eight_weeks(snap):
+    """Final response (or closure) inside eight weeks of receipt. Complaints
+    still inside their eight weeks are not yet counted."""
+    items = []
+    for c, fe, matters in _recent_complaints(snap):
+        clock = complaints_rules.clock(c, snap.today)
+        if clock['state'] in ('ok', 'warning'):
+            continue
+        done = clock['state'] == 'stopped' and clock['met']
+        reason = '' if done else ('late' if clock['state'] == 'stopped' else 'overdue')
+        items.append(_complaint_item(
+            snap, c, fe, matters, done, reason,
+            cells={'deadline': _date_cell(clock['deadline']),
+                   'responded': _date_cell(clock['stopped_on']),
+                   'status': {'value': c.get_status_display(), 'href': None}},
+            sort={'deadline': clock['deadline'], 'responded': clock['stopped_on'] or _far_past(),
+                  'status': c.status}))
+    return items
+
+
+def collect_complaints_final_response_wording(snap):
+    """Final responses that say the ombudsman is available, give full contact
+    details and warn of the six-month limit (Scheme Rules 4.4)."""
+    items = []
+    for c, fe, matters in _recent_complaints(snap):
+        if not c.final_response_sent_on:
+            continue
+        missing = [label for flag, label in (
+            (c.fr_states_leo_available, 'availability'),
+            (c.fr_has_leo_contact_details, 'contact details'),
+            (c.fr_has_six_month_warning, 'six-month warning')) if not flag]
+        items.append(_complaint_item(
+            snap, c, fe, matters, not missing, '' if not missing else 'incomplete',
+            cells={'sent': _date_cell(c.final_response_sent_on),
+                   'missing': {'value': ', '.join(missing) or '—', 'href': None}},
+            sort={'sent': c.final_response_sent_on, 'missing': len(missing)}))
+    return items
+
+
+def collect_complaints_root_cause(snap):
+    """Closed complaints with a root cause recorded (and the lesson learned)."""
+    items = []
+    for c, fe, matters in _recent_complaints(snap):
+        if not c.is_closed:
+            continue
+        done = bool(c.root_cause.strip())
+        items.append(_complaint_item(
+            snap, c, fe, matters, done, '' if done else 'missing',
+            cells={'closed': _date_cell(c.closed_on),
+                   'outcome': {'value': c.get_outcome_display() if c.outcome else '—', 'href': None}},
+            sort={'closed': c.closed_on or _far_past(), 'outcome': c.outcome}))
+    return items
+
+
+# ---------------------------------------------------------------------------
 # The registry
 # ---------------------------------------------------------------------------
 
@@ -1007,6 +1145,38 @@ METRICS = {m.key: m for m in [
                           _col('description', 'Undertaking', truncate=True),
                           _col('discharged', 'Discharged'), ACTION_COLUMN],
     ),
+    # -- Complaints ---------------------------------------------------------
+    _metric(
+        'complaints_acknowledged', 'Complaints acknowledged within two working days', 'Acknowledged', 'complaints',
+        'Complaints received in the last twelve months that were acknowledged within two working days of receipt.',
+        collect_complaints_acknowledged,
+        COMPLAINT_COLUMNS + [_col('target', 'Due by'), _col('acknowledged', 'Acknowledged')],
+        reasons={'never': 'not acknowledged', 'late': 'acknowledged late'},
+    ),
+    _metric(
+        'complaints_eight_weeks', 'Final response within eight weeks', 'Eight weeks', 'complaints',
+        'Complaints received in the last twelve months answered (or closed) within eight weeks of receipt. '
+        'Those still inside their eight weeks are not counted yet.',
+        collect_complaints_eight_weeks,
+        COMPLAINT_COLUMNS + [_col('deadline', 'Eight weeks end'), _col('responded', 'Responded'),
+                             _col('status', 'Status')],
+        reasons={'overdue': 'still open past eight weeks', 'late': 'responded late'},
+    ),
+    _metric(
+        'complaints_final_response_wording', 'Final response carries ombudsman wording', 'Ombudsman wording', 'complaints',
+        'Final responses that say the Legal Ombudsman is available, give full contact details and warn of the '
+        'six-month limit. Without all three the six months never start running.',
+        collect_complaints_final_response_wording,
+        COMPLAINT_COLUMNS + [_col('sent', 'Sent'), _col('missing', 'Missing')],
+        reasons={'incomplete': 'wording incomplete'},
+    ),
+    _metric(
+        'complaints_root_cause', 'Root cause recorded on closed complaints', 'Root cause', 'complaints',
+        'Closed complaints with a root cause recorded, so trends can be reviewed.',
+        collect_complaints_root_cause,
+        COMPLAINT_COLUMNS + [_col('closed', 'Closed'), _col('outcome', 'Outcome')],
+        reasons={'missing': 'no root cause'},
+    ),
 ]}
 
 
@@ -1105,6 +1275,8 @@ def build_compliance_stats(snapshot=None):
         'matter': f'{len(snap.live)} live matter{"s" if len(snap.live) != 1 else ""}',
         'client': (f'{len(snap.clients)} client{"s" if len(snap.clients) != 1 else ""}'
                    f' and {len(snap.parties)} third part{"ies" if len(snap.parties) != 1 else "y"} on live matters'),
+        'complaint': (f'{len(_recent_complaints(snap))} complaint'
+                      f'{"s" if len(_recent_complaints(snap)) != 1 else ""} received in the last {COMPLAINT_MONTHS} months'),
     }
     groups = []
     for group in GROUPS:

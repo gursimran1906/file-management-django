@@ -1,0 +1,344 @@
+{% extends 'base.html' %}
+{% load utils %}
+{% block title %}{{ complaint.reference }}{% endblock %}
+{% block container_class %}container {% endblock %}
+{% block container %}
+<div class="space-y-5">
+    {# Header: who, what, where it sits on the clock #}
+    <div class="div-container">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0 flex-1">
+                <a href="{% url 'complaints_register' %}" class="text-xs text-gray-500 hover:text-gray-900">&larr; Complaints</a>
+                <div class="mt-1 flex flex-wrap items-center gap-2">
+                    <h1 class="text-2xl font-semibold text-gray-900 tabular-nums">{{ complaint.reference }}</h1>
+                    {% include 'partials/_complaint_status.html' with complaint=complaint %}
+                    {% if complaint.is_informal %}<span class="badge-gray">Informal</span>{% endif %}
+                    {% if complaint.potential_claim %}<span class="badge-gray" title="Alleges negligence or loss">Possible claim</span>{% endif %}
+                </div>
+                <p class="mt-1 text-sm text-gray-900">
+                    <span class="font-medium">{{ complaint.complainant_name }}</span>
+                    <span class="text-gray-500">&middot; {{ complaint.get_complainant_type_display|lower }}{% if complaint.on_behalf_of %} for {{ complaint.on_behalf_of }}{% endif %}</span>
+                </p>
+                <p class="mt-0.5 text-xs text-gray-500">
+                    Received {{ complaint.received_on|date:'j F Y' }} by {{ complaint.get_received_via_display|lower }}{% if complaint.received_by %}, taken by {{ complaint.received_by.username }}{% endif %}
+                    &middot; About {{ complaint.about_fee_earner.username|default:'no one named' }}
+                    &middot; Handled by {{ complaint.handled_by.username|default:'unassigned' }}
+                </p>
+                <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                    {% for m in matters %}
+                    <a class="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-800 hover:bg-gray-100" href="{% url 'home' m.file_number %}">
+                        <span class="font-medium tabular-nums">{{ m.file_number }}</span><span class="text-gray-500 truncate max-w-[14rem]">{{ m.client1.name }}{% if m.matter_description %} · {{ m.matter_description }}{% endif %}</span>
+                    </a>
+                    {% empty %}<span class="text-xs text-gray-500">No file linked.</span>{% endfor %}
+                </div>
+                {% if attention %}
+                <ul class="mt-3 space-y-0.5 text-sm">
+                    {% for reason in attention %}
+                    <li class="flex items-center gap-2 {% if forloop.first and clock.state == 'overdue' %}text-red-700{% elif forloop.first and clock.state == 'warning' %}text-amber-700{% else %}text-gray-700{% endif %}"><span class="w-1.5 h-1.5 rounded-full bg-current shrink-0"></span>{{ reason }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+            <div class="lg:w-80 shrink-0 rounded-lg border border-gray-200 bg-gray-50/70 p-3">
+                {% include 'partials/_complaint_clock.html' with clock=clock size='hero' %}
+            </div>
+        </div>
+        <div class="mt-4 pt-3 border-t border-gray-100 text-sm text-gray-800 whitespace-pre-line">{{ complaint.summary }}</div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
+        <div class="xl:col-span-2 space-y-5">
+            {# Chronology #}
+            <section id="chronology" class="div-container">
+                <div class="flex items-center justify-between gap-3 pb-3 border-b border-gray-100">
+                    <div>
+                        <h2 class="text-base font-semibold text-gray-900">Chronology</h2>
+                        <p class="text-xs text-gray-500 mt-0.5">Every contact and step, newest first. This is the complaint file.</p>
+                    </div>
+                    <button type="button" class="btn-secondary text-xs" data-toggle="event-form">Add entry</button>
+                </div>
+                <form id="event-form" method="post" action="{% url 'complaint_add_event' complaint.reference %}" enctype="multipart/form-data" class="hidden mt-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3 space-y-3">
+                    {% csrf_token %}
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {% include 'complaints/_field.html' with f=event_form.kind %}
+                        {% include 'complaints/_field.html' with f=event_form.occurred_on %}
+                    </div>
+                    {% include 'complaints/_field.html' with f=event_form.note %}
+                    <div>
+                        <label class="form-label" for="{{ event_form.document.id_for_label }}">{{ event_form.document.label }}</label>
+                        <input type="file" name="{{ event_form.document.html_name }}" id="{{ event_form.document.id_for_label }}" class="block w-full text-xs text-gray-600 file:mr-3 file:rounded-md file:border file:border-gray-200 file:bg-white file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 hover:file:bg-gray-50">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="submit" class="btn-primary text-xs">Add to chronology</button>
+                        <button type="button" class="btn-secondary text-xs" data-toggle="event-form">Cancel</button>
+                    </div>
+                </form>
+                <ol class="mt-3 divide-y divide-gray-100">
+                    {% for e in events %}
+                    <li class="py-3 flex gap-3">
+                        <div class="w-20 shrink-0 text-xs text-gray-500 tabular-nums pt-0.5">{{ e.occurred_on|date:'d/m/Y' }}</div>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm text-gray-900"><span class="font-medium">{{ e.get_kind_display }}</span>{% if e.by %} <span class="text-gray-500">&middot; {{ e.by.username }}</span>{% endif %}</p>
+                            {% if e.note %}<p class="mt-0.5 text-sm text-gray-700 whitespace-pre-line">{{ e.note }}</p>{% endif %}
+                            <div class="mt-1 flex flex-wrap gap-3 text-xs">
+                                {% if e.document %}<a class="link" href="{% url 'complaint_document' e.id %}" target="_blank" rel="noopener">{{ e.document_name|default:'Document' }}</a>{% endif %}
+                                {% if e.email %}<span class="text-gray-500">Email: {{ e.email.subject|default:'(no subject)'|truncatechars:60 }}</span>{% endif %}
+                                {% if e.letter %}<span class="text-gray-500">Letter: {{ e.letter.subject_line|truncatechars:60 }}</span>{% endif %}
+                                {% if e.attendance_note %}<span class="text-gray-500">Attendance note: {{ e.attendance_note.subject_line|truncatechars:60 }}</span>{% endif %}
+                            </div>
+                        </div>
+                    </li>
+                    {% empty %}
+                    <li class="py-6 text-center text-sm text-gray-400">Nothing recorded yet.</li>
+                    {% endfor %}
+                </ol>
+            </section>
+
+            {# Linked correspondence #}
+            <section class="div-container">
+                <div class="pb-3 border-b border-gray-100">
+                    <h2 class="text-base font-semibold text-gray-900">Correspondence on the file{% if linked_count %} <span class="text-gray-400 font-normal">({{ linked_count }})</span>{% endif %}</h2>
+                    <p class="text-xs text-gray-500 mt-0.5">Emails, letters and attendance notes tagged to this complaint from the matter's correspondence page.</p>
+                </div>
+                <ul class="mt-2 divide-y divide-gray-100">
+                    {% for email in emails %}
+                    <li class="py-2.5 flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="text-sm text-gray-900 truncate">{{ email.subject|default:'(No subject)' }}</p>
+                            <p class="text-xs text-gray-500">Email &middot; {% if email.is_sent %}sent{% else %}received{% endif %} {{ email.time|date:'d/m/Y H:i' }} &middot; <a class="link" href="{% url 'home' email.file_number.file_number %}">{{ email.file_number.file_number }}</a></p>
+                        </div>
+                        <div class="flex items-center gap-3 shrink-0 text-xs">
+                            {% if email.link %}<a class="link" href="{{ email.link }}" target="_blank" rel="noopener noreferrer">Outlook</a>{% endif %}
+                            {% if can_manage %}<form method="post" action="{% url 'complaint_tag_correspondence' email.file_number.file_number %}">{% csrf_token %}<input type="hidden" name="kind" value="email"><input type="hidden" name="id" value="{{ email.id }}"><input type="hidden" name="untag" value="1"><input type="hidden" name="next" value="{% url 'complaint_detail' complaint.reference %}"><button class="text-gray-500 hover:text-gray-900" type="submit">Remove</button></form>{% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                    {% for letter in letters %}
+                    <li class="py-2.5 flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="text-sm text-gray-900 truncate">{{ letter.subject_line }}</p>
+                            <p class="text-xs text-gray-500">Letter &middot; {% if letter.sent %}to{% else %}from{% endif %} {{ letter.to_or_from }} {{ letter.date|date:'d/m/Y' }} &middot; <a class="link" href="{% url 'home' letter.file_number.file_number %}">{{ letter.file_number.file_number }}</a></p>
+                        </div>
+                        {% if can_manage %}<form method="post" action="{% url 'complaint_tag_correspondence' letter.file_number.file_number %}" class="shrink-0 text-xs">{% csrf_token %}<input type="hidden" name="kind" value="letter"><input type="hidden" name="id" value="{{ letter.id }}"><input type="hidden" name="untag" value="1"><input type="hidden" name="next" value="{% url 'complaint_detail' complaint.reference %}"><button class="text-gray-500 hover:text-gray-900" type="submit">Remove</button></form>{% endif %}
+                    </li>
+                    {% endfor %}
+                    {% for note in notes %}
+                    <li class="py-2.5 flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="text-sm text-gray-900 truncate">{{ note.subject_line }}</p>
+                            <p class="text-xs text-gray-500">Attendance note &middot; {{ note.date|date:'d/m/Y' }} &middot; {{ note.person_attended.username|default:'' }} &middot; <a class="link" href="{% url 'home' note.file_number.file_number %}">{{ note.file_number.file_number }}</a></p>
+                        </div>
+                        {% if can_manage %}<form method="post" action="{% url 'complaint_tag_correspondence' note.file_number.file_number %}" class="shrink-0 text-xs">{% csrf_token %}<input type="hidden" name="kind" value="note"><input type="hidden" name="id" value="{{ note.id }}"><input type="hidden" name="untag" value="1"><input type="hidden" name="next" value="{% url 'complaint_detail' complaint.reference %}"><button class="text-gray-500 hover:text-gray-900" type="submit">Remove</button></form>{% endif %}
+                    </li>
+                    {% endfor %}
+                    {% if not linked_count %}
+                    <li class="py-6 text-center text-sm text-gray-400">
+                        Nothing tagged yet.{% if matters %} Open the <a class="link" href="{% url 'correspondence_view' matters.0.file_number %}">correspondence for {{ matters.0.file_number }}</a> and use "Add to complaint" on each item.{% endif %}
+                    </li>
+                    {% endif %}
+                </ul>
+            </section>
+
+            {# Outcome #}
+            <section id="outcome" class="div-container">
+                <div class="pb-3 border-b border-gray-100">
+                    <h2 class="text-base font-semibold text-gray-900">Investigation and outcome</h2>
+                    <p class="text-xs text-gray-500 mt-0.5">Record the outcome before closing. The final response must carry the ombudsman wording for the six-month limit to start.</p>
+                </div>
+                {% if can_manage %}
+                <form method="post" action="{% url 'complaint_outcome' complaint.reference %}" class="mt-3 space-y-4" novalidate>
+                    {% csrf_token %}
+                    <fieldset class="rounded-lg border border-gray-200 p-3">
+                        <legend class="px-1 text-xs font-medium text-gray-600">Final response wording <span class="font-normal text-gray-400">(Scheme Rules 4.4)</span></legend>
+                        <div class="space-y-1.5 text-sm text-gray-800">
+                            <label class="flex items-start gap-2 cursor-pointer">{{ outcome_form.fr_states_leo_available }}<span>{{ outcome_form.fr_states_leo_available.label }}</span></label>
+                            <label class="flex items-start gap-2 cursor-pointer">{{ outcome_form.fr_has_leo_contact_details }}<span>{{ outcome_form.fr_has_leo_contact_details.label }}</span></label>
+                            <label class="flex items-start gap-2 cursor-pointer">{{ outcome_form.fr_has_six_month_warning }}<span>{{ outcome_form.fr_has_six_month_warning.label }}</span></label>
+                        </div>
+                        <div class="mt-3">{% include 'complaints/_field.html' with f=outcome_form.procedure_version_sent %}</div>
+                    </fieldset>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {% include 'complaints/_field.html' with f=outcome_form.outcome %}
+                        {% include 'complaints/_field.html' with f=outcome_form.redress_type %}
+                    </div>
+                    {% include 'complaints/_field.html' with f=outcome_form.outcome_summary %}
+                    {% include 'complaints/_field.html' with f=outcome_form.declined_reason %}
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {% include 'complaints/_field.html' with f=outcome_form.redress_amount %}
+                        {% include 'complaints/_field.html' with f=outcome_form.redress_credit_note %}
+                    </div>
+                    {% include 'complaints/_field.html' with f=outcome_form.root_cause %}
+                    {% include 'complaints/_field.html' with f=outcome_form.lessons_learned %}
+                    <fieldset class="rounded-lg border border-gray-200 p-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <legend class="px-1 text-xs font-medium text-gray-600">Legal Ombudsman and SRA</legend>
+                        {% include 'complaints/_field.html' with f=outcome_form.leo_reference %}
+                        {% include 'complaints/_field.html' with f=outcome_form.leo_outcome %}
+                        {% include 'complaints/_field.html' with f=outcome_form.leo_decision_on %}
+                        {% include 'complaints/_field.html' with f=outcome_form.sra_reference %}
+                    </fieldset>
+                    <button type="submit" class="btn-primary text-sm">Save outcome</button>
+                </form>
+                {% else %}
+                <dl class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <div><dt class="text-xs text-gray-500">Outcome</dt><dd class="text-gray-900">{{ complaint.get_outcome_display|default:'—' }}</dd></div>
+                    <div><dt class="text-xs text-gray-500">Redress</dt><dd class="text-gray-900">{{ complaint.get_redress_type_display|default:'—' }}{% if complaint.redress_amount %} · £{{ complaint.redress_amount }}{% endif %}</dd></div>
+                    <div class="sm:col-span-2"><dt class="text-xs text-gray-500">What we found</dt><dd class="text-gray-900 whitespace-pre-line">{{ complaint.outcome_summary|default:'—' }}</dd></div>
+                    <div class="sm:col-span-2"><dt class="text-xs text-gray-500">Root cause</dt><dd class="text-gray-900 whitespace-pre-line">{{ complaint.root_cause|default:'—' }}</dd></div>
+                </dl>
+                {% endif %}
+            </section>
+        </div>
+
+        <aside class="space-y-5">
+            {# Milestones #}
+            <section class="div-container">
+                <h2 class="text-base font-semibold text-gray-900 pb-3 border-b border-gray-100">Milestones</h2>
+                <ul class="divide-y divide-gray-100">
+                    {% for action, label, when, help in milestones %}
+                    <li class="py-2.5">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <p class="text-sm {% if when %}text-gray-900{% else %}text-gray-600{% endif %}">{{ label }}</p>
+                                <p class="text-[11px] text-gray-500">{% if when %}{{ when|date:'j F Y' }}{% else %}{{ help }}{% endif %}</p>
+                            </div>
+                            {% if when %}
+                            <span class="shrink-0 mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-900 text-white" aria-label="Done"><svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7"/></svg></span>
+                            {% endif %}
+                        </div>
+                        {% if not when and can_manage and complaint.is_open %}
+                        <form method="post" action="{% url 'complaint_action' complaint.reference %}" class="mt-1.5 flex items-center gap-1.5">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="{{ action }}">
+                            <input type="date" name="when" value="{{ today|date:'Y-m-d' }}" class="form-input !h-7 !w-36 !px-2 text-xs" aria-label="Date for {{ label|lower }}">
+                            <button type="submit" class="btn-secondary !py-1 !px-2.5 text-xs">Record</button>
+                        </form>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                    {% if complaint.final_response_sent_on %}
+                    <li class="py-2.5 text-xs {% if complaint.final_response_complete %}text-gray-500{% else %}text-amber-700{% endif %}">
+                        {% if complaint.final_response_complete %}Final response carries the ombudsman wording: six-month limit runs from {{ complaint.final_response_sent_on|date:'j F Y' }}.{% else %}Tick the three wording checks under Outcome, or the six-month limit never starts.{% endif %}
+                    </li>
+                    {% endif %}
+                    {% if complaint.potential_claim %}
+                    <li class="py-2.5 flex items-start justify-between gap-3">
+                        <div><p class="text-sm {% if complaint.pii_notified_on %}text-gray-900{% else %}text-gray-600{% endif %}">Insurer notified</p><p class="text-[11px] text-gray-500">{% if complaint.pii_notified_on %}{{ complaint.pii_notified_on|date:'j F Y' }}{% else %}A circumstance under the minimum terms.{% endif %}</p></div>
+                        {% if complaint.pii_notified_on %}<span class="shrink-0 mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-900 text-white"><svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7"/></svg></span>{% endif %}
+                    </li>
+                    {% if not complaint.pii_notified_on and can_manage %}
+                    <li class="-mt-2 pb-2.5"><form method="post" action="{% url 'complaint_action' complaint.reference %}" class="flex items-center gap-1.5">{% csrf_token %}<input type="hidden" name="action" value="pii_notified"><input type="date" name="when" value="{{ today|date:'Y-m-d' }}" class="form-input !h-7 !w-36 !px-2 text-xs" aria-label="Date insurer notified"><button type="submit" class="btn-secondary !py-1 !px-2.5 text-xs">Record</button></form></li>
+                    {% endif %}
+                    {% endif %}
+                </ul>
+            </section>
+
+            {# Closing #}
+            {% if can_manage %}
+            <section class="div-container">
+                <h2 class="text-base font-semibold text-gray-900 pb-3 border-b border-gray-100">{% if complaint.is_open %}Close or escalate{% else %}Closed{% endif %}</h2>
+                {% if complaint.is_open %}
+                <form method="post" action="{% url 'complaint_action' complaint.reference %}" class="mt-3 space-y-2">
+                    {% csrf_token %}
+                    <input type="date" name="when" value="{{ today|date:'Y-m-d' }}" class="form-input !h-8 text-xs" aria-label="Date">
+                    <input type="text" name="note" placeholder="Note for the chronology (optional)" class="form-input !h-8 text-xs">
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <button type="submit" name="action" value="resolve" class="btn-secondary text-xs" {% if not complaint.outcome %}title="Record the outcome first"{% endif %}>Resolved</button>
+                        <button type="submit" name="action" value="close" class="btn-secondary text-xs" {% if not complaint.outcome %}title="Record the outcome first"{% endif %}>Closed, not resolved</button>
+                        {% if complaint.status != 'investigating' and complaint.status != 'final_response_sent' %}<button type="submit" name="action" value="investigating" class="btn-secondary text-xs">Investigating</button>{% endif %}
+                        {% if complaint.status != 'escalated_leo' %}<button type="submit" name="action" value="escalate_leo" class="btn-secondary text-xs">Gone to the Ombudsman</button>{% endif %}
+                        {% if complaint.status != 'escalated_sra' %}<button type="submit" name="action" value="escalate_sra" class="btn-secondary text-xs">Reported to the SRA</button>{% endif %}
+                    </div>
+                    {% if not complaint.outcome %}<p class="text-[11px] text-gray-500">Record the outcome below before closing.</p>{% endif %}
+                </form>
+                {% else %}
+                <dl class="mt-3 text-sm space-y-1">
+                    <div class="flex justify-between gap-3"><dt class="text-gray-500">Closed</dt><dd class="text-gray-900">{{ complaint.closed_on|date:'j F Y' }}{% if complaint.closed_by %} by {{ complaint.closed_by.username }}{% endif %}</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-gray-500">Outcome</dt><dd class="text-gray-900">{{ complaint.get_outcome_display|default:'—' }}</dd></div>
+                    {% if destruction_due_on %}<div class="flex justify-between gap-3"><dt class="text-gray-500">May be destroyed from</dt><dd class="text-gray-900">{{ destruction_due_on|date:'j F Y' }}</dd></div>{% endif %}
+                </dl>
+                <form method="post" action="{% url 'complaint_action' complaint.reference %}" class="mt-3">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button type="submit" class="btn-secondary text-xs">Reopen</button></form>
+                {% endif %}
+            </section>
+            {% endif %}
+
+            {# Details (edit) #}
+            <section class="div-container">
+                <details class="group" {% if details_form.errors %}open{% endif %}>
+                    <summary class="flex items-center justify-between cursor-pointer list-none">
+                        <h2 class="text-base font-semibold text-gray-900">Details</h2>
+                        <span class="text-xs text-gray-500 group-open:hidden">{% if can_manage %}Edit{% else %}Show{% endif %}</span>
+                        <span class="text-xs text-gray-500 hidden group-open:inline">Hide</span>
+                    </summary>
+                    <dl class="mt-3 text-sm space-y-1.5 group-open:hidden">
+                        <div><dt class="text-xs text-gray-500">Contact</dt><dd class="text-gray-900 break-words">{{ complaint.complainant_email|default:'' }}{% if complaint.complainant_phone %} · {{ complaint.complainant_phone }}{% endif %}{% if not complaint.complainant_email and not complaint.complainant_phone %}—{% endif %}</dd></div>
+                        <div><dt class="text-xs text-gray-500">Categories</dt><dd class="text-gray-900">{{ complaint.categories.all|join:', '|default:'—' }}</dd></div>
+                        <div><dt class="text-xs text-gray-500">Act or omission</dt><dd class="text-gray-900">{{ complaint.act_or_omission_on|date:'j F Y'|default:'—' }}</dd></div>
+                        {% if complaint.reasonable_adjustments %}<div><dt class="text-xs text-gray-500">Adjustments</dt><dd class="text-gray-900 whitespace-pre-line">{{ complaint.reasonable_adjustments }}</dd></div>{% endif %}
+                        <div><dt class="text-xs text-gray-500">SRA reporting year</dt><dd class="text-gray-900">Sep {{ complaint.reporting_year|add:'-1' }} – Aug {{ complaint.reporting_year }}</dd></div>
+                    </dl>
+                    {% if can_manage %}
+                    <form method="post" action="{% url 'complaint_edit' complaint.reference %}" class="hidden group-open:block mt-3 space-y-3" novalidate>
+                        {% csrf_token %}
+                        {% include 'complaints/_field.html' with f=details_form.complainant_name %}
+                        {% include 'complaints/_field.html' with f=details_form.complainant_type %}
+                        {% include 'complaints/_field.html' with f=details_form.complainant_client %}
+                        {% include 'complaints/_field.html' with f=details_form.complainant_email %}
+                        {% include 'complaints/_field.html' with f=details_form.complainant_phone %}
+                        {% include 'complaints/_field.html' with f=details_form.complainant_address %}
+                        {% include 'complaints/_field.html' with f=details_form.on_behalf_of %}
+                        {% include 'complaints/_field.html' with f=details_form.reasonable_adjustments %}
+                        {% include 'complaints/_field.html' with f=details_form.received_on %}
+                        {% include 'complaints/_field.html' with f=details_form.received_via %}
+                        {% include 'complaints/_field.html' with f=details_form.matter_numbers %}
+                        <datalist id="complaint_file_numbers">{% for fn in file_numbers %}<option value="{{ fn }}">{% endfor %}</datalist>
+                        {% include 'complaints/_field.html' with f=details_form.received_by %}
+                        {% include 'complaints/_field.html' with f=details_form.about_fee_earner %}
+                        {% include 'complaints/_field.html' with f=details_form.handled_by %}
+                        {% include 'complaints/_field.html' with f=details_form.summary %}
+                        <div>
+                            <span class="form-label">Categories</span>
+                            <div class="space-y-1 text-sm text-gray-800">{% for choice in details_form.categories %}<label class="flex items-start gap-2 cursor-pointer">{{ choice.tag }}<span>{{ choice.choice_label }}</span></label>{% endfor %}</div>
+                        </div>
+                        {% include 'complaints/_field.html' with f=details_form.act_or_omission_on %}
+                        <label class="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">{{ details_form.is_informal }}<span>{{ details_form.is_informal.label }}</span></label>
+                        <label class="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">{{ details_form.potential_claim }}<span>{{ details_form.potential_claim.label }}</span></label>
+                        <button type="submit" class="btn-primary text-xs">Save details</button>
+                    </form>
+                    {% endif %}
+                </details>
+            </section>
+
+            {# History #}
+            <section class="div-container">
+                <details class="group">
+                    <summary class="flex items-center justify-between cursor-pointer list-none">
+                        <h2 class="text-base font-semibold text-gray-900">History <span class="text-gray-400 font-normal">({{ history|length }})</span></h2>
+                        <span class="text-xs text-gray-500 group-open:hidden">Show</span><span class="text-xs text-gray-500 hidden group-open:inline">Hide</span>
+                    </summary>
+                    <ol class="mt-3 divide-y divide-gray-100 text-xs">
+                        {% for log in history %}
+                        <li class="py-2">
+                            <p class="text-gray-900"><span class="font-medium">{{ log.action_label }}</span> <span class="text-gray-500">&middot; {{ log.user_display }} &middot; {{ log.timestamp }}</span></p>
+                            {% if log.changes_list %}
+                            <ul class="mt-1 space-y-0.5 text-gray-600">
+                                {% for c in log.changes_list %}<li><span class="text-gray-500">{{ c.label }}:</span> {% if c.kind == 'update' %}<span class="line-through text-gray-400">{{ c.old_display }}</span> &rarr; {% endif %}{% if c.kind == 'remove' %}<span class="line-through text-gray-400">{{ c.old_display }}</span>{% else %}{{ c.new_display }}{% endif %}</li>{% endfor %}
+                            </ul>
+                            {% endif %}
+                        </li>
+                        {% empty %}<li class="py-3 text-gray-400">No history yet.</li>{% endfor %}
+                    </ol>
+                </details>
+            </section>
+        </aside>
+    </div>
+</div>
+<script>
+document.querySelectorAll('[data-toggle="event-form"]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var form = document.getElementById('event-form');
+        var open = form.classList.toggle('hidden') === false;
+        if (open) { form.querySelector('select, input, textarea').focus(); }
+    });
+});
+</script>
+{% endblock %}
