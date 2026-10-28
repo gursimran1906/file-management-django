@@ -55,6 +55,11 @@ from .compliance_stats_views import compliance_stats, compliance_stats_detail
 from .signoff_views import signoff_queue
 from .cpd_views import report_cpd
 from .archive_views import matter_archive_details
+from .complaints_views import (
+    complaints_register, complaint_add, complaint_detail, complaint_edit,
+    complaint_outcome, complaint_action, complaint_add_event, complaint_document,
+    complaint_tag_correspondence, complaints_annual_return,
+)
 from .granola.views import (
     granola_inbox, granola_assign_note, granola_ignore_note,
     granola_settings, granola_sync_now, granola_create_free30,
@@ -390,6 +395,20 @@ urlpatterns = [
     path('free30mins/download/<int:id>/',
          download_free30mins, name='download_free30mins'),
     path('free30mins/edit/<int:id>/', edit_free30mins, name='edit_free30mins'),
+
+
+    # Complaints register (central; a complaint points at matters, see backend/complaints.py)
+    path('complaints/', complaints_register, name='complaints_register'),
+    path('complaints/add/', complaint_add, name='complaint_add'),
+    path('complaints/annual-return/', complaints_annual_return, name='complaints_annual_return'),
+    path('complaints/document/<int:event_id>/', complaint_document, name='complaint_document'),
+    path('complaints/<str:reference>/', complaint_detail, name='complaint_detail'),
+    path('complaints/<str:reference>/edit/', complaint_edit, name='complaint_edit'),
+    path('complaints/<str:reference>/outcome/', complaint_outcome, name='complaint_outcome'),
+    path('complaints/<str:reference>/action/', complaint_action, name='complaint_action'),
+    path('complaints/<str:reference>/event/', complaint_add_event, name='complaint_add_event'),
+    path('home/<str:file_number>/complaints/tag/', complaint_tag_correspondence,
+         name='complaint_tag_correspondence'),
 
     path('undertakings/', undertakings, name='undertakings'),
     path('undertakings/file/<int:pk>/<str:field>/',

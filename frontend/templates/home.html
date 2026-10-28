@@ -65,6 +65,17 @@
                 </div>
             </div>
         </div>
+        {% if open_complaints %}
+        <div class="mt-3 space-y-1.5">
+            {% for row in open_complaints %}{% with c=row.complaint %}
+            <a href="{% url 'complaint_detail' c.reference %}" class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-sm {% if row.clock.state == 'overdue' %}border-red-200 bg-red-50 text-red-900{% elif row.clock.state == 'warning' %}border-amber-200 bg-amber-50 text-amber-900{% else %}border-gray-200 bg-gray-50 text-gray-900{% endif %}">
+                <span class="font-medium tabular-nums">Open complaint {{ c.reference }}</span>
+                <span>{{ c.complainant_name }} &middot; {{ c.get_status_display|lower }}{% if c.handled_by %} &middot; handled by {{ c.handled_by.username }}{% endif %}</span>
+                <span class="ml-auto text-xs tabular-nums">{% if row.clock.state == 'stopped' %}Final response sent{% elif row.clock.state == 'overdue' %}{{ row.clock.days_over }} day{{ row.clock.days_over|pluralize }} over eight weeks{% else %}Day {{ row.clock.day }} of {{ row.clock.total }}{% endif %}</span>
+            </a>
+            {% endwith %}{% endfor %}
+        </div>
+        {% endif %}
         {% if matter_key_date_alerts or matter_key_document_alerts %}
         <div class='mt-3 flex flex-wrap gap-2'>
             {% for key_date in matter_key_date_alerts %}
@@ -336,6 +347,30 @@
                             </div>
                         {% empty %}
                             <p class="py-2 text-center text-sm text-gray-400">No undertakings on this file.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="rounded border border-gray-200 p-4">
+                    <div class="flex items-start justify-between gap-3 mb-3">
+                        <h4 class="font-semibold text-gray-900">Complaints</h4>
+                        <a class="btn-secondary text-xs" href="{% url 'complaint_add' %}?file_number={{ matter.file_number }}">Log a complaint</a>
+                    </div>
+                    <div class="space-y-3">
+                        {% for row in matter_complaints %}{% with c=row.complaint %}
+                            <div class="flex items-start justify-between gap-3 rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+                                <div class="min-w-0">
+                                    <a class="link tabular-nums" href="{% url 'complaint_detail' c.reference %}">{{ c.reference }}</a>
+                                    <span class="text-gray-900"> {{ c.complainant_name }}</span>
+                                    <span class="block text-xs text-gray-500">Received {{ c.received_on|date:'d/m/Y' }}{% if c.handled_by %} &middot; handled by {{ c.handled_by.username }}{% endif %}{% if c.outcome %} &middot; {{ c.get_outcome_display|lower }}{% endif %}</span>
+                                </div>
+                                <div class="shrink-0 flex flex-col items-end gap-1.5">
+                                    {% include 'partials/_complaint_status.html' with complaint=c %}
+                                    {% if c.is_open %}<div class="w-44">{% include 'partials/_complaint_clock.html' with clock=row.clock size='row' %}</div>{% endif %}
+                                </div>
+                            </div>
+                        {% endwith %}{% empty %}
+                            <p class="py-2 text-center text-sm text-gray-400">No complaints on this file.</p>
                         {% endfor %}
                     </div>
                 </div>

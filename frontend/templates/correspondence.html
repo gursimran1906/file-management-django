@@ -59,6 +59,7 @@
                             <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                                 <span>{% if email.is_sent %}Sent{% else %}Received{% endif %}</span>
                                 <span>{{ email.time|date:'d/m/Y @ H:i' }}</span>
+                                {% if email.complaint_id %}<span class="badge-zinc">Complaint {{ email.complaint.reference }}</span>{% endif %}
                                 {% if email.is_sent %}
                                 {% with email.receiver|jsonify as receiver %}
                                 <span>{{ receiver.0.emailAddress.name|default:"—" }}</span>
@@ -96,9 +97,13 @@
                         {% if email.body %}
                         <div class="rounded border border-gray-100 bg-white p-3 text-xs text-gray-700 break-words">{{ email.body|linebreaksbr|safe }}</div>
                         {% endif %}
-                        {% if email.link %}
-                        <a class="link text-xs" href="{{ email.link }}" target="_blank" rel="noopener noreferrer">Open in Outlook</a>
-                        {% endif %}
+                        <div class="flex flex-wrap items-center gap-4">
+                            {% if email.link %}
+                            <a class="link text-xs" href="{{ email.link }}" target="_blank" rel="noopener noreferrer">Open in Outlook</a>
+                            {% endif %}
+                            {% url 'correspondence_view' matter.file_number as next_url %}
+                            {% include 'partials/_complaint_tag.html' with record=email kind='email' %}
+                        </div>
                     </div>
                 </details>
                 {% empty %}
@@ -117,6 +122,7 @@
                                 <span>{{ letter.date|date:'d/m/Y' }}</span>
                                 <span>{{ letter.to_or_from }}</span>
                                 {% if not letter.is_charged %}<span class="badge-gray">N/C</span>{% endif %}
+                                {% if letter.complaint_id %}<span class="badge-zinc">Complaint {{ letter.complaint.reference }}</span>{% endif %}
                             </div>
                         </div>
                         <svg class="w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -126,7 +132,11 @@
                             <div><dt class="text-gray-500">Person</dt><dd class="font-medium text-gray-900">{{ letter.person_attended }}</dd></div>
                             <div><dt class="text-gray-500">Charged</dt><dd class="font-medium text-gray-900">{{ letter.is_charged|yesno:"Yes,No" }}</dd></div>
                         </dl>
-                        <a class="link text-xs" href="{% url 'edit_letter' letter.id %}">Edit letter</a>
+                        <div class="flex flex-wrap items-center gap-4">
+                            <a class="link text-xs" href="{% url 'edit_letter' letter.id %}">Edit letter</a>
+                            {% url 'correspondence_view' matter.file_number as next_url %}
+                            {% include 'partials/_complaint_tag.html' with record=letter kind='letter' %}
+                        </div>
                     </div>
                 </details>
                 {% empty %}

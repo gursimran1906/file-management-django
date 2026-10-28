@@ -1,0 +1,19 @@
+{# The eight-week clock. `clock` comes from backend.complaints.clock(); `size` is 'row' (table cell) or 'hero' (detail header). #}
+{% with state=clock.state %}
+<div class="{% if size == 'hero' %}w-full{% else %}min-w-[9rem]{% endif %}" aria-label="Eight-week clock: day {{ clock.day }} of {{ clock.total }}">
+  <div class="flex items-baseline justify-between gap-3 tabular-nums {% if size == 'hero' %}text-sm{% else %}text-[11px]{% endif %}">
+    <span class="font-medium {% if state == 'overdue' %}text-red-700{% elif state == 'warning' %}text-amber-700{% else %}text-gray-900{% endif %}">
+      {% if state == 'stopped' %}{% if clock.met %}Responded day {{ clock.day }}{% else %}Responded day {{ clock.day }}, late{% endif %}{% elif state == 'overdue' %}Day {{ clock.day }}{% else %}Day {{ clock.day }} of {{ clock.total }}{% endif %}
+    </span>
+    <span class="{% if state == 'overdue' %}text-red-700{% elif state == 'warning' %}text-amber-700{% else %}text-gray-500{% endif %}">
+      {% if state == 'stopped' %}{{ clock.stopped_on|date:'d M' }}{% elif state == 'overdue' %}{{ clock.days_over }} day{{ clock.days_over|pluralize }} over{% else %}{{ clock.days_left }} day{{ clock.days_left|pluralize }} left{% endif %}
+    </span>
+  </div>
+  <div class="relative mt-1.5 {% if size == 'hero' %}h-1.5{% else %}h-1{% endif %} rounded-full bg-gray-200 overflow-hidden">
+    <div class="h-full rounded-full transition-[width] duration-700 ease-out {% if state == 'overdue' %}bg-red-600{% elif state == 'warning' %}bg-amber-500{% elif state == 'stopped' and not clock.met %}bg-red-300{% elif state == 'stopped' %}bg-gray-400{% else %}bg-gray-700{% endif %}" style="width: {{ clock.pct }}%"></div>
+  </div>
+  {% if size == 'hero' %}
+  <p class="mt-1.5 text-xs text-gray-500">Eight weeks end {{ clock.deadline|date:'l j F Y' }}{% if state == 'stopped' %} &middot; clock stopped {{ clock.stopped_on|date:'j F Y' }}{% endif %}</p>
+  {% endif %}
+</div>
+{% endwith %}

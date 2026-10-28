@@ -1,0 +1,5 @@
+<div>
+    <label class="form-label" for="{{ f.id_for_label }}">{{ f.label }}{% if f.field.required %} <span class="text-gray-400 font-normal">required</span>{% endif %}</label>
+    {{ f }}
+    {% if f.errors %}<p class="text-xs text-red-700 mt-1">{{ f.errors|join:' ' }}</p>{% elif f.help_text %}<p class="text-[11px] text-gray-500 mt-1">{{ f.help_text }}</p>{% endif %}
+</div>

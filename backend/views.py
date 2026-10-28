@@ -10,7 +10,7 @@ from django.db import transaction
 from django.db.models import Q, F, OuterRef, Subquery, Max, CharField, TextField, BooleanField, Exists, Count, Sum, Case, When, Value, DateField
 from django.db.models.functions import Cast, Coalesce, Greatest, Concat
 from .models import WIP, Memo, NextWork, LastWork, MatterKeyDate, FileStatus, FileLocation, MatterType, PricingItem, ClientContactDetails, ClientKeyDocument, AuthorisedParties, MatterClient, MatterClientDocument, ConveyancingDetails
-from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE
+from .models import LedgerAccountTransfers, Modifications, Invoices, RiskAssessment, PoliciesRead, OngoingMonitoring, CreditNote, CURRENT_VAT_RATE, Complaint
 from .models import OthersideDetails, MatterAttendanceNotes, MatterEmails, MatterLetters, PmtsSlips, Free30Mins, Free30MinsAttendees
 from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, BundleDocument, BundleShareLink, BundleVersion, MatterFileReview
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
@@ -43,6 +43,7 @@ from .onboarding_views import link_group_to_matter
 from .matter_compliance import matter_compliance, ensure_matter_clients
 from .fee_earners import responsible_user_ids, responsible_user_ids_for_id, responsible_username
 from .signoff_queue import TYPE_MONITORING, TYPE_RISK, build_queue, pending_count
+from . import complaints as complaints_rules
 from .staff_timeline import build_timeline, parse_timeline_params
 from django.utils import timezone
 from users.models import CPDTrainingLog, CustomUser, HolidayRecord, SicknessRecord
@@ -1201,6 +1202,7 @@ def user_dashboard(request):
         'pending_credit_notes': pending_credit_notes,
         'risk_assessments_awaiting_signoff': risk_assessments_awaiting_signoff,
         'ongoing_monitorings_awaiting_signoff': ongoing_monitorings_awaiting_signoff,
+        'complaints_summary': complaints_rules.summary(user),
     }
     # "My time" card: always the logged-in user, whatever tl_user says.
     context.update(_timeline_context(request, user, reverse('user_dashboard')))
@@ -1787,6 +1789,11 @@ def display_data_home_page(request, file_number):
         ]
         undertakings = Undertaking.objects.filter(file_number=matter).select_related(
             'given_by', 'discharged_by')
+        matter_complaints = [
+            {'complaint': c, 'clock': complaints_rules.clock(c), 'attention': complaints_rules.attention(c)}
+            for c in complaints_rules.visible_complaints(request.user).filter(
+                matters=matter).select_related('handled_by')]
+        open_complaints = [r for r in matter_complaints if r['complaint'].is_open]
         next_work_form = NextWorkFormWithoutFileNumber()
         next_work = NextWork.objects.filter(
             file_number=matter, completed=False).select_related(
@@ -1829,6 +1836,8 @@ def display_data_home_page(request, file_number):
                                              'archive_form': ArchiveDetailsForm(instance=matter),
                                              'bundles': bundles,
                                              'undertakings': undertakings,
+                                             'matter_complaints': matter_complaints,
+                                             'open_complaints': open_complaints,
                                              'file_number': file_number,
                                              'next_work_form': next_work_form, 'next_work': next_work,
                                              'last_work': last_work, 'last_work_form': last_work_form,
@@ -4163,6 +4172,7 @@ def attendance_note_view(request, file_number):
         'form': form,
         'file_number': file_number,
         'matter': matter,
+        'open_complaints': _open_complaints_for_tagging(request.user, matter),
         'attendance_notes': attendance_notes,
     })
 
@@ -4574,9 +4584,17 @@ def correspondence_view(request, file_number):
         'letter_form': letter_form,
         'file_number': file_number,
         'matter': matter,
-        'emails': emails,
-        'letters': letters,
+        'emails': emails.select_related('complaint'),
+        'letters': letters.select_related('complaint'),
+        'open_complaints': _open_complaints_for_tagging(request.user, matter),
     })
+
+
+def _open_complaints_for_tagging(user, matter):
+    """Open complaints on this matter the user may see, for the "Add to
+    complaint" control on correspondence and attendance notes."""
+    return list(complaints_rules.visible_complaints(user).filter(
+        matters=matter, status__in=Complaint.OPEN_STATUSES).order_by('-received_on'))
 
 
 @login_required
@@ -9437,6 +9455,7 @@ def management_reports(request):
         'risk_assessments_due': risk_assessments_due,
         'cpds': cpds,
         'expired_client_ids': expired_client_ids,
+        'complaints_summary': complaints_rules.summary(),
     }
     context.update(_timeline_context(
         request, timeline_subject, reverse('management_reports')))
@@ -9460,6 +9479,8 @@ def reports_hub(request):
     file_reviews_count = get_file_reviews_due_queryset(WIP.objects.all()).count()
     # Fee earners see their own queue size; everyone else the firm's.
     signoff_count = pending_count(request.user if request.user.is_matter_fee_earner else None)
+    complaints_open = complaints_rules.summary(request.user)['open']
+    complaints_can_see_all = complaints_rules.can_see_all(request.user)
 
     report_groups = [
         {
@@ -9503,6 +9524,18 @@ def reports_hub(request):
                     'description': 'Clients due an anti-money-laundering recheck.',
                     'url_name': 'download_aml_checks_due',
                     'download': True,
+                },
+                {
+                    'name': 'Complaints register',
+                    'description': 'Every complaint with its eight-week clock, handler and outcome.',
+                    'url_name': 'complaints_register',
+                    'count': complaints_open,
+                },
+                {
+                    'name': 'Complaints annual return',
+                    'description': 'Received, resolved and referred to the Legal Ombudsman in the year to 31 August, by SRA category.',
+                    'url_name': 'complaints_annual_return',
+                    'manager_only': True,
                 },
                 {
                     'name': 'Key dates',

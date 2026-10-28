@@ -215,15 +215,18 @@
                                 {% if not attendance_note.is_charged %}
                                 <span class="badge-gray">N/C</span>
                                 {% endif %}
+                                {% if attendance_note.complaint_id %}<span class="badge-zinc">Complaint {{ attendance_note.complaint.reference }}</span>{% endif %}
                             </div>
                         </div>
                         <svg class="w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                     </summary>
                     <div class="pb-4 text-sm text-gray-700">
                         <div class="ql-html rounded-lg border border-gray-100 bg-gray-50 p-3">{{ attendance_note.content.html|add_list_class|safe }}</div>
-                        <div class="mt-3 flex gap-3 text-xs">
+                        <div class="mt-3 flex flex-wrap items-center gap-3 text-xs">
                             <a class="link" href="{% url 'download_attendance_note' attendance_note.id %}" target="_blank" rel="noopener noreferrer">Print</a>
                             <a class="link" href="{% url 'edit_attendance_note' attendance_note.id %}">Edit</a>
+                            {% url 'attendance_note_view' matter.file_number as next_url %}
+                            {% include 'partials/_complaint_tag.html' with record=attendance_note kind='note' %}
                         </div>
                     </div>
                 </details>

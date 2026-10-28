@@ -1,0 +1,21 @@
+{# "Add to complaint" control for one correspondence record. Expects: record, kind ('email'|'letter'|'note'), matter, open_complaints, next_url. #}
+{% if record.complaint_id %}
+<form method="post" action="{% url 'complaint_tag_correspondence' matter.file_number %}" class="inline-flex items-center gap-2 text-xs">
+    {% csrf_token %}
+    <input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="id" value="{{ record.id }}"><input type="hidden" name="untag" value="1"><input type="hidden" name="next" value="{{ next_url }}">
+    <span class="badge-zinc">Complaint <a class="underline" href="{% url 'complaint_detail' record.complaint.reference %}">{{ record.complaint.reference }}</a></span>
+    <button type="submit" class="text-gray-500 hover:text-gray-900">Remove</button>
+</form>
+{% elif open_complaints %}
+<form method="post" action="{% url 'complaint_tag_correspondence' matter.file_number %}" class="inline-flex items-center gap-1.5 text-xs">
+    {% csrf_token %}
+    <input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="id" value="{{ record.id }}"><input type="hidden" name="next" value="{{ next_url }}">
+    {% if open_complaints|length == 1 %}
+    <input type="hidden" name="complaint" value="{{ open_complaints.0.id }}">
+    <button type="submit" class="text-gray-500 hover:text-gray-900">Add to complaint {{ open_complaints.0.reference }}</button>
+    {% else %}
+    <select name="complaint" class="form-input !h-7 !w-auto !px-2 !py-0 text-xs" aria-label="Complaint">{% for c in open_complaints %}<option value="{{ c.id }}">{{ c.reference }} · {{ c.complainant_name }}</option>{% endfor %}</select>
+    <button type="submit" class="text-gray-500 hover:text-gray-900">Add to complaint</button>
+    {% endif %}
+</form>
+{% endif %}

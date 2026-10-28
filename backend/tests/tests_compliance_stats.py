@@ -142,7 +142,7 @@ class ComplianceSnapshotTests(TestCase):
         self.assertEqual(stats['live_matter_count'], 2)
         self.assertEqual(metric_ctx(stats, 'client_care_sent')['total'], 2)
         self.assertEqual([g['key'] for g in stats['groups']],
-                         ['matter_risk', 'client_dd', 'client_care'])
+                         ['matter_risk', 'client_dd', 'client_care', 'complaints'])
 
     def test_risk_assessment_signed_awaiting_none(self):
         signed = make_live_matter('R0001', make_client('S'), self.fe)

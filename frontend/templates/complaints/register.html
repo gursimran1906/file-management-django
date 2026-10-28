@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+{% block title %}Complaints{% endblock %}
+{% block container_class %}container {% endblock %}
+{% block container %}
+<div class="space-y-5">
+    <div class="div-container py-3">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <h1 class="text-2xl font-semibold text-gray-900">Complaints</h1>
+                <p class="text-sm text-gray-600 mt-1">
+                    Every complaint the firm receives, with its eight-week clock.
+                    {% if not can_see_all %}You see complaints you logged, handle or are the fee earner for.{% endif %}
+                </p>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+                <p class="text-xs text-gray-500 tabular-nums">
+                    <span class="font-medium text-gray-900">{{ counts.open }}</span> open
+                    {% if counts.overdue %}&middot; <span class="font-medium text-red-700">{{ counts.overdue }}</span> over eight weeks{% endif %}
+                    {% if counts.warning %}&middot; <span class="font-medium text-amber-700">{{ counts.warning }}</span> due within two weeks{% endif %}
+                </p>
+                <a href="{% url 'complaint_add' %}" class="btn-primary text-xs">Log a complaint</a>
+            </div>
+        </div>
+        <form method="get" class="mt-3 flex flex-wrap items-end gap-2">
+            <div class="flex items-center gap-1">
+                {% for key, label in show_choices %}
+                <a href="?show={{ key }}{% if year %}&year={{ year }}{% endif %}{% if fee_earner %}&fee_earner={{ fee_earner }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}"
+                   class="rounded-full px-3 py-1 text-xs font-medium border {% if show == key %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-700 border-gray-200 hover:bg-gray-50{% endif %}">{{ label }}</a>
+                {% endfor %}
+            </div>
+            <input type="hidden" name="show" value="{{ show }}">
+            <label class="sr-only" for="f_year">Reporting year</label>
+            <select id="f_year" name="year" class="form-input !w-auto !h-8 text-xs">
+                <option value="">Any year</option>
+                {% for y in years %}<option value="{{ y }}" {% if year == y|stringformat:'s' %}selected{% endif %}>Sep {{ y|add:'-1' }} – Aug {{ y }}</option>{% endfor %}
+            </select>
+            <label class="sr-only" for="f_fee_earner">Fee earner</label>
+            <select id="f_fee_earner" name="fee_earner" class="form-input !w-auto !h-8 text-xs">
+                <option value="">Any fee earner</option>
+                {% for u in fee_earners %}<option value="{{ u.id }}" {% if fee_earner == u.id|stringformat:'s' %}selected{% endif %}>{{ u.username }} · {{ u.first_name }} {{ u.last_name }}</option>{% endfor %}
+            </select>
+            <label class="sr-only" for="f_category">Category</label>
+            <select id="f_category" name="category" class="form-input !w-auto !h-8 text-xs">
+                <option value="">Any category</option>
+                {% for c in categories %}<option value="{{ c.id }}" {% if category == c.id|stringformat:'s' %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+            </select>
+            <label class="sr-only" for="f_q">Search</label>
+            <input id="f_q" type="search" name="q" value="{{ q }}" placeholder="Reference, name, file…" class="form-input !w-52 !h-8 text-xs">
+            <button type="submit" class="btn-secondary !py-1.5 text-xs">Apply</button>
+            {% if filters_active %}<a href="?show={{ show }}" class="text-xs text-gray-500 hover:text-gray-900">Clear</a>{% endif %}
+            <a href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=csv" class="ml-auto text-xs text-gray-500 hover:text-gray-900">Export CSV</a>
+        </form>
+    </div>
+
+    <div class="div-container overflow-x-auto !p-0">
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-200 text-xs text-gray-600">
+                    <th class="py-2.5 px-4 text-left font-medium whitespace-nowrap">Reference</th>
+                    <th class="py-2.5 px-3 text-left font-medium whitespace-nowrap">Received</th>
+                    <th class="py-2.5 px-3 text-left font-medium">Complainant</th>
+                    <th class="py-2.5 px-3 text-left font-medium">Files</th>
+                    <th class="py-2.5 px-3 text-left font-medium whitespace-nowrap">About</th>
+                    <th class="py-2.5 px-3 text-left font-medium whitespace-nowrap">Handled by</th>
+                    <th class="py-2.5 px-3 text-left font-medium whitespace-nowrap w-48">Eight-week clock</th>
+                    <th class="py-2.5 px-3 text-left font-medium">Status</th>
+                    <th class="py-2.5 px-4 text-left font-medium min-w-[11rem]">Needs attention</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}{% with c=row.complaint %}
+                <tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50 align-top">
+                    <td class="py-3 px-4 whitespace-nowrap">
+                        <a class="link font-semibold tabular-nums" href="{% url 'complaint_detail' c.reference %}">{{ c.reference }}</a>
+                        {% if c.is_informal %}<span class="block text-[11px] text-gray-500">informal</span>{% endif %}
+                    </td>
+                    <td class="py-3 px-3 whitespace-nowrap text-gray-700 tabular-nums">{{ c.received_on|date:'d/m/Y' }}</td>
+                    <td class="py-3 px-3 text-gray-900">
+                        <span class="font-medium">{{ c.complainant_name }}</span>
+                        <span class="block text-xs text-gray-500">{{ c.get_complainant_type_display }}{% if row.categories %} &middot; {{ row.categories|join:', ' }}{% endif %}</span>
+                    </td>
+                    <td class="py-3 px-3 text-gray-700">
+                        {% for m in row.matters %}<a class="link tabular-nums" href="{% url 'home' m.file_number %}">{{ m.file_number }}</a>{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="text-gray-400">No file</span>{% endfor %}
+                    </td>
+                    <td class="py-3 px-3 whitespace-nowrap text-gray-700">{{ c.about_fee_earner.username|default:'—' }}</td>
+                    <td class="py-3 px-3 whitespace-nowrap text-gray-700">{{ c.handled_by.username|default:'—' }}</td>
+                    <td class="py-3 px-3">{% include 'partials/_complaint_clock.html' with clock=row.clock size='row' %}</td>
+                    <td class="py-3 px-3">{% include 'partials/_complaint_status.html' with complaint=c %}</td>
+                    <td class="py-3 px-4 text-xs">
+                        {% for reason in row.attention %}
+                        <span class="block {% if forloop.first and row.clock.state == 'overdue' %}text-red-700{% elif forloop.first and row.clock.state == 'warning' %}text-amber-700{% else %}text-gray-600{% endif %}">{{ reason }}</span>
+                        {% empty %}<span class="text-gray-400">—</span>{% endfor %}
+                    </td>
+                </tr>
+                {% endwith %}{% empty %}
+                <tr>
+                    <td colspan="9" class="py-12 text-center text-sm text-gray-500">
+                        {% if show == 'open' and not filters_active %}No open complaints.{% else %}Nothing matches these filters.{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

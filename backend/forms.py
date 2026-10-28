@@ -792,3 +792,161 @@ class MemoForm(forms.ModelForm):
         for field_name, field in self.fields.items():
                 if field_name not in ['content', 'is_charged']:
                     field.widget.attrs['class'] = 'form-input'
+
+
+# ---------------------------------------------------------------------------
+# Complaints register
+# ---------------------------------------------------------------------------
+
+def _staff_queryset():
+    return CustomUser.objects.filter(is_active=True).order_by('username')
+
+
+class ComplaintForm(forms.ModelForm):
+    """Logging and editing a complaint's facts. Only the complainant's name,
+    the date received and a summary are required: the rest can follow."""
+
+    matter_numbers = forms.CharField(
+        required=False, label='File number(s)',
+        help_text='One or more file numbers, separated by spaces or commas. Leave blank when there is no matter.',
+        widget=forms.TextInput(attrs={
+            'class': 'form-input', 'list': 'complaint_file_numbers',
+            'placeholder': 'ANP9000001 ANP9000002', 'autocomplete': 'off'}))
+
+    class Meta:
+        model = Complaint
+        fields = [
+            'complainant_name', 'complainant_type', 'complainant_client',
+            'complainant_email', 'complainant_phone', 'complainant_address', 'on_behalf_of',
+            'reasonable_adjustments',
+            'received_on', 'received_via', 'received_by', 'about_fee_earner', 'handled_by',
+            'summary', 'categories', 'is_informal', 'act_or_omission_on', 'potential_claim',
+        ]
+        labels = {
+            'complainant_name': 'Complainant',
+            'complainant_type': 'Who they are',
+            'complainant_client': 'Client record',
+            'complainant_email': 'Email',
+            'complainant_phone': 'Phone',
+            'complainant_address': 'Address',
+            'on_behalf_of': 'On behalf of',
+            'received_on': 'Date received',
+            'received_via': 'How it arrived',
+            'received_by': 'Taken by',
+            'about_fee_earner': 'About (fee earner)',
+            'handled_by': 'Handled by',
+            'summary': 'What they say',
+            'is_informal': 'Informal expression of dissatisfaction (not yet a formal complaint)',
+            'act_or_omission_on': 'Date of the act or omission',
+            'potential_claim': 'Alleges negligence or loss (a circumstance for the insurer)',
+        }
+        widgets = {
+            'received_on': forms.DateInput(attrs={'type': 'date', 'class': 'form-input'}),
+            'act_or_omission_on': forms.DateInput(attrs={'type': 'date', 'class': 'form-input'}),
+            'summary': forms.Textarea(attrs={'rows': 4, 'class': 'form-input'}),
+            'complainant_address': forms.Textarea(attrs={'rows': 2, 'class': 'form-input'}),
+            'reasonable_adjustments': forms.Textarea(attrs={'rows': 2, 'class': 'form-input'}),
+            'categories': forms.CheckboxSelectMultiple,
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        staff = _staff_queryset()
+        for name in ('received_by', 'about_fee_earner', 'handled_by'):
+            self.fields[name].queryset = staff
+            self.fields[name].label_from_instance = (
+                lambda u: f'{u.username} · {u.first_name} {u.last_name}'.strip(' ·'))
+        self.fields['about_fee_earner'].queryset = staff.filter(is_matter_fee_earner=True)
+        self.fields['complainant_client'].queryset = ClientContactDetails.objects.order_by('name')
+        self.fields['complainant_client'].required = False
+        self.fields['categories'].queryset = ComplaintCategory.objects.filter(is_active=True)
+        for name, field in self.fields.items():
+            if name in ('categories', 'is_informal', 'potential_claim'):
+                continue
+            field.widget.attrs.setdefault('class', 'form-input')
+        if self.instance.pk:
+            self.fields['matter_numbers'].initial = ' '.join(
+                self.instance.matters.values_list('file_number', flat=True))
+
+    def clean_matter_numbers(self):
+        raw = self.cleaned_data.get('matter_numbers') or ''
+        wanted = [w.strip().upper() for w in raw.replace(',', ' ').split() if w.strip()]
+        if not wanted:
+            return []
+        found = {w.file_number: w for w in WIP.objects.filter(file_number__in=wanted)}
+        missing = [w for w in wanted if w not in found]
+        if missing:
+            raise forms.ValidationError(f"No file with number {', '.join(missing)}.")
+        return [found[w] for w in dict.fromkeys(wanted)]
+
+
+class ComplaintOutcomeForm(forms.ModelForm):
+    """The investigation's result: outcome, redress, root cause, the final
+    response checklist and anything from the ombudsman or the SRA."""
+
+    class Meta:
+        model = Complaint
+        fields = [
+            'fr_states_leo_available', 'fr_has_leo_contact_details', 'fr_has_six_month_warning',
+            'procedure_version_sent',
+            'outcome', 'outcome_summary', 'declined_reason',
+            'redress_type', 'redress_amount', 'redress_credit_note',
+            'root_cause', 'lessons_learned',
+            'leo_reference', 'leo_outcome', 'leo_decision_on', 'sra_reference',
+        ]
+        labels = {
+            'fr_states_leo_available': 'Says the Legal Ombudsman is available if still dissatisfied',
+            'fr_has_leo_contact_details': 'Gives full Legal Ombudsman contact details',
+            'fr_has_six_month_warning': 'Warns of the six-month time limit',
+            'procedure_version_sent': 'Complaints procedure version sent',
+            'outcome_summary': 'What we found',
+            'declined_reason': 'Reason for declining (if declined)',
+            'redress_type': 'Redress',
+            'redress_amount': 'Redress value (£)',
+            'redress_credit_note': 'Credit note',
+            'root_cause': 'Root cause',
+            'lessons_learned': 'Action taken / lessons learned',
+            'leo_reference': 'Ombudsman reference',
+            'leo_outcome': 'Ombudsman outcome',
+            'leo_decision_on': 'Ombudsman decision date',
+            'sra_reference': 'SRA reference',
+        }
+        widgets = {
+            'leo_decision_on': forms.DateInput(attrs={'type': 'date'}),
+            'outcome_summary': forms.Textarea(attrs={'rows': 3}),
+            'declined_reason': forms.Textarea(attrs={'rows': 2}),
+            'root_cause': forms.Textarea(attrs={'rows': 3}),
+            'lessons_learned': forms.Textarea(attrs={'rows': 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        complaint = self.instance
+        notes = CreditNote.objects.none()
+        if complaint.pk:
+            notes = CreditNote.objects.filter(
+                file_number__in=complaint.matters.all()).select_related('file_number')
+        self.fields['redress_credit_note'].queryset = notes
+        self.fields['procedure_version_sent'].queryset = PolicyVersion.objects.filter(
+            policy__description__icontains='complain').select_related('policy').order_by('-version_number')
+        for name, field in self.fields.items():
+            if not name.startswith('fr_'):
+                field.widget.attrs.setdefault('class', 'form-input')
+
+
+class ComplaintEventForm(forms.ModelForm):
+    class Meta:
+        model = ComplaintEvent
+        fields = ['kind', 'occurred_on', 'note', 'document']
+        labels = {'kind': 'What happened', 'occurred_on': 'When', 'note': 'Note', 'document': 'Attach a document'}
+        widgets = {
+            'occurred_on': forms.DateInput(attrs={'type': 'date', 'class': 'form-input'}),
+            'note': forms.Textarea(attrs={'rows': 3, 'class': 'form-input', 'placeholder': 'What was said or done, and by whom.'}),
+            'kind': forms.Select(attrs={'class': 'form-input'}),
+        }
+
+    def clean_document(self):
+        upload = self.cleaned_data.get('document')
+        if upload and upload.size > 50 * 1024 * 1024:
+            raise forms.ValidationError('Documents are limited to 50 MB.')
+        return upload

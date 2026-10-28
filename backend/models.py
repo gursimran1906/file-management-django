@@ -1297,6 +1297,9 @@ class MatterEmails(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
     # Indexed: the email sync de-dups by webLink (MatterEmails.link) on every insert.
     link = models.URLField(max_length=4096, null=True, blank=True, db_index=True)
+    # Set when this email is part of a complaint's file (see Complaint).
+    complaint = models.ForeignKey(
+        'Complaint', on_delete=models.SET_NULL, null=True, blank=True, related_name='emails')
     # Identifiers so the original message (with attachments) can be fetched again
     # from Microsoft 365, e.g. by the correspondence export. Populated by the
     # ingester for new rows; older rows are resolved lazily from the web link.
@@ -1323,6 +1326,8 @@ class MatterLetters(models.Model):
     is_charged = models.BooleanField(default=True, null=True)
     created_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, related_name='letter_created_by', null=True, blank=True)
+    complaint = models.ForeignKey(
+        'Complaint', on_delete=models.SET_NULL, null=True, blank=True, related_name='letters')
     timestamp = models.DateTimeField(auto_now_add=True)
 
 
@@ -1340,6 +1345,8 @@ class MatterAttendanceNotes(models.Model):
     unit = models.IntegerField(default=1, null=True)
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
                                    related_name='attendance_note_created_by', null=True, blank=True)
+    complaint = models.ForeignKey(
+        'Complaint', on_delete=models.SET_NULL, null=True, blank=True, related_name='attendance_notes')
 
     timestamp = models.DateTimeField(auto_now_add=True)
 
@@ -2753,3 +2760,331 @@ class CorrespondenceExport(models.Model):
             self.STATUS_FAILED: 3 if self.candidates else 1,
             self.STATUS_CANCELLED: 2,
         }.get(self.status, 1)
+
+
+# ---------------------------------------------------------------------------
+# Complaints register
+#
+# A complaint is its own record: it points at zero, one or several matters and
+# never changes a matter's status. Correspondence stays on the matter and is
+# tagged to the complaint (``complaint`` on MatterEmails / MatterLetters /
+# MatterAttendanceNotes). The dates here are the ones the SRA Code (8.4), the
+# Legal Ombudsman Scheme Rules (4.1-4.5) and the SRA annual return ask for; the
+# rules themselves live in ``backend/complaints.py``.
+# ---------------------------------------------------------------------------
+
+def complaint_document_storage():
+    """Private storage for complaint-file documents, served only through the
+    login-protected download view (same pattern as matter client documents)."""
+    return FileSystemStorage(location=os.path.join(settings.MEDIA_ROOT, 'complaint_docs'))
+
+
+def complaint_document_upload_path(instance, filename):
+    from backend.sharepoint.paths import sanitize_filename
+    ref = instance.complaint.reference or 'unreferenced'
+    return f'{ref}/{uuid.uuid4()}_{sanitize_filename(filename)}'
+
+
+class ComplaintCategory(models.Model):
+    """What the complaint is about, in the SRA annual-return vocabulary so the
+    return is a count rather than a translation. Seeded by the migration; the
+    firm can add its own."""
+
+    SRA_CATEGORIES = [
+        'Conduct',
+        'Costs information deficient',
+        'Costs excessive',
+        'Criminal activity',
+        'Data protection / breach of confidentiality',
+        'Delay',
+        'Discrimination',
+        'Failure to advise',
+        'Failure to comply with agreed remedy',
+        'Failure to follow instructions',
+        'Failure to investigate complaint internally',
+        'Failure to keep informed',
+        'Failure to keep papers safe',
+        'Failure to progress',
+        'Other',
+    ]
+
+    name = models.CharField(max_length=100, unique=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['sort_order', 'name']
+        verbose_name_plural = 'complaint categories'
+
+    def __str__(self):
+        return self.name
+
+
+class Complaint(models.Model):
+    EIGHT_WEEKS_DAYS = 56
+
+    # Who may complain (Legal Ombudsman Scheme Rules 2.1 / 2.8 and the LSB
+    # s.112 definition, which includes prospective and former clients).
+    COMPLAINANT_TYPE_CHOICES = [
+        ('client', 'Client'),
+        ('former_client', 'Former client'),
+        ('prospective_client', 'Prospective client'),
+        ('beneficiary', 'Beneficiary or personal representative'),
+        ('third_party', 'Third party'),
+        ('other_side', 'Other side'),
+        ('other', 'Other'),
+    ]
+    RECEIVED_VIA_CHOICES = [
+        ('email', 'Email'),
+        ('letter', 'Letter'),
+        ('phone', 'Phone'),
+        ('in_person', 'In person'),
+        ('web', 'Website form'),
+        ('leo', 'Via the Legal Ombudsman'),
+        ('sra', 'Via the SRA'),
+    ]
+
+    STATUS_RECEIVED = 'received'
+    STATUS_ACKNOWLEDGED = 'acknowledged'
+    STATUS_INVESTIGATING = 'investigating'
+    STATUS_FINAL_RESPONSE = 'final_response_sent'
+    STATUS_ESCALATED_LEO = 'escalated_leo'
+    STATUS_ESCALATED_SRA = 'escalated_sra'
+    STATUS_RESOLVED = 'resolved'
+    STATUS_CLOSED_UNRESOLVED = 'closed_unresolved'
+    STATUS_CHOICES = [
+        (STATUS_RECEIVED, 'Received'),
+        (STATUS_ACKNOWLEDGED, 'Acknowledged'),
+        (STATUS_INVESTIGATING, 'Investigating'),
+        (STATUS_FINAL_RESPONSE, 'Final response sent'),
+        (STATUS_ESCALATED_LEO, 'With the Legal Ombudsman'),
+        (STATUS_ESCALATED_SRA, 'With the SRA'),
+        (STATUS_RESOLVED, 'Resolved'),
+        (STATUS_CLOSED_UNRESOLVED, 'Closed, not resolved'),
+    ]
+    # Still being worked, in the firm or at the ombudsman.
+    OPEN_STATUSES = (STATUS_RECEIVED, STATUS_ACKNOWLEDGED, STATUS_INVESTIGATING,
+                     STATUS_FINAL_RESPONSE, STATUS_ESCALATED_LEO, STATUS_ESCALATED_SRA)
+    CLOSED_STATUSES = (STATUS_RESOLVED, STATUS_CLOSED_UNRESOLVED)
+    # Statuses where the firm's own eight-week clock is still running.
+    CLOCK_RUNNING_STATUSES = (STATUS_RECEIVED, STATUS_ACKNOWLEDGED, STATUS_INVESTIGATING)
+
+    OUTCOME_CHOICES = [
+        ('upheld', 'Upheld'),
+        ('partially_upheld', 'Partially upheld'),
+        ('not_upheld', 'Not upheld'),
+        ('resolved_informally', 'Resolved informally'),
+        ('withdrawn', 'Withdrawn'),
+        ('not_a_complaint', 'Not a complaint'),
+        ('declined', 'Declined to consider'),
+    ]
+    REDRESS_CHOICES = [
+        ('none', 'None'),
+        ('apology', 'Apology'),
+        ('fee_reduction', 'Fee reduction'),
+        ('fee_waiver', 'Fee waived'),
+        ('compensation', 'Compensation'),
+        ('work_redone', 'Work redone or corrected'),
+        ('other', 'Other'),
+    ]
+    LEO_OUTCOME_CHOICES = [
+        ('', 'Not yet known'),
+        ('not_accepted', 'Not accepted by LeO'),
+        ('resolved_informally', 'Resolved informally at LeO'),
+        ('no_remedy', 'Decision: no remedy'),
+        ('remedy', 'Decision: remedy ordered'),
+    ]
+
+    reference = models.CharField(max_length=20, unique=True, blank=True)
+    matters = models.ManyToManyField(WIP, blank=True, related_name='complaints')
+
+    complainant_name = models.CharField(max_length=255)
+    complainant_type = models.CharField(
+        max_length=20, choices=COMPLAINANT_TYPE_CHOICES, default='client')
+    # Set when the complainant is a client on our books; the name above is
+    # kept as well so a non-client complainant needs no client record.
+    complainant_client = models.ForeignKey(
+        ClientContactDetails, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='complaints')
+    complainant_email = models.EmailField(blank=True, default='')
+    complainant_phone = models.CharField(max_length=50, blank=True, default='')
+    complainant_address = models.TextField(blank=True, default='')
+    on_behalf_of = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Who the complainant is acting for, if not themselves (an attorney, a relative with consent).')
+    reasonable_adjustments = models.TextField(
+        blank=True, default='',
+        help_text='Adjustments asked for or offered (Equality Act 2010 s.20).')
+
+    received_on = models.DateField()
+    received_via = models.CharField(max_length=12, choices=RECEIVED_VIA_CHOICES, default='email')
+    received_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='complaints_received')
+    about_fee_earner = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='complaints_about')
+    handled_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='complaints_handled')
+    summary = models.TextField(help_text="What the complainant says, in their words where possible.")
+    categories = models.ManyToManyField(ComplaintCategory, blank=True, related_name='complaints')
+    # An expression of dissatisfaction logged before anyone decided it was a
+    # formal complaint. The SRA says record it if in doubt.
+    is_informal = models.BooleanField(default=False)
+    act_or_omission_on = models.DateField(
+        null=True, blank=True,
+        help_text="When the thing complained of happened: the start of the Legal Ombudsman's one-year limit.")
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_RECEIVED)
+    acknowledged_on = models.DateField(null=True, blank=True)
+    complaints_procedure_sent_on = models.DateField(null=True, blank=True)
+    timeline_given_on = models.DateField(null=True, blank=True)
+    last_update_sent_on = models.DateField(null=True, blank=True)
+    leo_signposted_on = models.DateField(null=True, blank=True)
+    final_response_sent_on = models.DateField(null=True, blank=True)
+    # Scheme Rules 4.4: the six-month limit for going to the ombudsman only
+    # starts when the final response carries all three of these.
+    fr_states_leo_available = models.BooleanField(default=False)
+    fr_has_leo_contact_details = models.BooleanField(default=False)
+    fr_has_six_month_warning = models.BooleanField(default=False)
+    procedure_version_sent = models.ForeignKey(
+        PolicyVersion, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, blank=True, default='')
+    outcome_summary = models.TextField(blank=True, default='')
+    declined_reason = models.TextField(blank=True, default='')
+    redress_type = models.CharField(max_length=20, choices=REDRESS_CHOICES, blank=True, default='')
+    redress_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    redress_credit_note = models.ForeignKey(
+        CreditNote, on_delete=models.SET_NULL, null=True, blank=True, related_name='complaints')
+    root_cause = models.TextField(blank=True, default='')
+    lessons_learned = models.TextField(blank=True, default='')
+
+    potential_claim = models.BooleanField(
+        default=False, help_text='Alleges negligence or loss: a circumstance to notify to the PII insurer.')
+    pii_notified_on = models.DateField(null=True, blank=True)
+
+    leo_referred_on = models.DateField(null=True, blank=True)
+    leo_reference = models.CharField(max_length=50, blank=True, default='')
+    leo_outcome = models.CharField(max_length=20, choices=LEO_OUTCOME_CHOICES, blank=True, default='')
+    leo_decision_on = models.DateField(null=True, blank=True)
+    sra_reported_on = models.DateField(null=True, blank=True)
+    sra_reference = models.CharField(max_length=50, blank=True, default='')
+
+    closed_on = models.DateField(null=True, blank=True)
+    closed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='complaints_closed')
+
+    created_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='complaints_created')
+    timestamp = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-received_on', '-id']
+
+    def __str__(self):
+        return self.reference or f'Complaint {self.pk}'
+
+    def save(self, *args, **kwargs):
+        if not self.reference:
+            from .complaints import next_reference
+            self.reference = next_reference(self.received_on)
+        super().save(*args, **kwargs)
+
+    # -- derived -----------------------------------------------------------
+
+    @property
+    def is_open(self):
+        return self.status in self.OPEN_STATUSES
+
+    @property
+    def is_closed(self):
+        return self.status in self.CLOSED_STATUSES
+
+    @property
+    def eight_week_deadline(self):
+        from datetime import timedelta
+        return self.received_on + timedelta(days=self.EIGHT_WEEKS_DAYS)
+
+    @property
+    def clock_stopped_on(self):
+        """The day the firm's eight-week clock stopped: the final response, or
+        closure without one. None while it is still running."""
+        if self.final_response_sent_on:
+            return self.final_response_sent_on
+        if self.status not in self.CLOCK_RUNNING_STATUSES:
+            return self.closed_on or self.leo_referred_on or self.sra_reported_on or None
+        return None
+
+    @property
+    def final_response_complete(self):
+        return (self.fr_states_leo_available and self.fr_has_leo_contact_details
+                and self.fr_has_six_month_warning)
+
+    @property
+    def reporting_year(self):
+        """SRA annual-return year (1 September to 31 August), labelled by the
+        year it ends in."""
+        from .complaints import reporting_year
+        return reporting_year(self.received_on)
+
+    @property
+    def destruction_due_on(self):
+        from .complaints import destruction_due_on
+        return destruction_due_on(self)
+
+    @property
+    def matter_list(self):
+        return list(self.matters.all())
+
+
+class ComplaintEvent(models.Model):
+    """One entry in a complaint's chronology: a call, a letter, an internal
+    note, a milestone. Links to the matter's own correspondence rows rather
+    than copying them."""
+
+    KIND_CHOICES = [
+        ('received', 'Complaint received'),
+        ('acknowledged', 'Acknowledgement sent'),
+        ('call', 'Phone call'),
+        ('meeting', 'Meeting'),
+        ('letter_sent', 'Letter sent'),
+        ('letter_received', 'Letter received'),
+        ('email', 'Email'),
+        ('update', 'Progress update sent'),
+        ('note', 'Internal note'),
+        ('investigation', 'Investigation step'),
+        ('final_response', 'Final response sent'),
+        ('leo', 'Legal Ombudsman contact'),
+        ('sra', 'SRA contact'),
+        ('redress', 'Redress given'),
+        ('pii', 'Insurer notified'),
+        ('closed', 'Closed'),
+        ('reopened', 'Reopened'),
+    ]
+
+    complaint = models.ForeignKey(Complaint, on_delete=models.CASCADE, related_name='events')
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default='note')
+    occurred_on = models.DateField()
+    by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='complaint_events')
+    note = models.TextField(blank=True, default='')
+    email = models.ForeignKey(
+        MatterEmails, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    letter = models.ForeignKey(
+        MatterLetters, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    attendance_note = models.ForeignKey(
+        MatterAttendanceNotes, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    document = models.FileField(
+        upload_to=complaint_document_upload_path, storage=complaint_document_storage,
+        null=True, blank=True)
+    document_name = models.CharField(max_length=255, blank=True, default='')
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-occurred_on', '-id']
+
+    def __str__(self):
+        return f'{self.complaint} {self.get_kind_display()} {self.occurred_on}'
