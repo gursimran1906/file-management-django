@@ -1,0 +1,75 @@
+{% load utils %}
+{% comment %}
+The whole weighting, with the reason behind every number, rendered from
+backend/risk_scoring.py so it cannot say one thing while the scoring does
+another.
+
+LSAG 5.13 expects a practice to be able to explain its weightings, and
+suggests "short complementary notes explaining the rationale for each
+weighting" as a useful addition to the risk assessment. This is those notes,
+kept where the assessment is done rather than only in the methodology file.
+{% endcomment %}
+{% weighting_reference as sides %}
+<details class="div-container">
+    <summary class="cursor-pointer text-sm font-medium text-gray-800">
+        Why each question carries the weight it does
+    </summary>
+
+    <div class="mt-3 space-y-5 text-sm">
+        <p class="text-gray-600">
+            Every weight below is the one the rating is actually scored with.
+            Where a section's own ceiling or floors do the work, the reason for
+            those is given with the section.
+        </p>
+
+        {% for side in sides %}
+        <div class="space-y-3">
+            <h3 class="text-base font-semibold text-gray-900">{{ side.label }}</h3>
+
+            {% for category in side.categories %}
+            <div class="rounded-lg border border-gray-200">
+                <div class="border-b border-gray-100 bg-gray-50 px-3 py-2">
+                    <div class="flex flex-wrap items-baseline justify-between gap-2">
+                        <p class="font-medium text-gray-900">{{ category.label }}</p>
+                        <p class="text-xs text-gray-500 tabular-nums">
+                            capped at {{ category.cap }} &middot;
+                            medium at {{ category.medium_at }} &middot;
+                            high at {{ category.high_at }}
+                        </p>
+                    </div>
+                    {% if category.why %}
+                    <p class="mt-1 text-xs text-gray-600">{{ category.why }}</p>
+                    {% endif %}
+                </div>
+
+                <ul class="divide-y divide-gray-100">
+                    {% for factor in category.factors %}
+                    <li class="px-3 py-2">
+                        <div class="flex flex-wrap items-baseline justify-between gap-2">
+                            <p class="text-gray-800">{{ factor.label }}</p>
+                            <p class="shrink-0 text-xs {% if factor.auto_high %}font-medium text-red-700{% else %}text-gray-500{% endif %} tabular-nums">
+                                {% if factor.auto_high %}
+                                {{ factor.answer }} &rarr; high risk outright
+                                {% else %}
+                                {{ factor.answer }} adds {{ factor.points }}
+                                {% endif %}
+                            </p>
+                        </div>
+                        {% if factor.why %}
+                        <p class="mt-0.5 text-xs text-gray-600">{{ factor.why }}</p>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+
+        <p class="text-xs text-gray-500">
+            Weighting version {{ version }}. Changing any of these means changing
+            the version with it, so an assessment scored under the old weights can
+            still be explained with the weights that produced it.
+        </p>
+    </div>
+</details>

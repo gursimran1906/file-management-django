@@ -22,7 +22,7 @@
                 Client Name:
             </td>
             <td>
-                {{obj.matter.client1.name}}
+                {{ obj.matter.all_client_names|join:", " }}
             </td>
         </tr>
         <tr>
@@ -125,6 +125,10 @@
             <td class=''>{{ obj.meeting_in_person }}</td>
         </tr>
         <tr>
+            <td class=''>Was identity verified from a certified or verified electronic source?</td>
+            <td class=''>{{ obj.id_verified_reliable_source }}</td>
+        </tr>
+        <tr>
             <td class=''>If no, how are we satisfied that the client is who they say they are?</td>
             <td class=''>{{ obj.who_they_are }}</td>
         </tr>
@@ -156,6 +160,14 @@
         <tr class=''>
             <td class=''>Have you identified any reportable discrepancies?</td>
             <td>{{ obj.reportable_discrepancies }}</td>
+        </tr>
+        <tr class=''>
+            <td class=''>Have you checked Companies House, and do the filed details match?</td>
+            <td>{{ obj.companies_house_checked }}</td>
+        </tr>
+        <tr class=''>
+            <td class=''>Do the owners or directors appear unconnected to the business, or to be acting as nominees?</td>
+            <td>{{ obj.nominee_or_unconnected_directors }}</td>
         </tr>
     </table>
     
@@ -231,14 +243,18 @@
             <td class=''>Have you/Client completed and signed our source of funds of questionnaire?</td>
             <td class=''>{{ obj.is_source_of_funds_questionnaire_completed }}</td>
         </tr>
+        <tr class='' >
+            <td class=''>Are we relying on due diligence from an earlier matter?</td>
+            <td class=''>{{ obj.relying_on_previous_due_diligence }}</td>
+        </tr>
     </table>
     <h3 class='text-2xl'>3b. Product/Service risk</h3>
     <table class='table text-black text'>
 
-        <tr class=''>
+        {% if obj.makes_sense_for_client == 'No' %}<tr class=''>
             <td class=''>Based on the client’s profile, does it make sense for the client to instruct us on this transaction?</td>
             <td>{{ obj.makes_sense_for_client }}</td>
-        </tr>
+        </tr>{% endif %}
 
         <tr class=''>
             <td class=''>If no, please provide details</td>
@@ -255,21 +271,21 @@
             <td class=''>If the client is not an individual, is the structure complex or unusual?</td>
             <td class=''>{{ obj.complex_structure_or_unusual }}</td>
         </tr>
-        <tr class=''>
+        {% if obj.higher_risk_sector == 'Yes' %}<tr class=''>
             <td class=''>Does the client own, manage or direct a business or activity that falls within a higher risk sector?</td>
             <td class=''>{{ obj.higher_risk_sector }}</td>
-        </tr>
-        <tr class=''>
+        </tr>{% endif %}
+        {% if obj.cash_intensive_business_activity == 'Yes' %}<tr class=''>
             <td class=''>Does the matter involve a client, a beneficial owner or other party linked to the Transaction, manage or direct a business or activity that is cash intensive?</td>
             <td class=''>{{ obj.cash_intensive_business_activity }}</td>
-        </tr>
+        </tr>{% endif %}
         <tr class=''>
             <td class=''>Does the matter involve a client, a beneficial owner or any party established in a <span class='underline'>high-risk third country</span> or high-risk or jurisdiction?</td>
             <td class=''>{{ obj.high_risk_third_country_or_jurisdiction }}</td>
         </tr>
         <tr class=''>
             <td class=''>Is the client, a beneficial owner or any party linked to the transaction a politically exposed person (PEP), family member or a close associate of a PEP?</td>
-            <td class=''>{{ obj.politically_exposed_person }}</td>
+            <td class=''>{{ obj.get_pep_type_display }}</td>
         </tr>
         <tr class=''>
             <td class=''>Do you have any concerns that the client, a beneficial owner or any parties linked to the transaction is subject to financial sanctions or has links to a country subject to sanctions?</td>
@@ -308,13 +324,23 @@
     <h3 class='text-2xl'>3d. Risk Level and Jurisdiction</h3>
     <table class='table'>
         <tr>
+            <td>Overall Risk Level</td>
+            <td>{{ obj.overall_risk_level }}</td>
+        </tr>
+        <tr>
             <td>Client Risk Level</td>
-            <td>{{ obj.client_risk_level }}</td>
+            <td>{{ obj.client_risk_level }}{% if obj.client_risk_score %} (scored {{ obj.computed_client_risk_level }}, {{ obj.client_risk_score }} points){% endif %}</td>
         </tr>
         <tr>
             <td>Matter Risk Level</td>
-            <td>{{ obj.matter_risk_level }}</td>
+            <td>{{ obj.matter_risk_level }}{% if obj.matter_risk_score %} (scored {{ obj.computed_matter_risk_level }}, {{ obj.matter_risk_score }} points){% endif %}</td>
         </tr>
+        {% if obj.risk_override_reason %}
+        <tr>
+            <td>Reason for recording a rating other than the scored one</td>
+            <td>{{ obj.risk_override_reason }}</td>
+        </tr>
+        {% endif %}
         <tr>
             <td colspan='2'><strong>For high-risk matters:</strong></td>
         </tr>
@@ -327,6 +353,28 @@
             <td>{{ obj.source_of_wealth_correspondence }}</td>
         </tr>
     </table>
+
+    {% if obj.edd_applies %}
+    <h3 class='text-2xl'>3e. Enhanced Due Diligence Measures</h3>
+    <table class='table'>
+        <tr>
+            <td>Additional measures taken</td>
+            <td>{{ obj.edd_measures_taken }}</td>
+        </tr>
+        <tr>
+            <td>How the matter will be monitored more closely</td>
+            <td>{{ obj.edd_enhanced_monitoring }}</td>
+        </tr>
+        <tr>
+            <td>Senior management approval (required for a PEP)</td>
+            <td>{{ obj.edd_senior_approval_by|default_if_none:'Not recorded' }}{% if obj.edd_senior_approval_date %}, {{ obj.edd_senior_approval_date|date:'d/m/Y' }}{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Date escalated to the nominated officer</td>
+            <td>{{ obj.escalated_date|date:'d/m/Y'|default:'Not recorded' }}</td>
+        </tr>
+    </table>
+    {% endif %}
 
     <h3 class='text-2xl'>4. Due Diligence</h3>
     <table class='table'>
@@ -356,6 +404,45 @@
 
 
 
+    {% with breakdown=obj.risk_score_breakdown %}
+    {% if breakdown.version %}
+    <h3 class='text-2xl'>5. How this rating was scored</h3>
+    <p>
+        Each answer carries a weight. A section's total is capped so no single
+        answer can dominate, and a section that is serious on its own sets the
+        rating on its own, whatever the total comes to. Totals under
+        {{ breakdown.bands.medium_at }} are low,
+        {{ breakdown.bands.medium_at }} to {{ breakdown.bands.high_at|add:"-1" }} medium,
+        {{ breakdown.bands.high_at }} or more high. Weighting version
+        {{ breakdown.version }}.
+    </p>
+    {% if breakdown.auto_high %}
+    <p><strong>High risk regardless of score:</strong>
+        {% for trigger in breakdown.auto_high %}{{ trigger }}{% if not forloop.last %}; {% endif %}{% endfor %}.
+    </p>
+    {% endif %}
+    {% if breakdown.edd_reasons %}
+    <p><strong>Enhanced due diligence required:</strong>
+        {% for reason in breakdown.edd_reasons %}{{ reason }}{% if not forloop.last %}; {% endif %}{% endfor %}.
+    </p>
+    {% endif %}
+    <table class='table'>
+        {% for key, side in breakdown.items %}{% if key == 'client' or key == 'matter' %}
+        <tr>
+            <td colspan='2'><strong>{{ key|title }} risk: {{ side.level }} ({{ side.score }} points)</strong></td>
+        </tr>
+        {% for category in side.categories %}
+        <tr>
+            <td>{{ category.label }}{% if category.factors %}<br>
+                <small>{% for factor in category.factors %}{{ factor.label }} (+{{ factor.points }}){% if not forloop.last %}; {% endif %}{% endfor %}</small>
+                {% endif %}</td>
+            <td>{{ category.score }}/{{ category.cap }}{% if category.floor != 'Low' %}<br><small>Section alone makes this at least {{ category.floor|lower }}.</small>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        {% endif %}{% endfor %}
+    </table>
+    {% endif %}
+    {% endwith %}
 </body>
 
 </html>

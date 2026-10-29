@@ -1144,6 +1144,13 @@ textarea.form-input {
   color: rgb(63 63 70 / var(--tw-text-opacity, 1));
 }
 
+/* Chosen by static/js/risk-assessment.js, so Tailwind never sees it in a
+     template - hence the safelist entry in tailwind.config.js. */
+
+.risk-question-risky {
+  background-color: rgb(255 251 235 / 0.7);
+}
+
 .nav-link {
   display: flex;
   align-items: center;
@@ -3281,6 +3288,10 @@ textarea.form-input {
   scroll-margin-top: 6rem;
 }
 
+.list-inside {
+  list-style-position: inside;
+}
+
 .list-disc {
   list-style-type: disc;
 }
@@ -3779,6 +3790,11 @@ textarea.form-input {
   border-color: rgb(252 211 77 / var(--tw-border-opacity, 1));
 }
 
+.border-amber-400 {
+  --tw-border-opacity: 1;
+  border-color: rgb(251 191 36 / var(--tw-border-opacity, 1));
+}
+
 .border-blue-100 {
   --tw-border-opacity: 1;
   border-color: rgb(219 234 254 / var(--tw-border-opacity, 1));
@@ -3901,6 +3917,11 @@ textarea.form-input {
 .border-red-200 {
   --tw-border-opacity: 1;
   border-color: rgb(254 202 202 / var(--tw-border-opacity, 1));
+}
+
+.border-red-300 {
+  --tw-border-opacity: 1;
+  border-color: rgb(252 165 165 / var(--tw-border-opacity, 1));
 }
 
 .border-red-400 {
@@ -4620,6 +4641,10 @@ textarea.form-input {
   padding-left: 0px;
 }
 
+.pl-2 {
+  padding-left: 0.5rem;
+}
+
 .pl-3 {
   padding-left: 0.75rem;
 }
@@ -4658,10 +4683,6 @@ textarea.form-input {
 
 .ps-2 {
   padding-inline-start: 0.5rem;
-}
-
-.ps-4 {
-  padding-inline-start: 1rem;
 }
 
 .pt-1 {
@@ -6080,18 +6101,6 @@ details.gr-disclose > summary::-webkit-details-marker {
     inset: 0px;
   }
 
-  .md\:col-span-1 {
-    grid-column: span 1 / span 1;
-  }
-
-  .md\:col-span-10 {
-    grid-column: span 10 / span 10;
-  }
-
-  .md\:col-span-11 {
-    grid-column: span 11 / span 11;
-  }
-
   .md\:col-span-12 {
     grid-column: span 12 / span 12;
   }
@@ -6120,8 +6129,16 @@ details.gr-disclose > summary::-webkit-details-marker {
     grid-column: span 8 / span 8;
   }
 
+  .md\:col-span-9 {
+    grid-column: span 9 / span 9;
+  }
+
   .md\:me-24 {
     margin-inline-end: 6rem;
+  }
+
+  .md\:w-1\/2 {
+    width: 50%;
   }
 
   .md\:w-5\/6 {
@@ -6204,6 +6221,18 @@ details.gr-disclose > summary::-webkit-details-marker {
 }
 
 @media (min-width: 1024px) {
+  .lg\:sticky {
+    position: sticky;
+  }
+
+  .lg\:top-\[calc\(var\(--navbar-height\)_\+_0\.5rem\)\] {
+    top: calc(var(--navbar-height) + 0.5rem);
+  }
+
+  .lg\:order-last {
+    order: 9999;
+  }
+
   .lg\:col-span-1 {
     grid-column: span 1 / span 1;
   }
@@ -6216,6 +6245,22 @@ details.gr-disclose > summary::-webkit-details-marker {
     grid-column: span 3 / span 3;
   }
 
+  .lg\:col-span-4 {
+    grid-column: span 4 / span 4;
+  }
+
+  .lg\:col-span-8 {
+    grid-column: span 8 / span 8;
+  }
+
+  .lg\:block {
+    display: block;
+  }
+
+  .lg\:max-h-\[calc\(100vh_-_var\(--navbar-height\)_-_1\.5rem\)\] {
+    max-height: calc(100vh - var(--navbar-height) - 1.5rem);
+  }
+
   .lg\:w-fit {
     width: -moz-fit-content;
     width: fit-content;
@@ -6223,6 +6268,10 @@ details.gr-disclose > summary::-webkit-details-marker {
 
   .lg\:max-w-none {
     max-width: none;
+  }
+
+  .lg\:grid-cols-12 {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
   }
 
   .lg\:grid-cols-2 {
@@ -6281,6 +6330,10 @@ details.gr-disclose > summary::-webkit-details-marker {
     align-self: flex-end;
   }
 
+  .lg\:overflow-y-auto {
+    overflow-y: auto;
+  }
+
   .lg\:px-5 {
     padding-left: 1.25rem;
     padding-right: 1.25rem;
@@ -6288,6 +6341,10 @@ details.gr-disclose > summary::-webkit-details-marker {
 
   .lg\:pl-3 {
     padding-left: 0.75rem;
+  }
+
+  .lg\:pr-1 {
+    padding-right: 0.25rem;
   }
 }
 

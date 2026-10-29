@@ -109,6 +109,12 @@
     @apply bg-zinc-100 text-zinc-700 text-xs font-medium px-2.5 py-0.5 rounded-full border border-zinc-200;
   }
 
+  /* Chosen by static/js/risk-assessment.js, so Tailwind never sees it in a
+     template - hence the safelist entry in tailwind.config.js. */
+  .risk-question-risky {
+    @apply bg-amber-50/70;
+  }
+
   .nav-link {
     @apply flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50;
   }

@@ -74,3 +74,75 @@ def get_item(value, key):
         return value[key]
     except Exception:
         return None
+
+
+#: Risk ratings read as a traffic light everywhere they appear.
+RISK_BADGES = {'Low': 'badge-green', 'Medium': 'badge-yellow', 'High': 'badge-red'}
+
+@register.filter(name='risk_badge')
+def risk_badge(level):
+    """Badge class for a Low/Medium/High risk rating."""
+    return RISK_BADGES.get(level, 'badge-gray')
+
+
+@register.filter(name='risk_sides')
+def risk_sides(breakdown):
+    """The two sides of a risk score, in the order they are shown.
+
+    Saves the panel template from having to be handed the pair separately by
+    every view that renders it.
+    """
+    if not breakdown:
+        return []
+    return [
+        {'key': 'client', 'label': 'Client', 'data': breakdown.get('client') or {}},
+        {'key': 'matter', 'label': 'Matter', 'data': breakdown.get('matter') or {}},
+    ]
+
+
+@register.filter(name='question_weight')
+def question_weight(field_name):
+    """What answering this question is worth, as a short phrase.
+
+    Shown beside the question on the risk assessment, so the weighting is
+    visible where the answer is given. Returns '' for the questions that are
+    context rather than score (the matter description, say), so the form stays
+    quiet about them.
+    """
+    from backend.risk_scoring import QUESTION_WEIGHTS
+
+    parts = []
+    for weight in QUESTION_WEIGHTS.get(field_name, []):
+        if weight['auto_high']:
+            parts.append('%s \u2192 high risk outright' % weight['answer'])
+        else:
+            parts.append('%s adds %d' % (weight['answer'], weight['points']))
+    return ' \u00b7 '.join(parts)
+
+
+@register.filter(name='question_weight_detail')
+def question_weight_detail(field_name):
+    """Why this question is worth what it is, for the hover on the weight."""
+    from backend.risk_scoring import QUESTION_WEIGHTS
+
+    weights = QUESTION_WEIGHTS.get(field_name)
+    if not weights:
+        return ''
+    first = weights[0]
+    where = '%s risk \u00b7 %s, capped at %d' % (
+        first['side'].title(), first['category'], first['cap'])
+    reasons = [weight['why'] for weight in weights if weight['why']]
+    return where + ('\n\n' + '\n\n'.join(reasons) if reasons else '')
+
+
+@register.simple_tag(name='weighting_reference')
+def weighting_reference_tag():
+    """The whole weighting, with reasons, for the explainer on the form."""
+    from backend.risk_scoring import weighting_reference
+    return weighting_reference()
+
+
+@register.simple_tag(name='value_band_weights')
+def value_band_weights_tag():
+    from backend.risk_scoring import value_band_weights
+    return value_band_weights()

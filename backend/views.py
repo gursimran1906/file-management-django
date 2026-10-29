@@ -3,6 +3,7 @@ import html
 from html import escape as html_escape
 from collections import defaultdict
 from functools import wraps
+from types import SimpleNamespace
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -18,6 +19,7 @@ from .forms import PmtsForm, PmtsHalfForm, PmtsSlipEditForm, GreenSlipEditForm, 
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm, ArchiveDetailsForm
 # get_file_reviews_due_queryset is re-exported here: compliance_stats imports it from views.
 from .file_reviews import get_file_reviews_due_queryset  # noqa: F401
+from .risk_scoring import apply_scores, score_risk_assessment
 from .utils import (
     create_modification,
     parse_bundle_filename,
@@ -3463,6 +3465,58 @@ def _apply_ongoing_monitoring_completion(monitoring, user):
     return 'Ongoing monitoring saved and awaiting fee earner sign-off.'
 
 
+def _has_entity_client(matter):
+    """True where any client on the matter is a business.
+
+    Beneficial ownership only has to be recorded for an entity, so the form
+    asks for it on that basis rather than of everyone.
+    """
+    return bool(matter) and any(
+        getattr(client, 'is_business', False) for client in matter.all_clients)
+
+
+def _form_breakdown(form, fallback):
+    """The scoring to show beside the form.
+
+    A submitted form has already scored the answers in ``clean()``; otherwise
+    score the assessment as it stands (or, for a new one, the matter's inherent
+    risk alone).
+    """
+    breakdown = getattr(form, 'breakdown', None)
+    if breakdown:
+        return breakdown
+    return score_risk_assessment(fallback)
+
+
+@login_required
+def score_risk_assessment_preview(request):
+    """Score part-answered answers for the live panel on the assessment form.
+
+    The form posts here as it is filled in so the rating, the reasons and the
+    due diligence level update with the answers. Nothing is saved: scoring is
+    read-only, and the rating that counts is the one computed again on save.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+
+    answers = SimpleNamespace(**{key: request.POST.get(key)
+                                 for key in request.POST.keys()})
+    # The matter carries the type of work and so the starting score. The form
+    # is scored as it is being filled in, so the field may be empty or junk.
+    matter_id = request.POST.get('matter') or ''
+    answers.matter = (
+        WIP.objects.filter(pk=matter_id).select_related('matter_type').first()
+        if matter_id.isdigit() else None)
+
+    breakdown = score_risk_assessment(answers)
+    return JsonResponse({
+        'ok': True,
+        'breakdown': breakdown,
+        'html': render_to_string('partials/risk_score_panel.html',
+                                 {'breakdown': breakdown}, request=request),
+    })
+
+
 @login_required
 def add_risk_assessment(request, file_number):
     try:
@@ -3478,6 +3532,9 @@ def add_risk_assessment(request, file_number):
 
         if form.is_valid():
             risk_assessment = form.save(commit=False)
+            # The rating comes from the answers, not from a dropdown someone
+            # picked; the form has already refused an override without a reason.
+            apply_scores(risk_assessment)
             message = _apply_risk_assessment_completion(
                 risk_assessment, request.user)
             risk_assessment.save()
@@ -3497,7 +3554,18 @@ def add_risk_assessment(request, file_number):
 
         form = RiskAssessmentForm(initial={'matter': matter.id})
 
-    return render(request, 'risk_assessment.html', {'form': form, 'file_number': file_number, 'title': 'Add'})
+    return render(request, 'risk_assessment.html', {
+        'form': form,
+        'file_number': file_number,
+        'matter': matter,
+        'title': 'Add',
+        'entity_client': _has_entity_client(matter),
+        # An unanswered assessment scores only the inherent risk of the work.
+        # A blank RiskAssessment() would not: several of its field defaults are
+        # the answer that carries risk, which would open the form on a score
+        # nobody had given.
+        'breakdown': _form_breakdown(form, SimpleNamespace(matter=matter)),
+    })
 
 
 @login_required
@@ -8433,6 +8501,10 @@ def add_ongoing_monitoring(request, file_number):
         messages.error(
             request, 'Matter with the given file number does not exist.')
         return redirect('index')
+    # The rating the matter already carries, shown beside the review.
+    latest = RiskAssessment.objects.filter(
+        matter=matter).order_by('-due_diligence_date', '-id').first()
+
     if request.method == 'POST':
         form = OngoingMonitoringForm(request.POST)
 
@@ -8456,9 +8528,21 @@ def add_ongoing_monitoring(request, file_number):
                 error_message += f'\n{field}: {", ".join(errors)}'
             messages.error(request, error_message)
     else:
-        form = OngoingMonitoringForm()
+        # Monitoring starts from the rating the matter already carries, so a
+        # review that found nothing does not quietly reset it to Low.
+        initial = {}
+        if latest:
+            initial = {'updated_risk_level_client': latest.client_risk_level,
+                       'updated_risk_level_matter': latest.matter_risk_level}
+        form = OngoingMonitoringForm(initial=initial)
 
-    return render(request, 'ongoing_monitoring.html', {'form': form, 'file_number': file_number, 'title': 'Add'})
+    return render(request, 'ongoing_monitoring.html', {
+        'form': form,
+        'file_number': file_number,
+        'matter': matter,
+        'title': 'Add',
+        'latest_risk_assessment': latest,
+    })
 
 
 @login_required
@@ -8755,6 +8839,7 @@ def edit_risk_assessment(request, id):
                     'new_value': None
                 }
             risk_assesssment = form.save(commit=False)
+            apply_scores(risk_assesssment)
             # Any edit re-runs the sign-off flow: a fee earner's edit stays
             # signed off (by them); anyone else's edit sends it back for
             # sign-off so a signed assessment can't change silently.
@@ -8765,6 +8850,18 @@ def edit_risk_assessment(request, id):
             for field in changed_fields:
                 changes[field]['new_value'] = str(
                     getattr(risk_assesssment, field))
+
+            # The computed rating isn't on the form, so record its moves too:
+            # a changed answer that shifts the score is the thing a reviewer
+            # most needs to see in the audit trail.
+            for field in ('computed_client_risk_level', 'computed_matter_risk_level',
+                          'computed_due_diligence_level', 'overall_risk_level',
+                          'client_risk_score', 'matter_risk_score'):
+                old_value = getattr(duplicate_obj, field)
+                new_value = getattr(risk_assesssment, field)
+                if old_value != new_value:
+                    changes[field] = {'old_value': str(old_value),
+                                      'new_value': str(new_value)}
             if duplicate_obj.signoff_status != risk_assesssment.signoff_status:
                 changes['signoff_status'] = {
                     'old_value': duplicate_obj.get_signoff_status_display(),
@@ -8787,7 +8884,15 @@ def edit_risk_assessment(request, id):
     else:
         form = RiskAssessmentForm(instance=risk_assesssment)
 
-    return render(request, 'risk_assessment.html', {'form': form, 'file_number': risk_assesssment.matter.file_number, 'title': 'Edit'})
+    return render(request, 'risk_assessment.html', {
+        'form': form,
+        'file_number': risk_assesssment.matter.file_number,
+        'matter': risk_assesssment.matter,
+        'title': 'Edit',
+        'entity_client': _has_entity_client(risk_assesssment.matter),
+        'risk_assessment': risk_assesssment,
+        'breakdown': _form_breakdown(form, risk_assesssment),
+    })
 
 
 def _risk_assessment_signoff_redirect(risk_assessment):
