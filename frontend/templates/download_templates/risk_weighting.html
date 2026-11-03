@@ -93,14 +93,40 @@ it describes rather than by the day it was printed.
     {% endfor %}
     {% endfor %}
 
+    <h2>Version history</h2>
+    <p>
+        Each version is recorded with what changed and why. An assessment stores
+        the version it was scored under, so a file rated under an earlier
+        weighting can be read against the weighting that actually produced its
+        rating rather than against this one.
+    </p>
+    {% for entry in history %}
+    <h3>
+        Version {{ entry.version }} &mdash; effective {{ entry.effective|date:"j F Y" }}
+        {% if forloop.first %}(current){% endif %}
+    </h3>
+    <p>{{ entry.summary }}</p>
+    {% if entry.changes %}
+    <ul>
+        {% for change in entry.changes %}<li>{{ change }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% endfor %}
+
     <h2>Keeping this current</h2>
     <p>
         Review this alongside the firm-wide risk assessment at least annually,
-        and whenever the SRA updates its sectoral risk assessment. Changing any
-        weight means changing the version and its date, so that an assessment
-        scored under an earlier version can still be explained by the weighting
-        that produced it. Assessments completed before
-        {{ version_date|date:"j F Y" }} were rated by hand and are marked as such.
+        and whenever the SRA updates its sectoral risk assessment.
+    </p>
+    <p>
+        Changing any weight means adding a version above, with the date it takes
+        effect and what changed. Assessments already completed are not re-scored:
+        each is a point-in-time record a fee earner signed off, and its rating
+        stands. The "Matter risk ratings" report lists every live matter still
+        scored under a superseded weighting, so those files can be found and
+        reviewed deliberately rather than silently re-rated. Assessments
+        completed before {{ version_date|date:"j F Y" }} were rated by hand and
+        are marked as such.
     </p>
 </body>
 </html>

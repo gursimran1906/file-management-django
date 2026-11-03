@@ -575,6 +575,23 @@ class WeightingExportTests(TestCase):
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertIn(SCORING_VERSION, response['Content-Disposition'])
 
+    def test_the_current_version_comes_from_the_history(self):
+        """One source of truth, so a bump cannot update one and not the other."""
+        from ..risk_scoring import SCORING_VERSION_DATE, WEIGHTING_HISTORY
+        self.assertEqual(SCORING_VERSION, WEIGHTING_HISTORY[-1].version)
+        self.assertEqual(SCORING_VERSION_DATE, WEIGHTING_HISTORY[-1].effective)
+
+    def test_every_version_records_what_changed(self):
+        from ..risk_scoring import WEIGHTING_HISTORY
+        for entry in WEIGHTING_HISTORY:
+            self.assertTrue(entry.summary, entry.version)
+            self.assertTrue(entry.changes, entry.version)
+
+    def test_the_export_carries_the_version_history(self):
+        response = self.client.get(reverse('download_risk_weighting'))
+        self.assertEqual(response.status_code, 200)
+        self.assertGreater(len(response.content), 10000)
+
     def test_it_is_dated_by_the_weighting_not_by_today(self):
         """A reader has to be able to tell which version a file was scored under."""
         from ..risk_scoring import SCORING_VERSION_DATE
@@ -635,6 +652,18 @@ class MatterRiskReportTests(TestCase):
     def test_matters_with_no_assessment_can_be_listed(self):
         body = self.rows(level='none')
         self.assertIn('RP0004', body)
+        self.assertNotIn('RP0001', body)
+
+    def test_a_file_scored_under_an_older_weighting_is_marked(self):
+        """What makes a weighting change findable rather than silent."""
+        stale = clean_assessment(make_matter('RP0006'))
+        apply_scores(stale)
+        stale.scoring_version = '2025.9'
+        stale.save()
+
+        body = self.rows(basis='superseded')
+        self.assertIn('RP0006', body)
+        self.assertIn('superseded', body)
         self.assertNotIn('RP0001', body)
 
     def test_files_rated_the_old_way_can_be_listed(self):

@@ -204,8 +204,22 @@ be explained with the weights that produced it rather than with today's.
 
 **This note and the weightings should be reviewed at least annually, alongside
 the firm-wide risk assessment, and whenever the SRA updates its sectoral risk
-assessment.** Changing a weight means bumping `SCORING_VERSION` in
-`backend/risk_scoring.py` and regenerating `risk-weightings.md`.
+assessment.**
+
+### Changing a weight
+
+Add an entry to `WEIGHTING_HISTORY` in `backend/risk_scoring.py` with the new
+version, the date it takes effect, and what changed and why. The current
+version and its date are read from the last entry, so there is nothing else to
+update; regenerate `risk-weightings.md` and the exported PDF picks the history
+up automatically.
+
+**Assessments already completed are not re-scored.** Each is a point-in-time
+record that a fee earner signed off, and its rating stands. Every assessment
+stores the version it was scored under, so an older rating can be read against
+the weighting that actually produced it. The "Matter risk ratings" report lists
+every live matter still scored under a superseded weighting, which is how those
+files get found and reviewed deliberately rather than silently re-rated.
 
 ## Sources
 

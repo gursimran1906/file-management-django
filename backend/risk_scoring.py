@@ -48,11 +48,54 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-# Bump on any change to weights, caps, floors, bands or triggers below, and
-# move the date with it: the date is what the exported weighting is dated by,
-# and what tells the firm which version a given assessment was scored under.
-SCORING_VERSION = '2026.1'
-SCORING_VERSION_DATE = date(2026, 10, 26)
+@dataclass(frozen=True)
+class WeightingVersion:
+    """One version of the weighting, and what changed when it came in."""
+
+    version: str
+    effective: date
+    summary: str
+    changes: tuple = ()
+
+
+#: Every version of the weighting, oldest first.
+#:
+#: Changing any weight, cap, floor, band or trigger means adding an entry here
+#: and nothing else: the current version and its date are read from the last
+#: one. An entry is the record of what changed and why, which is what lets the
+#: firm answer "this file was rated under 2026.1 - what did 2026.1 say, and why
+#: is it different now?" long after the person who made the change has gone.
+#:
+#: Assessments are not re-scored when a version lands. One is a point-in-time
+#: record a fee earner signed off, so the rating stands; the matter risk
+#: ratings report lists everything still scored under a superseded weighting so
+#: those files can be found and reviewed deliberately.
+WEIGHTING_HISTORY = (
+    WeightingVersion(
+        version='2026.1',
+        effective=date(2026, 10, 26),
+        summary=(
+            'First weighting. Replaces a rating picked by hand with one scored '
+            'from the answers, following LSAG 5.13.'),
+        changes=(
+            'Weighted factors, per-section ceilings, and per-section floors so a '
+            'serious section sets the rating on its own.',
+            'Automatic high-risk triggers for sanctions, a designated person, a '
+            'high-risk third country, a non-domestic PEP, proliferation financing '
+            'and a transaction with no apparent purpose.',
+            'Matter type carries an inherent risk: conveyancing high, probate '
+            'medium, family low.',
+            'Questions added for the SRA sectoral risk assessment of 6 August '
+            '2026: passporting, Companies House, nominee directors and the '
+            'quality of remote identity verification.',
+            'Domestic and non-domestic PEPs weighted separately, per MLRs reg '
+            '35(3A).',
+        ),
+    ),
+)
+
+SCORING_VERSION = WEIGHTING_HISTORY[-1].version
+SCORING_VERSION_DATE = WEIGHTING_HISTORY[-1].effective
 
 LOW = 'Low'
 MEDIUM = 'Medium'

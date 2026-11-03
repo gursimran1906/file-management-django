@@ -25,6 +25,7 @@ from .risk_scoring import (
     MEDIUM_BAND,
     SCORING_VERSION,
     SCORING_VERSION_DATE,
+    WEIGHTING_HISTORY,
     apply_scores,
     score_risk_assessment,
     weighting_reference,
@@ -3490,6 +3491,7 @@ def download_risk_weighting(request):
         'bands': {'medium_at': MEDIUM_BAND, 'high_at': HIGH_BAND},
         'high_band_max': HIGH_BAND - 1,
         'mandatory_edd': [why for _field, _answer, why in MANDATORY_EDD_RULES],
+        'history': list(reversed(WEIGHTING_HISTORY)),
     }, request=request)
 
     response = HttpResponse(HTML(string=html).write_pdf(),
@@ -9986,6 +9988,8 @@ def report_matter_risk_ratings(request):
             'changed': bool(overrides),
             'rated_down': bool(ra and ra.is_rated_below_computed),
             'legacy': bool(ra) and ra.scoring_version in ('', 'legacy'),
+            'superseded': bool(ra) and ra.scoring_version not in (
+                '', 'legacy', SCORING_VERSION),
             'overrides': overrides,
         })
 
@@ -10011,6 +10015,8 @@ def report_matter_risk_ratings(request):
             continue
         if basis == 'legacy' and not r['legacy']:
             continue
+        if basis == 'superseded' and not r['superseded']:
+            continue
         if basis == 'scored' and (r['legacy'] or r['ra'] is None):
             continue
         if fee_earner_id and r['fee_earner_id'] != fee_earner_id:
@@ -10028,7 +10034,9 @@ def report_matter_risk_ratings(request):
             assessed = (ra.due_diligence_date.strftime('%d/%m/%Y')
                         if ra.due_diligence_date else '—')
             basis_label = ('Old way' if r['legacy']
-                           else 'Scored v%s' % ra.scoring_version)
+                           else 'Scored v%s%s' % (
+                               ra.scoring_version,
+                               ' (superseded)' if r['superseded'] else ''))
 
         rows.append({
             'cells': {
@@ -10084,6 +10092,7 @@ def report_matter_risk_ratings(request):
         {'name': 'basis', 'label': 'Basis', 'type': 'select', 'value': basis,
          'options': [{'value': '', 'label': 'All'},
                      {'value': 'scored', 'label': 'Scored'},
+                     {'value': 'superseded', 'label': 'Scored under an older weighting'},
                      {'value': 'legacy', 'label': 'Rated the old way'}]},
         {'name': 'fee_earner', 'label': 'Fee earner', 'type': 'select', 'value': fee_earner_id,
          'options': [{'value': '', 'label': 'All'}] + [
@@ -10099,8 +10108,10 @@ def report_matter_risk_ratings(request):
             'Every live matter and the risk rating on its file. "Against the score" '
             'shows where the rating recorded differs from the one the answers '
             'scored, which LSAG 5.13 allows with a documented reason. Files marked '
-            '"Old way" were rated by hand before the scoring existed and are scored '
-            'the next time the assessment is edited.'),
+            '"Old way" were rated by hand before the scoring existed. A file scored '
+            'under a weighting that has since been replaced is marked superseded: '
+            'its rating stands, but it is worth reviewing against the current one. '
+            'Nothing is re-scored until its assessment is next edited.'),
         filters=filters, columns=columns, rows=rows,
         actions=[{'label': 'Weighting (PDF)',
                   'href': reverse('download_risk_weighting')}],
