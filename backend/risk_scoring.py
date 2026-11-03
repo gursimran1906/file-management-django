@@ -45,10 +45,14 @@ explained with the weights that produced it.
 """
 
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
-# Bump on any change to weights, caps, floors, bands or triggers below.
+# Bump on any change to weights, caps, floors, bands or triggers below, and
+# move the date with it: the date is what the exported weighting is dated by,
+# and what tells the firm which version a given assessment was scored under.
 SCORING_VERSION = '2026.1'
+SCORING_VERSION_DATE = date(2026, 10, 26)
 
 LOW = 'Low'
 MEDIUM = 'Medium'

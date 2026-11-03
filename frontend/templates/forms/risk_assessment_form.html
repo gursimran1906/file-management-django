@@ -54,7 +54,7 @@ which needs a reason.
                 {% include 'partials/risk_question_row.html' with field=form.client_concerns text="Do you have any concerns about the client?" help="For example capacity, undue influence or vulnerability." risky="Yes" %}
                 {% include 'partials/risk_question_row.html' with field=form.third_party_authority text="If a third party is instructing, do we have evidence of their authority to act?" risky="No" %}
                 {% include 'partials/risk_question_row.html' with field=form.concerns_about_parties text="Do you have any concerns about this client, agent or third parties?" risky="Yes" %}
-                {% include 'partials/risk_question_row.html' with field=form.designated_person_entity text="Is the client, or any party, a designated person or entity?" help="A designated person makes the matter high risk whatever the rest of the answers say." risky="Yes" %}
+                {% include 'partials/risk_question_row.html' with field=form.designated_person_entity text="Is the client, or any party, a designated person or entity?" help="A designated person is someone named on the UK sanctions list, whose assets must be frozen — check HM Treasury’s consolidated list. Yes makes the matter high risk whatever the rest of the answers say." risky="Yes" %}
                 <div class="mt-3">
                     <label for="{{ form.issues_identified_client_risks_sec.id_for_label }}">Issues identified in this section</label>
                     <p class="text-xs text-gray-500" data-flag-hint>Required if anything in this section is flagged.</p>
@@ -169,7 +169,7 @@ which needs a reason.
                 {% include 'partials/risk_question_row.html' with field=form.complex_structure text="Does the matter involve creating a complex structure?" risky="Yes" %}
                 {% include 'partials/risk_question_row.html' with field=form.cash_intensive_industry text="Does the client or the matter involve a cash-intensive industry or business?" help="Asked once, covering both the client's own business and the matter." risky="Yes" %}
                 {% include 'partials/risk_question_row.html' with field=form.high_risk_industry text="Does the client or the matter involve a high-risk industry or sector?" risky="Yes" %}
-                {% include 'partials/risk_question_row.html' with field=form.proliferation_financing text="Does the matter involve a risk of proliferation financing?" help="High risk whatever the rest of the answers say." risky="Yes" %}
+                {% include 'partials/risk_question_row.html' with field=form.proliferation_financing text="Does the matter involve a risk of proliferation financing?" help="Funding the spread of nuclear, chemical or biological weapons, or the means to deliver them. High risk whatever the rest of the answers say." risky="Yes" %}
                 {% include 'partials/risk_question_row.html' with field=form.other_risks text="Are there any other AML or counter-terrorist financing risks?" risky="Yes" %}
                 {% include 'partials/risk_question_row.html' with field=form.transactional_matter text="Is the matter transactional?" %}
                 <div data-show-when="transactional_matter" data-show-values="No" class="hidden">
@@ -209,7 +209,7 @@ which needs a reason.
             </p>
             <div class="mt-4">
                 {% include 'partials/risk_question_row.html' with field=form.complex_structure_or_unusual text="If the client is not an individual, is its own structure complex or unusual?" risky="Yes" %}
-                {% include 'partials/risk_question_row.html' with field=form.high_risk_third_country_or_jurisdiction text="Is the client, a beneficial owner or any party established in a high-risk third country or jurisdiction?" help="Enhanced due diligence is mandatory where this is Yes (MLRs reg 33(1)(b))." risky="Yes" %}
+                {% include 'partials/risk_question_row.html' with field=form.high_risk_third_country_or_jurisdiction text="Is the client, a beneficial owner or any party established in a high-risk third country or jurisdiction?" help="A country on the UK’s high-risk third countries list, which follows the FATF lists. Enhanced due diligence is mandatory where this is Yes (MLRs reg 33(1)(b))." risky="Yes" %}
                 {% comment %}
                 Since 10 January 2024 the MLRs treat a domestic PEP as lower risk
                 than a non-domestic one, with enhanced measures applied to a lesser
@@ -378,5 +378,5 @@ which needs a reason.
             <button type="submit" class="btn-primary text-xs">Save</button>
             <a href="{% url 'home' file_number %}" class="text-xs text-gray-600 hover:underline">Cancel</a>
         </div>
-        {% include 'partials/risk_weighting_reference.html' with version=breakdown.version %}    </div>
+        {% include 'partials/risk_weighting_reference.html' with version=breakdown.version version_date=scoring_version_date %}    </div>
 </form>

@@ -19,7 +19,16 @@ from .forms import PmtsForm, PmtsHalfForm, PmtsSlipEditForm, GreenSlipEditForm, 
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm, ArchiveDetailsForm
 # get_file_reviews_due_queryset is re-exported here: compliance_stats imports it from views.
 from .file_reviews import get_file_reviews_due_queryset  # noqa: F401
-from .risk_scoring import apply_scores, score_risk_assessment
+from .risk_scoring import (
+    HIGH_BAND,
+    MANDATORY_EDD_RULES,
+    MEDIUM_BAND,
+    SCORING_VERSION,
+    SCORING_VERSION_DATE,
+    apply_scores,
+    score_risk_assessment,
+    weighting_reference,
+)
 from .utils import (
     create_modification,
     parse_bundle_filename,
@@ -3465,6 +3474,31 @@ def _apply_ongoing_monitoring_completion(monitoring, user):
     return 'Ongoing monitoring saved and awaiting fee earner sign-off.'
 
 
+@login_required
+def download_risk_weighting(request):
+    """The whole weighting, with its reasoning, as a PDF.
+
+    LSAG 5.13 expects a practice to be able to explain its weightings, so this
+    is written to be kept with the firm-wide risk assessment. It is dated by
+    the version it describes rather than by the day it was printed.
+    """
+    html = render_to_string('download_templates/risk_weighting.html', {
+        'sides': weighting_reference(),
+        'version': SCORING_VERSION,
+        'version_date': SCORING_VERSION_DATE,
+        'printed': timezone.localdate(),
+        'bands': {'medium_at': MEDIUM_BAND, 'high_at': HIGH_BAND},
+        'high_band_max': HIGH_BAND - 1,
+        'mandatory_edd': [why for _field, _answer, why in MANDATORY_EDD_RULES],
+    }, request=request)
+
+    response = HttpResponse(HTML(string=html).write_pdf(),
+                            content_type='application/pdf')
+    response['Content-Disposition'] = (
+        'attachment; filename="risk_weighting_%s.pdf"' % SCORING_VERSION)
+    return response
+
+
 def _has_entity_client(matter):
     """True where any client on the matter is a business.
 
@@ -3560,6 +3594,7 @@ def add_risk_assessment(request, file_number):
         'matter': matter,
         'title': 'Add',
         'entity_client': _has_entity_client(matter),
+        'scoring_version_date': SCORING_VERSION_DATE,
         # An unanswered assessment scores only the inherent risk of the work.
         # A blank RiskAssessment() would not: several of its field defaults are
         # the answer that carries risk, which would open the form on a score
@@ -8890,6 +8925,7 @@ def edit_risk_assessment(request, id):
         'matter': risk_assesssment.matter,
         'title': 'Edit',
         'entity_client': _has_entity_client(risk_assesssment.matter),
+        'scoring_version_date': SCORING_VERSION_DATE,
         'risk_assessment': risk_assesssment,
         'breakdown': _form_breakdown(form, risk_assesssment),
     })
@@ -9562,6 +9598,10 @@ def reports_hub(request):
     poa_issues_count = len(
         get_live_matter_client_document_issues('proof_of_address'))
     risk_due_count = get_risk_assessments_due_queryset(WIP.objects.all()).count()
+    high_risk_count = RiskAssessment.objects.filter(
+        matter__file_status__status__in=['Open', 'To Be Closed'],
+        overall_risk_level='High',
+    ).values('matter_id').distinct().count()
     file_reviews_count = get_file_reviews_due_queryset(WIP.objects.all()).count()
     # Fee earners see their own queue size; everyone else the firm's.
     signoff_count = pending_count(request.user if request.user.is_matter_fee_earner else None)
@@ -9577,6 +9617,14 @@ def reports_hub(request):
                                     'Sign off several in a row without leaving the page.'),
                     'url_name': 'signoff_queue',
                     'count': signoff_count,
+                },
+                {
+                    'name': 'Matter risk ratings',
+                    'description': ('Every live matter and the risk its file carries, filtered by '
+                                    'level. Shows where a rating was recorded against the score, '
+                                    'and which files are still rated the old way.'),
+                    'url_name': 'report_matter_risk_ratings',
+                    'count': high_risk_count,
                 },
                 {
                     'name': 'Proof of ID issues',
@@ -9895,6 +9943,167 @@ def report_expired_proof_of_address(request):
         slug='proof_of_address_issues',
         title='Proof of Address issues',
         description='Live-matter clients whose Proof of Address is missing or expired. Missing first, then most overdue.',
+    )
+
+
+@login_required
+def report_matter_risk_ratings(request):
+    """Every live matter and the risk rating its file carries.
+
+    The register a supervisor reads down: what each matter is rated, whether
+    the rating is the one its answers scored, and which files are still
+    carrying a rating given by hand before the scoring existed.
+    """
+    assessments = {}
+    for ra in (RiskAssessment.objects
+               .filter(matter__file_status__status__in=['Open', 'To Be Closed'])
+               .select_related('matter', 'matter__client1', 'matter__fee_earner',
+                               'matter__matter_type')
+               .order_by('matter_id', 'due_diligence_date', 'id')):
+        assessments[ra.matter_id] = ra      # ordered ascending, so last wins
+
+    live = (WIP.objects
+            .filter(file_status__status__in=['Open', 'To Be Closed'])
+            .select_related('client1', 'fee_earner', 'matter_type'))
+
+    source, fee_earner_options = [], {}
+    for wip in live:
+        ra = assessments.get(wip.id)
+        fee_earner = wip.responsible_fee_earner
+        fe_name = fee_earner.get_full_name() if fee_earner else ''
+        if fee_earner:
+            fee_earner_options[str(fee_earner.id)] = fe_name or fee_earner.username
+
+        overrides = ra.risk_overrides if ra else []
+        source.append({
+            'file_number': wip.file_number,
+            'client': wip.all_client_names or '',
+            'fee_earner_id': str(fee_earner.id) if fee_earner else '',
+            'fee_earner': fe_name,
+            'matter_type': str(wip.matter_type) if wip.matter_type else '',
+            'ra': ra,
+            'level': ra.overall_risk_level if ra else '',
+            'changed': bool(overrides),
+            'rated_down': bool(ra and ra.is_rated_below_computed),
+            'legacy': bool(ra) and ra.scoring_version in ('', 'legacy'),
+            'overrides': overrides,
+        })
+
+    q = request.GET.get('q', '').strip()
+    level = request.GET.get('level', '').strip()
+    change = request.GET.get('change', '').strip()
+    basis = request.GET.get('basis', '').strip()
+    fee_earner_id = request.GET.get('fee_earner', '').strip()
+
+    rows = []
+    for r in source:
+        if q and q.lower() not in f"{r['file_number']} {r['client']}".lower():
+            continue
+        if level == 'none' and r['ra'] is not None:
+            continue
+        if level and level != 'none' and r['level'] != level:
+            continue
+        if change == 'changed' and not r['changed']:
+            continue
+        if change == 'down' and not r['rated_down']:
+            continue
+        if change == 'as_scored' and (r['changed'] or r['ra'] is None):
+            continue
+        if basis == 'legacy' and not r['legacy']:
+            continue
+        if basis == 'scored' and (r['legacy'] or r['ra'] is None):
+            continue
+        if fee_earner_id and r['fee_earner_id'] != fee_earner_id:
+            continue
+
+        ra = r['ra']
+        if ra is None:
+            rating, scored, assessed, basis_label = 'No assessment', '—', '—', '—'
+        else:
+            rating = ra.overall_risk_level
+            scored = ('Rated by hand' if r['legacy']
+                      else '; '.join(f'{label}: {computed} \u2192 {recorded}'
+                                     for label, computed, recorded in r['overrides'])
+                      or 'As scored')
+            assessed = (ra.due_diligence_date.strftime('%d/%m/%Y')
+                        if ra.due_diligence_date else '—')
+            basis_label = ('Old way' if r['legacy']
+                           else 'Scored v%s' % ra.scoring_version)
+
+        rows.append({
+            'cells': {
+                'file_number': {'value': r['file_number'],
+                                'href': reverse('home', args=[r['file_number']])},
+                'client': {'value': r['client'] or '—', 'href': None},
+                'fee_earner': {'value': r['fee_earner'] or '—', 'href': None},
+                'matter_type': {'value': r['matter_type'] or '—', 'href': None},
+                'rating': {'value': rating, 'href': None},
+                'scored': {'value': scored, 'href': None},
+                'basis': {'value': basis_label, 'href': None},
+                'assessed': {'value': assessed, 'href': None},
+            },
+            'sort': {
+                'file_number': r['file_number'],
+                'client': r['client'].lower(),
+                'fee_earner': r['fee_earner'].lower(),
+                'matter_type': r['matter_type'].lower(),
+                # Highest risk first when sorted descending.
+                'rating': {'Low': 1, 'Medium': 2, 'High': 3}.get(r['level'], 0),
+                'scored': scored.lower(),
+                'basis': basis_label.lower(),
+                'assessed': (ra.due_diligence_date if ra and ra.due_diligence_date
+                             else timezone.localdate().replace(year=1900)),
+            },
+        })
+
+    columns = [
+        {'key': 'file_number', 'label': 'File', 'sortable': True},
+        {'key': 'client', 'label': 'Client', 'sortable': True, 'truncate': True},
+        {'key': 'fee_earner', 'label': 'Fee earner', 'sortable': True, 'truncate': True},
+        {'key': 'matter_type', 'label': 'Type', 'sortable': True},
+        {'key': 'rating', 'label': 'Overall risk', 'sortable': True},
+        {'key': 'scored', 'label': 'Against the score', 'sortable': True, 'truncate': True},
+        {'key': 'basis', 'label': 'Basis', 'sortable': True},
+        {'key': 'assessed', 'label': 'Assessed', 'sortable': True},
+    ]
+
+    filters = [
+        {'name': 'q', 'label': 'Search', 'type': 'text', 'value': q,
+         'placeholder': 'File or client\u2026'},
+        {'name': 'level', 'label': 'Overall risk', 'type': 'select', 'value': level,
+         'options': [{'value': '', 'label': 'All'},
+                     {'value': 'High', 'label': 'High'},
+                     {'value': 'Medium', 'label': 'Medium'},
+                     {'value': 'Low', 'label': 'Low'},
+                     {'value': 'none', 'label': 'No assessment'}]},
+        {'name': 'change', 'label': 'Against the score', 'type': 'select', 'value': change,
+         'options': [{'value': '', 'label': 'All'},
+                     {'value': 'as_scored', 'label': 'As scored'},
+                     {'value': 'changed', 'label': 'Changed'},
+                     {'value': 'down', 'label': 'Rated down'}]},
+        {'name': 'basis', 'label': 'Basis', 'type': 'select', 'value': basis,
+         'options': [{'value': '', 'label': 'All'},
+                     {'value': 'scored', 'label': 'Scored'},
+                     {'value': 'legacy', 'label': 'Rated the old way'}]},
+        {'name': 'fee_earner', 'label': 'Fee earner', 'type': 'select', 'value': fee_earner_id,
+         'options': [{'value': '', 'label': 'All'}] + [
+             {'value': fid, 'label': name}
+             for fid, name in sorted(fee_earner_options.items(), key=lambda kv: kv[1].lower())
+         ]},
+    ]
+    return render_report(
+        request,
+        slug='matter_risk_ratings',
+        title='Matter risk ratings',
+        description=(
+            'Every live matter and the risk rating on its file. "Against the score" '
+            'shows where the rating recorded differs from the one the answers '
+            'scored, which LSAG 5.13 allows with a documented reason. Files marked '
+            '"Old way" were rated by hand before the scoring existed and are scored '
+            'the next time the assessment is edited.'),
+        filters=filters, columns=columns, rows=rows,
+        actions=[{'label': 'Weighting (PDF)',
+                  'href': reverse('download_risk_weighting')}],
     )
 
 

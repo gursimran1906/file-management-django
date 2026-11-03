@@ -45,9 +45,9 @@ from .completion_statement_views import (
     completion_statement_schedule_create_slip,
 )
 from .views import download_cashier_data, edit_file, edit_client, edit_authorised_party, download_file_logs, download_frontsheet, generate_ledgers_report, user_dashboard, download_risk_assessment
-from .views import add_risk_assessment, score_risk_assessment_preview, sign_off_risk_assessment, return_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring, sign_off_ongoing_monitoring, return_ongoing_monitoring
+from .views import add_risk_assessment, score_risk_assessment_preview, download_risk_weighting, sign_off_risk_assessment, return_risk_assessment, download_search_report, policies_display, policy_read, invoices_list, download_invoices, add_ongoing_monitoring, edit_risk_assessment, download_ongoing_monitoring, sign_off_ongoing_monitoring, return_ongoing_monitoring
 from .views import edit_ongoing_monitoring, download_document, onboarding_documents_display, edit_otherside, free30mins, download_free30mins, edit_free30mins
-from .views import undertakings, edit_undertaking, undertaking_file_download, add_policy, edit_policy, download_policy_pdf, download_all_policies_word, management_reports, reports_hub, report_expired_ids, report_expired_proof_of_address, report_file_reviews_due, weekly_report_view, policies_read_per_user, staff_timeline_panel
+from .views import undertakings, edit_undertaking, undertaking_file_download, add_policy, edit_policy, download_policy_pdf, download_all_policies_word, management_reports, reports_hub, report_expired_ids, report_expired_proof_of_address, report_file_reviews_due, report_matter_risk_ratings, weekly_report_view, policies_read_per_user, staff_timeline_panel
 from .views import bundle_list, bundle_create, bundle_edit, bundle_update, bundle_court_update, bundle_section_add, bundle_section_delete, bundle_section_update, bundle_section_reorder, bundle_document_upload, bundle_document_file, bundle_document_update, bundle_document_delete, bundle_document_pages_update, bundle_document_reorder, bundle_generate, bundle_view, bundle_download, bundle_download_plain, bundle_pdf_prepare, bundle_pdf_status, bundle_delete, bundle_share_link_status_view, bundle_share_link_create, bundle_share_link_revoke, bundle_versions_view, bundle_version_promote, bundle_version_pin, bundle_version_download
 from .views import update_comment, export_user_tasks_pdf, load_management_tasks, download_user_risk_assessments_due, download_user_key_documents_due, get_risk_assessments_due_data, add_matter_file_review, edit_matter_file_review, download_matter_file_review, internal_pricing
 from .views import add_matter_key_date, edit_matter_key_date, delete_matter_key_date, central_key_dates, download_central_key_dates
@@ -133,6 +133,8 @@ urlpatterns = [
          edit_risk_assessment, name='edit_risk_assessment'),
     path('risk_assessment/score-preview/',
          score_risk_assessment_preview, name='score_risk_assessment_preview'),
+    path('risk_assessment/weighting.pdf',
+         download_risk_weighting, name='download_risk_weighting'),
     path('risk_assessment/<int:id>/sign-off/',
          sign_off_risk_assessment, name='sign_off_risk_assessment'),
     path('risk_assessment/<int:id>/return/',
@@ -405,6 +407,8 @@ urlpatterns = [
          name='report_expired_proof_of_address'),
     path('reports/file-reviews-due/', report_file_reviews_due,
          name='report_file_reviews_due'),
+    path('reports/matter-risk-ratings/', report_matter_risk_ratings,
+         name='report_matter_risk_ratings'),
     path('reports/sign-off/', signoff_queue, name='signoff_queue'),
     path('reports/cpd/', report_cpd, name='report_cpd'),
     path('reports/compliance-stats/', compliance_stats, name='compliance_stats'),

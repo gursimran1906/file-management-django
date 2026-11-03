@@ -1,0 +1,106 @@
+{% comment %}
+The whole weighting with the reasoning behind every number, as a PDF the firm
+can keep with its firm-wide risk assessment. LSAG 5.13 expects a practice to be
+able to explain its weightings; this is that explanation, dated by the version
+it describes rather than by the day it was printed.
+{% endcomment %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Client and matter risk weighting</title>
+    <style>
+        @page { size: A4; margin: 18mm 16mm; }
+        body { font-family: "Times New Roman", Times, serif; font-size: 10.5pt; color: #111; }
+        h1 { font-size: 17pt; margin: 0 0 2mm; }
+        h2 { font-size: 13pt; margin: 8mm 0 2mm; border-bottom: 0.4pt solid #999; padding-bottom: 1mm; }
+        h3 { font-size: 11pt; margin: 5mm 0 1mm; }
+        p { margin: 0 0 2.5mm; }
+        .meta { color: #444; font-size: 9.5pt; margin-bottom: 5mm; }
+        .intro { font-size: 10pt; }
+        .section-note { color: #333; font-style: italic; margin: 0 0 2mm; }
+        .ceiling { color: #444; font-size: 9.5pt; margin: 0 0 1.5mm; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 2mm; }
+        td { vertical-align: top; padding: 1.2mm 0; border-bottom: 0.3pt solid #ddd; }
+        td.weight { text-align: right; white-space: nowrap; width: 32mm; font-weight: bold; }
+        .why { color: #333; font-size: 9.5pt; }
+        ul { margin: 0 0 3mm; padding-left: 5mm; }
+    </style>
+</head>
+<body>
+    <h1>Client and matter risk weighting</h1>
+    <p class="meta">
+        ANP Solicitors &middot; version {{ version }} &middot; last updated
+        {{ version_date|date:"j F Y" }} &middot; printed {{ printed|date:"j F Y" }}
+    </p>
+
+    <p class="intro">
+        How the practice management system scores a client and matter risk
+        assessment, and why each answer is weighted as it is. LSAG 5.13 expects
+        a practice to be able to explain its weightings and suggests short notes
+        on the rationale for each; these are those notes. This document is
+        generated from the scoring itself, so it cannot describe weights other
+        than the ones actually applied.
+    </p>
+
+    <h2>How a rating is reached</h2>
+    <p>
+        Each answer that indicates risk carries a weight in proportion to what it
+        tells you. A section's contribution is capped so no single run of answers
+        can carry the rating, and a section that is serious on its own sets the
+        rating on its own at the points shown with it, whatever the total comes
+        to. A total under {{ bands.medium_at }} is low,
+        {{ bands.medium_at }} to {{ high_band_max }} medium, and
+        {{ bands.high_at }} or more high. Client risk and matter risk are scored
+        separately and the overall rating is the higher of the two.
+    </p>
+    <p>
+        Some answers do not wait for a total. Where one of the following is
+        answered as shown, the matter is high risk outright and enhanced due
+        diligence applies; the form will not accept a lower level.
+    </p>
+    <ul>
+        {% for reason in mandatory_edd %}<li>{{ reason }}</li>{% endfor %}
+    </ul>
+    <p>
+        A rating may be recorded that differs from the score, which LSAG 5.13
+        requires to be possible, but the reason must be written on the
+        assessment and is reported on. A mandatory enhanced due diligence
+        requirement is not a judgement and cannot be overridden.
+    </p>
+
+    {% for side in sides %}
+    <h2>{{ side.label }}</h2>
+    {% for category in side.categories %}
+    <h3>{{ category.label }}</h3>
+    <p class="ceiling">
+        Capped at {{ category.cap }}. This section alone makes the rating medium
+        at {{ category.medium_at }} and high at {{ category.high_at }}.
+    </p>
+    {% if category.why %}<p class="section-note">{{ category.why }}</p>{% endif %}
+    <table>
+        {% for factor in category.factors %}
+        <tr>
+            <td>
+                {{ factor.label }}
+                {% if factor.why %}<div class="why">{{ factor.why }}</div>{% endif %}
+            </td>
+            <td class="weight">
+                {% if factor.auto_high %}high risk outright{% else %}{{ factor.answer }} adds {{ factor.points }}{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endfor %}
+    {% endfor %}
+
+    <h2>Keeping this current</h2>
+    <p>
+        Review this alongside the firm-wide risk assessment at least annually,
+        and whenever the SRA updates its sectoral risk assessment. Changing any
+        weight means changing the version and its date, so that an assessment
+        scored under an earlier version can still be explained by the weighting
+        that produced it. Assessments completed before
+        {{ version_date|date:"j F Y" }} were rated by hand and are marked as such.
+    </p>
+</body>
+</html>

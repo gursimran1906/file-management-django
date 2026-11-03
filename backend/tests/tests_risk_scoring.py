@@ -548,3 +548,117 @@ class RiskAssessmentViewTests(TestCase):
             reverse('download_risk_assessment', args=[ra.id]))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/pdf')
+
+    def test_the_pdf_names_the_clients_as_a_name(self):
+        """all_client_names is already joined; joining it again spells it out."""
+        from django.template.loader import render_to_string
+        ra = clean_assessment(self.matter)
+        apply_scores(ra)
+        ra.save()
+        html = render_to_string('download_templates/risk_assessment.html', {'obj': ra})
+        self.assertIn('Test Client', html)
+        self.assertNotIn('T, e, s, t', html)
+
+
+class WeightingExportTests(TestCase):
+    """The weighting, with its reasoning, as a document the firm can keep."""
+
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            username='wex', email='wex@example.com', first_name='W', last_name='X',
+            password='password', max_holidays_in_year=20)
+        self.client.force_login(self.user)
+
+    def test_the_weighting_downloads_as_a_pdf(self):
+        response = self.client.get(reverse('download_risk_weighting'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertIn(SCORING_VERSION, response['Content-Disposition'])
+
+    def test_it_is_dated_by_the_weighting_not_by_today(self):
+        """A reader has to be able to tell which version a file was scored under."""
+        from ..risk_scoring import SCORING_VERSION_DATE
+        response = self.client.get(reverse('download_risk_weighting'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(SCORING_VERSION_DATE.year, 2026)
+
+
+class MatterRiskReportTests(TestCase):
+    """The register of what every live matter is rated."""
+
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            username='rpt', email='rpt@example.com', first_name='R', last_name='T',
+            password='password', max_holidays_in_year=20)
+        self.client.force_login(self.user)
+        self.high = make_matter('RP0001')
+        self.low = make_matter('RP0002')
+        self.old = make_matter('RP0003')
+        self.none = make_matter('RP0004')
+
+        scored = clean_assessment(self.high, financial_sanctions='Yes')
+        apply_scores(scored)
+        scored.save()
+
+        calm = clean_assessment(self.low)
+        apply_scores(calm)
+        calm.save()
+
+        # Rated by hand before the scoring existed, as migration 0092 leaves them.
+        make_risk_assessment(self.old, client_risk_level='Low',
+                             matter_risk_level='Low', overall_risk_level='Low',
+                             computed_client_risk_level='Low',
+                             computed_matter_risk_level='Low',
+                             computed_due_diligence_level='Standard',
+                             scoring_version='legacy')
+
+    def rows(self, **params):
+        response = self.client.get(reverse('report_matter_risk_ratings'), params)
+        self.assertEqual(response.status_code, 200)
+        return response.content.decode()
+
+    def test_client_names_read_as_names(self):
+        body = self.rows()
+        self.assertIn('Test Client', body)
+        self.assertNotIn('T, e, s, t', body)
+
+    def test_every_live_matter_appears_including_the_unassessed(self):
+        body = self.rows()
+        for file_number in ('RP0001', 'RP0002', 'RP0003', 'RP0004'):
+            self.assertIn(file_number, body)
+
+    def test_filtering_by_level(self):
+        body = self.rows(level='High')
+        self.assertIn('RP0001', body)
+        self.assertNotIn('RP0002', body)
+
+    def test_matters_with_no_assessment_can_be_listed(self):
+        body = self.rows(level='none')
+        self.assertIn('RP0004', body)
+        self.assertNotIn('RP0001', body)
+
+    def test_files_rated_the_old_way_can_be_listed(self):
+        body = self.rows(basis='legacy')
+        self.assertIn('RP0003', body)
+        self.assertNotIn('RP0001', body)
+
+    def test_a_rating_recorded_against_the_score_is_shown(self):
+        overridden = clean_assessment(make_matter('RP0005'), adverse_media='Yes')
+        overridden.client_risk_level = 'Low'
+        overridden.matter_risk_level = 'Low'
+        overridden.customer_due_diligence_level = 'Standard'
+        overridden.risk_override_reason = 'The article concerns a different person.'
+        apply_scores(overridden)
+        overridden.save()
+
+        body = self.rows(change='down')
+        self.assertIn('RP0005', body)
+        self.assertIn('Medium', body)       # what it scored
+        self.assertNotIn('RP0002', body)    # rated as scored
+
+    def test_it_exports_to_csv(self):
+        response = self.client.get(reverse('report_matter_risk_ratings'),
+                                   {'export': 'csv'})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/csv', response['Content-Type'])
+        self.assertIn('RP0001', response.content.decode())
