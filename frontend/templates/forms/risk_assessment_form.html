@@ -54,7 +54,7 @@ which needs a reason.
                 {% include 'partials/risk_question_row.html' with field=form.client_concerns text="Do you have any concerns about the client?" help="For example capacity, undue influence or vulnerability." risky="Yes" %}
                 {% include 'partials/risk_question_row.html' with field=form.third_party_authority text="If a third party is instructing, do we have evidence of their authority to act?" risky="No" %}
                 {% include 'partials/risk_question_row.html' with field=form.concerns_about_parties text="Do you have any concerns about this client, agent or third parties?" risky="Yes" %}
-                {% include 'partials/risk_question_row.html' with field=form.designated_person_entity text="Is the client, or any party, a designated person or entity?" help="A designated person is someone named on the UK sanctions list, whose assets must be frozen — check HM Treasury’s consolidated list. Yes makes the matter high risk whatever the rest of the answers say." risky="Yes" %}
+                {% include 'partials/risk_question_row.html' with field=form.designated_person_entity text="Is the client, or any party, a designated person or entity?" risky="Yes" %}
                 <div class="mt-3">
                     <label for="{{ form.issues_identified_client_risks_sec.id_for_label }}">Issues identified in this section</label>
                     <p class="text-xs text-gray-500" data-flag-hint>Required if anything in this section is flagged.</p>
