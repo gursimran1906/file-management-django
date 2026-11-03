@@ -62,6 +62,7 @@ gunicorn filemanagementDjango.wsgi:application --bind 0.0.0.0:8000 --workers 3 -
 **Domain modules within `backend/` (paired `*.py` logic + `*_views.py` HTTP layer where applicable):**
 - `estate_account.py` / `estate_account_views.py` — probate estate accounts (line overrides, manual entries, distributions, signers).
 - `completion_statement.py` / `completion_statement_views.py` — conveyancing completion statements (apportionments, mortgage redemptions, scheduled payments, proceeds distribution).
+- `risk_scoring.py` — scores a client/matter risk assessment from its answers (weighted factors, per-section caps and floors, automatic high-risk triggers, mandatory EDD under the MLRs). The rating is never picked by hand: `apply_scores` writes it, and an override needs a recorded reason. Weighting rationale is in `docs/risk-scoring-methodology.md`, the weights themselves in `docs/risk-weightings.md` (regenerate with `python manage.py risk_weightings`). Bump `SCORING_VERSION` when a weight changes.
 - `finance_display.py`, `money_split.py`, `pmt_slip_service.py` — ledgers, invoices, credit notes, payment slips (pink/blue/green slips), VAT.
 - `onboarding_portal.py` / `onboarding_views.py` — client onboarding; talks to an external FastAPI portal when `ONBOARDING_PORTAL_BASE_URL` is set, otherwise a built-in mock.
 - `pdf/bundle_builder.py` — assembles court bundles (sections, documents, page ordering) into PDFs.

@@ -1,0 +1,123 @@
+{% load utils %}
+{% comment %}
+The rating and its reasoning, beside the assessment form and re-rendered by
+static/js/risk-assessment.js as answers change. Everything comes from
+backend/risk_scoring.py: the template judges nothing.
+
+One surface, divided, rather than a stack of cards; one coloured element, the
+rating itself. A section that sets the rating on its own is marked by weight
+and by words, not by colour, so it still reads in greyscale.
+{% endcomment %}
+<div class="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+
+    <div class="sticky top-0 z-10 rounded-t-lg bg-white p-3">
+        <p class="text-xl font-semibold {% if breakdown.overall_level == 'High' %}text-red-700{% elif breakdown.overall_level == 'Medium' %}text-amber-700{% else %}text-green-700{% endif %}">
+            {{ breakdown.overall_level }} risk
+        </p>
+        <p class="mt-0.5 text-xs text-gray-600">
+            {{ breakdown.due_diligence_level }} due diligence. Scored from the
+            answers below, not chosen.
+        </p>
+    </div>
+
+    {% if breakdown.auto_high or breakdown.edd_reasons or breakdown.notes %}
+    <div class="space-y-2 p-3">
+        {% if breakdown.auto_high %}
+        <div>
+            <p class="text-xs font-medium text-gray-900">High risk whatever the total</p>
+            <ul class="mt-0.5 space-y-0.5 text-xs text-gray-600">
+                {% for trigger in breakdown.auto_high %}<li>{{ trigger }}</li>{% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if breakdown.edd_reasons %}
+        <div>
+            <p class="text-xs font-medium text-gray-900">Enhanced due diligence required</p>
+            {% if breakdown.auto_high %}
+            <p class="mt-0.5 text-xs text-gray-600">
+                Follows from the above, and cannot be reduced on the form.
+            </p>
+            {% else %}
+            <ul class="mt-0.5 space-y-0.5 text-xs text-gray-600">
+                {% for reason in breakdown.edd_reasons %}<li>{{ reason }}</li>{% endfor %}
+            </ul>
+            <p class="mt-0.5 text-xs text-gray-500">This cannot be reduced on the form.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% for note in breakdown.notes %}
+        <p class="text-xs text-gray-600">{{ note }}</p>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% for side in breakdown|risk_sides %}
+    <div class="p-3">
+        <div class="flex items-baseline justify-between gap-3">
+            <p class="text-sm font-medium text-gray-900">{{ side.label }}</p>
+            <p class="text-xs">
+                <span class="font-medium text-gray-900">{{ side.data.level }}</span>
+                <span class="ml-1.5 tabular-nums text-gray-500">{{ side.data.score }}</span>
+            </p>
+        </div>
+
+        <ul class="mt-2 space-y-1.5">
+            {% for category in side.data.categories %}
+            <li>
+                <div class="flex items-baseline justify-between gap-3 text-xs">
+                    <span class="{% if category.floor != 'Low' %}text-gray-900{% else %}text-gray-600{% endif %}">{{ category.label }}</span>
+                    <span class="shrink-0 tabular-nums {% if category.floor != 'Low' %}font-medium text-gray-900{% else %}text-gray-500{% endif %}">{{ category.score }}/{{ category.cap }}</span>
+                </div>
+
+                {% if category.factors %}
+                <ul class="mt-1 space-y-0.5 border-l border-gray-200 pl-2">
+                    {% for factor in category.factors %}
+                    <li class="flex items-baseline justify-between gap-3 text-xs text-gray-600">
+                        <span>{{ factor.label }}</span>
+                        <span class="shrink-0 tabular-nums">+{{ factor.points }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+
+                {% if category.floor != 'Low' %}
+                <p class="mt-0.5 text-xs text-gray-500">{{ category.floor|lower }} on this section alone</p>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endfor %}
+
+    <details class="p-3">
+        <summary class="cursor-pointer rounded text-xs font-medium text-gray-700">
+            How this is scored
+        </summary>
+        <div class="mt-2 space-y-2 text-xs text-gray-600">
+            <p>
+                Each answer carries a weight, shown beside the question. Adverse
+                media about the client scores 12 where an unusual client scores 8,
+                so the two count in proportion rather than being tallied.
+            </p>
+            <p>
+                Each section is capped, and a section that is serious on its own
+                sets the rating on its own, whichever way the total goes. Sanctions,
+                a designated person, a high-risk third country, a non-domestic PEP,
+                proliferation financing and a transaction with no apparent purpose
+                are high risk outright.
+            </p>
+            <p>
+                Totals then set the floor: under {{ breakdown.bands.medium_at }} is
+                low, {{ breakdown.bands.medium_at }} to {{ breakdown.bands.high_at|add:"-1" }}
+                medium, {{ breakdown.bands.high_at }} or more high. The overall rating
+                is the higher of the two sides.
+            </p>
+            <p class="text-gray-500">
+                Weighting version {{ breakdown.version }}. Why each weight is what it
+                is, question by question, is at the end of the form.
+            </p>
+        </div>
+    </details>
+</div>

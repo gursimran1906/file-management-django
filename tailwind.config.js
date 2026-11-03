@@ -5,6 +5,9 @@ module.exports = {
   './users/**/*.html',
   './backend/**/*.html',
   './node_modules/flowbite/**/*.js'],
+  // Toggled by static/js/risk-assessment.js, so it never appears in a scanned
+  // template. Defined in static/src/input.css.
+  safelist: ['risk-question-risky'],
   theme: {
     extend: {
       width: {

@@ -144,6 +144,40 @@ class ComplianceSnapshotTests(TestCase):
         self.assertEqual([g['key'] for g in stats['groups']],
                          ['matter_risk', 'client_dd', 'client_care'])
 
+    def test_rating_recorded_below_the_score_is_counted(self):
+        """LSAG 5.13 allows an override; rating down is what gets looked at."""
+        as_scored = make_live_matter('R0101', make_client('Scored'), self.fe)
+        rated_down = make_live_matter('R0102', make_client('Down'), self.fe)
+        make_risk_assessment(as_scored, client_risk_level='Medium',
+                             computed_client_risk_level='Medium')
+        make_risk_assessment(rated_down, client_risk_level='Low',
+                             computed_client_risk_level='High',
+                             risk_override_reason='Known client of 20 years.')
+        stats = build_compliance_stats()
+        metric = metric_ctx(stats, 'risk_rating_as_scored')
+        self.assertEqual((metric['done'], metric['not_done']), (1, 1))
+        rows = not_done_rows('risk_rating_as_scored', reason='lowered')
+        self.assertEqual([r['cells']['file_number']['value'] for r in rows], ['R0102'])
+        self.assertIn('Known client', rows[0]['cells']['reason']['value'])
+
+    def test_enhanced_due_diligence_without_the_measures_is_counted(self):
+        done = make_live_matter('R0103', make_client('Done'), self.fe)
+        undone = make_live_matter('R0104', make_client('Undone'), self.fe)
+        make_live_matter('R0105', make_client('Standard'), self.fe)
+        make_risk_assessment(done, customer_due_diligence_level='Enhanced',
+                             edd_measures_taken='Independent source checks.',
+                             edd_enhanced_monitoring='Reviewed monthly.',
+                             evidence_of_source_of_wealth=True)
+        make_risk_assessment(undone, customer_due_diligence_level='Enhanced')
+        # A matter on standard due diligence is not part of this measure.
+        make_risk_assessment(WIP.objects.get(file_number='R0105'))
+        stats = build_compliance_stats()
+        metric = metric_ctx(stats, 'edd_complete')
+        self.assertEqual((metric['done'], metric['not_done'], metric['total']), (1, 1, 2))
+        rows = not_done_rows('edd_complete', reason='outstanding')
+        self.assertEqual([r['cells']['file_number']['value'] for r in rows], ['R0104'])
+        self.assertIn('Source of wealth', rows[0]['cells']['outstanding']['value'])
+
     def test_risk_assessment_signed_awaiting_none(self):
         signed = make_live_matter('R0001', make_client('S'), self.fe)
         awaiting = make_live_matter('R0002', make_client('A'), self.fe)

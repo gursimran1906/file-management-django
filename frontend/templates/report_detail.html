@@ -63,7 +63,19 @@
                         {% if col.sortable %}
                         <a href="{{ col.sort_url }}" class="inline-flex items-center gap-1 hover:text-gray-900">
                             <span>{{ col.label }}</span>
-                            {% if col.sort_dir == 'asc' %}<span class="text-gray-900">&uarr;</span>{% elif col.sort_dir == 'desc' %}<span class="text-gray-900">&darr;</span>{% else %}<span class="text-gray-300">&updownarrow;</span>{% endif %}
+                            {% comment %}
+                            Drawn rather than set as &updownarrow;, which most
+                            system fonts have no glyph for and render as a box.
+                            The direction in force is the darker triangle.
+                            {% endcomment %}
+                            <svg viewBox="0 0 12 12" class="h-3.5 w-3.5 shrink-0" fill="none"
+                                 stroke-width="1" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M6 1.4 9 4.6H3z"
+                                      class="{% if col.sort_dir == 'asc' %}stroke-gray-900{% else %}stroke-gray-300{% endif %}"/>
+                                <path d="M6 10.6 9 7.4H3z"
+                                      class="{% if col.sort_dir == 'desc' %}stroke-gray-900{% else %}stroke-gray-300{% endif %}"/>
+                            </svg>
+                            <span class="sr-only">{% if col.sort_dir == 'asc' %}sorted low to high{% elif col.sort_dir == 'desc' %}sorted high to low{% else %}sort by this column{% endif %}</span>
                         </a>
                         {% else %}
                         {{ col.label }}
