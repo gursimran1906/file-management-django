@@ -2316,7 +2316,17 @@ def _build_central_key_dates_context(request):
                 source_label = 'Office closure'
                 subtitle = holiday.reason
             else:
-                leave_type = 'Annual leave' if holiday.type == 'Paid' else 'Unpaid leave'
+                # Whether leave is paid or unpaid is an HR matter: only managers
+                # and the person themselves see it. Everyone else just sees
+                # that the colleague is off.
+                can_see_leave_type = (
+                    request.user.is_manager
+                    or holiday.employee_id == request.user.id
+                )
+                if can_see_leave_type:
+                    leave_type = 'Annual leave' if holiday.type == 'Paid' else 'Unpaid leave'
+                else:
+                    leave_type = 'Staff leave'
                 title = f'{holiday.employee} off'
                 source_label = leave_type
                 subtitle = holiday.reason or leave_type
