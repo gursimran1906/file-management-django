@@ -17,6 +17,7 @@ from .models import Undertaking, Policy, PolicyVersion, Bundle, BundleSection, B
 from .forms import MemoForm, OpenFileForm, NextWorkFormWithoutFileNumber, NextWorkForm, LastWorkFormWithoutFileNumber, LastWorkForm, AttendanceNoteForm, AttendanceNoteFormHalf, LetterForm, LetterHalfForm, PolicyForm
 from .forms import PmtsForm, PmtsHalfForm, PmtsSlipEditForm, GreenSlipEditForm, apply_pmts_slip_edit_locks, apply_green_slip_edit_locks, LedgerAccountTransfersHalfForm, LedgerAccountTransfersForm, InvoicesForm, CreditNoteHalfForm, ClientForm, ClientKeyDocumentFormSet, MatterKeyDateForm, AuthorisedPartyForm, RiskAssessmentForm, OngoingMonitoringForm, OtherSideForm
 from .forms import Free30MinsForm, Free30MinsAttendeesForm, UndertakingForm, MatterFileReviewForm, PricingItemForm, ArchiveDetailsForm
+from .forms import settle_conditional_questions
 # get_file_reviews_due_queryset is re-exported here: compliance_stats imports it from views.
 from .file_reviews import get_file_reviews_due_queryset  # noqa: F401
 from .risk_scoring import (
@@ -3545,8 +3546,8 @@ def score_risk_assessment_preview(request):
     if request.method != 'POST':
         return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
 
-    answers = SimpleNamespace(**{key: request.POST.get(key)
-                                 for key in request.POST.keys()})
+    answers = SimpleNamespace(**settle_conditional_questions(
+        {key: request.POST.get(key) for key in request.POST.keys()}))
     # The matter carries the type of work and so the starting score. The form
     # is scored as it is being filled in, so the field may be empty or junk.
     matter_id = request.POST.get('matter') or ''

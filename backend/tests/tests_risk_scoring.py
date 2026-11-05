@@ -413,6 +413,76 @@ class DetailBoxTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors.as_data())
 
 
+class ConditionalQuestionTests(TestCase):
+    """Questions only shown given an earlier answer.
+
+    The form hides how a remote identity was verified until the client is not
+    met in person, and whether funds move until the matter is not
+    transactional. Requiring them regardless sent the form back with an error
+    for a question that was not on the page.
+    """
+
+    def setUp(self):
+        self.matter = make_matter('RS0006')
+
+    def post(self, **overrides):
+        return build_risk_assessment_post(self.matter.id, **overrides)
+
+    def test_a_question_that_was_not_asked_is_recorded_as_not_applicable(self):
+        form = RiskAssessmentForm(data=self.post(
+            meeting_in_person='Yes', id_verified_reliable_source='',
+            transactional_matter='Yes', movement_of_funds_assets=''))
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        self.assertEqual(form.cleaned_data['id_verified_reliable_source'], 'N/A')
+        self.assertEqual(form.cleaned_data['movement_of_funds_assets'], 'N/A')
+
+    def test_a_question_that_was_asked_has_to_be_answered(self):
+        form = RiskAssessmentForm(data=self.post(
+            meeting_in_person='No', who_they_are='Video call and passport.',
+            id_verified_reliable_source='',
+            transactional_matter='No', movement_of_funds_assets=''))
+        self.assertFalse(form.is_valid())
+        self.assertIn('id_verified_reliable_source', form.errors)
+        self.assertIn('movement_of_funds_assets', form.errors)
+
+    def test_not_applicable_is_not_offered_once_the_question_is_asked(self):
+        form = RiskAssessmentForm()
+        for name in ('id_verified_reliable_source', 'movement_of_funds_assets'):
+            self.assertEqual(
+                [choice[0] for choice in form.fields[name].choices],
+                ['', 'Yes', 'No'])
+        form = RiskAssessmentForm(data=self.post(
+            meeting_in_person='No', who_they_are='Video call and passport.',
+            id_verified_reliable_source='N/A'))
+        self.assertFalse(form.is_valid())
+        self.assertIn('id_verified_reliable_source', form.errors)
+
+    def test_a_stale_answer_to_a_hidden_question_is_not_saved_or_scored(self):
+        """Hidden fields keep their last value, so the server has to drop it."""
+        form = RiskAssessmentForm(data=self.post(
+            meeting_in_person='Yes', id_verified_reliable_source='No',
+            transactional_matter='Yes', movement_of_funds_assets='Yes'))
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        self.assertEqual(form.cleaned_data['id_verified_reliable_source'], 'N/A')
+        self.assertEqual(form.cleaned_data['movement_of_funds_assets'], 'N/A')
+        self.assertEqual(form.breakdown['overall_level'], 'Low')
+
+    def test_the_preview_ignores_a_hidden_question_too(self):
+        user = CustomUser.objects.create_user(
+            username='rsc', email='rsc@example.com', first_name='Cond',
+            last_name='Tester', password='password', max_holidays_in_year=20)
+        self.client.force_login(user)
+        scored = self.client.post(
+            reverse('score_risk_assessment_preview'),
+            {'matter': self.matter.id, 'meeting_in_person': 'No',
+             'id_verified_reliable_source': 'No'}).json()['breakdown']
+        ignored = self.client.post(
+            reverse('score_risk_assessment_preview'),
+            {'matter': self.matter.id, 'meeting_in_person': 'Yes',
+             'id_verified_reliable_source': 'No'}).json()['breakdown']
+        self.assertGreater(scored['client']['score'], ignored['client']['score'])
+
+
 class QuestionWeightTests(TestCase):
     """The form tells you what a question is worth, from the weights it scores by."""
 

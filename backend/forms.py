@@ -584,6 +584,34 @@ ANSWER_DETAIL_TRIGGERS = {
 #: Only asked where the client is an entity.
 ENTITY_DETAIL_FIELDS = ('beneficial_owners_details', 'ultimate_beneficial_owners')
 
+#: Questions that only make sense given an earlier answer:
+#: (question, (the question it follows, the answer that makes it apply)).
+#: The template hides them otherwise (``data-show-when``), so they cannot be
+#: answered and are recorded as N/A; when they do apply they need a Yes or No.
+CONDITIONAL_QUESTIONS = {
+    'id_verified_reliable_source': ('meeting_in_person', 'No'),
+    'movement_of_funds_assets': ('transactional_matter', 'No'),
+}
+
+
+def conditional_question_applies(answers, question):
+    """True where ``question`` was put to the person, given ``answers``."""
+    field_name, answer = CONDITIONAL_QUESTIONS[question]
+    return answers.get(field_name) == answer
+
+
+def settle_conditional_questions(answers):
+    """Record N/A for each conditional question that was not asked.
+
+    ``answers`` is a dict (cleaned form data, or a raw POST being scored for
+    the preview) and is changed in place. A hidden question keeps whatever it
+    last held, so without this a stale answer would be saved and scored.
+    """
+    for question in CONDITIONAL_QUESTIONS:
+        if not conditional_question_applies(answers, question):
+            answers[question] = 'N/A'
+    return answers
+
 #: Dropdowns that are not questions: the rating is scored, and these are set by
 #: the workflow or follow from it.
 NON_QUESTION_CHOICE_FIELDS = (
@@ -691,7 +719,16 @@ class RiskAssessmentForm(forms.ModelForm):
         for field_name, field in self.fields.items():
             # Every question is required; the boxes in OPTIONAL_FIELDS are not,
             # whatever the model says, because clean() decides when they are.
-            field.required = field_name not in self.OPTIONAL_FIELDS
+            # Nor are the conditional questions: they are only shown given an
+            # earlier answer, so clean() requires them when that answer is given
+            # and records N/A when it is not.
+            field.required = (field_name not in self.OPTIONAL_FIELDS
+                              and field_name not in CONDITIONAL_QUESTIONS)
+            if field_name in CONDITIONAL_QUESTIONS:
+                # N/A is what the form records when the question is not put;
+                # it is not an answer to offer once it is.
+                field.choices = [('', 'Select\u2026'), ('Yes', 'Yes'), ('No', 'No')]
+                field.initial = ''
             if isinstance(field, forms.BooleanField):
                 field.widget = forms.Select(choices=[(True, 'Yes'), (False, 'No')])
             # .form-input already styles inputs, selects and textareas for this
@@ -745,6 +782,7 @@ class RiskAssessmentForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        self._settle_conditional_questions(cleaned)
         # Score what has been answered, then hold the recorded rating against
         # it. ``self.breakdown`` is handed to the template so the form can show
         # the working.
@@ -786,6 +824,22 @@ class RiskAssessmentForm(forms.ModelForm):
 
     def _is_risky(self, cleaned, field):
         return cleaned.get(field) == RISKY_ANSWERS.get(field)
+
+    def _settle_conditional_questions(self, cleaned):
+        """A conditional question needs an answer only when it was asked.
+
+        The template hides these until the answer they follow is given, so
+        requiring them regardless produced an error nobody could see or fix:
+        the form came back with "This field is required" for a question that
+        was not on the page.
+        """
+        for question in CONDITIONAL_QUESTIONS:
+            if not conditional_question_applies(cleaned, question):
+                continue
+            if cleaned.get(question) not in ('Yes', 'No'):
+                self.add_error(question, forms.ValidationError(
+                    'This follows from the answer above, so it needs answering.'))
+        settle_conditional_questions(cleaned)
 
     def _require_relevant_details(self, cleaned):
         """Ask for a free-text box only where the answers call for one.
